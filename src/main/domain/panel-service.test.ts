@@ -18,7 +18,7 @@ import { PanelService, PanelValidationError } from './panel-service'
 
 // Failure injection: while `disk.failJsonWrites > 0`, that many writeJsonAtomic calls reject.
 // Episode writes consume the counter too, so tests arm it at the exact moment they mean.
-const disk = vi.hoisted(() => ({ failJsonWrites: 0 }))
+const disk = vi.hoisted(() => ({ failJsonWrites: 0, failFileWrites: 0 }))
 vi.mock('../storage/atomic', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../storage/atomic')>()
   return {
@@ -29,6 +29,14 @@ vi.mock('../storage/atomic', async (importOriginal) => {
         throw new Error('disk full')
       }
       return actual.writeJsonAtomic(path, value)
+    },
+    // Image files go through writeFileAtomic directly (writeJsonAtomic uses the real one internally).
+    writeFileAtomic: async (path: string, data: string | Uint8Array) => {
+      if (disk.failFileWrites > 0) {
+        disk.failFileWrites--
+        throw new Error('no space left on device')
+      }
+      return actual.writeFileAtomic(path, data)
     }
   }
 })
@@ -45,6 +53,7 @@ const PNG = encodeSolidPng(2, 3, [1, 2, 3])
 let tp: TempProject | undefined
 afterEach(async () => {
   disk.failJsonWrites = 0
+  disk.failFileWrites = 0
   vi.restoreAllMocks()
   await tp?.cleanup()
   tp = undefined
@@ -502,13 +511,18 @@ describe('PanelService generate', () => {
     const gate = new Promise<void>((r) => {
       release = r
     })
+    let started!: () => void
+    const hasStarted = new Promise<void>((r) => {
+      started = r
+    })
     behavior.generate = async () => {
+      started() // the provider only runs after the pending version has been appended
       await gate
       return { mime: 'image/png', data: PNG }
     }
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
     const running = svc.generate(ctx, p.id)
-    await new Promise((r) => setTimeout(r, 30))
+    await hasStarted
     const during = await svc.get(ctx, p.id)
     expect(during.versions).toHaveLength(1)
     expect(during.versions[0]).toMatchObject({ status: 'pending', error: null, imagePath: null })
@@ -549,14 +563,67 @@ describe('PanelService generate', () => {
 
   it('an aborted generation ends failed Cancelled and passes the signal through', async () => {
     const { svc, epi, ctx, behavior } = await setup()
-    behavior.generate = (req) => new Promise((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason)))
+    let started!: () => void
+    const hasStarted = new Promise<void>((r) => {
+      started = r
+    })
+    behavior.generate = (req) =>
+      new Promise((_, reject) => {
+        req.signal.addEventListener('abort', () => reject(req.signal.reason))
+        started()
+      })
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
     const ac = new AbortController()
     const running = svc.generate(ctx, p.id, { signal: ac.signal })
-    await new Promise((r) => setTimeout(r, 30))
+    await hasStarted
     ac.abort()
     expect(await running).toMatchObject({ status: 'failed', error: 'Cancelled' })
     expect((await svc.get(ctx, p.id)).versions[0]).toMatchObject({ status: 'failed', error: 'Cancelled' })
+  })
+
+  it('two concurrent generations on one panel are both recorded and the last to finish becomes current', async () => {
+    const { svc, epi, ctx, behavior } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstStarted!: () => void
+    const hasStarted = new Promise<void>((r) => {
+      firstStarted = r
+    })
+    let calls = 0
+    behavior.generate = async () => {
+      if (++calls === 1) {
+        firstStarted()
+        await gate
+      }
+      return { mime: 'image/png', data: nextPng() }
+    }
+    const first = svc.generate(ctx, p.id)
+    await hasStarted
+    const second = await svc.generate(ctx, p.id)
+    const mid = await svc.get(ctx, p.id)
+    expect(mid.versions.map((v) => v.status)).toEqual(['pending', 'ready'])
+    expect(mid.currentVersionId).toBe(second.id)
+    release()
+    const firstDone = await first
+    const stored = await svc.get(ctx, p.id)
+    expect(firstDone.id).not.toBe(second.id)
+    expect(stored.versions.map((v) => [v.id, v.status])).toEqual([[firstDone.id, 'ready'], [second.id, 'ready']])
+    expect(stored.currentVersionId).toBe(firstDone.id)
+    expect(panelImages(ctx, p.id).sort()).toEqual([`${firstDone.id}.png`, `${second.id}.png`].sort())
+  })
+
+  it('generations started together all land in the history with consistent state', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const out = await Promise.all([svc.generate(ctx, p.id), svc.generate(ctx, p.id), svc.generate(ctx, p.id)])
+    const stored = await svc.get(ctx, p.id)
+    expect(stored.versions.map((v) => v.id).sort()).toEqual(out.map((v) => v.id).sort())
+    expect(stored.versions.every((v) => v.status === 'ready' && v.imagePath && fs.existsSync(ctx.paths.resolveAsset(v.imagePath)))).toBe(true)
+    expect(out.map((v) => v.id)).toContain(stored.currentVersionId)
+    expect(panelImages(ctx, p.id)).toHaveLength(3)
   })
 
   it('throws only for an unknown panel', async () => {
@@ -579,6 +646,26 @@ describe('PanelService recording failures (Review Focus 2)', () => {
     expect(stored.versions).toMatchObject([{ status: 'failed', error: 'disk full', imagePath: null }])
     expect(stored.currentVersionId).toBeNull()
     expect(panelImages(ctx, p.id)).toEqual([])
+  })
+
+  it('records failed, keeps the previous version current and leaves no orphan when the image file cannot be written', async () => {
+    const { svc, epi, ctx, behavior, events } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v1 = await svc.generate(ctx, p.id)
+    behavior.generate = async () => {
+      disk.failFileWrites = 1
+      return { mime: 'image/png', data: PNG }
+    }
+    events.length = 0
+    const v2 = await svc.generate(ctx, p.id)
+    expect(v2).toMatchObject({ status: 'failed', error: 'no space left on device', imagePath: null })
+    const stored = await svc.get(ctx, p.id)
+    expect(stored.versions.map((v) => [v.id, v.status])).toEqual([[v1.id, 'ready'], [v2.id, 'failed']])
+    expect(stored.versions[1].error).toBe('no space left on device')
+    expect(stored.currentVersionId).toBe(v1.id)
+    expect(panelImages(ctx, p.id)).toEqual([`${v1.id}.png`])
+    expect(fs.readdirSync(ctx.paths.panelDir(p.id)).filter((n) => n.includes('.tmp-'))).toEqual([])
+    expect(events.filter((e) => e.type === 'panel.changed').length).toBeGreaterThan(0)
   })
 
   it('resolves failed, never throws, and leaves recoverInterrupted as the backstop when every write fails', async () => {
@@ -893,6 +980,42 @@ describe('PanelService recoverInterrupted', () => {
     expect(ctx.problems).toHaveLength(1)
   })
 
+  it('skips a panel whose internal id is malformed, reports it by file name, and still recovers the others (Ruling T18f)', async () => {
+    const { svc, epi, ctx } = await setup()
+    await writeJsonAtomic(ctx.paths.panelFile('pnl_aaaaaaaaaa'), pendingPanel('pnl_aaaaaaaaaa', epi.id))
+    await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), { ...pendingPanel('pnl_bbbbbbbbbb', epi.id), id: '../escape' })
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    expect((await svc.get(ctx, 'pnl_aaaaaaaaaa')).versions[1].status).toBe('failed')
+    expect(ctx.problems.map((p) => p.path)).toEqual(['panels/pnl_bbbbbbbbbb.json'])
+    expect(ctx.problems[0].message).toMatch(/does not match its file name/)
+    expect(JSON.parse(fs.readFileSync(ctx.paths.panelFile('pnl_bbbbbbbbbb'), 'utf8')).versions[1].status).toBe('pending')
+  })
+
+  it('skips a panel file that holds another valid id instead of rewriting the wrong file (Ruling T18f)', async () => {
+    const { svc, epi, ctx } = await setup()
+    await writeJsonAtomic(ctx.paths.panelFile('pnl_aaaaaaaaaa'), pendingPanel('pnl_bbbbbbbbbb', epi.id))
+    await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), pendingPanel('pnl_bbbbbbbbbb', epi.id))
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    expect((await svc.get(ctx, 'pnl_bbbbbbbbbb')).versions[1].status).toBe('failed')
+    expect(JSON.parse(fs.readFileSync(ctx.paths.panelFile('pnl_aaaaaaaaaa'), 'utf8')).versions[1].status).toBe('pending')
+    expect(ctx.problems.map((p) => p.path)).toEqual(['panels/pnl_aaaaaaaaaa.json'])
+  })
+
+  it('reads, lists and counts usage by file-derived ids only (Ruling T18f)', async () => {
+    const { svc, episodes, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    await plant(ctx, episodes, makePanel({ id: 'pnl_aaaaaaaaaa', episodeId: epi.id, characters: [castOf(m)] }))
+    await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), makePanel({ id: 'pnl_aaaaaaaaaa', episodeId: epi.id, characters: [castOf(m)] }))
+    await episodes.insertPanel(ctx, epi.id, 'pnl_bbbbbbbbbb', undefined)
+    await expect(svc.get(ctx, 'pnl_bbbbbbbbbb')).rejects.toThrow(/does not match its file name/)
+    expect((await svc.list(ctx, epi.id)).map((p) => p.id)).toEqual(['pnl_aaaaaaaaaa'])
+    expect(await svc.panelsUsingCharacter(ctx, m.id)).toEqual(['pnl_aaaaaaaaaa'])
+    expect(await svc.panelsUsingVariation(ctx, m.varId)).toEqual(['pnl_aaaaaaaaaa'])
+    expect(ctx.problems.map((p) => p.path)).toEqual(['panels/pnl_bbbbbbbbbb.json'])
+    await expect(svc.update(ctx, 'pnl_bbbbbbbbbb', { shot: 'wide' }, USER)).rejects.toThrow(/does not match its file name/)
+    expect(JSON.parse(fs.readFileSync(ctx.paths.panelFile('pnl_bbbbbbbbbb'), 'utf8')).shot).toBe('medium')
+  })
+
   it('never throws when the panels folder cannot be read', async () => {
     const { svc, ctx } = await setup()
     vi.spyOn(fs.promises, 'readdir').mockRejectedValueOnce(Object.assign(new Error('access denied'), { code: 'EACCES' }))
@@ -928,6 +1051,26 @@ describe('createServices wiring', () => {
       expect(trashed).toContain(ctx.paths.panelFile(panel.id))
     } finally {
       await s.cleanup()
+    }
+  })
+
+  it('opens a project whose panel files hold a malformed or mismatched id, reporting them (Ruling T18f)', async () => {
+    const s1 = await testServices()
+    let s2: Awaited<ReturnType<typeof testServices>> | undefined
+    try {
+      const ctx = await s1.projects.create({ title: 'P' })
+      const [ep] = await s1.episodes.list(ctx)
+      const pending = makePanel({ episodeId: ep.id, versions: [version({ status: 'pending' })] })
+      await writeJsonAtomic(ctx.paths.panelFile('pnl_aaaaaaaaaa'), { ...pending, id: '../escape' })
+      await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), { ...pending, id: 'pnl_cccccccccc' })
+      await writeJsonAtomic(ctx.paths.panelFile('pnl_dddddddddd'), { ...pending, id: 'pnl_dddddddddd' })
+      s2 = await testServices({ projectsRoot: s1.projectsRoot })
+      const reopened = await s2.projects.open(ctx.id)
+      expect(reopened.problems.map((p) => p.path).sort()).toEqual(['panels/pnl_aaaaaaaaaa.json', 'panels/pnl_bbbbbbbbbb.json'])
+      expect((await s2.panels.get(reopened, 'pnl_dddddddddd')).versions[0]).toMatchObject({ status: 'failed', error: INTERRUPTED })
+    } finally {
+      await s2?.cleanup()
+      await s1.cleanup()
     }
   })
 

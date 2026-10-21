@@ -8,7 +8,7 @@ import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import type { CharacterService, PanelUsageLookup } from './character-service'
 import type { EpisodeService } from './episode-service'
-import { EntityNotFoundError } from './errors'
+import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
 import { hasReadyReference, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt } from './prompts'
@@ -77,7 +77,7 @@ export class PanelService implements PanelUsageLookup {
 
   async get(ctx: ProjectContext, id: string): Promise<Panel> {
     try {
-      return await readJson(ctx.paths.panelFile(id), PanelSchema)
+      return await readPanelFile(ctx.paths.panelFile(id), id)
     } catch (error) {
       if (isNotFound(error)) throw new EntityNotFoundError('panel', id)
       throw error
@@ -319,7 +319,8 @@ export class PanelService implements PanelUsageLookup {
         }))
       } catch (error) {
         if (error instanceof EntityNotFoundError) continue
-        this.report(ctx, ctx.paths.panelFile(panel.id), error)
+        // `panel.id` came from the file name (scan), so this path is built without validation that could throw.
+        this.report(ctx, path.join(ctx.paths.panelsDir(), `${panel.id}.json`), error)
       }
     }
   }
@@ -363,7 +364,7 @@ export class PanelService implements PanelUsageLookup {
     const file = ctx.paths.panelFile(panelId)
     try {
       await ctx.mutex.run(file, async () => {
-        const current = await readJson(file, PanelSchema)
+        const current = await readPanelFile(file, panelId)
         await writeJsonAtomic(file, { ...current, versions: [...current.versions, version], updatedAt: now() })
       })
       return null
@@ -383,7 +384,7 @@ export class PanelService implements PanelUsageLookup {
     const outcome = await ctx.mutex.run(file, async (): Promise<{ version: PanelVersion; persisted: boolean } | null> => {
       let current: Panel
       try {
-        current = await readJson(file, PanelSchema)
+        current = await readPanelFile(file, panelId)
       } catch (error) {
         if (isNotFound(error)) return null
         // Corrupt or unreadable: rewriting it from our stale snapshot could destroy the user's edits.
@@ -465,14 +466,14 @@ export class PanelService implements PanelUsageLookup {
       return null // a malformed id in a hand-edited episode names no panel
     }
     try {
-      return await readJson(file, PanelSchema)
+      return await readPanelFile(file, id)
     } catch (error) {
       if (!isNotFound(error)) this.report(ctx, file, error)
       return null
     }
   }
 
-  /** Every readable panel file in `panels/`, whether or not an episode lists it. */
+  /** Every readable panel file in `panels/` (ids verified against the file names), whether or not an episode lists it. */
   private async scan(ctx: ProjectContext): Promise<Panel[]> {
     let names: string[]
     try {
@@ -486,7 +487,8 @@ export class PanelService implements PanelUsageLookup {
       if (!PANEL_FILE.test(name)) continue
       const abs = path.join(ctx.paths.panelsDir(), name)
       try {
-        panels.push(await readJson(abs, PanelSchema))
+        // Ruling T18f: the id comes from the file name; a file holding any other id is reported and skipped.
+        panels.push(await readPanelFile(abs, name.slice(0, -'.json'.length)))
       } catch (error) {
         if (!isNotFound(error)) this.report(ctx, abs, error)
       }
@@ -494,14 +496,27 @@ export class PanelService implements PanelUsageLookup {
     return panels
   }
 
+  /** Records an unreadable file in `ctx.problems`. Never throws, so callers can use it from a catch block. */
   private report(ctx: ProjectContext, abs: string, error: unknown): void {
-    const rel = ctx.paths.toRelative(abs)
+    let rel: string
+    try {
+      rel = ctx.paths.toRelative(abs)
+    } catch {
+      rel = abs
+    }
     if (!ctx.problems.some((p) => p.path === rel)) ctx.problems.push({ path: rel, message: error instanceof Error ? error.message : String(error) })
   }
 
   private emit(ctx: ProjectContext, panelId: string): void {
     this.opts.bus.emit({ type: 'panel.changed', projectId: ctx.id, panelId })
   }
+}
+
+/** Reads a panel file and checks that it holds the id its file name says (Ruling T18f). */
+async function readPanelFile(file: string, id: string): Promise<Panel> {
+  const panel = await readJson(file, PanelSchema)
+  if (panel.id !== id) throw new CorruptFileError(file, `holds panel id ${JSON.stringify(panel.id)}, which does not match its file name`)
+  return panel
 }
 
 /** The previous panel's current image, if that version is ready. */

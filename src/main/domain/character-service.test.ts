@@ -319,6 +319,31 @@ describe('CharacterService recording failures', () => {
     expect(ctx.problems.map((p) => p.path)).toContain('characters/chr_ffffffffff.json')
   })
 
+  it('recoverInterrupted skips a character whose internal id is malformed and reports it by file name (Ruling T18f)', async () => {
+    const { svc, ctx } = await setup()
+    const pending = (id: string) => makeCharacter({ id, name: id, variations: [makeVariation({ characterId: id, status: 'pending' })] })
+    await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), pending('chr_aaaaaaaaaa'))
+    await writeJsonAtomic(ctx.paths.characterFile('chr_bbbbbbbbbb'), { ...pending('chr_bbbbbbbbbb'), id: '../escape' })
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    expect((await svc.get(ctx, 'chr_aaaaaaaaaa')).variations[0].status).toBe('failed')
+    expect(ctx.problems.map((p) => p.path)).toEqual(['characters/chr_bbbbbbbbbb.json'])
+    expect(ctx.problems[0].message).toMatch(/does not match its file name/)
+    expect(JSON.parse(fs.readFileSync(ctx.paths.characterFile('chr_bbbbbbbbbb'), 'utf8')).variations[0].status).toBe('pending')
+  })
+
+  it('recoverInterrupted skips a file that holds another valid id instead of rewriting the wrong file (Ruling T18f)', async () => {
+    const { svc, ctx } = await setup()
+    const pending = makeCharacter({ id: 'chr_bbbbbbbbbb', name: 'Bee', variations: [makeVariation({ id: 'var_bbbbbbbbbb', characterId: 'chr_bbbbbbbbbb', status: 'pending' })] })
+    await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), pending)
+    await writeJsonAtomic(ctx.paths.characterFile('chr_bbbbbbbbbb'), pending)
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    expect((await svc.get(ctx, 'chr_bbbbbbbbbb')).variations[0].status).toBe('failed')
+    expect(JSON.parse(fs.readFileSync(ctx.paths.characterFile('chr_aaaaaaaaaa'), 'utf8')).variations[0].status).toBe('pending')
+    expect((await svc.list(ctx, { includeArchived: true })).map((c) => c.id)).toEqual(['chr_bbbbbbbbbb'])
+    await expect(svc.get(ctx, 'chr_aaaaaaaaaa')).rejects.toThrow(/does not match its file name/)
+    expect(ctx.problems.map((p) => p.path)).toEqual(['characters/chr_aaaaaaaaaa.json'])
+  })
+
   it('recoverInterrupted keeps going when one character cannot be rewritten', async () => {
     const { svc, ctx } = await setup()
     const mk = (id: string) => makeCharacter({ id, name: id, variations: [makeVariation({ characterId: id, status: 'pending' })] })
@@ -333,6 +358,23 @@ describe('CharacterService recording failures', () => {
 })
 
 describe('createServices wiring', () => {
+  it('opens a project whose character files hold a malformed or mismatched id, reporting them (Ruling T18f)', async () => {
+    const s1 = await testServices()
+    let s2: Awaited<ReturnType<typeof testServices>> | undefined
+    try {
+      const ctx = await s1.projects.create({ title: 'P' })
+      const pending = makeCharacter({ variations: [makeVariation({ status: 'pending' })] })
+      await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), { ...pending, id: '../escape' })
+      await writeJsonAtomic(ctx.paths.characterFile('chr_bbbbbbbbbb'), { ...pending, id: 'chr_cccccccccc' })
+      s2 = await testServices({ projectsRoot: s1.projectsRoot })
+      const reopened = await s2.projects.open(ctx.id)
+      expect(reopened.problems.map((p) => p.path).sort()).toEqual(['characters/chr_aaaaaaaaaa.json', 'characters/chr_bbbbbbbbbb.json'])
+    } finally {
+      await s2?.cleanup()
+      await s1.cleanup()
+    }
+  })
+
   it('recovers interrupted generations when a project is first opened', async () => {
     const s1 = await testServices()
     let s2: Awaited<ReturnType<typeof testServices>> | undefined

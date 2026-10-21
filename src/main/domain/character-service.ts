@@ -7,7 +7,7 @@ import type { Character, CharacterInput, CharacterPatch, Variation, VariationInp
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
-import { EntityNotFoundError } from './errors'
+import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageService } from './image-service'
 import { baseReferencePrompt, variationPrompt } from './prompts'
 
@@ -74,7 +74,8 @@ export class CharacterService {
       if (!CHARACTER_FILE.test(name)) continue
       const abs = path.join(ctx.paths.charactersDir(), name)
       try {
-        out.push(await readJson(abs, CharacterSchema))
+        // Ruling T18f: the id comes from the file name; a file holding any other id is reported and skipped.
+        out.push(await readCharacterFile(abs, name.slice(0, -'.json'.length)))
       } catch (error) {
         if (isNotFound(error)) continue
         const rel = ctx.paths.toRelative(abs)
@@ -87,7 +88,7 @@ export class CharacterService {
 
   async get(ctx: ProjectContext, id: string): Promise<Character> {
     try {
-      return await readJson(ctx.paths.characterFile(id), CharacterSchema)
+      return await readCharacterFile(ctx.paths.characterFile(id), id)
     } catch (error) {
       if (isNotFound(error)) throw new EntityNotFoundError('character', id)
       throw error
@@ -270,7 +271,8 @@ export class CharacterService {
       } catch (error) {
         // One unreadable or unwritable character must not block opening the project.
         if (error instanceof EntityNotFoundError) continue
-        const rel = ctx.paths.toRelative(ctx.paths.characterFile(c.id))
+        // `c.id` came from the file name (list), so this path needs no id validation that could throw.
+        const rel = ctx.paths.toRelative(path.join(ctx.paths.charactersDir(), `${c.id}.json`))
         if (!ctx.problems.some((p) => p.path === rel)) ctx.problems.push({ path: rel, message: error instanceof Error ? error.message : String(error) })
       }
     }
@@ -292,7 +294,7 @@ export class CharacterService {
     const outcome = await ctx.mutex.run(file, async (): Promise<{ variation: Variation; persisted: boolean } | null> => {
       let current: Character
       try {
-        current = await readJson(file, CharacterSchema)
+        current = await readCharacterFile(file, characterId)
       } catch (error) {
         if (isNotFound(error)) return null
         // Corrupt or unreadable: rewriting it from our stale snapshot could destroy the user's edits.
@@ -353,6 +355,13 @@ export class CharacterService {
   private emit(ctx: ProjectContext, characterId: string): void {
     this.opts.bus.emit({ type: 'character.changed', projectId: ctx.id, characterId })
   }
+}
+
+/** Reads a character file and checks that it holds the id its file name says (Ruling T18f). */
+async function readCharacterFile(file: string, id: string): Promise<Character> {
+  const character = await readJson(file, CharacterSchema)
+  if (character.id !== id) throw new CorruptFileError(file, `holds character id ${JSON.stringify(character.id)}, which does not match its file name`)
+  return character
 }
 
 function findVariation(c: Character, variationId: string): Variation {
