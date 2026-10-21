@@ -360,6 +360,36 @@ describe('PanelService update', () => {
     expect(v.referenceImagePaths).toEqual([m.imagePath])
     expect(calls).toHaveLength(1)
   })
+
+  it('accepts an update of a panel whose unchanged cast variation later went failed, but still checks new or changed entries (Ruling T18b)', async () => {
+    const { svc, characters, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), AGENT)).panel
+    // Mina's base regeneration fails (the old image path is kept, as CharacterService does); her outfit never worked.
+    const stored = await characters.get(ctx, m.id)
+    await writeJsonAtomic(ctx.paths.characterFile(m.id), { ...stored, variations: stored.variations.map((v) => ({ ...v, status: 'failed', error: 'boom' })) })
+
+    const dialogue = await svc.update(ctx, p.id, { dialogue: [{ speakerId: m.id, kind: 'speech', text: 'Still here.' }] }, AGENT)
+    expect(dialogue.panel.dialogue[0].text).toBe('Still here.')
+    const acted = await svc.update(ctx, p.id, { characters: [castOf(m, { action: 'runs' })] }, AGENT)
+    expect(acted.panel.characters[0].action).toBe('runs')
+
+    await expect(svc.update(ctx, p.id, { characters: [castOf(m, { variationId: m.varId2 })] }, AGENT)).rejects.toMatchObject({ issues: ['Variation "Outfit" of Mina has no ready reference image'] })
+    await expect(svc.update(ctx, p.id, { characters: [castOf(m), castOf(m, { variationId: m.varId2 })] }, AGENT)).rejects.toMatchObject({
+      issues: ['Mina is cast twice', 'Variation "Outfit" of Mina has no ready reference image']
+    })
+    expect((await svc.get(ctx, p.id)).characters.map((c) => c.variationId)).toEqual([m.varId])
+  })
+
+  it('still reports an unknown character or foreign variation in an unchanged cast entry', async () => {
+    const { svc, episodes, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    await plant(ctx, episodes, makePanel({ id: 'pnl_8888888888', episodeId: epi.id, characters: [{ characterId: 'chr_ffffffffff', variationId: 'var_ffffffffff' }] }))
+    await plant(ctx, episodes, makePanel({ id: 'pnl_9999999999', episodeId: epi.id, characters: [{ characterId: m.id, variationId: 'var_ffffffffff' }] }))
+    const dialogue = [{ speakerId: null, kind: 'narration' as const, text: 'x' }]
+    await expect(svc.update(ctx, 'pnl_8888888888', { dialogue }, USER)).rejects.toMatchObject({ issues: ['Unknown character: chr_ffffffffff'] })
+    await expect(svc.update(ctx, 'pnl_9999999999', { dialogue }, USER)).rejects.toMatchObject({ issues: ['Variation var_ffffffffff does not belong to Mina'] })
+  })
 })
 
 describe('PanelService generate', () => {
@@ -751,14 +781,16 @@ describe('PanelService uploadImage and revert', () => {
 })
 
 describe('PanelService delete, move and usage', () => {
-  it('delete trashes the files and removes the panel from its episode', async () => {
+  it('delete trashes the JSON, image folder and side chat, and removes the panel from its episode', async () => {
     const { svc, episodes, epi, ctx, trashed, events } = await setup()
     const p1 = (await svc.create(ctx, draft(epi.id), USER)).panel
     const p2 = (await svc.create(ctx, draft(epi.id), USER)).panel
     await svc.generate(ctx, p1.id)
+    await fs.promises.writeFile(ctx.paths.panelChatFile(p1.id), '{"id":"msg_0000000001"}\n')
     events.length = 0
     await svc.delete(ctx, p1.id)
-    expect(trashed).toEqual([ctx.paths.panelFile(p1.id), ctx.paths.panelDir(p1.id)])
+    expect(trashed).toEqual([ctx.paths.panelFile(p1.id), ctx.paths.panelDir(p1.id), ctx.paths.panelChatFile(p1.id)])
+    expect(fs.existsSync(ctx.paths.panelChatFile(p1.id))).toBe(false)
     expect((await episodes.get(ctx, epi.id)).panelIds).toEqual([p2.id])
     await expect(svc.get(ctx, p1.id)).rejects.toBeInstanceOf(EntityNotFoundError)
     expect(events).toEqual(expect.arrayContaining([{ type: 'panel.changed', projectId: ctx.id, panelId: p1.id }, { type: 'episode.changed', projectId: ctx.id, episodeId: epi.id }]))

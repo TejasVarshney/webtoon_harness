@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, DialogueLine, Episode, Panel, PanelCharacter, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
+import type { Character, DialogueLine, Episode, Panel, PanelCharacter, PanelDraft, PanelPatch, PanelVersion, Variation } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
@@ -10,7 +10,7 @@ import type { CharacterService, PanelUsageLookup } from './character-service'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
-import { validatePanelDraft } from './panel-validation'
+import { hasReadyReference, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt } from './prompts'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
@@ -134,8 +134,9 @@ export class PanelService implements PanelUsageLookup {
 
   /**
    * Applies a patch to the stored panel and validates the merged result. Ruling T18b: the archived
-   * check applies only to cast entries that are new or whose variation changed, so a panel that casts
-   * a since-archived character stays editable.
+   * and "no ready reference image" checks apply only to cast entries that are new or whose variation
+   * changed, so a panel that casts a since-archived character, or a variation whose regeneration
+   * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
    */
   async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
@@ -152,7 +153,7 @@ export class PanelService implements PanelUsageLookup {
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherArchived(roster, current.characters, merged.characters), { strictMentions: opts.strictMentions })
+      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), { strictMentions: opts.strictMentions })
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
@@ -259,7 +260,7 @@ export class PanelService implements PanelUsageLookup {
     })
   }
 
-  /** Removes the panel from its episode, then trashes its JSON and image folder (Ruling T18c: never both locks at once). */
+  /** Removes the panel from its episode, then trashes its JSON, image folder and side chat (Ruling T18c: never both locks at once). */
   async delete(ctx: ProjectContext, id: string): Promise<void> {
     const panel = await this.get(ctx, id)
     try {
@@ -273,6 +274,9 @@ export class PanelService implements PanelUsageLookup {
       await this.opts.trash(file)
       const dir = ctx.paths.panelDir(id)
       if (fs.existsSync(dir)) await this.opts.trash(dir)
+      // Ruling T18d: the panel's side-chat thread goes with it.
+      const chat = ctx.paths.panelChatFile(id)
+      if (fs.existsSync(chat)) await this.opts.trash(chat)
     })
     this.emit(ctx, id)
   }
@@ -507,15 +511,25 @@ function readyImage(panel: Panel | null): { panelId: string; imagePath: string }
 }
 
 /**
- * Ruling T18b: a roster in which a since-archived character reads as active when its cast entry is
- * unchanged (same character and variation as stored), so `validatePanelDraft` reports "is archived"
- * only for entries that are new or changed. A character that also has a changed entry stays archived.
+ * Ruling T18b: a roster in which the cast entries that are unchanged (same character and variation as
+ * stored) read as usable, so `validatePanelDraft` reports "is archived" and "has no ready reference
+ * image" only for entries that are new or changed. A character that also has a changed entry stays
+ * archived. Names and variation ids are untouched, so unknown-character and foreign-variation
+ * errors still apply to every entry.
  */
-function grandfatherArchived(roster: Character[], stored: PanelCharacter[], next: PanelCharacter[]): Character[] {
-  const unchanged = (entry: PanelCharacter): boolean => stored.some((s) => s.characterId === entry.characterId && s.variationId === entry.variationId)
-  const changedIds = new Set(next.filter((entry) => !unchanged(entry)).map((entry) => entry.characterId))
-  const keep = new Set(next.filter(unchanged).map((entry) => entry.characterId))
-  return roster.map((c) => (c.archived && keep.has(c.id) && !changedIds.has(c.id) ? { ...c, archived: false } : c))
+function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[], next: PanelCharacter[]): Character[] {
+  const pair = (entry: PanelCharacter): string => `${entry.characterId}/${entry.variationId}`
+  const storedPairs = new Set(stored.map(pair))
+  const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
+  const keptPairs = new Set(unchanged.map(pair))
+  const changedCharacters = new Set(next.filter((entry) => !storedPairs.has(pair(entry))).map((entry) => entry.characterId))
+  const keptCharacters = new Set(unchanged.map((entry) => entry.characterId).filter((id) => !changedCharacters.has(id)))
+  return roster.map((c) => {
+    const archived = c.archived && !keptCharacters.has(c.id)
+    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && !hasReadyReference(v)
+    if (archived === c.archived && !c.variations.some(unusable)) return c
+    return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged' } : v)) }
+  })
 }
 
 function withId(line: Omit<DialogueLine, 'id'>): DialogueLine {
