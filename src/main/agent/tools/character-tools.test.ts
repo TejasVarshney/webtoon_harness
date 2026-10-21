@@ -28,8 +28,8 @@ const mina = { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK' }
 const json = (r: ToolResult): Record<string, any> => JSON.parse(r.content)
 
 describe('character tools', () => {
-  it('are part of the agent tool set', () => {
-    expect(buildAgentTools({ vision: false }).names()).toEqual([
+  it('are part of the agent tool set, ahead of the panel tools', () => {
+    expect(buildAgentTools({ vision: false }).names().slice(0, 6)).toEqual([
       'list_characters',
       'get_character',
       'create_character',

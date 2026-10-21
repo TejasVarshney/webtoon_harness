@@ -7,8 +7,13 @@ import type {
   ChatMessage,
   EndpointConfig,
   EndpointKind,
+  Episode,
   ModelConfig,
   ModelRegistryView,
+  Panel,
+  PanelDraft,
+  PanelPatch,
+  PanelVersion,
   ProjectMeta,
   ProjectProblem,
   Role,
@@ -77,6 +82,29 @@ export interface IpcContract {
   'characters:deleteVariation': { req: { projectId: string; characterId: string; variationId: string }; res: void }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as the variation's image. `null` when the dialog is cancelled. */
   'characters:uploadVariationImage': { req: { projectId: string; characterId: string; variationId: string }; res: Variation | null }
+  /** A project with no episode yet gets `Episode 1` on the first call. */
+  'episodes:list': { req: { projectId: string }; res: Episode[] }
+  'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
+  'episodes:update': { req: { projectId: string; episodeId: string; patch: { title?: string; synopsis?: string } }; res: Episode }
+  /** The episode's panels in episode order. */
+  'panels:list': { req: { projectId: string; episodeId: string }; res: Panel[] }
+  'panels:get': { req: { projectId: string; panelId: string }; res: Panel }
+  /**
+   * Returns the new panel at once, without an image; with `generate` the image follows through `panel.changed`.
+   * The manual editor is lenient: a mention of a roster character that is not attached comes back in `warnings`, not as an error.
+   * Any other validation failure rejects with the issues, one per line.
+   */
+  'panels:create': { req: { projectId: string; draft: PanelDraft; generate: boolean }; res: { panel: Panel; warnings: string[] } }
+  /** Changes only the fields named in `patch`; it never touches the image. */
+  'panels:update': { req: { projectId: string; panelId: string; patch: PanelPatch }; res: { panel: Panel; warnings: string[] } }
+  /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
+  'panels:generate': { req: { projectId: string; panelId: string }; res: void }
+  'panels:delete': { req: { projectId: string; panelId: string }; res: void }
+  'panels:move': { req: { projectId: string; panelId: string; toIndex: number }; res: void }
+  /** Makes a ready version current; no version is deleted. */
+  'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
+  'panels:uploadImage': { req: { projectId: string; panelId: string }; res: PanelVersion | null }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -115,7 +143,19 @@ const channelSet: Record<IpcChannel, true> = {
   'characters:addVariation': true,
   'characters:generateVariation': true,
   'characters:deleteVariation': true,
-  'characters:uploadVariationImage': true
+  'characters:uploadVariationImage': true,
+  'episodes:list': true,
+  'episodes:create': true,
+  'episodes:update': true,
+  'panels:list': true,
+  'panels:get': true,
+  'panels:create': true,
+  'panels:update': true,
+  'panels:generate': true,
+  'panels:delete': true,
+  'panels:move': true,
+  'panels:revert': true,
+  'panels:uploadImage': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

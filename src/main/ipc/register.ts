@@ -2,6 +2,7 @@ import type { Services } from '../services'
 import { agentHandlers } from './handlers/agent'
 import { charactersHandlers } from './handlers/characters'
 import { modelsHandlers } from './handlers/models'
+import { panelsHandlers } from './handlers/panels'
 import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
 import { uploadsHandlers, type PickFiles } from './handlers/uploads'
@@ -24,6 +25,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...modelsHandlers(services),
     ...agentHandlers(services),
     ...charactersHandlers(services, { pickFiles: deps.pickImageFiles }),
+    ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles })
   }
   for (const [channel, fn] of Object.entries(handlers)) {

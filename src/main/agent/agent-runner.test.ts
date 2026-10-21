@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentEvent, AppEvent } from '@shared/types'
+import type { AgentEvent, AppEvent, PanelDraft } from '@shared/types'
 import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
 import type { TextProvider } from '../models/providers/types'
 import { testServices, type TestServices } from '../test/test-services'
@@ -87,6 +87,124 @@ describe('AgentRunner', () => {
     const user = (await s.sessions.load(ctx, sessionId))[0] as { stateSnapshot: string }
     expect(user.stateSnapshot).toContain(`- ${mina.id} Mina [protagonist] variations: ${mina.variations[0].id} Base (pending)`)
     expect(user.stateSnapshot).not.toContain('Jun')
+  })
+
+  describe('state snapshot: current episode and recent panels', () => {
+    async function snapshotOf(h: Awaited<ReturnType<typeof setup>>, activeEpisodeId: string | null = null): Promise<string> {
+      const runner = new AgentRunner({ services: h.s, createTextProvider: () => new MockTextProvider(script([{ text: 'ok' }])) })
+      await runner.start({ ...input(h.projectId, h.sessionId), activeEpisodeId })
+      await finished(h.events)
+      const ctx = await h.s.projects.open(h.projectId)
+      const users = (await h.s.sessions.load(ctx, h.sessionId)).filter((m) => m.role === 'user')
+      return (users[users.length - 1] as { stateSnapshot: string }).stateSnapshot
+    }
+    const panelDraft = (episodeId: string, description: string, o: Partial<PanelDraft> = {}): PanelDraft => ({
+      episodeId,
+      description,
+      setting: 'Hall',
+      shot: 'medium',
+      characters: [],
+      dialogue: [],
+      ...o
+    })
+    const AI = { createdBy: 'ai' as const, strictMentions: true }
+
+    it('names Episode 1 (created on demand) and has no recent panels in a new project', async () => {
+      const h = await setup([])
+      const ctx = await h.s.projects.open(h.projectId)
+      const snapshot = await snapshotOf(h)
+      const [episode] = await h.s.episodes.list(ctx)
+      expect(snapshot).toContain(`current_episode: ${episode.id} "Episode 1" (0 panels)`)
+      expect(snapshot).toContain('recent_panels: none')
+    })
+
+    it('uses the active episode when it exists, otherwise the first episode', async () => {
+      const h = await setup([])
+      const ctx = await h.s.projects.open(h.projectId)
+      const [first] = await h.s.episodes.list(ctx)
+      const second = await h.s.episodes.create(ctx, { title: 'The Letter' })
+      await h.s.panels.create(ctx, panelDraft(second.id, 'A letter on the mat.'), AI)
+
+      expect(await snapshotOf(h, second.id)).toContain(`current_episode: ${second.id} "The Letter" (1 panels)`)
+      h.events.length = 0
+      // A stale or made-up id from the renderer must not fail the run: it falls back to the first episode.
+      expect(await snapshotOf(h, 'epi_ffffffffff')).toContain(`current_episode: ${first.id} "Episode 1" (0 panels)`)
+    })
+
+    it('lists the last 3 panels of the active episode in order, naming speakers even when archived', async () => {
+      const h = await setup([])
+      const ctx = await h.s.projects.open(h.projectId)
+      const [episode] = await h.s.episodes.list(ctx)
+      const mina = await h.s.characters.create(ctx, { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK' }, 'user')
+      await h.s.characters.generateVariationImage(ctx, mina.id, mina.variations[0].id)
+      const variationId = mina.variations[0].id
+      for (let i = 0; i < 4; i++) await h.s.panels.create(ctx, panelDraft(episode.id, `Beat ${i}`), AI)
+      const last = await h.s.panels.create(
+        ctx,
+        panelDraft(episode.id, 'Beat 4', {
+          shot: 'close-up',
+          characters: [{ characterId: mina.id, variationId, action: '', expression: '', position: 'center' }],
+          dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hello?' }, { speakerId: null, kind: 'narration', text: 'Silence.' }]
+        }),
+        AI
+      )
+      await h.s.characters.archive(ctx, mina.id)
+
+      const snapshot = await snapshotOf(h, episode.id)
+      expect(snapshot).toContain(`current_episode: ${episode.id} "Episode 1" (5 panels)`)
+      const ids = (await h.s.episodes.get(ctx, episode.id)).panelIds
+      expect(snapshot).toContain(
+        [
+          'recent_panels:',
+          `- ${ids[2]} [medium] cast: none | Beat 2 | dialogue: none`,
+          `- ${ids[3]} [medium] cast: none | Beat 3 | dialogue: none`,
+          `- ${last.panel.id} [close-up] cast: Mina (${variationId}) | Beat 4 | dialogue: Mina: "Hello?" / narration: "Silence."`
+        ].join('\n')
+      )
+      expect(snapshot).not.toContain('Beat 1')
+      // Archived characters stay out of the roster even though they still name the speakers above.
+      expect(snapshot).not.toContain(`- ${mina.id}`)
+    })
+  })
+
+  it('lets a scripted agent draw into the current episode, the next message after it created a character', async () => {
+    const { s, runner, projectId, sessionId, events } = await setup([
+      { toolCalls: [{ name: 'create_character', input: { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK' } }] },
+      { text: 'Mina is ready.' },
+      {
+        toolCalls: [
+          {
+            name: 'create_panel',
+            input: {
+              episodeId: { $episode: 'current' },
+              description: 'Mina opens the door.',
+              setting: 'Hallway',
+              shot: 'medium',
+              characters: [{ characterId: { $character: 'Mina' }, variationId: { $variation: ['Mina', 'Base'] } }],
+              dialogue: []
+            }
+          }
+        ]
+      },
+      { text: 'Drawn.' }
+    ])
+    await runner.start(input(projectId, sessionId))
+    await finished(events)
+    events.length = 0
+    await new Promise((r) => setTimeout(r, 10))
+    await runner.start(input(projectId, sessionId, 'Draw the first panel'))
+    await finished(events)
+
+    const ctx = await s.projects.open(projectId)
+    const [episode] = await s.episodes.list(ctx)
+    const panels = await s.panels.list(ctx, episode.id)
+    expect(panels).toMatchObject([{ description: 'Mina opens the door.', createdBy: 'ai', versions: [{ status: 'ready' }] }])
+    const results = (await s.sessions.load(ctx, sessionId)).flatMap((m) => (m.role === 'tool' ? m.results : []))
+    expect(results.map((r) => [r.name, r.ok])).toEqual([
+      ['create_character', true],
+      ['create_panel', true]
+    ])
+    expect(JSON.parse(results[1].content)).toMatchObject({ panelId: panels[0].id, status: 'ready' })
   })
 
   it('rejects a second run on a busy session', async () => {
