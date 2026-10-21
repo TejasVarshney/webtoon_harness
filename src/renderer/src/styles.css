@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.three-pane {
+  height: 100%;
+}
+
+.pane-content {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+}
+
+.pane-separator {
+  width: 4px;
+  background: rgba(128, 128, 128, 0.3);
+}
+
+.pane-separator:hover,
+.pane-separator[data-separator='active'] {
+  background: rgba(128, 128, 128, 0.7);
+}
+
+.placeholder {
+  margin: 0;
+  opacity: 0.6;
+}
