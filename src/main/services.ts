@@ -3,8 +3,10 @@ import { join } from 'node:path'
 import { AgentRunner } from './agent/agent-runner'
 import { WorkflowDocs } from './agent/workflow-docs'
 import { CharacterService, type PanelUsageLookup } from './domain/character-service'
+import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
+import { PanelService } from './domain/panel-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
@@ -33,6 +35,8 @@ export interface Services {
   imageOps: ImageOps
   images: ImageService
   characters: CharacterService
+  episodes: EpisodeService
+  panels: PanelService
   agent: AgentRunner
 }
 
@@ -51,12 +55,17 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   projects.addHooks({ onCreate: (ctx) => docs.install(ctx), onOpen: (ctx) => docs.install(ctx) })
   const images = new ImageService({ registry, imageOps: opts.imageOps })
   // Ruling P6: the usage lookup is lazy so CharacterService can be built before PanelService exists.
-  // Task 18 points this delegate at PanelService; until then no panel uses anything.
-  const usage: PanelUsageLookup = { panelsUsingCharacter: async () => [], panelsUsingVariation: async () => [] }
+  const usage: PanelUsageLookup = {
+    panelsUsingCharacter: (ctx, characterId) => services.panels.panelsUsingCharacter(ctx, characterId),
+    panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
+  }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
+  const episodes = new EpisodeService({ bus })
+  const panels = new PanelService({ bus, projects, episodes, characters, images, trash: opts.trash })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters } as Services
+  projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters, episodes, panels } as Services
   services.agent = new AgentRunner({ services })
   return services
 }
