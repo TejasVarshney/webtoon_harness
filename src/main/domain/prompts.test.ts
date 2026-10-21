@@ -98,13 +98,14 @@ describe('composePanelPrompt', () => {
     ])
   })
 
-  it('renders the shot with spaces instead of hyphens', () => {
+  it('renders the shot type verbatim', () => {
     const line = (shot: Panel['shot']) =>
       composePanelPrompt({ stylePreset: 'S', panel: panel({ shot }), roster, previous: null, maxReferences: 4 }).prompt.split('\n')[0]
-    expect(line('close-up')).toContain('close up shot.')
-    expect(line('extreme-close-up')).toContain('extreme close up shot.')
-    expect(line('over-the-shoulder')).toContain('over the shoulder shot.')
-    expect(line('establishing')).toContain('establishing shot.')
+    expect(line('close-up')).toContain('aspect ratio, close-up shot. No text')
+    expect(line('extreme-close-up')).toContain('aspect ratio, extreme-close-up shot. No text')
+    expect(line('over-the-shoulder')).toContain('aspect ratio, over-the-shoulder shot. No text')
+    expect(line('birds-eye')).toContain('aspect ratio, birds-eye shot. No text')
+    expect(line('establishing')).toContain('aspect ratio, establishing shot. No text')
   })
 
   it('uses the panel aspect in the first line', () => {

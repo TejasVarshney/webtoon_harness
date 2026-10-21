@@ -78,7 +78,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   })
 
   const lines = [
-    `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${panel.aspect} aspect ratio, ${panel.shot.replace(/[-_]/g, ' ')} shot. No text, no speech bubbles, no captions, no watermark.`,
+    `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${panel.aspect} aspect ratio, ${panel.shot} shot. No text, no speech bubbles, no captions, no watermark.`,
     `[SETTING] ${panel.setting}`,
     `[ACTION] ${panel.description}`,
     '[CHARACTERS]',
