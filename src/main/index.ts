@@ -26,6 +26,13 @@ function createWindow(): void {
     }
   })
 
+  // The window holds the privileged `window.api` bridge, so it must never leave the app's own page.
+  win.webContents.on('will-navigate', (e) => e.preventDefault())
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
   if (!app.isPackaged && devServerUrl) {
     void win.loadURL(devServerUrl)

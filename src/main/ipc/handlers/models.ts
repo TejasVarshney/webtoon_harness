@@ -33,7 +33,8 @@ async function testModel(
     if (!resolved.model.capabilities.includes('text')) {
       return { ok: true, message: resolved.apiKey !== null ? 'Key present' : 'No key set' }
     }
-    const provider = createProvider(resolved)
+    // A small cap keeps the check fast and cheap; both adapters honor `params.max_tokens`.
+    const provider = createProvider({ ...resolved, model: { ...resolved.model, params: { ...resolved.model.params, max_tokens: 16 } } })
     const user: UserMessage = {
       id: newId('msg'),
       role: 'user',
@@ -43,7 +44,7 @@ async function testModel(
       createdAt: new Date().toISOString()
     }
     const result = await provider.runTurn({
-      system: '',
+      system: 'You are a connectivity check.',
       messages: [user],
       tools: [],
       loadImage: () => Promise.reject(new Error('Images are not used in a connection test')),

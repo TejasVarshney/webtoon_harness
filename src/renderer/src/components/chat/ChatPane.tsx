@@ -40,15 +40,19 @@ export function ChatPane() {
     const chat = useChatStore.getState()
     chat.clearNotices(sessionId)
     // The runner persists the user message but does not emit it, so show it here. The transcript replaces it on the next load.
-    chat.addMessage(sessionId, { id: newId('msg'), role: 'user', text, imagePaths, stateSnapshot: null, createdAt: new Date().toISOString() })
+    const optimisticId = newId('msg')
+    chat.addMessage(sessionId, { id: optimisticId, role: 'user', text, imagePaths, stateSnapshot: null, createdAt: new Date().toISOString() })
     const activeEpisodeId = useAppStore.getState().activeEpisodeId
     api.invoke('agent:send', { projectId, sessionId, text, imagePaths, activeEpisodeId }).catch((e: unknown) => {
+      // Nothing was sent, so the optimistic message must not stay in the thread.
+      useChatStore.getState().removeMessage(sessionId, optimisticId)
       useChatStore.getState().addNotice(sessionId, errorText(e))
     })
   }
 
   function stop(): void {
-    if (runId !== undefined) void api.invoke('agent:cancel', { runId }).catch(() => undefined)
+    if (sessionId === null || runId === undefined) return
+    api.invoke('agent:cancel', { runId }).catch((e: unknown) => useChatStore.getState().addNotice(sessionId, errorText(e)))
   }
 
   return (

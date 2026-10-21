@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
@@ -103,5 +103,16 @@ describe('MessageList', () => {
     expect(bubble.querySelector('strong')).toHaveTextContent('bold')
     expect(bubble.querySelector('script')).toBeNull()
     expect(bubble.querySelector('b')).toBeNull()
+  })
+
+  it('opens markdown links through window.open instead of navigating', () => {
+    useChatStore.setState({ messages: { [T]: [assistant('msg_0000000001', '[x](https://remote.example/a) and [y](javascript:alert(1))')] } })
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<MessageList threadKey={T} />)
+    const notPrevented = fireEvent.click(screen.getByRole('link', { name: 'x' }))
+    expect(notPrevented).toBe(false)
+    expect(open).toHaveBeenCalledWith('https://remote.example/a')
+    expect(screen.queryByRole('link', { name: 'y' })).toBeNull()
+    open.mockRestore()
   })
 })

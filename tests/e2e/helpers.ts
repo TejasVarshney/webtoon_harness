@@ -63,7 +63,9 @@ export async function createProjectAndSession(page: Page, title: string): Promis
  * later in the DOM), sends `text`, and waits until the last assistant message contains `expectedReply`.
  */
 export async function sendChat(page: Page, text: string, expectedReply: string): Promise<void> {
-  await page.getByTestId('composer-input').first().fill(text)
-  await page.getByTestId('composer-send').first().click()
-  await expect(page.getByTestId('message-assistant').last()).toContainText(expectedReply)
+  // `pane-chat` wraps only the main chat; the panel side chat lives in the visualizer pane.
+  const chat = page.getByTestId('pane-chat')
+  await chat.getByTestId('composer-input').first().fill(text)
+  await chat.getByTestId('composer-send').first().click()
+  await expect(chat.getByTestId('message-assistant').last()).toContainText(expectedReply)
 }

@@ -21,6 +21,7 @@ export interface ChatActions {
   applyAgentEvent(threadKey: string, e: AgentEvent): void
   /** Appends a message unless one with the same id is already there. */
   addMessage(threadKey: string, message: ChatMessage): void
+  removeMessage(threadKey: string, id: string): void
   addNotice(threadKey: string, text: string): void
   clearNotices(threadKey: string): void
 }
@@ -65,6 +66,10 @@ export const useChatStore = create<ChatData & ChatActions>()((set, get) => ({
       if (existing.some((m) => m.id === message.id)) return s
       return { messages: { ...s.messages, [threadKey]: [...existing, message] } }
     })
+  },
+
+  removeMessage(threadKey, id) {
+    set((s) => ({ messages: { ...s.messages, [threadKey]: (s.messages[threadKey] ?? []).filter((m) => m.id !== id) } }))
   },
 
   addNotice(threadKey, text) {

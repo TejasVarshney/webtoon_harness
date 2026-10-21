@@ -80,6 +80,7 @@ describe('ChatPane', () => {
     await userEvent.type(await screen.findByTestId('composer-input'), 'Hi{Enter}')
     expect(await screen.findByRole('alert')).toHaveTextContent('A run is already in progress for session ses_0000000001')
     expect(screen.getByRole('alert')).not.toHaveTextContent('Error invoking')
+    expect(screen.queryByTestId('message-user')).toBeNull()
   })
 
   it('reloads models when the registry changes', async () => {

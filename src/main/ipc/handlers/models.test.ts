@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { TextProvider } from '../../models/providers/types'
 import { testServices, type TestServices } from '../../test/test-services'
 import { modelsHandlers } from './models'
 
@@ -17,22 +16,22 @@ async function withModel(kind: 'anthropic' | 'openai', capabilities: ('text' | '
   return { s, m }
 }
 
-const replying = (text: string): TextProvider => ({ runTurn: async () => ({ text, toolCalls: [], stopReason: 'end', raw: null }) })
-
 describe('models:test', () => {
   it('runs one turn for a text model resolved by model id', async () => {
     const { s, m } = await withModel('anthropic', ['text'], 'sk-SECRET')
-    let seen: { apiKey: string | null; model: string } | null = null
+    let seen: { apiKey: string | null; model: string; maxTokens: unknown } | null = null
+    let system: string | null = null
     const h = modelsHandlers(s, {
       createTextProvider: (r) => {
-        seen = { apiKey: r.apiKey, model: r.model.id }
-        return replying('OK')
+        seen = { apiKey: r.apiKey, model: r.model.id, maxTokens: r.model.params.max_tokens }
+        return { runTurn: async (req) => ((system = req.system), { text: 'OK', toolCalls: [], stopReason: 'end', raw: null }) }
       }
     })
     const res = await h['models:test']!({ modelId: m.id })
     expect(res.ok).toBe(true)
     expect(res.message).toContain('OK')
-    expect(seen).toEqual({ apiKey: 'sk-SECRET', model: m.id })
+    expect(seen).toEqual({ apiKey: 'sk-SECRET', model: m.id, maxTokens: 16 })
+    expect(system).toBe('You are a connectivity check.')
   })
 
   it('maps provider errors to ok:false and never leaks the key', async () => {
