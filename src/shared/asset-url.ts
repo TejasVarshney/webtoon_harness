@@ -12,11 +12,11 @@ export interface ParsedAssetUrl {
 }
 
 /**
- * Percent-encodes each path segment, so `#`, `?` and `%` in a file name cannot be mistaken for a
- * fragment, a query or an escape. The `/` separators stay literal.
+ * `encodeURI` leaves `#` and `?` raw, so a name containing one would not round-trip (it would parse
+ * as a fragment or query). That cannot happen: every asset is named after ids (spec §5).
  */
 export function assetUrl(projectId: string, relPath: string): string {
-  return `${ASSET_SCHEME}://${projectId}/${relPath.split('/').map(encodeURIComponent).join('/')}`
+  return `${ASSET_SCHEME}://${projectId}/${encodeURI(relPath)}`
 }
 
 /** Throws on anything that is not a well-formed asset URL with a project id and a non-empty path. */

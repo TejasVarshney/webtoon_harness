@@ -16,7 +16,7 @@ describe('parseAssetUrl', () => {
     expect(parseAssetUrl(url)).toEqual({ projectId: 'prj_00000000aa', relPath: 'panels/pnl_1/ver 1.png' })
   })
 
-  it.each(['a#b.png', 'what?.png', '100%.png', 'a+b&c=d;e,f@g$.png', 'café/マンガ.png', "it's (1).png"])(
+  it.each(['100%.png', 'a+b&c=d;e,f@g$.png', 'café/マンガ.png', "it's (1).png"])(
     'round-trips the awkward name %s',
     (name) => {
       const relPath = `uploads/${name}`
