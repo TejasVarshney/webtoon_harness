@@ -235,6 +235,13 @@ export class ModelRegistry {
     return resolved
   }
 
+  /** A specific model (not a role), its endpoint and API key. Throws `EntityNotFoundError` for an unknown model. */
+  resolveModel(modelId: string): ResolvedModel {
+    const model = this.requireModel(this.state, modelId)
+    const endpoint = this.requireEndpoint(this.state, model.endpointId)
+    return { endpoint: structuredClone(endpoint), model: structuredClone(model), apiKey: this.secrets.get(endpoint.id) }
+  }
+
   resolveOptional(role: Role): ResolvedModel | null {
     const id = this.effectiveId(role)
     const model = id === null ? undefined : this.state.models.find((m) => m.id === id)

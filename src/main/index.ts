@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
 import { electronImageOps } from './domain/electron-image-ops'
 import { electronEncryptor } from './models/electron-encryptor'
@@ -53,7 +53,18 @@ void app.whenReady().then(async () => {
     app.quit()
     return
   }
-  registerIpc(ipcMain, services)
+  registerIpc(ipcMain, services, {
+    pickImageFiles: async (event) => {
+      const win = BrowserWindow.fromWebContents((event as IpcMainInvokeEvent).sender) ?? BrowserWindow.getFocusedWindow()
+      const options = {
+        title: 'Attach images',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+      }
+      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+      return result.canceled ? [] : result.filePaths
+    }
+  })
   const { agent } = services
   // Quitting mid-run: abort so every loop persists results for its pending tool calls.
   app.on('before-quit', () => agent.cancelAll())

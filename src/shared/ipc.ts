@@ -52,6 +52,10 @@ export interface IpcContract {
   'models:assignRole': { req: { role: Role; modelId: string | null }; res: void }
   'agent:send': { req: { projectId: string; sessionId: string; text: string; imagePaths: string[]; activeEpisodeId: string | null }; res: { runId: string } }
   'agent:cancel': { req: { runId: string }; res: void }
+  /** Opens the native file picker and copies the chosen images into the project; returns project-relative POSIX paths. */
+  'uploads:pickImages': { req: { projectId: string }; res: { paths: string[] } }
+  /** One cheap round trip to a model. Never returns the key. */
+  'models:test': { req: { modelId: string }; res: { ok: boolean; message: string } }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -77,7 +81,9 @@ const channelSet: Record<IpcChannel, true> = {
   'models:removeModel': true,
   'models:assignRole': true,
   'agent:send': true,
-  'agent:cancel': true
+  'agent:cancel': true,
+  'uploads:pickImages': true,
+  'models:test': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import type { SessionSummary } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
+import { SettingsDialog } from '../settings/SettingsDialog'
 import { NewProjectDialog } from './NewProjectDialog'
 
 function relativeTime(iso: string, now = Date.now()): string {
@@ -29,6 +30,7 @@ export function SessionSidebar() {
   const { openProject, createProject, newSession, selectSession, renameSession, deleteSession } = useAppStore.getState()
 
   const [showNewProject, setShowNewProject] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -144,7 +146,7 @@ export function SessionSidebar() {
         ))}
       </ul>
 
-      <button type="button" data-testid="settings-open" className="settings-open">
+      <button type="button" data-testid="settings-open" className="settings-open" onClick={() => setShowSettings(true)}>
         Settings
       </button>
 
@@ -188,6 +190,8 @@ export function SessionSidebar() {
           </div>
         </div>
       )}
+
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 
       {showNewProject && (
         <NewProjectDialog

@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test'
 
 const repoRoot = resolve(__dirname, '..', '..')
 
@@ -47,4 +47,23 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<LaunchedApp> 
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
   return { app, page, userDataDir, projectsRoot }
+}
+
+/** Runs the new-project dialog, then creates a session. Leaves the new session selected. */
+export async function createProjectAndSession(page: Page, title: string): Promise<void> {
+  await page.getByTestId('new-project').click()
+  await page.getByLabel('Title').fill(title)
+  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByTestId('new-session').click()
+  await expect(page.getByTestId('session-item')).toHaveCount(1)
+}
+
+/**
+ * Chats in the main pane: uses the first composer and assistant list on the page (the panel side chat comes
+ * later in the DOM), sends `text`, and waits until the last assistant message contains `expectedReply`.
+ */
+export async function sendChat(page: Page, text: string, expectedReply: string): Promise<void> {
+  await page.getByTestId('composer-input').first().fill(text)
+  await page.getByTestId('composer-send').first().click()
+  await expect(page.getByTestId('message-assistant').last()).toContainText(expectedReply)
 }

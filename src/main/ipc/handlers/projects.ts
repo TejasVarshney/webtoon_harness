@@ -1,7 +1,8 @@
 import type { IpcChannel, IpcContract } from '@shared/ipc'
 import type { Services } from '../../services'
 
-export type HandlerMap = { [C in IpcChannel]?: (req: IpcContract[C]['req']) => Promise<IpcContract[C]['res']> }
+/** `event` is the Electron `IpcMainInvokeEvent` for handlers that need the calling window; most ignore it. */
+export type HandlerMap = { [C in IpcChannel]?: (req: IpcContract[C]['req'], event?: unknown) => Promise<IpcContract[C]['res']> }
 
 export function projectsHandlers(s: Services): HandlerMap {
   return {
