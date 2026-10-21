@@ -3,6 +3,7 @@ import type { EndpointConfig } from '@shared/types'
 import type { ResolvedModel } from '../registry'
 import { createImageProvider, createTextProvider } from './factory'
 import { MockImageProvider, MockTextProvider } from './mock'
+import { OpenAIChatProvider } from './openai-chat'
 import { UnsupportedCapabilityError } from './types'
 
 function resolved(kind: EndpointConfig['kind']): ResolvedModel {
@@ -27,9 +28,13 @@ describe('provider factory', () => {
     expect(createImageProvider(resolved('mock'))).toBeInstanceOf(MockImageProvider)
   })
 
+  it('picks the openai text provider', () => {
+    expect(createTextProvider(resolved('openai'))).toBeInstanceOf(OpenAIChatProvider)
+  })
+
   it('rejects unsupported combos', () => {
     expect(() => createTextProvider(resolved('gemini'))).toThrow(UnsupportedCapabilityError)
     expect(() => createImageProvider(resolved('anthropic'))).toThrow(UnsupportedCapabilityError)
-    expect(() => createTextProvider(resolved('openai'))).toThrow(/openai endpoints do not support text models/)
+    expect(() => createImageProvider(resolved('openai'))).toThrow(/openai endpoints do not support image models/)
   })
 })

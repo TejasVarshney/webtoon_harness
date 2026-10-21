@@ -249,7 +249,7 @@ export const OutlineSchema = z.object({ beats: z.array(BeatSchema) })
 export const ToolCallSchema = z.object({
   id: z.string(),
   name: z.string(),
-  input: z.record(z.string(), z.unknown())
+  input: z.unknown()
 })
 
 export const ToolResultSchema = z.object({
