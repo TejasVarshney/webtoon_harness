@@ -83,6 +83,32 @@ describe('ChatPane', () => {
     expect(screen.queryByTestId('message-user')).toBeNull()
   })
 
+  it('shows the shared draft in the composer, follows edits, and clears it on send', async () => {
+    const { calls } = installFakeApi({ 'sessions:load': () => [], 'agent:send': () => ({ runId: 'run_0000000001' }) })
+    useChatStore.setState({ draft: '' })
+    render(<ChatPane />)
+    const input = await screen.findByTestId('composer-input')
+    act(() => useChatStore.getState().setDraft('Help me design the character "a new character"'))
+    expect(input).toHaveValue('Help me design the character "a new character"')
+    await userEvent.type(input, '!')
+    expect(useChatStore.getState().draft).toBe('Help me design the character "a new character"!')
+    await userEvent.type(input, '{Enter}')
+    expect(calls.find((c) => c.channel === 'agent:send')?.req).toMatchObject({ text: 'Help me design the character "a new character"!' })
+    expect(useChatStore.getState().draft).toBe('')
+    expect(input).toHaveValue('')
+  })
+
+  it('keeps a draft made before a session was selected until the composer appears', async () => {
+    installFakeApi({ 'sessions:load': () => [] })
+    useChatStore.setState({ draft: '' })
+    useAppStore.setState({ sessionId: null })
+    render(<ChatPane />)
+    expect(screen.queryByTestId('composer-input')).toBeNull()
+    act(() => useChatStore.getState().setDraft('Waiting'))
+    act(() => useAppStore.setState({ sessionId: S }))
+    expect(await screen.findByTestId('composer-input')).toHaveValue('Waiting')
+  })
+
   it('reloads models when the registry changes', async () => {
     const { emit } = installFakeApi({ 'models:get': () => ({ ...mockView, effectiveRoles: { ...mockView.effectiveRoles, agent: null } }) })
     const stop = startEventSync()

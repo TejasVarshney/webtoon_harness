@@ -16,6 +16,8 @@ export function ChatPane() {
   const projectId = useAppStore((s) => s.projectId)
   const sessionId = useAppStore((s) => s.sessionId)
   const runId = useAppStore((s) => (s.sessionId === null ? undefined : s.runningThreads[s.sessionId]))
+  const draft = useChatStore((s) => s.draft)
+  const setDraft = useChatStore((s) => s.setDraft)
 
   useEffect(() => {
     if (projectId === null || sessionId === null) return
@@ -63,7 +65,7 @@ export function ChatPane() {
       ) : (
         <>
           <MessageList threadKey={sessionId} />
-          <Composer onSend={send} running={runId !== undefined} onStop={stop} />
+          <Composer onSend={send} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
         </>
       )}
     </div>

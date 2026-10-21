@@ -124,10 +124,12 @@ export class AgentRunner {
     return { runId }
   }
 
-  /** What the state snapshot is built from. Later tasks add the roster, current episode and recent panels. */
+  /** What the state snapshot is built from. Later tasks add the current episode and recent panels. */
   protected async gatherState(ctx: ProjectContext, activeEpisodeId: string | null): Promise<Parameters<typeof buildStateSnapshot>[0]> {
     void activeEpisodeId
-    return { meta: await this.services.projects.getMeta(ctx), characters: [], episode: null, recentPanels: [] }
+    // Archived characters are included on purpose: the snapshot drops them from the roster but still uses them to name panel speakers.
+    const characters = await this.services.characters.list(ctx, { includeArchived: true })
+    return { meta: await this.services.projects.getMeta(ctx), characters, episode: null, recentPanels: [] }
   }
 
   private release(threadKey: string, runId: string): void {

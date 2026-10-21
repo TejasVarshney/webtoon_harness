@@ -6,11 +6,19 @@ export interface ComposerProps {
   onSend(text: string, imagePaths: string[]): void
   running: boolean
   onStop(): void
+  /** Controlled text. Without it the composer keeps its own. */
+  value?: string
+  onValueChange?(text: string): void
 }
 
-export function Composer({ onSend, running, onStop }: ComposerProps) {
+export function Composer({ onSend, running, onStop, value, onValueChange }: ComposerProps) {
   const projectId = useAppStore((s) => s.projectId)
-  const [text, setText] = useState('')
+  const [ownText, setOwnText] = useState('')
+  const text = value ?? ownText
+  function setText(next: string): void {
+    if (value === undefined) setOwnText(next)
+    onValueChange?.(next)
+  }
   const [images, setImages] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 

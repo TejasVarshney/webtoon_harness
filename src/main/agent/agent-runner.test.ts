@@ -76,6 +76,19 @@ describe('AgentRunner', () => {
     expect(runner.isRunning(sessionId)).toBe(false)
   })
 
+  it('puts the active roster, not archived characters, in the state snapshot', async () => {
+    const { s, runner, projectId, sessionId, events } = await setup([{ text: 'ok' }])
+    const ctx = await s.projects.open(projectId)
+    const mina = await s.characters.create(ctx, { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK' }, 'user')
+    const jun = await s.characters.create(ctx, { name: 'Jun', role: 'supporting', appearanceLock: 'LOCK' }, 'user')
+    await s.characters.archive(ctx, jun.id)
+    await runner.start(input(projectId, sessionId))
+    await finished(events)
+    const user = (await s.sessions.load(ctx, sessionId))[0] as { stateSnapshot: string }
+    expect(user.stateSnapshot).toContain(`- ${mina.id} Mina [protagonist] variations: ${mina.variations[0].id} Base (pending)`)
+    expect(user.stateSnapshot).not.toContain('Jun')
+  })
+
   it('rejects a second run on a busy session', async () => {
     const { runner, projectId, sessionId, events } = await setup([{ text: 'one' }, { text: 'two' }])
     const first = runner.start(input(projectId, sessionId))

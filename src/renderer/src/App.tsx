@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { ChatPane } from './components/chat/ChatPane'
+import { RightPane } from './components/layout/RightPane'
 import { ThreePaneLayout } from './components/layout/ThreePaneLayout'
 import { SessionSidebar } from './components/sessions/SessionSidebar'
 import { startEventSync } from './events'
@@ -18,7 +19,7 @@ export function App() {
     <ThreePaneLayout
       left={<SessionSidebar />}
       middle={<ChatPane />}
-      right={<p className="placeholder">Webtoon panels</p>}
+      right={<RightPane />}
     />
   )
 }

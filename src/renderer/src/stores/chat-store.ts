@@ -13,6 +13,8 @@ export interface ChatData {
   /** Thread key to the assistant text streamed so far in the current step. */
   streaming: Record<string, string>
   notices: Record<string, ChatNotice[]>
+  /** The main composer's text. Shared so other panes ("Draft with AI") can prefill it; it survives a session switch. */
+  draft: string
 }
 
 export interface ChatActions {
@@ -24,6 +26,7 @@ export interface ChatActions {
   removeMessage(threadKey: string, id: string): void
   addNotice(threadKey: string, text: string): void
   clearNotices(threadKey: string): void
+  setDraft(text: string): void
 }
 
 let noticeCounter = 0
@@ -32,6 +35,7 @@ export const useChatStore = create<ChatData & ChatActions>()((set, get) => ({
   messages: {},
   streaming: {},
   notices: {},
+  draft: '',
 
   async load(threadKey, loader) {
     const loaded = await loader()
@@ -78,5 +82,9 @@ export const useChatStore = create<ChatData & ChatActions>()((set, get) => ({
 
   clearNotices(threadKey) {
     set((s) => ({ notices: { ...s.notices, [threadKey]: [] } }))
+  },
+
+  setDraft(text) {
+    set({ draft: text })
   }
 }))

@@ -5,15 +5,21 @@ import type { Services } from '../../services'
 import { writeFileAtomic } from '../../storage/atomic'
 import type { HandlerMap } from './projects'
 
+export interface PickFilesOptions {
+  /** Default true. `false` offers a single-file dialog. */
+  multiple?: boolean
+  title?: string
+}
+
 /** Shows the image picker over the window that sent `event`; resolves to the chosen absolute paths ([] on cancel). */
-export type PickFiles = (event: unknown) => Promise<string[]>
+export type PickFiles = (event: unknown, options?: PickFilesOptions) => Promise<string[]>
 
 export interface UploadsDeps {
   pickFiles?: PickFiles
 }
 
 /** Extensions the picker offers, mapped to the stored extension. */
-const STORED_EXT: Record<string, string> = { '.png': 'png', '.jpg': 'jpg', '.jpeg': 'jpg', '.webp': 'webp' }
+export const STORED_EXT: Record<string, 'png' | 'jpg' | 'webp'> = { '.png': 'png', '.jpg': 'jpg', '.jpeg': 'jpg', '.webp': 'webp' }
 
 export function uploadsHandlers(s: Services, deps: UploadsDeps = {}): HandlerMap {
   const pickFiles = deps.pickFiles ?? (async () => [])

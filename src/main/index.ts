@@ -61,11 +61,11 @@ void app.whenReady().then(async () => {
     return
   }
   registerIpc(ipcMain, services, {
-    pickImageFiles: async (event) => {
+    pickImageFiles: async (event, opts) => {
       const win = BrowserWindow.fromWebContents((event as IpcMainInvokeEvent).sender) ?? BrowserWindow.getFocusedWindow()
       const options = {
-        title: 'Attach images',
-        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+        title: opts?.title ?? (opts?.multiple === false ? 'Choose an image' : 'Attach images'),
+        properties: (opts?.multiple === false ? ['openFile'] : ['openFile', 'multiSelections']) as Array<'openFile' | 'multiSelections'>,
         filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
       }
       const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)

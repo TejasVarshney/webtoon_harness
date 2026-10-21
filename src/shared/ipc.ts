@@ -1,6 +1,9 @@
 // Type-only imports: this module is bundled into the sandboxed preload, so zod must not enter it.
 import type {
   Capability,
+  Character,
+  CharacterInput,
+  CharacterPatch,
   ChatMessage,
   EndpointConfig,
   EndpointKind,
@@ -9,7 +12,9 @@ import type {
   ProjectMeta,
   ProjectProblem,
   Role,
-  SessionSummary
+  SessionSummary,
+  Variation,
+  VariationInput
 } from './types'
 
 /** The `project.json` fields a caller may change. */
@@ -56,6 +61,22 @@ export interface IpcContract {
   'uploads:pickImages': { req: { projectId: string }; res: { paths: string[] } }
   /** One cheap round trip to a model. Never returns the key. */
   'models:test': { req: { modelId: string }; res: { ok: boolean; message: string } }
+  'characters:list': { req: { projectId: string; includeArchived?: boolean }; res: Character[] }
+  'characters:get': { req: { projectId: string; characterId: string }; res: Character }
+  /** Returns the new character at once with a pending base variation; the base image follows through `character.changed`. */
+  'characters:create': { req: { projectId: string; input: CharacterInput; generateBase: boolean }; res: Character }
+  'characters:update': { req: { projectId: string; characterId: string; patch: CharacterPatch }; res: Character }
+  'characters:archive': { req: { projectId: string; characterId: string }; res: void }
+  'characters:unarchive': { req: { projectId: string; characterId: string }; res: void }
+  /** Refused with an "archive it instead" error while any panel uses the character. */
+  'characters:delete': { req: { projectId: string; characterId: string }; res: void }
+  /** Returns the new variation at once (pending); its image follows through `character.changed` when `generate` is set. */
+  'characters:addVariation': { req: { projectId: string; characterId: string; input: VariationInput; generate: boolean }; res: Variation }
+  /** Starts generation without waiting for it; the outcome follows through `character.changed`. */
+  'characters:generateVariation': { req: { projectId: string; characterId: string; variationId: string }; res: Variation }
+  'characters:deleteVariation': { req: { projectId: string; characterId: string; variationId: string }; res: void }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the variation's image. `null` when the dialog is cancelled. */
+  'characters:uploadVariationImage': { req: { projectId: string; characterId: string; variationId: string }; res: Variation | null }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -83,7 +104,18 @@ const channelSet: Record<IpcChannel, true> = {
   'agent:send': true,
   'agent:cancel': true,
   'uploads:pickImages': true,
-  'models:test': true
+  'models:test': true,
+  'characters:list': true,
+  'characters:get': true,
+  'characters:create': true,
+  'characters:update': true,
+  'characters:archive': true,
+  'characters:unarchive': true,
+  'characters:delete': true,
+  'characters:addVariation': true,
+  'characters:generateVariation': true,
+  'characters:deleteVariation': true,
+  'characters:uploadVariationImage': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

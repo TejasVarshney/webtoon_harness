@@ -1,6 +1,7 @@
 import type { AppEvent } from '@shared/types'
 import { api } from './api'
 import { useAppStore } from './stores/app-store'
+import { useCharactersStore } from './stores/characters-store'
 import { useChatStore } from './stores/chat-store'
 import { useModelsStore } from './stores/models-store'
 
@@ -9,6 +10,10 @@ function handleEvent(event: AppEvent): void {
   switch (event.type) {
     case 'session.changed':
       if (event.projectId === state.projectId) void state.loadSessions()
+      break
+    case 'character.changed':
+      // `load` records its own failures, so there is nothing to catch here.
+      if (event.projectId === state.projectId) void useCharactersStore.getState().load()
       break
     case 'models.changed':
       void useModelsStore.getState().load().catch((e: unknown) => console.error('Failed to reload models', e))
