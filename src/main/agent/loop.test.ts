@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { AgentEvent, ChatMessage } from '@shared/types'
 import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
 import { ProviderError, type TextProvider, type TextTurnResult } from '../models/providers/types'
-import { runAgentLoop } from './loop'
+import { repairToolHistory, runAgentLoop } from './loop'
 import { ToolRegistry, defineTool, type ToolContext } from './tools/registry'
 
 type ToolMessage = Extract<ChatMessage, { role: 'tool' }>
@@ -186,5 +186,97 @@ describe('runAgentLoop', () => {
     const { opts, persisted } = setup(script([{ toolCalls: [{ name: 'bad', input: {} }] }, { text: 'ok' }]), new ToolRegistry([bad]))
     expect((await runAgentLoop(opts)).outcome).toBe('end')
     expect((persisted[1] as ToolMessage).results[0]).toMatchObject({ ok: false, content: 'nope' })
+  })
+
+  it('a throwing emit never breaks the loop and every call still gets a persisted result', async () => {
+    const { opts, persisted } = setup(script([{ toolCalls: [call, call] }, { text: 'done' }]), reg())
+    opts.emit = () => {
+      throw new Error('window destroyed')
+    }
+    expect(await runAgentLoop(opts)).toEqual({ outcome: 'end', error: null })
+    expect(persisted.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant'])
+    expect((persisted[1] as ToolMessage).results).toHaveLength(2)
+  })
+
+  it('persist failing on the tool message reports error and run-finished still fires', async () => {
+    const { opts, events } = setup(script([{ toolCalls: [call] }]), reg(), {
+      persist: async (m) => {
+        if (m[0].role === 'tool') throw new Error('disk full')
+      }
+    })
+    expect(await runAgentLoop(opts)).toEqual({ outcome: 'error', error: 'disk full' })
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error', error: 'disk full' })
+  })
+
+  it('repairs an orphaned tool_use in the history sent to the provider', async () => {
+    let seen: ChatMessage[] = []
+    const spy: TextProvider = {
+      runTurn: async (req) => {
+        seen = req.messages
+        return { text: 'ok', toolCalls: [], stopReason: 'end', raw: null }
+      }
+    }
+    const { opts } = setup(spy, reg())
+    opts.history = [assistantWith([{ id: 'a', name: 'echo', input: {} }]), { ...user, id: 'msg_0000000002' }]
+    await runAgentLoop(opts)
+    expect(seen.map((m) => m.role)).toEqual(['assistant', 'tool', 'user'])
+  })
+
+  it('strips tool calls from a refused turn before persisting', async () => {
+    const p: TextProvider = {
+      runTurn: async () => ({ text: 'no', toolCalls: [{ id: 'x', name: 'echo', input: {} }], stopReason: 'refusal', raw: null })
+    }
+    const { opts, persisted } = setup(p, reg())
+    await runAgentLoop(opts)
+    expect(persisted[0]).toMatchObject({ role: 'assistant', toolCalls: [] })
+  })
+})
+
+function assistantWith(toolCalls: { id: string; name: string; input: unknown }[]): ChatMessage {
+  return {
+    id: 'msg_00000000a1',
+    role: 'assistant',
+    text: '',
+    toolCalls,
+    stopReason: 'tool_use',
+    model: { endpointId: 'end_0000000000', modelId: 'mdl_000000000a' },
+    raw: null,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+}
+
+function toolMsg(ids: string[]): ChatMessage {
+  return {
+    id: 'msg_00000000b1',
+    role: 'tool',
+    results: ids.map((id) => ({ toolCallId: id, name: 'echo', ok: true, content: 'r', images: [] })),
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+}
+
+describe('repairToolHistory', () => {
+  const calls = [
+    { id: 'a', name: 'echo', input: {} },
+    { id: 'b', name: 'echo', input: {} }
+  ]
+  it('adds a tool message for an orphan at the end', () => {
+    const out = repairToolHistory([user, assistantWith(calls)])
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'tool'])
+    expect((out[2] as ToolMessage).results).toEqual([
+      { toolCallId: 'a', name: 'echo', ok: false, content: 'Interrupted before this tool ran', images: [] },
+      { toolCallId: 'b', name: 'echo', ok: false, content: 'Interrupted before this tool ran', images: [] }
+    ])
+  })
+  it('fills only the missing ids of a partially answered call', () => {
+    const out = repairToolHistory([assistantWith(calls), toolMsg(['a'])])
+    expect(out).toHaveLength(2)
+    expect((out[1] as ToolMessage).results.map((r) => [r.toolCallId, r.ok])).toEqual([
+      ['a', true],
+      ['b', false]
+    ])
+  })
+  it('leaves a fully answered history untouched', () => {
+    const h = [user, assistantWith(calls), toolMsg(['a', 'b'])]
+    expect(repairToolHistory(h)).toEqual(h)
   })
 })

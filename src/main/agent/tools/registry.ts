@@ -20,6 +20,8 @@ export interface ToolDefinition {
   name: string
   description: string
   input: z.ZodType
+  // `never` input: each tool's handler takes its own inferred type; a parameter is contravariant,
+  // so only `never` lets differently-typed definitions share one array.
   handler(input: never, ctx: ToolContext): Promise<ToolOutput>
 }
 
@@ -72,7 +74,7 @@ export class ToolRegistry {
     if (!parsed.success) return fail(`Invalid input for ${call.name}: ${formatIssues(parsed.error)}`)
     try {
       const out = await def.handler(parsed.data as never, ctx)
-      const content = typeof out.content === 'string' ? out.content : JSON.stringify(out.content)
+      const content = typeof out.content === 'string' ? out.content : (JSON.stringify(out.content) ?? '')
       return { toolCallId: call.id, name: call.name, ok: true, content, images: out.images ?? [] }
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err))
