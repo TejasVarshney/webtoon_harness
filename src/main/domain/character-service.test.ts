@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeJsonAtomic } from '../storage/atomic'
 import { ProviderError } from '../models/providers/types'
 import { encodeSolidPng } from '../models/providers/png'
@@ -9,11 +9,28 @@ import { tempProject, type TempProject } from '../test/temp-project'
 import { CharacterInUseError, CharacterService, DuplicateCharacterError, type PanelUsageLookup } from './character-service'
 import type { ImageGenRequest, ImageService } from './image-service'
 
+// Failure injection: while `disk.failJsonWrites > 0`, that many writeJsonAtomic calls reject.
+const disk = vi.hoisted(() => ({ failJsonWrites: 0 }))
+vi.mock('../storage/atomic', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../storage/atomic')>()
+  return {
+    ...actual,
+    writeJsonAtomic: async (path: string, value: unknown) => {
+      if (disk.failJsonWrites > 0) {
+        disk.failJsonWrites--
+        throw new Error('disk full')
+      }
+      return actual.writeJsonAtomic(path, value)
+    }
+  }
+})
+
 const input = (name = 'Mina') => ({ name, role: 'protagonist' as const, appearanceLock: 'LOCK' })
 const PNG = encodeSolidPng(2, 3, [1, 2, 3])
 
 let tp: TempProject | undefined
 afterEach(async () => {
+  disk.failJsonWrites = 0
   await tp?.cleanup()
   tp = undefined
 })
@@ -192,6 +209,126 @@ describe('CharacterService', () => {
     await fs.promises.writeFile(ctx.paths.characterFile('chr_ffffffffff'), '{oops')
     expect((await svc.list(ctx)).map((x) => x.id)).toEqual([c.id])
     expect(ctx.problems.map((p) => p.path)).toContain('characters/chr_ffffffffff.json')
+  })
+})
+
+describe('CharacterService recording failures', () => {
+  const imagesIn = (ctx: { paths: { characterDir(id: string): string } }, id: string): string[] => {
+    try {
+      return fs.readdirSync(ctx.paths.characterDir(id))
+    } catch {
+      return []
+    }
+  }
+
+  it('records failed and removes the orphan image when the success write fails', async () => {
+    const { svc, ctx } = await setup(async () => {
+      disk.failJsonWrites = 1
+      return { data: PNG, ext: 'png' }
+    })
+    const c = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
+    expect(out).toMatchObject({ status: 'failed', error: 'disk full' })
+    expect((await svc.get(ctx, c.id)).variations[0]).toMatchObject({ status: 'failed', error: 'disk full', imagePath: null })
+    expect(imagesIn(ctx, c.id)).toEqual([])
+  })
+
+  it('resolves failed, never throws, and leaves recoverInterrupted as backstop when every write fails', async () => {
+    const { svc, ctx } = await setup(async () => {
+      disk.failJsonWrites = 2
+      return { data: PNG, ext: 'png' }
+    })
+    const c = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
+    expect(out).toMatchObject({ status: 'failed', error: 'disk full' })
+    expect(imagesIn(ctx, c.id)).toEqual([])
+    expect((await svc.get(ctx, c.id)).variations[0].status).toBe('pending')
+    await svc.recoverInterrupted(ctx)
+    expect((await svc.get(ctx, c.id)).variations[0]).toMatchObject({ status: 'failed', error: 'Interrupted: the app closed during generation' })
+  })
+
+  it('resolves failed and leaves a file corrupted mid-generation alone', async () => {
+    let file = ''
+    const { svc, ctx } = await setup(async () => {
+      await fs.promises.writeFile(file, '{oops')
+      return { data: PNG, ext: 'png' }
+    })
+    const c = await svc.create(ctx, input(), 'user')
+    file = ctx.paths.characterFile(c.id)
+    const out = await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
+    expect(out.status).toBe('failed')
+    expect(out.error).toMatch(/corrupt/i)
+    expect(fs.readFileSync(file, 'utf8')).toBe('{oops')
+    expect(imagesIn(ctx, c.id)).toEqual([])
+  })
+
+  it('reports Variation was deleted when the variation is removed mid-generation', async () => {
+    let drop: () => Promise<void> = async () => undefined
+    const { svc, ctx } = await setup(async () => {
+      await drop()
+      return { data: PNG, ext: 'png' }
+    })
+    const c = await svc.create(ctx, input(), 'user')
+    await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
+    const v = await svc.addVariation(ctx, c.id, { name: 'Outfit', kind: 'outfit', delta: 'x' }, 'user')
+    drop = () => svc.deleteVariation(ctx, c.id, v.id)
+    const out = await svc.generateVariationImage(ctx, c.id, v.id)
+    expect(out).toMatchObject({ id: v.id, status: 'failed', error: 'Variation was deleted' })
+    expect((await svc.get(ctx, c.id)).variations).toHaveLength(1)
+    expect(imagesIn(ctx, c.id)).toHaveLength(1)
+  })
+
+  it('reports Variation was deleted when the character is removed mid-generation', async () => {
+    let file = ''
+    const { svc, ctx } = await setup(async () => {
+      await fs.promises.rm(file)
+      return { data: PNG, ext: 'png' }
+    })
+    const c = await svc.create(ctx, input(), 'user')
+    file = ctx.paths.characterFile(c.id)
+    expect(await svc.generateVariationImage(ctx, c.id, c.variations[0].id)).toMatchObject({ status: 'failed', error: 'Variation was deleted' })
+    expect(imagesIn(ctx, c.id)).toEqual([])
+  })
+
+  it('upload never marks pending and leaves the variation untouched when recording fails', async () => {
+    const { svc, ctx } = await setup()
+    const c = await svc.create(ctx, input(), 'user')
+    const ready = await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
+    disk.failJsonWrites = 1
+    await expect(svc.uploadVariationImage(ctx, c.id, c.variations[0].id, PNG, 'jpg')).rejects.toThrow('disk full')
+    expect((await svc.get(ctx, c.id)).variations[0]).toMatchObject({ status: 'ready', imagePath: ready.imagePath })
+    expect(imagesIn(ctx, c.id)).toHaveLength(1)
+  })
+
+  it('serializes concurrent creates of the same name', async () => {
+    const { svc, ctx } = await setup()
+    const results = await Promise.allSettled([svc.create(ctx, input('Mina'), 'user'), svc.create(ctx, input('mina'), 'user')])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason).toBeInstanceOf(DuplicateCharacterError)
+    expect(await svc.list(ctx)).toHaveLength(1)
+  })
+
+  it('recoverInterrupted skips a corrupt file, reports it, and still recovers the others', async () => {
+    const { svc, ctx } = await setup()
+    const ch = makeCharacter({ id: 'chr_aaaaaaaaaa', variations: [makeVariation({ characterId: 'chr_aaaaaaaaaa', status: 'pending' })] })
+    await writeJsonAtomic(ctx.paths.characterFile(ch.id), ch)
+    await fs.promises.writeFile(ctx.paths.characterFile('chr_ffffffffff'), '{oops')
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    expect((await svc.get(ctx, ch.id)).variations[0].status).toBe('failed')
+    expect(ctx.problems.map((p) => p.path)).toContain('characters/chr_ffffffffff.json')
+  })
+
+  it('recoverInterrupted keeps going when one character cannot be rewritten', async () => {
+    const { svc, ctx } = await setup()
+    const mk = (id: string) => makeCharacter({ id, name: id, variations: [makeVariation({ characterId: id, status: 'pending' })] })
+    await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), mk('chr_aaaaaaaaaa'))
+    await writeJsonAtomic(ctx.paths.characterFile('chr_bbbbbbbbbb'), mk('chr_bbbbbbbbbb'))
+    disk.failJsonWrites = 1
+    await expect(svc.recoverInterrupted(ctx)).resolves.toBeUndefined()
+    const states = [(await svc.get(ctx, 'chr_aaaaaaaaaa')).variations[0].status, (await svc.get(ctx, 'chr_bbbbbbbbbb')).variations[0].status]
+    expect(states.sort()).toEqual(['failed', 'pending'])
+    expect(ctx.problems).toHaveLength(1)
   })
 })
 

@@ -224,11 +224,26 @@ export class CharacterService {
 
   async uploadVariationImage(ctx: ProjectContext, characterId: string, variationId: string, data: Buffer, ext: UploadExt): Promise<Variation> {
     if (!UPLOAD_EXTS.includes(ext)) throw new Error(`Unsupported image extension: ${String(ext)} (use png, jpg or webp)`)
-    const { character } = await this.mutate(ctx, characterId, (c) => {
+    // No `pending` phase: the bytes are in hand, so write the file and record it in one locked step.
+    // On failure the variation is untouched and the caller gets the error.
+    const file = ctx.paths.characterFile(characterId)
+    const next = await ctx.mutex.run(file, async () => {
+      const c = await this.get(ctx, characterId)
       const v = findVariation(c, variationId)
-      return { character: { ...c, variations: c.variations.map((x) => (x.id === variationId ? { ...v, status: 'pending' as const, error: null } : x)), updatedAt: now() } }
+      const rel = imageRelPath(characterId, variationId, ext)
+      const abs = ctx.paths.resolveAsset(rel)
+      await writeFileAtomic(abs, data)
+      const ready: Variation = { ...v, status: 'ready', error: null, imagePath: rel }
+      try {
+        await writeJsonAtomic(file, { ...c, variations: c.variations.map((x) => (x.id === variationId ? ready : x)), updatedAt: now() })
+      } catch (error) {
+        await fs.promises.rm(abs, { force: true }).catch(() => undefined)
+        throw error
+      }
+      return ready
     })
-    return this.finish(ctx, characterId, findVariation(character, variationId), { data, ext }, null)
+    this.emit(ctx, characterId)
+    return next
   }
 
   async deleteVariation(ctx: ProjectContext, characterId: string, variationId: string): Promise<void> {
@@ -253,12 +268,19 @@ export class CharacterService {
           character: { ...cur, variations: cur.variations.map((v) => (v.status === 'pending' ? { ...v, status: 'failed' as const, error: INTERRUPTED } : v)) }
         }))
       } catch (error) {
-        if (!(error instanceof EntityNotFoundError)) throw error
+        // One unreadable or unwritable character must not block opening the project.
+        if (error instanceof EntityNotFoundError) continue
+        const rel = ctx.paths.toRelative(ctx.paths.characterFile(c.id))
+        if (!ctx.problems.some((p) => p.path === rel)) ctx.problems.push({ path: rel, message: error instanceof Error ? error.message : String(error) })
       }
     }
   }
 
-  /** Step 3 of Ruling T15a: under the lock, record the outcome if the variation still exists. */
+  /**
+   * Step 3 of Ruling T15a: under the lock, record the outcome if the variation still exists. Never
+   * throws: if recording fails, the variation is marked `failed` (best effort; `recoverInterrupted`
+   * is the backstop for a file that cannot be written) and a `failed` variation is returned.
+   */
   private async finish(
     ctx: ProjectContext,
     characterId: string,
@@ -267,35 +289,47 @@ export class CharacterService {
     failure: string | null
   ): Promise<Variation> {
     const file = ctx.paths.characterFile(characterId)
-    let final: Variation = fallback
-    const changed = await ctx.mutex.run(file, async () => {
+    const outcome = await ctx.mutex.run(file, async (): Promise<{ variation: Variation; persisted: boolean } | null> => {
       let current: Character
       try {
         current = await readJson(file, CharacterSchema)
       } catch (error) {
-        if (isNotFound(error)) return false
-        throw error
+        if (isNotFound(error)) return null
+        // Corrupt or unreadable: rewriting it from our stale snapshot could destroy the user's edits.
+        return { variation: { ...fallback, status: 'failed', error: failureMessage(error) }, persisted: false }
       }
       const existing = current.variations.find((v) => v.id === fallback.id)
-      if (!existing) return false
-      let next: Variation
+      if (!existing) return null
+      const save = (v: Variation): Promise<void> =>
+        writeJsonAtomic(file, { ...current, variations: current.variations.map((x) => (x.id === v.id ? v : x)), updatedAt: now() })
+      let imageAbs: string | null = null
       try {
+        let next: Variation
         if (result && failure === null) {
-          const rel = `characters/${characterId}/${fallback.id}_${randomBytes(3).toString('hex')}.${result.ext}`
-          await writeFileAtomic(ctx.paths.resolveAsset(rel), result.data)
+          const rel = imageRelPath(characterId, fallback.id, result.ext)
+          imageAbs = ctx.paths.resolveAsset(rel)
+          await writeFileAtomic(imageAbs, result.data)
           next = { ...existing, status: 'ready', error: null, imagePath: rel }
         } else {
           next = { ...existing, status: 'failed', error: failure ?? 'Image generation failed' }
         }
+        await save(next)
+        return { variation: next, persisted: true }
       } catch (error) {
-        next = { ...existing, status: 'failed', error: failureMessage(error) }
+        // The image file is not referenced by anything yet, so it would be an orphan.
+        if (imageAbs) await fs.promises.rm(imageAbs, { force: true }).catch(() => undefined)
+        const failed: Variation = { ...existing, status: 'failed', error: failureMessage(error) }
+        try {
+          await save(failed)
+          return { variation: failed, persisted: true }
+        } catch {
+          return { variation: failed, persisted: false }
+        }
       }
-      await writeJsonAtomic(file, { ...current, variations: current.variations.map((v) => (v.id === next.id ? next : v)), updatedAt: now() })
-      final = next
-      return true
     })
-    if (changed) this.emit(ctx, characterId)
-    return final
+    if (!outcome) return { ...fallback, status: 'failed', error: 'Variation was deleted' }
+    if (outcome.persisted) this.emit(ctx, characterId)
+    return outcome.variation
   }
 
   private async mutate<R extends { character: Character }>(ctx: ProjectContext, id: string, fn: (c: Character) => R): Promise<R> {
@@ -325,6 +359,10 @@ function findVariation(c: Character, variationId: string): Variation {
   const v = c.variations.find((x) => x.id === variationId)
   if (!v) throw new EntityNotFoundError('variation', variationId)
   return v
+}
+
+function imageRelPath(characterId: string, variationId: string, ext: string): string {
+  return `characters/${characterId}/${variationId}_${randomBytes(3).toString('hex')}.${ext}`
 }
 
 function failureMessage(error: unknown): string {
