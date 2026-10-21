@@ -156,7 +156,8 @@ const createPanel = defineTool({
 const updatePanel = defineTool({
   name: 'update_panel',
   description:
-    'Change fields of a panel. Only the fields named in patch change, and the merged panel is validated like create_panel. ' +
+    'Change fields of a panel. Only the fields named in patch change, and the merged panel is validated like create_panel; ' +
+    'when the description changes, a roster character it names must be cast or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
     'This does not redraw the image: pass regenerate true to generate a new one now and wait for it (the result is then the new version, like create_panel), ' +
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
@@ -169,7 +170,9 @@ const updatePanel = defineTool({
     const { panels } = ctx.services
     let updated: { panel: Panel; warnings: string[] }
     try {
-      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: true })
+      // Ruling T19a: the guard is strict only for a description edit. A panel saved with an unattached-mention
+      // warning (the manual editor allows it) must stay editable by the agent; the warning is passed on instead.
+      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined })
     } catch (error) {
       throw asToolError(error)
     }

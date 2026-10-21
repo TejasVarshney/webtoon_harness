@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Character, Panel, ToolResult } from '@shared/types'
+import type { Character, Panel, PanelDraft, ToolResult } from '@shared/types'
 import type { ProjectContext } from '../../storage/project-store'
 import { testServices, type TestServices } from '../../test/test-services'
 import { buildAgentTools } from '.'
@@ -359,7 +359,7 @@ describe('update_panel', () => {
     expect(stored.versions).toHaveLength(1)
   })
 
-  it('enforces the same validation and mention guard as create_panel', async () => {
+  it('enforces the same validation as create_panel, and the mention guard on a description edit', async () => {
     const { run, character, created, panel } = await setup()
     const mina = await character('Mina')
     await character('Jin')
@@ -368,12 +368,53 @@ describe('update_panel', () => {
     expect(mention.ok).toBe(false)
     expect(mention.content).toContain('Mentioned but not attached: Jin')
     const bad = await run('update_panel', { panelId: made.panelId, patch: { characters: [{ characterId: 'chr_ffffffffff', variationId: 'var_ffffffffff' }] } })
-    // Replacing the cast also leaves Mina, named in the description, unattached: both issues come back, one per line.
-    expect(bad.ok).toBe(false)
-    const [unknown, unattached] = bad.content.split('\n')
-    expect(unknown).toBe('Unknown character: chr_ffffffffff')
-    expect(unattached).toContain('Mentioned but not attached: Mina')
+    expect(bad).toMatchObject({ ok: false, content: 'Unknown character: chr_ffffffffff' })
     expect((await panel(made.panelId)).description).toBe('Mina opens the door.')
+  })
+
+  // Ruling T19a: the mention guard is strict only when the agent edits the description.
+  describe('a panel saved with an unattached-mention warning (Ruling T19a)', () => {
+    async function warned() {
+      const h = await setup()
+      const mina = await h.character('Mina')
+      await h.character('Jin')
+      const draft = h.draft([mina], { description: 'Mina waits while Jin watches.' }) as PanelDraft
+      const { panel, warnings } = await h.s.panels.create(h.ctx, draft, { createdBy: 'user', strictMentions: false })
+      expect(warnings).toHaveLength(1)
+      return { ...h, mina, id: panel.id }
+    }
+
+    it('still accepts an update that does not touch the description, and passes the warning on', async () => {
+      const { run, panel, mina, id } = await warned()
+      const r = await run('update_panel', { panelId: id, patch: { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hello?' }] } })
+      expect(r.ok, r.content).toBe(true)
+      const out = json(r)
+      expect(out.warnings).toEqual([expect.stringContaining('Mentioned but not attached: Jin')])
+      expect(out.panel.dialogue).toMatchObject([{ speakerId: mina.id, text: 'Hello?' }])
+      expect((await panel(id)).dialogue).toMatchObject([{ text: 'Hello?' }])
+    })
+
+    it('with regenerate, draws the panel and carries the warning in the result', async () => {
+      const { run, id } = await warned()
+      const r = await run('update_panel', { panelId: id, patch: { shot: 'wide' }, regenerate: true })
+      expect(r.ok, r.content).toBe(true)
+      expect(json(r)).toMatchObject({ status: 'ready', warnings: [expect.stringContaining('Mentioned but not attached: Jin')] })
+    })
+
+    it('rejects a description edit that leaves a character unattached', async () => {
+      const { run, panel, id } = await warned()
+      const r = await run('update_panel', { panelId: id, patch: { description: 'Mina waits while Jin watches from the stairs.' } })
+      expect(r.ok).toBe(false)
+      expect(r.content).toContain('Mentioned but not attached: Jin')
+      expect((await panel(id)).description).toBe('Mina waits while Jin watches.')
+    })
+
+    it('accepts a description edit once the mention is listed as off-panel', async () => {
+      const { run, id } = await warned()
+      const r = await run('update_panel', { panelId: id, patch: { description: 'Mina waits while Jin watches from the stairs.', offPanelMentions: ['Jin'] } })
+      expect(r.ok, r.content).toBe(true)
+      expect(json(r).warnings).toEqual([])
+    })
   })
 
   it('with regenerate awaits a new image and returns it like create_panel', async () => {
