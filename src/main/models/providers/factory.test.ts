@@ -1,3 +1,5 @@
+import { GeminiImageProvider } from './gemini-images'
+import { OpenAIImageProvider } from './openai-images'
 import { describe, expect, it } from 'vitest'
 import type { EndpointConfig } from '@shared/types'
 import type { ResolvedModel } from '../registry'
@@ -32,9 +34,13 @@ describe('provider factory', () => {
     expect(createTextProvider(resolved('openai'))).toBeInstanceOf(OpenAIChatProvider)
   })
 
+  it('picks the openai and gemini image providers', () => {
+    expect(createImageProvider(resolved('openai'))).toBeInstanceOf(OpenAIImageProvider)
+    expect(createImageProvider(resolved('gemini'))).toBeInstanceOf(GeminiImageProvider)
+  })
+
   it('rejects unsupported combos', () => {
     expect(() => createTextProvider(resolved('gemini'))).toThrow(UnsupportedCapabilityError)
     expect(() => createImageProvider(resolved('anthropic'))).toThrow(UnsupportedCapabilityError)
-    expect(() => createImageProvider(resolved('openai'))).toThrow(/openai endpoints do not support image models/)
   })
 })

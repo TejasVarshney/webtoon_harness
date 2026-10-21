@@ -1,11 +1,12 @@
 import type { ResolvedModel } from '../registry'
 import { AnthropicTextProvider } from './anthropic'
+import { GeminiImageProvider } from './gemini-images'
 import { MockImageProvider, MockTextProvider } from './mock'
 import { OpenAIChatProvider } from './openai-chat'
+import { OpenAIImageProvider } from './openai-images'
 import { UnsupportedCapabilityError } from './types'
 import type { ImageProvider, TextProvider } from './types'
 
-/** The Gemini adapter is added by Task 14. */
 export function createTextProvider(r: ResolvedModel): TextProvider {
   switch (r.endpoint.kind) {
     case 'mock':
@@ -23,6 +24,10 @@ export function createImageProvider(r: ResolvedModel): ImageProvider {
   switch (r.endpoint.kind) {
     case 'mock':
       return new MockImageProvider()
+    case 'openai':
+      return new OpenAIImageProvider(r)
+    case 'gemini':
+      return new GeminiImageProvider(r)
     default:
       throw new UnsupportedCapabilityError(r.endpoint.kind, 'image')
   }

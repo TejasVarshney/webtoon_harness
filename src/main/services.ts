@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { AgentRunner } from './agent/agent-runner'
 import { WorkflowDocs } from './agent/workflow-docs'
 import type { ImageOps } from './domain/image-ops'
+import { ImageService } from './domain/image-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
@@ -29,6 +30,7 @@ export interface Services {
   registry: ModelRegistry
   docs: WorkflowDocs
   imageOps: ImageOps
+  images: ImageService
   agent: AgentRunner
 }
 
@@ -45,7 +47,8 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const docs = new WorkflowDocs(opts.templatesDir)
   // Ruling T12a: install on create and on open, so projects made before a template existed get it too.
   projects.addHooks({ onCreate: (ctx) => docs.install(ctx), onOpen: (ctx) => docs.install(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps } as Services
+  const images = new ImageService({ registry, imageOps: opts.imageOps })
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images } as Services
   services.agent = new AgentRunner({ services })
   return services
 }
