@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createIdentityImageOps } from '../domain/image-ops'
 import { FakeEncryptor } from './fake-encryptor'
 import { createServices, type Services, type ServicesOptions } from '../services'
 
@@ -26,7 +27,10 @@ export async function testServices(overrides: Partial<ServicesOptions> = {}): Pr
     (async (p: string) => {
       trashed.push(p)
     })
-  const services = await createServices({ ...overrides, projectsRoot, userDataDir, trash, encryptor: overrides.encryptor ?? new FakeEncryptor() })
+  const services = await createServices({ ...overrides, projectsRoot, userDataDir, trash, encryptor: overrides.encryptor ?? new FakeEncryptor(),
+    templatesDir: overrides.templatesDir ?? path.resolve('resources', 'agent-docs'),
+    imageOps: overrides.imageOps ?? createIdentityImageOps()
+  })
   return {
     ...services,
     projectsRoot,

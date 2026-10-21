@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
+import { electronImageOps } from './domain/electron-image-ops'
 import { electronEncryptor } from './models/electron-encryptor'
 import { registerIpc } from './ipc/register'
 import { handleAssetProtocol, registerAssetScheme } from './protocol/asset-protocol'
@@ -41,7 +42,9 @@ void app.whenReady().then(async () => {
       projectsRoot,
       userDataDir: app.getPath('userData'),
       trash: (absPath) => shell.trashItem(absPath),
-      encryptor: electronEncryptor
+      encryptor: electronEncryptor,
+      templatesDir: join(app.getAppPath(), 'resources', 'agent-docs'),
+      imageOps: electronImageOps
     })
   } catch (error) {
     // A hand-edited, corrupt models.json / secrets.json is left untouched; tell the user rather than start half-wired.
@@ -51,6 +54,9 @@ void app.whenReady().then(async () => {
     return
   }
   registerIpc(ipcMain, services)
+  const { agent } = services
+  // Quitting mid-run: abort so every loop persists results for its pending tool calls.
+  app.on('before-quit', () => agent.cancelAll())
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {
     for (const win of BrowserWindow.getAllWindows()) {

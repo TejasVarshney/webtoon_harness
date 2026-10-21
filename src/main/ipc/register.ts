@@ -1,4 +1,5 @@
 import type { Services } from '../services'
+import { agentHandlers } from './handlers/agent'
 import { modelsHandlers } from './handlers/models'
 import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
@@ -12,7 +13,8 @@ export function registerIpc(ipc: IpcRegistrar, services: Services): void {
   const handlers: Record<string, ((req: never) => Promise<unknown>) | undefined> = {
     ...projectsHandlers(services),
     ...sessionsHandlers(services),
-    ...modelsHandlers(services)
+    ...modelsHandlers(services),
+    ...agentHandlers(services)
   }
   for (const [channel, fn] of Object.entries(handlers)) {
     if (fn) ipc.handle(channel, (_e, req) => fn(req as never))

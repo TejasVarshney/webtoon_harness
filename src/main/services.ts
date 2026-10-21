@@ -1,4 +1,8 @@
+import fs from 'node:fs'
 import { join } from 'node:path'
+import { AgentRunner } from './agent/agent-runner'
+import { WorkflowDocs } from './agent/workflow-docs'
+import type { ImageOps } from './domain/image-ops'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
@@ -12,6 +16,9 @@ export interface ServicesOptions {
   trash: (absPath: string) => Promise<void>
   /** OS-keychain encryption for API keys (Electron `safeStorage`). */
   encryptor: Encryptor
+  /** Folder holding the shipped workflow doc templates (`AGENTS.md` at its root). */
+  templatesDir: string
+  imageOps: ImageOps
   bus?: EventBus
 }
 
@@ -20,10 +27,14 @@ export interface Services {
   projects: ProjectStore
   sessions: SessionStore
   registry: ModelRegistry
+  docs: WorkflowDocs
+  imageOps: ImageOps
+  agent: AgentRunner
 }
 
 /** The one place main-process services are constructed and wired together. */
 export async function createServices(opts: ServicesOptions): Promise<Services> {
+  if (!fs.existsSync(join(opts.templatesDir, 'AGENTS.md'))) throw new Error(`Workflow doc templates not found at ${opts.templatesDir}`)
   const bus = opts.bus ?? new EventBus()
   const projects = new ProjectStore({ projectsRoot: opts.projectsRoot, bus })
   const sessions = new SessionStore(bus, opts.trash)
@@ -31,5 +42,10 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   await secrets.load()
   const registry = new ModelRegistry({ file: join(opts.userDataDir, 'models.json'), secrets, bus })
   await registry.load()
-  return { bus, projects, sessions, registry }
+  const docs = new WorkflowDocs(opts.templatesDir)
+  // Ruling T12a: install on create and on open, so projects made before a template existed get it too.
+  projects.addHooks({ onCreate: (ctx) => docs.install(ctx), onOpen: (ctx) => docs.install(ctx) })
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps } as Services
+  services.agent = new AgentRunner({ services })
+  return services
 }

@@ -50,6 +50,8 @@ export interface IpcContract {
   'models:updateModel': { req: { id: string; patch: ModelPatch }; res: ModelConfig }
   'models:removeModel': { req: { id: string }; res: { clearedRoles: Role[] } }
   'models:assignRole': { req: { role: Role; modelId: string | null }; res: void }
+  'agent:send': { req: { projectId: string; sessionId: string; text: string; imagePaths: string[]; activeEpisodeId: string | null }; res: { runId: string } }
+  'agent:cancel': { req: { runId: string }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -73,7 +75,9 @@ const channelSet: Record<IpcChannel, true> = {
   'models:addModel': true,
   'models:updateModel': true,
   'models:removeModel': true,
-  'models:assignRole': true
+  'models:assignRole': true,
+  'agent:send': true,
+  'agent:cancel': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

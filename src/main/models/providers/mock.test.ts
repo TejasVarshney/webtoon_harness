@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ChatMessage } from '@shared/types'
-import { loadMockScript, MockImageProvider, MockTextProvider, resetMockScripts } from './mock'
+import { loadMockScript, MockImageProvider, MockTextProvider, resetMockScripts, resolveMockRefs } from './mock'
 import type { TextTurnRequest } from './types'
 
 const dir = mkdtempSync(join(tmpdir(), 'mock-script-'))
@@ -94,5 +94,34 @@ describe('MockImageProvider', () => {
     await expect(new MockImageProvider().generate({ ...base, aspect: '1:1', signal: ac.signal })).rejects.toMatchObject({
       name: 'AbortError'
     })
+  })
+})
+
+describe('resolveMockRefs', () => {
+  const snap =
+    '<project_state>\ncurrent_episode: epi_00000000e1 "Episode 1" (0 panels)\ncharacters:\n- chr_00000000c1 Mina [protagonist] variations: var_00000000v1 Base (ready), var_00000000v2 Outfit: School uniform, red tie (ready)\nrecent_panels: none\n</project_state>'
+
+  it('resolves name refs, including variation names with commas', () => {
+    expect(
+      resolveMockRefs(
+        { e: { $episode: 'current' }, c: [{ characterId: { $character: 'Mina' }, variationId: { $variation: ['Mina', 'Outfit: School uniform, red tie'] } }] },
+        snap
+      )
+    ).toEqual({ e: 'epi_00000000e1', c: [{ characterId: 'chr_00000000c1', variationId: 'var_00000000v2' }] })
+  })
+
+  it('leaves unresolvable placeholders and plain values alone', () => {
+    const input = { a: { $character: 'Nobody' }, b: { $variation: ['Mina', 'Nope'] }, c: 3, d: 'x' }
+    expect(resolveMockRefs(input, snap)).toEqual(input)
+    expect(resolveMockRefs({ a: { $episode: 'current' } }, null)).toEqual({ a: { $episode: 'current' } })
+  })
+
+  it('is applied to scripted tool calls using the latest user snapshot', async () => {
+    const path = writeScript({ turns: [{ toolCalls: [{ name: 'x', input: { id: { $character: 'Mina' } } }] }] })
+    const r = await new MockTextProvider(path).runTurn({
+      ...req('go'),
+      messages: [{ id: 'msg_0000000001', role: 'user', text: 'go', imagePaths: [], stateSnapshot: snap, createdAt: '2026-01-01T00:00:00.000Z' }]
+    })
+    expect(r.toolCalls[0].input).toEqual({ id: 'chr_00000000c1' })
   })
 })
