@@ -19,6 +19,14 @@ describe('test factories', () => {
     expect(makeCharacter({ appearanceLock: 'LOCK' }).appearanceLock).toBe('LOCK')
   })
 
+  it('accept overrides in schema-input shape and fill the defaults', () => {
+    const c = makeCharacter({ appearance: { hair: 'red' } })
+    expect(c.appearance.hair).toBe('red')
+    expect(c.appearance.eyes).toBe('')
+    const p = makePanel({ characters: [{ characterId: 'chr_0000000002', variationId: 'var_0000000002' }] })
+    expect(p.characters[0]).toMatchObject({ action: '', expression: '', position: 'center' })
+  })
+
   it('give every character exactly one base variation that points back at it', () => {
     const c = makeCharacter({ id: 'chr_0000000007' })
     expect(c.variations).toHaveLength(1)
