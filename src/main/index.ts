@@ -1,8 +1,9 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
-import { EventBus } from './events/bus'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { EVENT_CHANNEL } from '@shared/ipc'
+import { registerIpc } from './ipc/register'
 import { handleAssetProtocol, registerAssetScheme } from './protocol/asset-protocol'
-import { ProjectStore } from './storage/project-store'
+import { createServices } from './services'
 
 // Privileged schemes can only be registered before the app is ready.
 registerAssetScheme()
@@ -31,11 +32,20 @@ function createWindow(): void {
   }
 }
 
-void app.whenReady().then(() => {
-  // Task 6 moves this wiring into createServices.
+void app.whenReady().then(async () => {
   const projectsRoot = process.env.WEBTOON_PROJECTS_ROOT || join(app.getPath('documents'), 'Webtoon AI Harness', 'projects')
-  const store = new ProjectStore({ projectsRoot, bus: new EventBus() })
-  handleAssetProtocol(store)
+  const services = await createServices({
+    projectsRoot,
+    userDataDir: app.getPath('userData'),
+    trash: (absPath) => shell.trashItem(absPath)
+  })
+  registerIpc(ipcMain, services)
+  handleAssetProtocol(services.projects)
+  services.bus.subscribe((event) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNEL, event)
+    }
+  })
 
   createWindow()
   app.on('activate', () => {
