@@ -141,6 +141,7 @@ function toResult(completion: OpenAIFinalCompletion): TextTurnResult {
       )
   // Some compatible servers report `stop` alongside tool calls.
   if (stopReason === 'end' && toolCalls.length > 0) stopReason = 'tool_use'
+  if (stopReason === 'tool_use' && toolCalls.length === 0) stopReason = 'end'
   return { text, toolCalls, stopReason, raw: null }
 }
 

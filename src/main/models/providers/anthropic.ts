@@ -111,7 +111,7 @@ export async function toAnthropicMessages(messages: ChatMessage[], loadImage: Im
       } else {
         content = []
         if (m.text) content.push({ type: 'text', text: m.text })
-        for (const c of m.toolCalls) content.push({ type: 'tool_use', id: c.id, name: c.name, input: c.input })
+        for (const c of m.toolCalls) content.push({ type: 'tool_use', id: c.id, name: c.name, input: isRecord(c.input) ? c.input : {} })
       }
       // The API rejects an assistant turn with no content (e.g. a refusal that produced no text).
       if (content.length > 0) out.push({ role: 'assistant', content })

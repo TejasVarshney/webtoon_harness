@@ -198,6 +198,14 @@ describe('OpenAIChatProvider results', () => {
     expect((await provider(makeFake(withTool('length'))).p.runTurn(req())).toolCalls).toEqual([])
   })
 
+  it('reports end, not tool_use, when no tool call survives', async () => {
+    const final: OpenAIFinalCompletion = {
+      choices: [{ finish_reason: 'tool_calls', message: { content: 'x', tool_calls: [{ id: 'c1', type: 'custom' }] } }]
+    }
+    const r = await provider(makeFake(final)).p.runTurn(req())
+    expect(r).toMatchObject({ stopReason: 'end', toolCalls: [] })
+  })
+
   it('forwards content deltas', async () => {
     const onTextDelta = vi.fn()
     await provider(makeFake(textCompletion(), ['a', 'b'])).p.runTurn(req({ onTextDelta }))

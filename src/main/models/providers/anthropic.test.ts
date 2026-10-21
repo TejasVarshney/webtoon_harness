@@ -175,6 +175,14 @@ describe('shouldUseServerFallback', () => {
 })
 
 describe('toAnthropicMessages', () => {
+  it('maps a non-object tool input (from another provider) to an empty object', async () => {
+    const out = await toAnthropicMessages(
+      [assistant({ toolCalls: [{ id: 'call_1', name: 'x', input: '{oops' }] })],
+      req().loadImage
+    )
+    expect(out[0].content).toEqual([{ type: 'tool_use', id: 'call_1', name: 'x', input: {} }])
+  })
+
   it('replays raw assistant content unchanged', async () => {
     const content = [
       { type: 'thinking', thinking: 'hm', signature: 'sig' },
