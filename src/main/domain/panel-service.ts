@@ -125,7 +125,7 @@ export class PanelService implements PanelUsageLookup {
       await this.opts.episodes.insertPanel(ctx, draft.episodeId, id, draft.afterPanelId)
     } catch (error) {
       // Nothing else knows this id yet, so removing the file is not a user deletion (no trash).
-      await fs.promises.rm(file, { force: true }).catch(() => undefined)
+      await ctx.mutex.run(file, () => fs.promises.rm(file, { force: true })).catch(() => undefined)
       throw error
     }
     this.emit(ctx, id)
