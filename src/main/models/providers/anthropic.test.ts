@@ -294,6 +294,28 @@ describe('result mapping', () => {
   })
 })
 
+describe('refused and truncated turns', () => {
+  it.each(['refusal', 'max_tokens'] as const)('strips tool_use from raw content on %s', async (stop_reason) => {
+    const final: AnthropicFinalMessage = {
+      content: [
+        { type: 'thinking', thinking: 't' },
+        { type: 'text', text: 'partial' },
+        { type: 'tool_use', id: 'toolu_1', name: 'x', input: {} }
+      ],
+      stop_reason
+    }
+    const { p } = provider('claude-opus-5-5', makeFake(final))
+    const r = await p.runTurn(req())
+    expect(r.raw?.content).toEqual([final.content[0], final.content[1]])
+  })
+
+  it.each([0, -5, 1.5, '100', null])('falls back to 64000 for max_tokens %j', async (bad) => {
+    const { p, fake } = provider('claude-haiku-5-5', makeFake(), { params: { max_tokens: bad } })
+    await p.runTurn(req())
+    expect(fake.messages.stream.mock.calls[0]?.[0].max_tokens).toBe(64000)
+  })
+})
+
 describe('fallback blocks', () => {
   const c = [
     { type: 'thinking', thinking: '' },

@@ -175,7 +175,7 @@ export class AnthropicTextProvider implements TextProvider {
     try {
       const params: AnthropicRequestParams = {
         model: r.model.modelId,
-        max_tokens: typeof maxTokens === 'number' ? maxTokens : DEFAULT_MAX_TOKENS,
+        max_tokens: typeof maxTokens === 'number' && Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : DEFAULT_MAX_TOKENS,
         system: req.system,
         messages: await toAnthropicMessages(req.messages, req.loadImage),
         tools: req.tools.map((t) => ({
@@ -209,5 +209,8 @@ function toResult(message: AnthropicFinalMessage): TextTurnResult {
   const toolCalls: ToolCall[] = noTools
     ? []
     : executableToolUses(message.content).map((t) => ({ id: t.id, name: t.name, input: isRecord(t.input) ? { ...t.input } : {} }))
-  return { text, toolCalls, stopReason, raw: { provider: 'anthropic', content: replayableContent(message.content) } }
+  // A refused or truncated turn never runs its tools, so a replayed tool_use would have no result (API 400).
+  const replay = replayableContent(message.content)
+  const content = noTools ? replay.filter((b) => blockType(b) !== 'tool_use') : replay
+  return { text, toolCalls, stopReason, raw: { provider: 'anthropic', content } }
 }
