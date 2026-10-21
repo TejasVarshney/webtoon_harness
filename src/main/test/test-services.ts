@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { FakeEncryptor } from './fake-encryptor'
 import { createServices, type Services, type ServicesOptions } from '../services'
 
 export interface TestServices extends Services {
@@ -25,7 +26,7 @@ export async function testServices(overrides: Partial<ServicesOptions> = {}): Pr
     (async (p: string) => {
       trashed.push(p)
     })
-  const services = await createServices({ ...overrides, projectsRoot, userDataDir, trash })
+  const services = await createServices({ ...overrides, projectsRoot, userDataDir, trash, encryptor: overrides.encryptor ?? new FakeEncryptor() })
   return {
     ...services,
     projectsRoot,

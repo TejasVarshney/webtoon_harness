@@ -1,6 +1,7 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
+import { electronEncryptor } from './models/electron-encryptor'
 import { registerIpc } from './ipc/register'
 import { handleAssetProtocol, registerAssetScheme } from './protocol/asset-protocol'
 import { createServices } from './services'
@@ -34,11 +35,21 @@ function createWindow(): void {
 
 void app.whenReady().then(async () => {
   const projectsRoot = process.env.WEBTOON_PROJECTS_ROOT || join(app.getPath('documents'), 'Webtoon AI Harness', 'projects')
-  const services = await createServices({
-    projectsRoot,
-    userDataDir: app.getPath('userData'),
-    trash: (absPath) => shell.trashItem(absPath)
-  })
+  let services: Awaited<ReturnType<typeof createServices>>
+  try {
+    services = await createServices({
+      projectsRoot,
+      userDataDir: app.getPath('userData'),
+      trash: (absPath) => shell.trashItem(absPath),
+      encryptor: electronEncryptor
+    })
+  } catch (error) {
+    // A hand-edited, corrupt models.json / secrets.json is left untouched; tell the user rather than start half-wired.
+    console.error('Failed to start services', error)
+    dialog.showErrorBox('Webtoon AI Harness cannot start', error instanceof Error ? error.message : String(error))
+    app.quit()
+    return
+  }
   registerIpc(ipcMain, services)
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {

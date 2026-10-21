@@ -1,10 +1,33 @@
 // Type-only imports: this module is bundled into the sandboxed preload, so zod must not enter it.
-import type { ChatMessage, ProjectMeta, ProjectProblem, SessionSummary } from './types'
+import type {
+  Capability,
+  ChatMessage,
+  EndpointConfig,
+  EndpointKind,
+  ModelConfig,
+  ModelRegistryView,
+  ProjectMeta,
+  ProjectProblem,
+  Role,
+  SessionSummary
+} from './types'
 
 /** The `project.json` fields a caller may change. */
 export type ProjectPatch = Partial<
   Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'storyMode' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
 >
+
+export type EndpointInput = { name: string; kind: EndpointKind; baseUrl: string; options?: EndpointConfig['options'] }
+export type EndpointPatch = Partial<Omit<EndpointConfig, 'id'>>
+export type ModelInput = {
+  endpointId: string
+  modelId: string
+  label: string
+  capabilities: Capability[]
+  params?: Record<string, unknown>
+  maxReferenceImages?: number
+}
+export type ModelPatch = Partial<Pick<ModelConfig, 'modelId' | 'label' | 'capabilities' | 'params' | 'maxReferenceImages'>>
 
 /** Every request/response pair that crosses the preload bridge. Later tasks add channels here. */
 export interface IpcContract {
@@ -17,6 +40,16 @@ export interface IpcContract {
   'sessions:rename': { req: { projectId: string; sessionId: string; title: string }; res: void }
   'sessions:delete': { req: { projectId: string; sessionId: string }; res: void }
   'sessions:load': { req: { projectId: string; sessionId: string }; res: ChatMessage[] }
+  'models:get': { req: Record<string, never>; res: ModelRegistryView }
+  'models:addEndpoint': { req: EndpointInput; res: EndpointConfig }
+  'models:updateEndpoint': { req: { id: string; patch: EndpointPatch }; res: EndpointConfig }
+  'models:removeEndpoint': { req: { id: string }; res: { clearedRoles: Role[] } }
+  /** `key: null` removes the stored key. The key travels renderer to main only; it is never sent back. */
+  'models:setApiKey': { req: { endpointId: string; key: string | null }; res: void }
+  'models:addModel': { req: ModelInput; res: ModelConfig }
+  'models:updateModel': { req: { id: string; patch: ModelPatch }; res: ModelConfig }
+  'models:removeModel': { req: { id: string }; res: { clearedRoles: Role[] } }
+  'models:assignRole': { req: { role: Role; modelId: string | null }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -31,7 +64,16 @@ const channelSet: Record<IpcChannel, true> = {
   'sessions:create': true,
   'sessions:rename': true,
   'sessions:delete': true,
-  'sessions:load': true
+  'sessions:load': true,
+  'models:get': true,
+  'models:addEndpoint': true,
+  'models:updateEndpoint': true,
+  'models:removeEndpoint': true,
+  'models:setApiKey': true,
+  'models:addModel': true,
+  'models:updateModel': true,
+  'models:removeModel': true,
+  'models:assignRole': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]
