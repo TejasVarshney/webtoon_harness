@@ -34,6 +34,20 @@ describe('models:test', () => {
     expect(system).toBe('You are a connectivity check.')
   })
 
+  it('sends openai models no max_tokens (reasoning models reject it) and keeps their own params', async () => {
+    const { s, m } = await withModel('openai', ['text'], 'sk-SECRET')
+    await s.registry.updateModel(m.id, { params: { temperature: 0.2 } })
+    let params: Record<string, unknown> | null = null
+    const h = modelsHandlers(s, {
+      createTextProvider: (r) => {
+        params = r.model.params
+        return { runTurn: async () => ({ text: 'OK', toolCalls: [], stopReason: 'end', raw: null }) }
+      }
+    })
+    expect(await h['models:test']!({ modelId: m.id })).toMatchObject({ ok: true })
+    expect(params).toEqual({ temperature: 0.2 })
+  })
+
   it('maps provider errors to ok:false and never leaks the key', async () => {
     const { s, m } = await withModel('anthropic', ['text'], 'sk-SECRET')
     const h = modelsHandlers(s, {

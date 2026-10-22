@@ -33,8 +33,10 @@ async function testModel(
     if (!resolved.model.capabilities.includes('text')) {
       return { ok: true, message: resolved.apiKey !== null ? 'Key present' : 'No key set' }
     }
-    // A small cap keeps the check fast and cheap; both adapters honor `params.max_tokens`.
-    const provider = createProvider({ ...resolved, model: { ...resolved.model, params: { ...resolved.model.params, max_tokens: 16 } } })
+    // A small cap keeps an Anthropic check fast and cheap. OpenAI reasoning models reject `max_tokens`, so an
+    // `openai` model is tested with its own params only (the 30 s timeout still bounds it).
+    const params = resolved.endpoint.kind === 'openai' ? resolved.model.params : { ...resolved.model.params, max_tokens: 16 }
+    const provider = createProvider({ ...resolved, model: { ...resolved.model, params } })
     const user: UserMessage = {
       id: newId('msg'),
       role: 'user',
