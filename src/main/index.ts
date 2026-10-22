@@ -13,6 +13,17 @@ registerAssetScheme()
 const userDataOverride = process.env.WEBTOON_USER_DATA
 if (userDataOverride) app.setPath('userData', userDataOverride)
 
+// One app per user-data folder (the lock is keyed on it, so the path is set first): a second launch would run a
+// second set of services over the same files. It quits, and the window that is already open comes forward.
+const primary = app.requestSingleInstanceLock()
+if (!primary) app.quit()
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+})
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1440,
@@ -41,7 +52,7 @@ function createWindow(): void {
   }
 }
 
-void app.whenReady().then(async () => {
+if (primary) void app.whenReady().then(async () => {
   const projectsRoot = process.env.WEBTOON_PROJECTS_ROOT || join(app.getPath('documents'), 'Webtoon AI Harness', 'projects')
   let services: Awaited<ReturnType<typeof createServices>>
   try {
