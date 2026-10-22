@@ -10,26 +10,26 @@ export interface WebtoonStripProps {
   panels: Panel[]
 }
 
-/** The episode as one vertical strip: a card per panel, with a "+" after each (between two panels, and at the end). */
+/**
+ * The episode as one vertical strip: a card per panel, with a "+" between two panels and one at the end.
+ *
+ * The end "+" is a single element of its own, in the same place whether the episode is empty or not. A "+" owns the
+ * editor it opens, and creating a panel re-renders the strip with that panel in it: if the "+" were rebuilt by that
+ * re-render (as it would be if it lived inside the per-panel fragments, or beside an empty-state paragraph), the dialog
+ * that just made the panel would unmount before it could show what came back. It appends, so it never names a panel.
+ */
 export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
-  if (panels.length === 0) {
-    return (
-      <div className="webtoon-strip">
-        <p className="placeholder">No panels yet. Add one, or ask the agent to draw it.</p>
-        <InsertPanelButton episodeId={episodeId} />
-      </div>
-    )
-  }
   return (
     <div className="webtoon-strip">
+      {panels.length === 0 && <p className="placeholder">No panels yet. Add one, or ask the agent to draw it.</p>}
       {panels.map((panel, i) => (
         <Fragment key={panel.id}>
           <PanelCard panel={panel} selected={panel.id === selectedPanelId} />
-          {/* The last "+" appends rather than naming a panel, so it stays right if the strip changes under it. */}
-          <InsertPanelButton episodeId={episodeId} afterPanelId={i === panels.length - 1 ? undefined : panel.id} />
+          {i < panels.length - 1 && <InsertPanelButton episodeId={episodeId} afterPanelId={panel.id} />}
         </Fragment>
       ))}
+      <InsertPanelButton key="append" episodeId={episodeId} />
     </div>
   )
 }

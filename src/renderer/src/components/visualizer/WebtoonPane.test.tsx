@@ -76,6 +76,74 @@ describe('WebtoonPane', () => {
     expect(screen.getByText(/no panels yet/i)).toBeInTheDocument()
   })
 
+  describe('the open editor survives the strip changing under it', () => {
+    const warning = 'Mentioned but not attached: Jin. Attach them to characters or list them in offPanelMentions.'
+    const first = panel({ id: 'pnl_00000000f1', versions: [], currentVersionId: null })
+
+    it('keeps the warnings when the first panel of an empty episode appears', async () => {
+      let panels: Panel[] = []
+      mount({
+        'episodes:list': () => [episode()],
+        'panels:list': () => panels,
+        'panels:create': () => {
+          panels = [first]
+          return { panel: first, warnings: [warning] }
+        }
+      })
+      await screen.findByText(/no panels yet/i)
+      await userEvent.click(screen.getByTestId('add-panel'))
+      await userEvent.click(within(screen.getByTestId('panel-editor')).getByRole('button', { name: 'Create without image' }))
+
+      // The strip re-renders with the new panel; the dialog that made it must still be there to say what came back.
+      expect(await screen.findByTestId('panel-card')).toBeInTheDocument()
+      expect(await screen.findByText(/Mentioned but not attached: Jin/)).toBeInTheDocument()
+      const editor = within(screen.getByTestId('panel-editor'))
+      await userEvent.click(editor.getByRole('button', { name: 'Close' }))
+      expect(screen.queryByTestId('panel-editor')).toBeNull()
+    })
+
+    it('keeps the failure notice when the first panel is created and its upload fails', async () => {
+      let panels: Panel[] = []
+      mount({
+        'episodes:list': () => [episode()],
+        'panels:list': () => panels,
+        'panels:create': () => {
+          panels = [first]
+          return { panel: first, warnings: [] }
+        },
+        'panels:uploadImage': () => {
+          throw new Error('Unsupported image type: use png, jpg or webp')
+        }
+      })
+      await screen.findByText(/no panels yet/i)
+      await userEvent.click(screen.getByTestId('add-panel'))
+      await userEvent.click(within(screen.getByTestId('panel-editor')).getByRole('button', { name: 'Upload image…' }))
+      expect(await screen.findByTestId('panel-card')).toBeInTheDocument()
+      expect(await screen.findByText(/Unsupported image type/)).toBeInTheDocument()
+      expect(within(screen.getByTestId('panel-editor')).getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    })
+
+    it('keeps appending when a panel is added while the end editor is open', async () => {
+      const c = panel({ id: 'pnl_00000000cc' })
+      let panels = [a, b]
+      const api = mount({
+        'episodes:list': () => [episode()],
+        'panels:list': () => panels,
+        'panels:create': () => ({ panel: c, warnings: [] })
+      })
+      await screen.findAllByTestId('panel-card')
+      await userEvent.click(screen.getAllByTestId('add-panel')[1])
+      // The agent draws a panel while the user is typing: the editor must not start inserting after the old last one.
+      panels = [a, b, c]
+      api.emit({ type: 'panel.changed', projectId, panelId: c.id })
+      await waitFor(() => expect(screen.getAllByTestId('panel-card')).toHaveLength(3))
+      await userEvent.click(within(screen.getByTestId('panel-editor')).getByRole('button', { name: 'Create without image' }))
+      await waitFor(() => expect(api.calls.some((x) => x.channel === 'panels:create')).toBe(true))
+      const draft = (api.calls.find((x) => x.channel === 'panels:create')?.req as { draft: Record<string, unknown> }).draft
+      expect(draft).not.toHaveProperty('afterPanelId')
+    })
+  })
+
   it('shows a new panel when panel.changed arrives', async () => {
     let panels: Panel[] = []
     const api = mount({ 'episodes:list': () => [episode()], 'panels:list': () => panels })

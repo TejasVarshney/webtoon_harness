@@ -101,11 +101,18 @@ describe('PanelCard', () => {
     const lines = card.querySelectorAll('[data-kind]')
     expect([...lines].map((l) => l.getAttribute('data-kind'))).toEqual(['speech', 'thought', 'narration', 'sfx'])
     expect([...lines].map((l) => l.textContent)).toEqual(['MinaWe should go.', 'Is he lying?', 'The city never slept.', 'BOOM'])
-    // Text is real DOM text over the image, never part of the image's alt text.
+    // The lines are real DOM text in an overlay beside the image, never part of it: an <img> has no children,
+    // and its alt text describes the panel, not what is said in it.
+    const image = within(card).getByRole('img')
+    const overlay = card.querySelector('.dialogue-overlay')
+    expect(overlay).not.toBeNull()
+    expect(overlay).toContainElement(card.querySelector<HTMLElement>('[data-kind="sfx"]'))
+    expect(overlay).not.toContainElement(image)
+    expect(image.parentElement).toBe(overlay?.parentElement)
+    expect(image.childElementCount).toBe(0)
+    for (const line of p.dialogue) expect(image.getAttribute('alt') ?? '').not.toContain(line.text)
     expect(within(card).getByText('We should go.')).toBeInTheDocument()
-    expect(within(card).getByRole('img').getAttribute('alt') ?? '').not.toContain('We should go.')
     expect(card.querySelector('[data-kind="sfx"]')).toHaveTextContent('BOOM')
-    expect(card.querySelector('[data-kind="narration"]')?.closest('img')).toBeNull()
   })
 
   it('renders dialogue as text, never as markup', () => {
