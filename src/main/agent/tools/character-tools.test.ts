@@ -94,12 +94,13 @@ describe('character tools', () => {
     expect(stored.variations[0]).toMatchObject({ status: 'failed', error: expect.stringContaining("No model assigned to role 'image'") })
   })
 
-  it('create_character without a base image makes no image call', async () => {
+  it('create_character without a base image makes no image call and records the base failed (Ruling F4)', async () => {
     const { run, ctx, s } = await setup()
     await s.registry.assignRole('image', null) // would fail if the tool tried to generate
     const r = await run('create_character', { ...mina, generateBaseImage: false })
     expect(r.ok).toBe(true)
-    expect(json(r)).toMatchObject({ baseStatus: 'pending', baseError: null, imagePath: null })
+    expect(json(r)).toMatchObject({ baseStatus: 'failed', baseError: 'No image yet: upload one or regenerate', imagePath: null })
+    expect((await s.characters.list(ctx))[0].variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
     expect(r.images).toEqual([])
     expect((await s.characters.list(ctx))).toHaveLength(1)
   })
@@ -166,14 +167,14 @@ describe('character tools', () => {
     expect(r.content).toMatch(/^Invalid input for create_variation: kind: /)
   })
 
-  it('create_variation with generateImage false leaves the variation pending and calls no model', async () => {
+  it('create_variation with generateImage false records the variation failed, not pending, and calls no model (Ruling F4)', async () => {
     const { run, s, ctx } = await setup()
     const { characterId } = json(await run('create_character', mina))
     await s.registry.assignRole('image', null)
     const r = await run('create_variation', { characterId, name: 'Pose: Running', kind: 'pose', delta: 'mid-stride', generateImage: false })
-    expect(json(r)).toMatchObject({ status: 'pending', error: null, imagePath: null })
+    expect(json(r)).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate', imagePath: null })
     expect(r.images).toEqual([])
-    expect((await s.characters.get(ctx, characterId)).variations[1].status).toBe('pending')
+    expect((await s.characters.get(ctx, characterId)).variations[1]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
   })
 
   it('create_variation fails inside the result when the base image is not ready', async () => {

@@ -66,6 +66,19 @@ describe('CharacterService', () => {
     await expect(svc.create(ctx, input('mina'), 'user')).resolves.toBeDefined()
   })
 
+  it('records a variation created without a generation as failed, not pending (Ruling F4)', async () => {
+    const { svc, ctx, calls } = await setup()
+    const c = await svc.create(ctx, input(), 'ai', { generate: false })
+    expect(c.variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate', imagePath: null })
+    const v = await svc.addVariation(ctx, c.id, { name: 'Outfit', kind: 'outfit', delta: 'x' }, 'ai', { generate: false })
+    expect(v).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
+    expect((await svc.get(ctx, c.id)).variations.map((x) => x.status)).toEqual(['failed', 'failed'])
+    // A generation about to start is what `pending` means, and stays the default.
+    expect((await svc.addVariation(ctx, c.id, { name: 'Pose', kind: 'pose', delta: 'y' }, 'ai', { generate: true })).status).toBe('pending')
+    expect((await svc.create(ctx, input('Jun'), 'user')).variations[0].status).toBe('pending')
+    expect(calls).toEqual([])
+  })
+
   it('generates the base image', async () => {
     const { svc, calls, ctx } = await setup()
     const c = await svc.create(ctx, input(), 'user')

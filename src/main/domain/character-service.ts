@@ -49,11 +49,23 @@ export interface CharacterServiceOptions {
 }
 
 const INTERRUPTED = 'Interrupted: the app closed during generation'
+/** Ruling F4: a variation created without a generation has nothing that would ever move it out of `pending`. */
+export const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
+
+/** `generate: false` means no generation follows, so the new variation is recorded `failed` (Ruling F4). Default true. */
+export interface CreateVariationOptions {
+  generate?: boolean
+}
 const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
 type UploadExt = (typeof UPLOAD_EXTS)[number]
 const CHARACTER_FILE = /^chr_[A-Za-z0-9]+\.json$/
 
 const now = (): string => new Date().toISOString()
+
+/** The state a new variation starts in: `pending` when a generation follows, else failed with `NO_IMAGE_YET`. */
+function initialStatus(opts: CreateVariationOptions): Pick<Variation, 'status' | 'error'> {
+  return opts.generate === false ? { status: 'failed', error: NO_IMAGE_YET } : { status: 'pending', error: null }
+}
 
 export class CharacterService {
   constructor(private readonly opts: CharacterServiceOptions) {}
@@ -92,7 +104,7 @@ export class CharacterService {
     }
   }
 
-  async create(ctx: ProjectContext, input: CharacterInput, createdBy: CreatedBy): Promise<Character> {
+  async create(ctx: ProjectContext, input: CharacterInput, createdBy: CreatedBy, opts: CreateVariationOptions = {}): Promise<Character> {
     // The name check and the write share one lock so two concurrent creates cannot both pass it.
     const character = await ctx.mutex.run(ctx.paths.charactersDir(), async () => {
       await this.assertNameFree(ctx, input.name)
@@ -106,7 +118,7 @@ export class CharacterService {
         characterization: input.characterization,
         appearance: input.appearance,
         appearanceLock: input.appearanceLock,
-        variations: [{ id: newId('var'), characterId: id, name: 'Base', kind: 'base', delta: '', imagePath: null, status: 'pending', error: null, createdBy, createdAt: at }],
+        variations: [{ id: newId('var'), characterId: id, name: 'Base', kind: 'base', delta: '', imagePath: null, ...initialStatus(opts), createdBy, createdAt: at }],
         archived: false,
         createdBy,
         createdAt: at,
@@ -167,7 +179,7 @@ export class CharacterService {
     this.emit(ctx, id)
   }
 
-  async addVariation(ctx: ProjectContext, characterId: string, input: VariationInput, createdBy: CreatedBy): Promise<Variation> {
+  async addVariation(ctx: ProjectContext, characterId: string, input: VariationInput, createdBy: CreatedBy, opts: CreateVariationOptions = {}): Promise<Variation> {
     const variation: Variation = {
       id: newId('var'),
       characterId,
@@ -175,8 +187,7 @@ export class CharacterService {
       kind: input.kind,
       delta: input.delta,
       imagePath: null,
-      status: 'pending',
-      error: null,
+      ...initialStatus(opts),
       createdBy,
       createdAt: now()
     }

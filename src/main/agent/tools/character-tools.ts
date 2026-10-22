@@ -77,7 +77,7 @@ const createCharacter = defineTool({
     const { characters } = ctx.services
     let created: Character
     try {
-      created = await characters.create(ctx.project, input, 'ai')
+      created = await characters.create(ctx.project, input, 'ai', { generate: generateBaseImage !== false })
     } catch (error) {
       if (error instanceof DuplicateCharacterError) throw new ToolError(error.message)
       throw error
@@ -124,7 +124,7 @@ const createVariation = defineTool({
   handler: async ({ characterId, generateImage, ...input }, ctx) => {
     await loadCharacter(ctx, characterId)
     const { characters } = ctx.services
-    const added = await characters.addVariation(ctx.project, characterId, input, 'ai')
+    const added = await characters.addVariation(ctx.project, characterId, input, 'ai', { generate: generateImage !== false })
     const settled = generateImage === false ? added : await characters.generateVariationImage(ctx.project, characterId, added.id, { signal: ctx.signal })
     return variationOutcome(settled)
   }

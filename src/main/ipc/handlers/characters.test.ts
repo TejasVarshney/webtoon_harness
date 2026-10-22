@@ -71,13 +71,14 @@ describe('characters IPC handlers', () => {
     expect(done.variations[0]).toMatchObject({ status: 'ready', error: null, imagePath: expect.stringMatching(/\.png$/) })
   })
 
-  it('create without generateBase makes no image call', async () => {
+  it('create without generateBase makes no image call and records the base failed (Ruling F4)', async () => {
     const { s, h, projectId, get } = await setup()
     const spy = vi.spyOn(s.images, 'generate')
     const created = await h['characters:create']({ projectId, input: mina, generateBase: false })
     await new Promise((r) => setTimeout(r, 20))
     expect(spy).not.toHaveBeenCalled()
-    expect((await get(created.id)).variations[0].status).toBe('pending')
+    expect(created.variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
+    expect((await get(created.id)).variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
   })
 
   it('create rejects bad input and duplicate names', async () => {
@@ -126,13 +127,13 @@ describe('characters IPC handlers', () => {
     expect((await get(c.id)).variations).toHaveLength(2)
   })
 
-  it('addVariation without generate makes no image call', async () => {
+  it('addVariation without generate makes no image call and records the variation failed (Ruling F4)', async () => {
     const { s, h, projectId } = await setup()
     const c = await s.characters.create(await s.projects.open(projectId), mina, 'user')
     const spy = vi.spyOn(s.images, 'generate')
     const v = await h['characters:addVariation']({ projectId, characterId: c.id, input: { name: 'Pose', kind: 'pose', delta: 'x' }, generate: false })
     await new Promise((r) => setTimeout(r, 20))
-    expect(v.status).toBe('pending')
+    expect(v).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
     expect(spy).not.toHaveBeenCalled()
   })
 

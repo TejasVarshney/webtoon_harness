@@ -27,7 +27,7 @@ These are the inputs of `create_character` (and the fields of `update_character`
 | `aliases` | no | Other names the story uses for them, e.g. ["Grandma"]. |
 | `characterization` | no | `personality`, `backstory`, `motivation`, `speechStyle`, `relationships`, `notes`. |
 | `appearance` | no | `age`, `gender`, `build`, `height`, `hair`, `eyes`, `skin`, `distinguishingFeatures`, `defaultOutfit`, `palette`. |
-| `generateBaseImage` | no | Default true. Set false only when the user wants to upload their own image. |
+| `generateBaseImage` | no | Default true. Set false only when the user wants to upload their own image: the base is then `failed` with "No image yet: upload one or regenerate" until they do. |
 
 What each part is for:
 
@@ -99,7 +99,8 @@ The result looks like this:
 What to do with it:
 
 - `baseStatus` `ready`: done. If your model can see images, the result shows you the picture: compare it with the lock.
-- `baseStatus` `failed`: the character exists, only the image is missing. Read `baseError`, then retry once with `regenerate_variation` using `baseVariationId`. If it fails again, stop and tell the user (R12). Never call `create_character` again: you would get "A character named ... already exists".
+- `baseStatus` `failed` with `baseError` "No image yet: upload one or regenerate": you passed `generateBaseImage: false`, so nothing went wrong and nothing is retried. The user uploads the image in the Characters tab, or you call `regenerate_variation` once they want a generated one.
+- `baseStatus` `failed` with any other error: the character exists, only the image is missing. Read `baseError`, then retry once with `regenerate_variation` using `baseVariationId`. If it fails again, stop and tell the user (R12). Never call `create_character` again: you would get "A character named ... already exists".
 - The picture contradicts the lock (wrong hair color, missing scar): regenerate once. If it is wrong again, the lock is probably unclear. Show the user the line you would change and change the lock only after their yes (R3).
 
 The base must be `ready` before the character can be cast in a panel, and before any variation can get its image (variation images are made from the base image).
@@ -130,7 +131,7 @@ How to write `delta`:
 {"variationId": "var_4c19d2e8a0", "status": "ready", "error": null, "imagePath": "characters/chr_3e8a51c0d2/var_4c19d2e8a0_91be03.png"}
 ```
 
-`status` `failed` with "Base reference image is not ready": regenerate the base first, then `regenerate_variation` this one. Any other failure: retry once with `regenerate_variation`, then stop and report.
+`status` `failed` with "Base reference image is not ready": regenerate the base first, then `regenerate_variation` this one. `failed` with "No image yet: upload one or regenerate" means you passed `generateImage: false`: wait for the user's upload or their go-ahead to generate, and do not count it as a failure. Any other failure: retry once with `regenerate_variation`, then stop and report.
 
 ## Variation Naming
 

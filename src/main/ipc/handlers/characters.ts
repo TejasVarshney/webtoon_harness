@@ -35,7 +35,7 @@ export function charactersHandlers(s: Services, deps: CharactersDeps = {}): Hand
 
     'characters:create': async ({ projectId, input, generateBase }) => {
       const ctx = await s.projects.open(projectId)
-      const created = await characters.create(ctx, CharacterInputSchema.parse(input), 'user')
+      const created = await characters.create(ctx, CharacterInputSchema.parse(input), 'user', { generate: generateBase })
       if (generateBase) inBackground(characters.generateVariationImage(ctx, created.id, created.variations[0].id), 'Base image generation')
       return created
     },
@@ -52,7 +52,7 @@ export function charactersHandlers(s: Services, deps: CharactersDeps = {}): Hand
     'characters:addVariation': async ({ projectId, characterId, input, generate }) => {
       const ctx = await s.projects.open(projectId)
       // Parsed here because the service does not check `kind`: a second `base` would break the one-base invariant.
-      const added = await characters.addVariation(ctx, characterId, VariationInputSchema.parse(input), 'user')
+      const added = await characters.addVariation(ctx, characterId, VariationInputSchema.parse(input), 'user', { generate })
       if (generate) inBackground(characters.generateVariationImage(ctx, characterId, added.id), 'Variation image generation')
       return added
     },
