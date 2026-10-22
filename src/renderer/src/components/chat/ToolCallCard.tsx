@@ -1,6 +1,6 @@
 import type { ToolCall, ToolResult } from '@shared/types'
 import { assetUrl } from '@shared/asset-url'
-import { useAppStore } from '../../stores/app-store'
+import { usePanelsStore } from '../../stores/panels-store'
 
 const PANEL_PATH = /^panels\/(pnl_[A-Za-z0-9]+)\//
 
@@ -23,7 +23,6 @@ export interface ToolCallCardProps {
 
 export function ToolCallCard({ call, result, projectId }: ToolCallCardProps) {
   const status = result === undefined ? 'running' : result.ok ? 'ok' : 'error'
-  const selectPanel = useAppStore((s) => s.selectPanel)
   return (
     <div className="tool-card" data-testid="tool-card" data-status={status}>
       <details>
@@ -45,7 +44,8 @@ export function ToolCallCard({ call, result, projectId }: ToolCallCardProps) {
               aria-label={`Open ${rel}`}
               onClick={() => {
                 const panelId = PANEL_PATH.exec(rel)?.[1]
-                if (panelId) selectPanel(panelId)
+                // The panel may be in another episode than the one shown; showPanel opens it first.
+                if (panelId) void usePanelsStore.getState().showPanel(panelId)
               }}
             >
               <img src={assetUrl(projectId, rel)} alt="" />

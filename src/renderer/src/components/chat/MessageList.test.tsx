@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
+import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
+import { installFakeApi } from '../../test/fake-api'
 import { MessageList } from './MessageList'
 
 const T = 'ses_0000000001'
@@ -25,7 +27,25 @@ function assistant(id: string, text: string, toolCalls: { id: string; name: stri
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId: 'prj_aaaaaaaaaa' })
   useChatStore.setState({ messages: {}, streaming: {}, notices: {} })
+  usePanelsStore.setState({ ...initialPanelsState, projectId: 'prj_aaaaaaaaaa' })
 })
+
+/** A thread whose one tool result shows an image of panel pnl_0000000001. */
+function threadWithPanelImage(): void {
+  useChatStore.setState({
+    messages: {
+      [T]: [
+        assistant('msg_0000000001', 'Drawing', [{ id: 'c1', name: 'create_panel', input: { description: 'A moonlit rooftop' } }]),
+        {
+          id: 'msg_0000000002',
+          role: 'tool',
+          results: [{ toolCallId: 'c1', name: 'create_panel', ok: true, content: 'ok', images: ['panels/pnl_0000000001/ver_0000000001.png'] }],
+          createdAt: NOW
+        }
+      ]
+    }
+  })
+}
 
 describe('MessageList', () => {
   it('streams deltas into the in-progress bubble', () => {
@@ -54,19 +74,9 @@ describe('MessageList', () => {
   })
 
   it('panel thumbnails select the panel', async () => {
-    useChatStore.setState({
-      messages: {
-        [T]: [
-          assistant('msg_0000000001', 'Drawing', [{ id: 'c1', name: 'create_panel', input: { description: 'A moonlit rooftop' } }]),
-          {
-            id: 'msg_0000000002',
-            role: 'tool',
-            results: [{ toolCallId: 'c1', name: 'create_panel', ok: true, content: 'ok', images: ['panels/pnl_0000000001/ver_0000000001.png'] }],
-            createdAt: NOW
-          }
-        ]
-      }
-    })
+    installFakeApi({ 'panels:get': () => ({ id: 'pnl_0000000001', episodeId: 'epi_0000000001' }) })
+    useAppStore.setState({ activeEpisodeId: 'epi_0000000001' })
+    threadWithPanelImage()
     render(<MessageList threadKey={T} />)
     const card = screen.getByTestId('tool-card')
     expect(card).toHaveTextContent('create_panel')
@@ -75,6 +85,21 @@ describe('MessageList', () => {
     expect(image.querySelector('img')).toHaveAttribute('src', 'webtoon-asset://prj_aaaaaaaaaa/panels/pnl_0000000001/ver_0000000001.png')
     await userEvent.click(image)
     expect(useAppStore.getState().selectedPanelId).toBe('pnl_0000000001')
+  })
+
+  it('a thumbnail of a panel in another episode opens that episode, then selects the panel', async () => {
+    const { calls } = installFakeApi({
+      'panels:get': () => ({ id: 'pnl_0000000001', episodeId: 'epi_0000000002' }),
+      'panels:list': () => []
+    })
+    useAppStore.setState({ activeEpisodeId: 'epi_0000000001', selectedPanelId: 'pnl_0000000009' })
+    threadWithPanelImage()
+    render(<MessageList threadKey={T} />)
+    await userEvent.click(screen.getByTestId('tool-image'))
+    await vi.waitFor(() => expect(useAppStore.getState().selectedPanelId).toBe('pnl_0000000001'))
+    expect(useAppStore.getState().activeEpisodeId).toBe('epi_0000000002')
+    expect(calls.map((c) => c.channel)).toEqual(['panels:get', 'panels:list'])
+    expect(calls[1].req).toEqual({ projectId: 'prj_aaaaaaaaaa', episodeId: 'epi_0000000002' })
   })
 
   it('shows a running tool call without a result', () => {

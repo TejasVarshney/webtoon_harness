@@ -27,6 +27,11 @@ export interface PanelsActions {
   reloadActive(): Promise<void>
   /** Shows another episode. The panel selection is cleared: it belonged to the episode that was open. */
   selectEpisode(id: string): void
+  /**
+   * Selects a panel from outside the strip (a chat thumbnail): when it belongs to another episode than the one shown,
+   * that episode is opened first, so the panel and its side chat appear. A panel that cannot be looked up is selected as is.
+   */
+  showPanel(id: string): Promise<void>
   /** Creates the episode and opens it. */
   createEpisode(title: string): Promise<Episode>
   updateEpisode(id: string, patch: { title?: string; synopsis?: string }): Promise<Episode>
@@ -129,6 +134,19 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     selectEpisode(id) {
       useAppStore.setState({ activeEpisodeId: id, selectedPanelId: null })
       void get().load(id)
+    },
+
+    async showPanel(id) {
+      let episodeId = Object.entries(get().panelsByEpisode).find(([, panels]) => panels.some((p) => p.id === id))?.[0] ?? null
+      if (episodeId === null) {
+        try {
+          episodeId = (await api.invoke('panels:get', { projectId: requireProject(), panelId: id })).episodeId
+        } catch {
+          episodeId = null // gone or unreadable: select it anyway, as before; the side chat says what is wrong
+        }
+      }
+      if (episodeId !== null && episodeId !== useAppStore.getState().activeEpisodeId) get().selectEpisode(episodeId)
+      useAppStore.getState().selectPanel(id)
     },
 
     async createEpisode(title) {
