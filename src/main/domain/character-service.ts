@@ -6,8 +6,9 @@ import { CharacterSchema } from '@shared/schemas'
 import type { Character, CharacterInput, CharacterPatch, Variation, VariationInput } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
+import { isInside } from '../storage/project-paths'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
-import { CorruptFileError, EntityNotFoundError } from './errors'
+import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors'
 import type { ImageService } from './image-service'
 import { baseReferencePrompt, variationPrompt } from './prompts'
 import { isNotFound } from '../storage/fs-errors'
@@ -250,10 +251,8 @@ export class CharacterService {
     const panelIds = await this.opts.usage.panelsUsingVariation(ctx, variationId)
     if (panelIds.length > 0) throw new CharacterInUseError(panelIds, 'variation')
     await this.mutate(ctx, characterId, (cur) => ({ character: { ...cur, variations: cur.variations.filter((x) => x.id !== variationId), updatedAt: now() } }))
-    if (v.imagePath) {
-      const abs = ctx.paths.resolveAsset(v.imagePath)
-      if (fs.existsSync(abs)) await this.opts.trash(abs)
-    }
+    const abs = v.imagePath === null ? null : ownImage(ctx, characterId, v.imagePath)
+    if (abs !== null && fs.existsSync(abs)) await this.opts.trash(abs)
   }
 
   /** Startup repair: a generation cannot survive the app closing, so every `pending` becomes `failed`. */
@@ -364,6 +363,21 @@ function findVariation(c: Character, variationId: string): Variation {
   const v = c.variations.find((x) => x.id === variationId)
   if (!v) throw new EntityNotFoundError('variation', variationId)
   return v
+}
+
+/**
+ * The image's absolute path when it lies inside the character's own folder, else null. A hand-edited path can
+ * name anything in the project (another character's image, an upload, a folder): deleting a variation must
+ * never trash that (I4).
+ */
+function ownImage(ctx: ProjectContext, characterId: string, relPath: string): string | null {
+  try {
+    const abs = ctx.paths.resolveAsset(relPath)
+    return isInside(ctx.paths.characterDir(characterId), abs) ? abs : null
+  } catch (error) {
+    if (error instanceof PathEscapeError) return null
+    throw error
+  }
 }
 
 function imageRelPath(characterId: string, variationId: string, ext: string): string {

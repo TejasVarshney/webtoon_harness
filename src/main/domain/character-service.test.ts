@@ -185,6 +185,24 @@ describe('CharacterService', () => {
     await expect(used.svc.deleteVariation(used.ctx, c2.id, v2.id)).rejects.toBeInstanceOf(CharacterInUseError)
   })
 
+  it("trashes a deleted variation's image only when it lies in the character's own folder (I4)", async () => {
+    const { svc, ctx, trashed } = await setup()
+    const c = await svc.create(ctx, input(), 'user')
+    const other = await svc.create(ctx, input('Zed'), 'user')
+    const files = [`characters/${c.id}/own.png`, `characters/${other.id}/theirs.png`, 'uploads/shared.png']
+    for (const rel of files) {
+      fs.mkdirSync(ctx.paths.resolveAsset(rel.split('/').slice(0, -1).join('/')), { recursive: true })
+      fs.writeFileSync(ctx.paths.resolveAsset(rel), PNG)
+    }
+    // A hand-edited file can point a variation anywhere in the project, the project folder itself included.
+    const hostile = [...files, 'characters', `characters/${c.id}/..`, 'characters/..']
+    const vs = hostile.map((imagePath, i) => ({ ...makeVariation({ characterId: c.id, kind: 'outfit', name: `V${i}`, status: 'ready' }), id: `var_00000000a${i}`, imagePath }))
+    await writeJsonAtomic(ctx.paths.characterFile(c.id), { ...(await svc.get(ctx, c.id)), variations: [c.variations[0], ...vs] })
+    for (const v of vs) await svc.deleteVariation(ctx, c.id, v.id)
+    expect(trashed).toEqual([ctx.paths.resolveAsset(files[0])])
+    expect((await svc.get(ctx, c.id)).variations.map((v) => v.id)).toEqual([c.variations[0].id])
+  })
+
   it('uploads an image and validates the extension', async () => {
     const { svc, ctx } = await setup()
     const c = await svc.create(ctx, input(), 'user')

@@ -74,6 +74,12 @@ describe('ProjectPaths.resolveAsset / toRelative', () => {
     }
   })
 
+  it('rejects paths that resolve to the project root itself (I4)', () => {
+    for (const bad of ['', '.', './', 'characters/..', 'panels/../.', 'uploads/../']) {
+      expect(() => paths.resolveAsset(bad), JSON.stringify(bad)).toThrow(PathEscapeError)
+    }
+  })
+
   it('rejects absolute, drive-relative, drive-letter and UNC paths', () => {
     const bad = ['/etc/passwd', '\\windows\\x', 'C:\\Windows\\x.png', 'C:/Windows/x.png', 'c:foo.png', 'D:', '\\\\srv\\share\\x.png', '//srv/share/x.png', 'panels/a:stream']
     for (const p of bad) {

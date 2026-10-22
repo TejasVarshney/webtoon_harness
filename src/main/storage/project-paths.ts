@@ -82,8 +82,9 @@ export class ProjectPaths {
 
   /**
    * Resolves a project-relative path (as stored in JSON) to an absolute one. Throws
-   * `PathEscapeError` for absolute paths, drive-letter or UNC paths, NUL bytes, and anything that
-   * resolves outside the project root.
+   * `PathEscapeError` for absolute paths, drive-letter or UNC paths, NUL bytes, anything that
+   * resolves outside the project root, and the root itself (`''`, `.`, `characters/..`): no stored
+   * path may name the whole project, which a delete would then trash (I4).
    */
   resolveAsset(relPath: string): string {
     // ':' covers drive letters (`C:\x`, drive-relative `C:x`) and NTFS alternate data streams;
@@ -92,7 +93,7 @@ export class ProjectPaths {
       throw new PathEscapeError(relPath)
     }
     const resolved = path.resolve(this.root, relPath)
-    if (!this.contains(resolved)) throw new PathEscapeError(relPath)
+    if (!isInside(this.root, resolved)) throw new PathEscapeError(relPath)
     return resolved
   }
 
@@ -113,6 +114,13 @@ export class ProjectPaths {
     const leavesRoot = relative === '..' || relative.startsWith(`..${path.sep}`)
     return !leavesRoot && !path.isAbsolute(relative)
   }
+}
+
+/** True when absolute `child` lies strictly inside absolute `parent`: not `parent` itself, not beside or above it. */
+export function isInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child)
+  // Compare whole segments: `..hidden` is a legal name, `..` and `..\x` are not.
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
 function checkedId(id: string): string {
