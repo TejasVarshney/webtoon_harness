@@ -128,7 +128,7 @@ What the app does with the answer:
 
 1. It reads the first JSON object in the reply, with or without a code fence. It needs a boolean `passed` and a list of strings `issues`.
 2. If it cannot read one, the check counts as passed and skipped, with the issue "Checker response could not be parsed".
-3. If the vision model call fails, the check counts as passed and skipped, with the issue "Consistency check failed to run: {message}".
+3. If the vision model call fails, the check counts as passed and skipped, with the issue "Consistency check failed to run: {message}". If it does not answer within 180 seconds, the same, with the issue "Consistency check timed out after 180s". Stopping the run during a check also counts as skipped, with "Consistency check failed to run: Cancelled".
 4. The result is stored as the version's `check`: `passed`, `issues` and `skipped`.
 5. When `passed` is false (and not skipped), the app redraws the panel with the Panel Prompt plus "[FIX] Fix these consistency issues: {issues joined by "; "}", up to the project's consistency retries (1 by default). Each redraw is checked in turn. A failed answer that names no issue is redrawn without the [FIX] line.
 6. Every attempt stays in the panel's history. The current image becomes the last attempt that passed or, if none passed, the last attempt that rendered. A redraw that fails to render never replaces the image that is current.

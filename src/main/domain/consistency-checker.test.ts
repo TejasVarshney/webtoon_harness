@@ -10,7 +10,7 @@ import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
 import { makeCharacter, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
-import { ConsistencyChecker, parseCheckResponse, type ConsistencyCheckInput } from './consistency-checker'
+import { CHECK_TIMEOUT_MS, ConsistencyChecker, parseCheckResponse, type ConsistencyCheckInput } from './consistency-checker'
 import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE } from './image-ops'
 
 const UNPARSEABLE = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
@@ -99,7 +99,7 @@ function fakeProvider(reply: (req: TextTurnRequest) => string | Promise<string> 
   return { provider, turns }
 }
 
-async function setup(opts: { vision?: boolean; reply?: Parameters<typeof fakeProvider>[0]; provider?: TextProvider } = {}) {
+async function setup(opts: { vision?: boolean; reply?: Parameters<typeof fakeProvider>[0]; provider?: TextProvider; timeoutMs?: number } = {}) {
   const t = await tempProject()
   tp = t
   const docs = new WorkflowDocs(path.resolve('resources', 'agent-docs'))
@@ -117,7 +117,7 @@ async function setup(opts: { vision?: boolean; reply?: Parameters<typeof fakePro
     resolved.push(r)
     return opts.provider ?? fake.provider
   })
-  const checker = new ConsistencyChecker({ registry, docs, imageOps, createTextProvider })
+  const checker = new ConsistencyChecker({ registry, docs, imageOps, createTextProvider, timeoutMs: opts.timeoutMs })
   return { checker, ctx: t.ctx, docs, imageOps, registry, createTextProvider, resolved, turns: fake.turns }
 }
 
@@ -261,11 +261,14 @@ describe('ConsistencyChecker', () => {
     expect((turns[1].req.messages[0] as Extract<ChatMessage, { role: 'user' }>).imagePaths).toEqual([GENERATED])
   })
 
-  it('passes the run signal to the model, and a signal of its own when none is given', async () => {
+  it('ties the run signal to the model call, and gives it a signal of its own when none is given', async () => {
     const { checker, ctx, turns } = await setup()
     const controller = new AbortController()
     await checker.check(ctx, { ...(await input(ctx)), signal: controller.signal })
-    expect(turns[0].req.signal).toBe(controller.signal)
+    expect(turns[0].req.signal).toBeInstanceOf(AbortSignal)
+    expect(turns[0].req.signal.aborted).toBe(false)
+    controller.abort()
+    expect(turns[0].req.signal.aborted).toBe(true)
     await checker.check(ctx, await input(ctx))
     expect(turns[1].req.signal).toBeInstanceOf(AbortSignal)
     expect(turns[1].req.signal.aborted).toBe(false)
@@ -319,5 +322,60 @@ describe('ConsistencyChecker', () => {
       }
     })
     expect(await checker.check(ctx, { ...(await input(ctx)), signal: controller.signal })).toEqual({ passed: true, issues: ['Consistency check failed to run: Cancelled'], skipped: true })
+  })
+})
+
+describe('ConsistencyChecker timeout (Ruling T25c)', () => {
+  const never = (): Promise<never> => new Promise(() => undefined)
+  /** Answers only when its signal fires, the way the real adapters do. */
+  const rejectOnAbort = (req: TextTurnRequest): Promise<never> =>
+    new Promise((_, reject) => {
+      req.signal.addEventListener('abort', () => reject(req.signal.reason))
+    })
+
+  it('gives the vision call 180 s by default', async () => {
+    expect(CHECK_TIMEOUT_MS).toBe(180_000)
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    try {
+      const { checker, ctx } = await setup()
+      await checker.check(ctx, await input(ctx))
+      expect(timeout).toHaveBeenCalledWith(180_000)
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it('answers a call that never returns with a skipped pass, even when the provider ignores its signal', async () => {
+    const { checker, ctx } = await setup({ timeoutMs: 40, provider: { runTurn: never } })
+    expect(await checker.check(ctx, await input(ctx))).toEqual({ passed: true, issues: ['Consistency check timed out after 0.04s'], skipped: true })
+  })
+
+  it('answers the same when the provider ends its call on the signal, and a caller signal is also in play', async () => {
+    const { checker, ctx } = await setup({ timeoutMs: 40, provider: { runTurn: rejectOnAbort } })
+    const controller = new AbortController()
+    expect(await checker.check(ctx, { ...(await input(ctx)), signal: controller.signal })).toEqual({ passed: true, issues: ['Consistency check timed out after 0.04s'], skipped: true })
+    expect(controller.signal.aborted).toBe(false)
+  })
+
+  it('tells a caller abort from a timeout: the run being stopped reads Cancelled', async () => {
+    for (const provider of [{ runTurn: never }, { runTurn: rejectOnAbort }]) {
+      const { checker, ctx } = await setup({ timeoutMs: 30_000, provider })
+      const controller = new AbortController()
+      const running = checker.check(ctx, { ...(await input(ctx)), signal: controller.signal })
+      setTimeout(() => controller.abort(), 20)
+      expect(await running).toEqual({ passed: true, issues: ['Consistency check failed to run: Cancelled'], skipped: true })
+    }
+  })
+
+  it('a run that was already stopped ends the check at once', async () => {
+    const { checker, ctx } = await setup({ timeoutMs: 30_000, provider: { runTurn: never } })
+    const controller = new AbortController()
+    controller.abort()
+    expect(await checker.check(ctx, { ...(await input(ctx)), signal: controller.signal })).toEqual({ passed: true, issues: ['Consistency check failed to run: Cancelled'], skipped: true })
+  })
+
+  it('does not disturb an answer that arrives in time', async () => {
+    const { checker, ctx } = await setup({ timeoutMs: 5_000, reply: () => '{"passed": false, "issues": ["x"]}' })
+    expect(await checker.check(ctx, await input(ctx))).toEqual({ passed: false, issues: ['x'], skipped: false })
   })
 })

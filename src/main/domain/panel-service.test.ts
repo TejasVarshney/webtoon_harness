@@ -75,7 +75,7 @@ const fail = (...issues: string[]): string => JSON.stringify({ passed: false, is
  * A real ConsistencyChecker over a scripted vision model: `replies` is the queue of answers (the checklist's
  * JSON contract; an empty queue passes), `onTurn` runs inside the vision call, and `requests` records each call.
  */
-function visionRig() {
+function visionRig(timeoutMs?: number) {
   const rig = {
     assigned: true,
     replies: [] as string[],
@@ -92,11 +92,11 @@ function visionRig() {
       return { text: typeof custom === 'string' ? custom : (rig.replies.shift() ?? PASS), toolCalls: [], stopReason: 'end', raw: null }
     }
   }
-  rig.checker = new ConsistencyChecker({ registry, docs, imageOps: createIdentityImageOps(), createTextProvider: () => provider })
+  rig.checker = new ConsistencyChecker({ registry, docs, imageOps: createIdentityImageOps(), createTextProvider: () => provider, timeoutMs })
   return rig
 }
 
-async function setup(opts: { vision?: boolean } = {}) {
+async function setup(opts: { vision?: boolean; visionTimeoutMs?: number } = {}) {
   const t = await tempProject()
   tp = t
   const calls: { fn: 'generate' | 'edit'; req: ImageRequest | ImageEditRequest }[] = []
@@ -140,7 +140,7 @@ async function setup(opts: { vision?: boolean } = {}) {
     trash,
     usage: { panelsUsingCharacter: (c, id) => svc.panelsUsingCharacter(c, id), panelsUsingVariation: (c, id) => svc.panelsUsingVariation(c, id) }
   })
-  const vision = visionRig()
+  const vision = visionRig(opts.visionTimeoutMs)
   svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, images, trash, checker: opts.vision ? vision.checker : undefined })
   const [epi] = await episodes.list(t.ctx)
   t.events.length = 0
@@ -668,7 +668,7 @@ describe('PanelService generate', () => {
 
 describe('PanelService generate with a vision consistency check (Task 25)', () => {
   /** A panel with Mina in the cast, ready to generate. */
-  async function withPanel(opts: { vision?: boolean } = { vision: true }) {
+  async function withPanel(opts: { vision?: boolean; visionTimeoutMs?: number } = { vision: true }) {
     const t = await setup(opts)
     const m = await mina(t.ctx)
     const p = (await t.svc.create(t.ctx, draft(t.epi.id, { characters: [castOf(m)] }), USER)).panel
@@ -912,18 +912,49 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
     expect(events.filter((e) => e.type === 'panel.changed' && e.panelId === p.id).length).toBeGreaterThanOrEqual(6)
   })
 
-  it('passes the run signal to the checker', async () => {
+  it('ties the run signal to the checker', async () => {
     const { svc, ctx, p, vision } = await withPanel()
     const controller = new AbortController()
     await svc.generate(ctx, p.id, { signal: controller.signal })
-    expect(vision.requests[0].signal).toBe(controller.signal)
+    expect(vision.requests[0].signal.aborted).toBe(false)
+    controller.abort()
+    expect(vision.requests[0].signal.aborted).toBe(true)
   })
 
-  it('stops retrying when the run is aborted during the check, and keeps what is recorded', async () => {
+  it('a hung check times out into a skipped pass: generate resolves, the image stays current and nothing is redrawn (Ruling T25c)', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel({ vision: true, visionTimeoutMs: 40 })
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = () => new Promise<never>(() => undefined)
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(v).toMatchObject({ status: 'ready', check: { passed: true, skipped: true, issues: ['Consistency check timed out after 0.04s'] } })
+    expect(panel.versions).toHaveLength(1)
+    expect(panel.versions[0].check).toEqual(v.check)
+    expect(panel.currentVersionId).toBe(v.id)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('stopping the run during a hung check ends it as Cancelled, not as a timeout, and nothing is redrawn', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel({ vision: true, visionTimeoutMs: 30_000 })
+    const controller = new AbortController()
+    vision.onTurn = () => {
+      setTimeout(() => controller.abort(), 10)
+      return new Promise<never>(() => undefined)
+    }
+    const v = await svc.generate(ctx, p.id, { signal: controller.signal })
+    expect(v).toMatchObject({ status: 'ready', check: { passed: true, skipped: true, issues: ['Consistency check failed to run: Cancelled'] } })
+    expect((await svc.get(ctx, p.id)).versions).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('stops retrying when the run is aborted as the verdict arrives, and keeps what is recorded', async () => {
     const { svc, ctx, p, vision, calls } = await withPanel()
     const controller = new AbortController()
-    vision.replies.push(fail('x'), PASS)
-    vision.onTurn = () => controller.abort()
+    // A verdict that lands together with the abort (the check itself finished): it is recorded, but nothing is redrawn.
+    vi.spyOn(vision.checker, 'check').mockImplementation(async () => {
+      controller.abort()
+      return { passed: false, issues: ['x'], skipped: false }
+    })
     const v = await svc.generate(ctx, p.id, { signal: controller.signal })
     const panel = await svc.get(ctx, p.id)
     expect(panel.versions).toHaveLength(1)

@@ -10,6 +10,9 @@ import { loadImageForTextModel, type ImageOps } from './image-ops'
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
 export const CHECKLIST_DOC = 'reference/consistency-checklist'
 
+/** How long the vision call may take before the check is given up (Ruling T25c); the image call has the same limit. */
+export const CHECK_TIMEOUT_MS = 180_000
+
 export interface ConsistencyCheckInput {
   /** The generated image to judge (project-relative). */
   imageRelPath: string
@@ -28,6 +31,8 @@ export interface ConsistencyCheckerOptions {
   imageOps: ImageOps
   /** Test seam; production uses the provider factory. */
   createTextProvider?: (r: ResolvedModel) => TextProvider
+  /** Test seam; production uses 180 s. */
+  timeoutMs?: number
 }
 
 const UNPARSEABLE: CheckResult = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
@@ -113,6 +118,22 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
   ].join('\n')
 }
 
+/**
+ * Settles with `promise`, or rejects with the signal's reason as soon as it aborts. A provider that
+ * ignores its signal therefore cannot keep a timed-out or cancelled check hanging.
+ */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    promise.catch(() => undefined)
+    return Promise.reject(signal.reason)
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
 function skipped(message: string): CheckResult {
   return { passed: true, issues: [`Consistency check failed to run: ${message}`], skipped: true }
 }
@@ -129,15 +150,23 @@ function failureMessage(error: unknown, signal: AbortSignal | undefined): string
  */
 export class ConsistencyChecker {
   private readonly create: (r: ResolvedModel) => TextProvider
+  private readonly timeoutMs: number
 
   constructor(private readonly opts: ConsistencyCheckerOptions) {
     this.create = opts.createTextProvider ?? defaultCreateTextProvider
+    this.timeoutMs = opts.timeoutMs ?? CHECK_TIMEOUT_MS
   }
 
-  /** The verdict, or null when no model is assigned to the `vision` role (the check is optional). */
+  /**
+   * The verdict, or null when no model is assigned to the `vision` role (the check is optional).
+   * Ruling T25c: the call is cut off after the timeout (a skipped pass, so the panel is not held up);
+   * a caller abort is told apart from it and reads "Cancelled".
+   */
   async check(ctx: ProjectContext, input: ConsistencyCheckInput): Promise<CheckResult | null> {
     const resolved = this.opts.registry.resolveOptional('vision')
     if (!resolved) return null
+    const timeout = AbortSignal.timeout(this.timeoutMs)
+    const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout
     try {
       const system = await this.opts.docs.read(ctx, CHECKLIST_DOC)
       const provider = this.create(resolved)
@@ -149,15 +178,19 @@ export class ConsistencyChecker {
         stateSnapshot: null,
         createdAt: new Date().toISOString()
       }
-      const turn = await provider.runTurn({
-        system,
-        messages: [message],
-        tools: [],
-        loadImage: (relPath) => loadImageForTextModel(ctx, this.opts.imageOps, relPath),
-        signal: input.signal ?? new AbortController().signal
-      })
+      const turn = await abortable(
+        provider.runTurn({
+          system,
+          messages: [message],
+          tools: [],
+          loadImage: (relPath) => loadImageForTextModel(ctx, this.opts.imageOps, relPath),
+          signal
+        }),
+        signal
+      )
       return parseCheckResponse(turn.text)
     } catch (error) {
+      if (timeout.aborted && !input.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${this.timeoutMs / 1000}s`], skipped: true }
       return skipped(failureMessage(error, input.signal))
     }
   }
