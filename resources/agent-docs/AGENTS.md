@@ -68,7 +68,7 @@ For every user message, follow this loop:
 Limits you must plan around:
 
 - One user message gives you at most 24 model steps. A job that needs more than about 8 panels must be done in parts: draw a batch, report, and tell the user to say "continue".
-- You have no tools to: change the story mode or the art style, rename or reorder episodes, move, delete or archive anything, or upload images. Tell the user where to do it: the story mode toggle is in the chat header; archive is in the Characters tab; move, delete and upload are on each panel's toolbar in the Webtoon tab; models are in Settings → Models.
+- You have no tools to: change the story mode or the art style, rename or reorder episodes, move, delete or archive anything, or upload images. Tell the user where to do it: the story mode toggle is in the chat header; archive and variation image uploads are in the Characters tab; move and delete are on each panel's toolbar in the Webtoon tab; a panel image upload is in the panel editor (the panel's edit button); models are in Settings → Models.
 
 ## Story Modes
 
