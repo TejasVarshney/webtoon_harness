@@ -73,7 +73,8 @@ export function VariationGrid({ character, projectId }: VariationGridProps) {
                   Regenerate
                 </button>
               )}
-              <button type="button" disabled={busyId !== null} onClick={() => void act(v.id, () => uploadVariationImage(character.id, v.id))}>
+              {/* While a generation runs, its result would overwrite the upload (or the upload the result). */}
+              <button type="button" disabled={busyId !== null || v.status === 'pending'} onClick={() => void act(v.id, () => uploadVariationImage(character.id, v.id))}>
                 Upload
               </button>
               {v.kind !== 'base' && <ConfirmButton label="Delete" disabled={busyId !== null} onConfirm={() => void act(v.id, () => deleteVariation(character.id, v.id))} />}

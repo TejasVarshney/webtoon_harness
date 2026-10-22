@@ -63,6 +63,15 @@ describe('CharacterStudio', () => {
     expect(screen.getByText('Archived')).toBeInTheDocument()
   })
 
+  it('offers no Upload on a variation while its image is generating', async () => {
+    const generating = variation({ id: 'var_0000000002', name: 'Outfit: Coat', kind: 'outfit', status: 'pending', imagePath: null })
+    mount({ 'characters:list': () => [{ ...mina, variations: [...mina.variations, generating] }] })
+    await userEvent.click(await screen.findByText('Mina'))
+    const [ready, pending] = await screen.findAllByTestId('variation-card')
+    expect(within(ready).getByRole('button', { name: 'Upload' })).toBeEnabled()
+    expect(within(pending).getByRole('button', { name: 'Upload' })).toBeDisabled()
+  })
+
   it('asks for a project first', () => {
     useAppStore.setState({ projectId: null })
     installFakeApi({})
