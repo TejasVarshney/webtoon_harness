@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ImageBlockParam, MessageParam, TextBlockParam, ToolResultBlockParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
 import type { ChatMessage, ToolCall } from '@shared/types'
 import type { ResolvedModel } from '../registry'
-import { replayImage } from './image-replay'
+import { planImageReplay, type ReplayImage } from './image-replay'
 import { ProviderError } from './types'
 import type { ImageLoader, TextProvider, TextTurnRequest, TextTurnResult } from './types'
 
@@ -91,21 +91,21 @@ export function executableToolUses(content: unknown[]): ToolUseBlock[] {
   return afterLastFallback(content).filter((b): b is ToolUseBlock => blockType(b) === 'tool_use')
 }
 
-/** The image, or the note that replaces an image that is gone (C1). */
-async function imageBlock(loadImage: ImageLoader, relPath: string): Promise<ImageBlockParam | TextBlockParam> {
-  const image = await replayImage(loadImage, relPath)
+/** The image, or the note that replaces it (gone, or an earlier image left out). */
+function imageBlock(image: ReplayImage): ImageBlockParam | TextBlockParam {
   if (image.kind === 'note') return { type: 'text', text: image.text }
   return { type: 'image', source: { type: 'base64', media_type: image.mime as MediaType, data: image.base64 } }
 }
 
 export async function toAnthropicMessages(messages: ChatMessage[], loadImage: ImageLoader): Promise<MessageParam[]> {
+  const replay = planImageReplay(messages, loadImage)
   const out: MessageParam[] = []
-  for (const m of messages) {
+  for (const [index, m] of messages.entries()) {
     if (m.role === 'user') {
       const content: ContentParam[] = []
       if (m.stateSnapshot) content.push({ type: 'text', text: m.stateSnapshot })
       if (m.text) content.push({ type: 'text', text: m.text })
-      for (const p of m.imagePaths) content.push(await imageBlock(loadImage, p))
+      for (const image of await replay(index, m.imagePaths)) content.push(imageBlock(image))
       if (content.length > 0) out.push({ role: 'user', content })
     } else if (m.role === 'assistant') {
       let content: ContentParam[]
@@ -120,10 +120,10 @@ export async function toAnthropicMessages(messages: ChatMessage[], loadImage: Im
       if (content.length > 0) out.push({ role: 'assistant', content })
     } else {
       const blocks: ToolResultBlockParam[] = []
-      for (const res of m.results) {
+      for (const [result, res] of m.results.entries()) {
         const inner: Array<TextBlockParam | ImageBlockParam> = []
         if (res.content) inner.push({ type: 'text', text: res.content })
-        for (const p of res.images) inner.push(await imageBlock(loadImage, p))
+        for (const image of await replay(index, res.images, result)) inner.push(imageBlock(image))
         if (inner.length === 0) inner.push({ type: 'text', text: '(no output)' })
         blocks.push({ type: 'tool_result', tool_use_id: res.toolCallId, is_error: !res.ok, content: inner })
       }

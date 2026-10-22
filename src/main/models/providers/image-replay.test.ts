@@ -117,3 +117,56 @@ describe('replaying images that are gone (C1)', () => {
     await expect(toOpenAIMessages('sys', [user('x', ['uploads/a.png'])], failing, true)).rejects.toThrow('EBUSY')
   })
 })
+
+describe('bounded image replay (C3, Ruling F2)', () => {
+  /** Ten earlier turns with an attachment each, an earlier run's tool image, then the latest turn and the current run. */
+  async function longHistory(): Promise<{ history: ChatMessage[]; loads: string[]; loadImage: ImageLoader }> {
+    const files: Record<string, Buffer> = { 'uploads/now-a.png': PNG, 'uploads/now-b.png': PNG, 'panels/pnl_0000000002/run.png': PNG, 'panels/pnl_0000000001/earlier.png': PNG }
+    for (let i = 0; i < 10; i++) files[`uploads/old-${i}.png`] = PNG
+    const inner = await project(files)
+    const loads: string[] = []
+    const loadImage: ImageLoader = (rel) => {
+      loads.push(rel)
+      return inner(rel)
+    }
+    const history: ChatMessage[] = []
+    for (let i = 0; i < 10; i++) {
+      history.push(user(`turn ${i}`, [`uploads/old-${i}.png`]))
+      if (i === 8) history.push(assistantCall('call_old'), toolResult('call_old', ['panels/pnl_0000000001/earlier.png']))
+    }
+    history.push(user('latest', ['uploads/now-a.png', 'uploads/now-b.png']), assistantCall('call_now'), toolResult('call_now', ['panels/pnl_0000000002/run.png']))
+    return { history, loads, loadImage }
+  }
+
+  const kept = ['uploads/old-8.png', 'panels/pnl_0000000001/earlier.png', 'uploads/old-9.png', 'uploads/now-a.png', 'uploads/now-b.png', 'panels/pnl_0000000002/run.png']
+  // The four most recent images before the latest user message: old-7, old-8, the earlier tool image, old-9.
+  const expectedLoads = ['uploads/old-7.png', ...kept]
+  const omitted = [0, 1, 2, 3, 4, 5, 6].map((i) => `[earlier image omitted: uploads/old-${i}.png]`)
+
+  it('anthropic: attaches the latest turn, the current run and the 4 most recent earlier images; notes the rest', async () => {
+    const { history, loads, loadImage } = await longHistory()
+    const json = JSON.stringify(await toAnthropicMessages(history, loadImage))
+    expect(loads).toEqual(expectedLoads)
+    expect(json.match(/"type":"image"/g)).toHaveLength(7)
+    for (const note of omitted) expect(json).toContain(JSON.stringify({ type: 'text', text: note }))
+    expect(json).not.toContain('omitted: uploads/old-7.png')
+  })
+
+  it('openai: the same images are attached and the same ones become notes', async () => {
+    const { history, loads, loadImage } = await longHistory()
+    const out = await toOpenAIMessages('sys', history, loadImage, true)
+    const json = JSON.stringify(out)
+    expect(loads).toEqual(expectedLoads)
+    expect(json.match(/"type":"image_url"/g)).toHaveLength(7)
+    for (const note of omitted) expect(json).toContain(JSON.stringify({ type: 'text', text: note }))
+  })
+
+  it('keeps every image of the current run, however many there are', async () => {
+    const files: Record<string, Buffer> = {}
+    for (let i = 0; i < 9; i++) files[`panels/pnl_0000000003/v${i}.png`] = PNG
+    const loadImage = await project(files)
+    const history: ChatMessage[] = [user('make nine panels')]
+    for (let i = 0; i < 9; i++) history.push(assistantCall(`call_${i}`), toolResult(`call_${i}`, [`panels/pnl_0000000003/v${i}.png`]))
+    expect(JSON.stringify(await toAnthropicMessages(history, loadImage)).match(/"type":"image"/g)).toHaveLength(9)
+  })
+})
