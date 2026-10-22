@@ -72,9 +72,12 @@ void app.whenReady().then(async () => {
       return result.canceled ? [] : result.filePaths
     }
   })
-  const { agent } = services
+  const { agent, panelChat } = services
   // Quitting mid-run: abort so every loop persists results for its pending tool calls.
-  app.on('before-quit', () => agent.cancelAll())
+  app.on('before-quit', () => {
+    agent.cancelAll()
+    panelChat.cancelAll()
+  })
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {
     for (const win of BrowserWindow.getAllWindows()) {

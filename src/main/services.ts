@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { AgentRunner } from './agent/agent-runner'
+import { PanelChatRunner } from './agent/panel-chat'
 import { WorkflowDocs } from './agent/workflow-docs'
 import { CharacterService, type PanelUsageLookup } from './domain/character-service'
 import { EpisodeService } from './domain/episode-service'
@@ -38,6 +39,7 @@ export interface Services {
   episodes: EpisodeService
   panels: PanelService
   agent: AgentRunner
+  panelChat: PanelChatRunner
 }
 
 /** The one place main-process services are constructed and wired together. */
@@ -67,5 +69,6 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
   const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters, episodes, panels } as Services
   services.agent = new AgentRunner({ services })
+  services.panelChat = new PanelChatRunner({ services })
   return services
 }

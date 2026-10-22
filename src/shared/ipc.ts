@@ -105,6 +105,11 @@ export interface IpcContract {
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
   'panels:uploadImage': { req: { projectId: string; panelId: string }; res: PanelVersion | null }
+  /** A panel's side-chat thread, oldest first; empty until the first message. */
+  'panelChat:load': { req: { projectId: string; panelId: string }; res: ChatMessage[] }
+  /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
+  'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
+  'panelChat:cancel': { req: { runId: string }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -155,7 +160,10 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:delete': true,
   'panels:move': true,
   'panels:revert': true,
-  'panels:uploadImage': true
+  'panels:uploadImage': true,
+  'panelChat:load': true,
+  'panelChat:send': true,
+  'panelChat:cancel': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

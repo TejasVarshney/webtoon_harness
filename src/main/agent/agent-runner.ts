@@ -1,24 +1,17 @@
 import { newId } from '@shared/ids'
-import type { AgentEvent, ChatMessage, UserMessage } from '@shared/types'
-import { loadImageForTextModel } from '../domain/image-ops'
-import { NoModelForRoleError, type ResolvedModel } from '../models/registry'
-import { createTextProvider as defaultCreateTextProvider } from '../models/providers/factory'
+import type { UserMessage } from '@shared/types'
+import type { ResolvedModel } from '../models/registry'
 import type { TextProvider } from '../models/providers/types'
 import type { Services } from '../services'
 import type { ProjectContext } from '../storage/project-store'
-import { runAgentLoop } from './loop'
+import { RunHost } from './run-host'
 import { buildAgentSystemPrompt, buildStateSnapshot } from './system-prompt'
 import { buildAgentTools } from './tools'
 
+export { SessionBusyError } from './run-host'
+
 /** How many of the current episode's final panels the state snapshot summarizes. */
 const RECENT_PANELS = 3
-
-export class SessionBusyError extends Error {
-  constructor(sessionId: string) {
-    super(`A run is already in progress for session ${sessionId}`)
-    this.name = 'SessionBusyError'
-  }
-}
 
 export interface AgentRunnerOptions {
   services: Services
@@ -33,98 +26,58 @@ export interface StartRunInput {
   activeEpisodeId: string | null
 }
 
-interface ActiveRun {
-  runId: string
-  controller: AbortController
-}
-
 /** Connects chat sessions to the agent loop: builds the prompt and state snapshot, persists, and relays events. */
 export class AgentRunner {
   private readonly services: Services
-  private readonly createProvider: (r: ResolvedModel) => TextProvider
-  /** Running runs by thread key (the session id). */
-  private readonly running = new Map<string, ActiveRun>()
+  private readonly host: RunHost
 
   constructor(opts: AgentRunnerOptions) {
     this.services = opts.services
-    this.createProvider = opts.createTextProvider ?? defaultCreateTextProvider
+    this.host = new RunHost(opts)
   }
 
   isRunning(threadKey: string): boolean {
-    return this.running.has(threadKey)
+    return this.host.isRunning(threadKey)
   }
 
   cancel(runId: string): void {
-    for (const run of this.running.values()) if (run.runId === runId) run.controller.abort()
+    this.host.cancel(runId)
   }
 
   /** Aborts every run (app quit). Each loop still persists a result for its pending tool calls. */
   cancelAll(): void {
-    for (const run of this.running.values()) run.controller.abort()
+    this.host.cancelAll()
   }
 
-  async start(input: StartRunInput): Promise<{ runId: string }> {
-    const threadKey = input.sessionId
-    // Check and register with no await in between, so two quick calls cannot both pass.
-    if (this.running.has(threadKey)) throw new SessionBusyError(threadKey)
-    const runId = newId('run')
-    const controller = new AbortController()
-    this.running.set(threadKey, { runId, controller })
-
-    let background: Promise<void> | null = null
-    try {
-      const { sessions, projects, bus } = this.services
-      const ctx = await projects.open(input.projectId)
-      const history = await sessions.load(ctx, input.sessionId)
-      const snapshot = buildStateSnapshot(await this.gatherState(ctx, input.activeEpisodeId))
-      const userMessage: UserMessage = {
-        id: newId('msg'),
-        role: 'user',
-        text: input.text,
-        imagePaths: input.imagePaths,
-        stateSnapshot: snapshot,
-        createdAt: new Date().toISOString()
+  start(input: StartRunInput): Promise<{ runId: string }> {
+    return this.host.start({
+      threadKey: input.sessionId,
+      role: 'agent',
+      prepare: async () => {
+        const { sessions, projects } = this.services
+        const ctx = await projects.open(input.projectId)
+        const history = await sessions.load(ctx, input.sessionId)
+        const snapshot = buildStateSnapshot(await this.gatherState(ctx, input.activeEpisodeId))
+        const userMessage: UserMessage = {
+          id: newId('msg'),
+          role: 'user',
+          text: input.text,
+          imagePaths: input.imagePaths,
+          stateSnapshot: snapshot,
+          createdAt: new Date().toISOString()
+        }
+        await sessions.append(ctx, input.sessionId, [userMessage])
+        return {
+          ctx,
+          history: [...history, userMessage],
+          persist: (msgs) => sessions.append(ctx, input.sessionId, msgs),
+          configure: async (resolved) => ({
+            system: buildAgentSystemPrompt(await this.services.docs.agentsMd(ctx), await this.services.docs.list(ctx)),
+            tools: buildAgentTools({ vision: resolved.model.capabilities.includes('vision') })
+          })
+        }
       }
-      await sessions.append(ctx, input.sessionId, [userMessage])
-
-      const emit = (event: AgentEvent): void => bus.emit({ type: 'agent.event', projectId: ctx.id, threadKey, event })
-
-      let resolved: ResolvedModel
-      let provider: TextProvider
-      try {
-        resolved = this.services.registry.resolve('agent')
-        provider = this.createProvider(resolved)
-      } catch (err) {
-        // A missing role (Review Focus 3) or an unsupported endpoint ends the run cleanly instead of throwing.
-        emit({ kind: 'run-finished', runId, outcome: 'error', error: err instanceof Error ? err.message : String(err) })
-        if (!(err instanceof NoModelForRoleError)) console.error('agent run could not start:', err)
-        this.release(threadKey, runId)
-        return { runId }
-      }
-
-      const system = buildAgentSystemPrompt(await this.services.docs.agentsMd(ctx), await this.services.docs.list(ctx))
-      background = runAgentLoop({
-        runId,
-        provider,
-        system,
-        history: [...history, userMessage],
-        tools: buildAgentTools({ vision: resolved.model.capabilities.includes('vision') }),
-        toolCtx: { project: ctx, services: this.services, threadKey },
-        model: { endpointId: resolved.endpoint.id, modelId: resolved.model.modelId },
-        loadImage: (rel) => loadImageForTextModel(ctx, this.services.imageOps, rel),
-        signal: controller.signal,
-        persist: (msgs: ChatMessage[]) => sessions.append(ctx, input.sessionId, msgs),
-        emit
-      }).then(
-        () => undefined,
-        (err) => console.error('agent loop failed unexpectedly:', err)
-      )
-    } catch (err) {
-      this.release(threadKey, runId)
-      throw err
-    }
-    void background.finally(() => this.release(threadKey, runId))
-    return { runId }
+    })
   }
 
   /**
@@ -138,9 +91,5 @@ export class AgentRunner {
     const episode = episodes.find((e) => e.id === activeEpisodeId) ?? episodes[0] ?? null
     const recentPanels = episode ? (await this.services.panels.list(ctx, episode.id)).slice(-RECENT_PANELS) : []
     return { meta: await this.services.projects.getMeta(ctx), characters, episode, recentPanels }
-  }
-
-  private release(threadKey: string, runId: string): void {
-    if (this.running.get(threadKey)?.runId === runId) this.running.delete(threadKey)
   }
 }
