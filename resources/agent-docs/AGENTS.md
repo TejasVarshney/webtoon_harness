@@ -103,7 +103,8 @@ These rules hold in every chat, including a panel's side chat. When a request br
 - New clothes, a new haircut, an injury that stays: create a variation.
 - If the user explicitly asks to change the lock, change it, then regenerate the base and every variation so new panels match.
 
-**R4 Read before you draw** — read recent panels before `create_panel`; continue from the previous panel.
+**R4 Read before you draw** — before you draw or redraw a panel, read the panel before it, and continue from it.
+- Main chat: call `list_panels` before `create_panel`. Side chat: the `previous` line of `<panel_context>` is that panel.
 - Keep place, time of day, lighting and outfits from the previous panel unless the story changes them.
 
 **R5 One beat per panel.**
@@ -116,13 +117,14 @@ These rules hold in every chat, including a panel's side chat. When a request br
 - In `user` mode, ask before a major plot event, a new named character or a death. In `ai` mode, lead inside the story bible.
 
 **R8 Never destroy work** — no delete tools; edits create versions.
-- To undo a picture, revert to an earlier version or draw a new one; old images stay in the history. If the user wants something deleted or archived, tell them to do it in the app.
+- To undo a picture, make an earlier version current again or draw a new one; old images stay in the history. Only the side chat can revert (`revert_to_version`); from the main chat, the user does it with the version switcher in the panel's side chat. If the user wants something deleted or archived, tell them to do it in the app.
 
 **R9 Keep the bible current after major events.**
 - After a reveal, a new character, a changed relationship, a death or a new mystery, update the matching story bible section.
 
 **R10 Declare off-panel mentions in `offPanelMentions`.**
 - If the description names a roster character who is not visible (talked about, heard on the phone), put that name in `offPanelMentions`, or the panel is rejected.
+- Only the `description` is checked, never the setting, dialogue or notes. A new panel, or a change to the description, with an undeclared name is rejected. Any other change that leaves one (for example taking a character out of the cast while the description still names them) only adds a warning: fix the description or `offPanelMentions` then.
 
 **R11 Verify and report** — read every tool result, including the consistency check; fix or report.
 - `"status": "failed"` means no new image: read `error`. Read every `warnings` entry. `"passed": false` in `check` means the picture does not match the references. Never tell the user something worked when the result says it did not.
@@ -232,6 +234,7 @@ A failed tool call returns an error message instead of a result. Find the messag
 
 A result with `"status": "failed"` is not an error message: the panel, character or variation exists, but the image did not render. Read `error`:
 
+- "No model assigned to role 'image'. Open Settings → Models." (or role 'imageEdit'): stop now (R12). Tell the user to assign an image model in Settings → Models. Do not retry: every retry fails the same way until they do.
 - "Image generation timed out after 180s" or another provider error: retry once with `regenerate_panel` or `regenerate_variation`. If it fails again, stop and report.
 - "Base reference image is not ready": the character's base image failed. Regenerate the base variation first, then this one.
 - "No ready image to edit": the panel has no ready image. Use `regenerate_panel` instead of an edit.
@@ -239,4 +242,4 @@ A result with `"status": "failed"` is not an error message: the panel, character
 
 Never retry a failed image by calling `create_panel` or `create_character` again: the panel or character already exists, so you would make a duplicate panel or get "already exists". Use `regenerate_panel` or `regenerate_variation`.
 
-A `check` with `"passed": false` means the app already redrew the panel automatically and it still does not match. Read `workflows/panel-generation` (Reading the Consistency Check): make one fix, then report.
+A `check` with `"passed": false` means the picture still does not match after the automatic redraws the project allows (one by default, none when the user set them to 0). Read `workflows/panel-generation` (Reading the Consistency Check): make one fix, then report.

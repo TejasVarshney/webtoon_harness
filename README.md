@@ -163,7 +163,7 @@ The chat header has a story-mode switch. In **User-led** mode the agent follows 
 | `WEBTOON_PROJECTS_ROOT` | Folder that holds the project folders. |
 | `WEBTOON_MOCK_SCRIPT` | Path to a mock script (see [First run](#first-run-on-the-mock-models)); only the mock model reads it. |
 
-The end-to-end tests set all three to throwaway folders.
+The end-to-end tests point `WEBTOON_USER_DATA` and `WEBTOON_PROJECTS_ROOT` at throwaway folders, and set `WEBTOON_MOCK_SCRIPT` (a file, not a folder) to a temporary script only in the tests that script the mock; without one, the mock model answers each message with `(mock) <your text>`.
 
 ## Tests
 

@@ -5,7 +5,7 @@
 This doc tells you how to change a panel that already exists: its dialogue, its fields, or its image. It applies in two places:
 
 - **The panel side chat.** The user selected one panel and is talking to you about it. This doc and the Hard Rules are your instructions there.
-- **The main chat**, when the user asks to change an existing panel there. The main-chat tools are named in each section.
+- **The main chat**, when the user asks to change an existing panel there. The Scope table gives the main-chat tool for each side-chat tool, and Example 7 is a main-chat edit.
 
 In the side chat, every user message starts with a `<panel_context>` block. The app writes it; the user does not see it. Example:
 
@@ -113,6 +113,7 @@ A character must look the same in every panel. When you change a panel:
 3. **A different look is a different variation.** Clothes, haircut, age, transformation: the cast entry must wear another variation. If it does not exist, the user creates it in the main chat or the Characters tab (R3).
 4. **The appearance lock is not changed here.** If the user wants a character to look different from now on, tell them to ask in the main chat.
 5. **The cast list is replaced whole.** When `update_panel_fields` sends `characters`, every cast member you keep must be in the list with their `characterId` and `variationId` (copy them from `get_panel_context`). A character you leave out is removed from the panel.
+6. **Names in the description are checked (R10).** Only the `description` is scanned for roster names and aliases; the setting, dialogue and notes are not. A change that sends `description` is rejected with "Mentioned but not attached: ..." when it names someone who is neither cast nor in `offPanelMentions`. A change that leaves the description alone, such as removing someone from the cast, is saved with that message in `warnings` instead: then also update the description or `offPanelMentions`.
 
 ## Versions and Revert
 
@@ -147,7 +148,7 @@ After each change, tell the user in 1 to 3 sentences:
 - **What changed:** the fields, the image, or both.
 - **The new version label** for an image change: the result's `label` ("Done: this is now v4.").
 - **When the picture did not change:** after a fields-only change, say the image is unchanged and offer to redraw if the change should be visible.
-- **A failed check:** if `check` has `"passed": false` after `regenerate_image`, say what the issues are in plain words and that the app already tried once more. Offer one `edit_image` to fix a detail, or leave it to the user to pick a version (R11). Edits are not checked, so `check` is `null` after `edit_image`.
+- **A failed check:** if `check` has `"passed": false` after `regenerate_image`, say what the issues are in plain words. The app redraws automatically as often as the project allows (once by default, never when that is set to 0), so this verdict is on the image that is current now. Offer one `edit_image` to fix a detail, or leave it to the user to pick a version (R11). Edits are not checked, so `check` is `null` after `edit_image`.
 - **Failures:** if `status` is `failed`, say the previous image is still shown, give the reason from `error`, and offer one retry. If it fails twice, stop (R12).
 - **Warnings:** read every entry of `warnings` and pass on what matters.
 
