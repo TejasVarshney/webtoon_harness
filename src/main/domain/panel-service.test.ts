@@ -834,6 +834,37 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
     expect(panel.versions[1].prompt).toContain('[ACTION] Edited during the check')
   })
 
+  it('stops retrying when the user reverted to another version during the check, and returns that version', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    const first = await svc.generate(ctx, p.id) // v1: passes
+    vision.replies.push(fail('Mina hair is black'), PASS)
+    vision.onTurn = async (n) => {
+      if (n === 2) await svc.revert(ctx, p.id, first.id) // the user goes back to v1 while v2 is being checked
+    }
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(calls).toHaveLength(2) // no redraw on top of the user's choice
+    expect(panel.versions).toHaveLength(2)
+    expect(panel.currentVersionId).toBe(first.id)
+    expect(v.id).toBe(first.id)
+    expect(panel.versions[1].check).toMatchObject({ passed: false, issues: ['Mina hair is black'] })
+  })
+
+  it('stops retrying when the user uploaded an image during the check, and returns the upload', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    vision.replies.push(fail('wrong outfit'), PASS)
+    let upload: PanelVersion | undefined
+    vision.onTurn = async (n) => {
+      if (n === 1) upload = await svc.uploadImage(ctx, p.id, PNG, 'png')
+    }
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(calls).toHaveLength(1)
+    expect(panel.currentVersionId).toBe(upload!.id)
+    expect(v.id).toBe(upload!.id)
+    expect(panel.versions.map((x) => x.source)).toEqual(['generate', 'upload'])
+  })
+
   it('a redraw whose image fails keeps the first attempt current and returns it with its check', async () => {
     const { svc, ctx, p, vision, behavior } = await withPanel()
     vision.replies.push(fail('Mina hair is black'))

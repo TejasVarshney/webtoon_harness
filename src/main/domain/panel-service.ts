@@ -182,7 +182,8 @@ export class PanelService implements PanelUsageLookup {
    * Draws the panel, checks the image when a vision model is assigned, and redraws up to the project's
    * `consistencyRetries` times while the check fails (spec §9, step 5). Resolves to the version that
    * became current: the last attempt that landed, which is the passing one when any passed. A first
-   * draw that fails is returned as it is (`failed`, never checked).
+   * draw that fails is returned as it is (`failed`, never checked). When the user reverts or uploads
+   * while a check runs, nothing more is redrawn and the version they made current is returned.
    *
    * Ruling T18a: each draw prepares first (an unknown cast, no image model, ... becomes a `failed`
    * version and never a throw), appends the version under the panel lock, calls the model OUTSIDE it,
@@ -201,10 +202,13 @@ export class PanelService implements PanelUsageLookup {
       const { panel, roster, references } = draw.context
       const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, signal: opts.signal })
       if (check === null) return landed
-      const recorded = await this.recordCheck(ctx, id, landed.id, check)
+      const stored = await this.recordCheck(ctx, id, landed.id, check)
       landed = { ...landed, check }
       // A check that is not on the version (panel deleted, file unwritable) ends the loop: a redraw would be unreachable or unrecorded too.
-      if (!recorded || check.passed || check.skipped || retriesLeft <= 0 || opts.signal?.aborted) return landed
+      if (stored === null) return landed
+      // The user reverted or uploaded while the check ran: their choice stands, and it is what is current now.
+      if (stored.currentVersionId !== landed.id) return stored.versions.find((v) => v.id === stored.currentVersionId) ?? landed
+      if (check.passed || check.skipped || retriesLeft <= 0 || opts.signal?.aborted) return landed
       retriesLeft--
       try {
         draw = await this.draw(ctx, id, { signal: opts.signal, extraInstruction: fixInstruction(check.issues) })
@@ -430,18 +434,20 @@ export class PanelService implements PanelUsageLookup {
    * vision call survive). Never throws. Returns whether it was stored: false when the panel or the
    * version is gone, the file is unreadable (it is left alone) or the write failed.
    */
-  private async recordCheck(ctx: ProjectContext, panelId: string, versionId: string, check: CheckResult): Promise<boolean> {
+  /** Records the verdict on the version; resolves to the panel as stored then, or null when it could not be recorded. */
+  private async recordCheck(ctx: ProjectContext, panelId: string, versionId: string, check: CheckResult): Promise<Panel | null> {
     const file = ctx.paths.panelFile(panelId)
-    let stored: boolean
+    let stored: Panel | null
     try {
       stored = await ctx.mutex.run(file, async () => {
         const current = await readPanelFile(file, panelId)
-        if (!current.versions.some((v) => v.id === versionId)) return false
-        await writeJsonAtomic(file, { ...current, versions: current.versions.map((v) => (v.id === versionId ? { ...v, check } : v)), updatedAt: now() })
-        return true
+        if (!current.versions.some((v) => v.id === versionId)) return null
+        const next: Panel = { ...current, versions: current.versions.map((v) => (v.id === versionId ? { ...v, check } : v)), updatedAt: now() }
+        await writeJsonAtomic(file, next)
+        return next
       })
     } catch {
-      return false
+      return null
     }
     if (stored) this.emit(ctx, panelId)
     return stored
