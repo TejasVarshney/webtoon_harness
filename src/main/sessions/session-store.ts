@@ -8,6 +8,7 @@ import { EntityNotFoundError } from '../domain/errors'
 import type { EventBus } from '../events/bus'
 import { appendJsonl, readJsonl } from '../storage/jsonl'
 import type { ProjectContext } from '../storage/project-store'
+import { isNotFound } from '../storage/fs-errors'
 
 const DEFAULT_TITLE = 'New session'
 const TITLE_MAX = 60
@@ -17,11 +18,6 @@ const TitleRecord = z.object({ type: z.literal('title'), title: z.string(), at: 
 const MessageRecord = z.object({ type: z.literal('message'), message: ChatMessageSchema })
 const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord])
 type SessionRecord = z.infer<typeof RecordSchema>
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 function summarize(records: SessionRecord[]): SessionSummary | null {
   const meta = records.find((r): r is z.infer<typeof MetaRecord> => r.type === 'meta')

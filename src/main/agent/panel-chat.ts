@@ -11,15 +11,11 @@ import type { ProjectContext } from '../storage/project-store'
 import { RunHost } from './run-host'
 import { buildPanelChatSystemPrompt, buildPanelContext } from './system-prompt'
 import { buildPanelChatTools, loadPanelBundle } from './tools/panel-chat-tools'
+import { isNotFound } from '../storage/fs-errors'
 
 /** Shown as the run's error when the panel goes away under a running chat. */
 const PANEL_DELETED = 'Panel was deleted'
 const PANEL_EDITING_DOC = 'workflows/panel-editing'
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 export interface PanelChatRunnerOptions {
   services: Services
@@ -72,6 +68,7 @@ export class PanelChatRunner {
   start(input: StartPanelChatInput): Promise<{ runId: string }> {
     return this.host.start({
       threadKey: `panel:${input.panelId}`,
+      subject: `panel ${input.panelId}`,
       role: 'panelChat',
       prepare: async () => {
         const ctx = await this.services.projects.open(input.projectId)

@@ -2,11 +2,11 @@ import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
 import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Episode, Panel, PanelVersion } from '@shared/types'
-import { EntityNotFoundError } from '../../domain/errors'
+import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
-import { castNames } from '../system-prompt'
+import { castNames, speakerName, type PanelNeighbor } from '../system-prompt'
 import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 /*
@@ -18,7 +18,6 @@ import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinit
 
 /** What the model sees of a panel's own fields. `roster` includes archived characters, which still name the cast of existing panels. */
 function fieldsView(panel: Panel, roster: Character[]) {
-  const speakers = new Map(roster.map((c) => [c.id, c.name]))
   return {
     shot: panel.shot,
     aspect: panel.aspect,
@@ -37,17 +36,17 @@ function fieldsView(panel: Panel, roster: Character[]) {
     dialogue: panel.dialogue.map((line) => ({
       id: line.id,
       speakerId: line.speakerId,
-      speaker: line.speakerId === null ? null : (speakers.get(line.speakerId) ?? line.speakerId),
+      speaker: speakerName(line, roster),
       kind: line.kind,
       text: line.text
     }))
   }
 }
 
-/** A neighboring panel in a few lines. */
-function neighborView(panel: Panel | null, roster: Character[]) {
+/** A neighboring panel in a few lines; `{ unreadable: true }` when its file could not be read. */
+function neighborView(panel: PanelNeighbor, roster: Character[]) {
   if (panel === null) return null
-  const speakers = new Map(roster.map((c) => [c.id, c.name]))
+  if (panel === 'unreadable') return { unreadable: true }
   return {
     id: panel.id,
     shot: panel.shot,
@@ -58,7 +57,7 @@ function neighborView(panel: Panel | null, roster: Character[]) {
       const { name, variationName } = castNames(entry, roster)
       return { name, variationName }
     }),
-    dialogue: panel.dialogue.map((line) => ({ speaker: line.speakerId === null ? null : (speakers.get(line.speakerId) ?? line.speakerId), kind: line.kind, text: line.text }))
+    dialogue: panel.dialogue.map((line) => ({ speaker: speakerName(line, roster), kind: line.kind, text: line.text }))
   }
 }
 
@@ -66,13 +65,25 @@ export interface PanelBundle {
   panel: Panel
   /** Every character, archived ones included. */
   roster: Character[]
-  previous: Panel | null
-  next: Panel | null
+  previous: PanelNeighbor
+  next: PanelNeighbor
+}
+
+/** Notes an unreadable panel file in `ctx.problems` (once per file), the way the panel service does for the panels it lists. */
+function reportUnreadable(project: ProjectContext, error: CorruptFileError): void {
+  let rel: string
+  try {
+    rel = project.paths.toRelative(error.path)
+  } catch {
+    rel = error.path
+  }
+  if (!project.problems.some((p) => p.path === rel)) project.problems.push({ path: rel, message: error.message })
 }
 
 /**
  * A panel with what its side chat needs around it: the roster and the panels before and after it in its
- * episode. A neighbor that is missing or cannot be read is left out: it is context, not the thing being edited.
+ * episode. A neighbor whose file is gone, or whose id names no panel (a hand-edited episode), counts as none.
+ * One whose file is corrupt is `'unreadable'` and is reported as a project problem. Any other failure is thrown.
  */
 export async function loadPanelBundle(services: Services, project: ProjectContext, panelId: string): Promise<PanelBundle> {
   const panel = await services.panels.get(project, panelId)
@@ -84,7 +95,19 @@ export async function loadPanelBundle(services: Services, project: ProjectContex
     if (!(error instanceof EntityNotFoundError)) throw error
   }
   const at = episode ? episode.panelIds.indexOf(panel.id) : -1
-  const neighbor = (id: string | undefined): Promise<Panel | null> => (id === undefined ? Promise.resolve(null) : services.panels.get(project, id).catch(() => null))
+  const neighbor = async (id: string | undefined): Promise<PanelNeighbor> => {
+    if (id === undefined) return null
+    try {
+      return await services.panels.get(project, id)
+    } catch (error) {
+      if (error instanceof EntityNotFoundError || error instanceof PathEscapeError) return null
+      if (error instanceof CorruptFileError) {
+        reportUnreadable(project, error)
+        return 'unreadable'
+      }
+      throw error
+    }
+  }
   const [previous, next] = at === -1 ? [null, null] : await Promise.all([neighbor(episode?.panelIds[at - 1]), neighbor(episode?.panelIds[at + 1])])
   return { panel, roster, previous, next }
 }
@@ -102,11 +125,16 @@ function versionResult(v: PanelVersion, label: string | null): ToolOutput {
   }
 }
 
-/** A new version's label counts the ready versions after the attempt was recorded, so it is read back. */
+/**
+ * A new version's label counts the ready versions after the attempt was recorded, so the panel is read back.
+ * A ready result always carries its label (Ruling P7): if the panel cannot be read back (it was deleted, or the
+ * read failed) or no longer lists the version as ready, the call fails with that reason instead.
+ */
 async function recordedResult(ctx: ToolContext, panelId: string, v: PanelVersion): Promise<ToolOutput> {
   if (v.status !== 'ready') return versionResult(v, null)
-  const panel = await ctx.services.panels.get(ctx.project, panelId).catch(() => null)
-  return versionResult(v, panel ? versionLabel(panel, v.id) : null)
+  const label = versionLabel(await ctx.services.panels.get(ctx.project, panelId), v.id)
+  if (label === null) throw new ToolError(`Version ${v.id} is no longer a ready version of this panel`)
+  return versionResult(v, label)
 }
 
 const getPanelContext = (panelId: string): ToolDefinition =>

@@ -3,13 +3,9 @@ import path from 'node:path'
 import { EntityNotFoundError, PathEscapeError } from '../domain/errors'
 import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
+import { isNotFound } from '../storage/fs-errors'
 
 const AGENTS = 'AGENTS.md'
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 /** Every file under `dir` as POSIX paths relative to it, sorted. A missing dir is empty. */
 async function walk(dir: string, prefix = ''): Promise<string[]> {

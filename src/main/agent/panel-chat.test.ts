@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, AppEvent, Panel, PanelDraft, ToolMessage, UserMessage } from '@shared/types'
 import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
 import { encodeSolidPng } from '../models/providers/png'
@@ -18,6 +18,7 @@ const runners: PanelChatRunner[] = []
 const keys: string[] = []
 
 beforeEach(() => resetMockScripts())
+afterAll(() => fs.rmSync(dir, { recursive: true, force: true }))
 afterEach(async () => {
   vi.restoreAllMocks()
   for (const runner of runners) runner.cancelAll()
@@ -144,20 +145,55 @@ describe('PanelChatRunner', () => {
     expect(fs.existsSync(ctx.paths.panelChatFile(p1.id))).toBe(false)
   })
 
-  it('keeps the transcript when the app is reopened: the next message continues the thread', async () => {
+  it('continues the thread after a restart: a fresh runner sends the stored history with the new message', async () => {
     const provider = recorder()
-    const { runner, ctx, start, eventsOf, p2 } = await setup([], () => provider)
+    const { runner, s, ctx, projectId, start, eventsOf, p2 } = await setup([], () => provider)
     await start(p2.id, 'First')
     await finished(() => eventsOf(p2.id))
     await vi.waitFor(() => expect(runner.isRunning(`panel:${p2.id}`)).toBe(false))
-    await start(p2.id, 'Second')
+
+    const reopened = new PanelChatRunner({ services: s, createTextProvider: () => provider })
+    runners.push(reopened)
+    await reopened.start({ projectId, panelId: p2.id, text: 'Second' })
     await vi.waitFor(() => expect(provider.requests).toHaveLength(2))
     expect(provider.requests[0].messages.map((m) => m.role)).toEqual(['user'])
     expect(provider.requests[1].messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
     // Each user message keeps the snapshot it was sent with, so replays are byte-identical.
     const second = provider.requests[1].messages
     expect((second[0] as UserMessage).stateSnapshot).toContain('<panel_context>')
-    await vi.waitFor(async () => expect(await runner.load(ctx, p2.id)).toHaveLength(4))
+    expect(second.map((m) => (m.role === 'user' ? m.text : null)).filter(Boolean)).toEqual(['First', 'Second'])
+    await vi.waitFor(async () => expect(await reopened.load(ctx, p2.id)).toHaveLength(4))
+  })
+
+  describe('neighbors that cannot be shown', () => {
+    it('writes (unreadable) into the snapshot for a corrupt neighbor, and reports the file', async () => {
+      const { runner, ctx, start, eventsOf, p1, p2, p3 } = await setup([{ text: 'ok' }])
+      await fs.promises.writeFile(ctx.paths.panelFile(p1.id), '{ not json', 'utf8')
+      await start(p2.id)
+      await finished(() => eventsOf(p2.id))
+      const snapshot = ((await runner.load(ctx, p2.id))[0] as UserMessage).stateSnapshot!
+      expect(snapshot).toContain('\nprevious: (unreadable)\n')
+      expect(snapshot).toContain(`\nnext: ${p3.id}`)
+      expect(ctx.problems).toEqual([{ path: `panels/${p1.id}.json`, message: expect.stringContaining('invalid JSON') }])
+    })
+
+    it('writes none for a neighbor whose file is gone, and reports nothing', async () => {
+      const { runner, ctx, start, eventsOf, p2, p3 } = await setup([{ text: 'ok' }])
+      await fs.promises.rm(ctx.paths.panelFile(p3.id))
+      await start(p2.id)
+      await finished(() => eventsOf(p2.id))
+      expect(((await runner.load(ctx, p2.id))[0] as UserMessage).stateSnapshot).toContain('\nnext: none\n')
+      expect(ctx.problems).toEqual([])
+    })
+
+    it('does not hide any other failure: the message is refused and nothing is stored', async () => {
+      const { runner, s, ctx, start, p1, p2 } = await setup([{ text: 'ok' }])
+      const real = s.panels.get.bind(s.panels)
+      vi.spyOn(s.panels, 'get').mockImplementation((c, id) => (id === p1.id ? Promise.reject(new Error('disk on fire')) : real(c, id)))
+      await expect(start(p2.id)).rejects.toThrow('disk on fire')
+      expect(runner.isRunning(`panel:${p2.id}`)).toBe(false)
+      expect(fs.existsSync(ctx.paths.panelChatFile(p2.id))).toBe(false)
+    })
   })
 
   it('locks per panel, not globally', async () => {

@@ -1,5 +1,5 @@
 import { versionPosition } from '@shared/panel-versions'
-import type { Character, Episode, Panel, PanelCharacter, ProjectMeta } from '@shared/types'
+import type { Character, DialogueLine, Episode, Panel, PanelCharacter, ProjectMeta } from '@shared/types'
 
 /** AGENTS.md plus the index of the other workflow docs. Stable for a given input. */
 export function buildAgentSystemPrompt(agentsMd: string, index: { name: string; title: string }[]): string {
@@ -71,15 +71,26 @@ export function castNames(entry: PanelCharacter, roster: Character[]): { name: s
   return { name: character ? oneLine(character.name) : entry.characterId, variationName: variation ? oneLine(variation.name) : entry.variationId }
 }
 
+/** Who says a dialogue line: the character's name (the id when the roster lacks it), or null for narration and sound effects. */
+export function speakerName(line: DialogueLine, roster: Character[]): string | null {
+  if (line.speakerId === null) return null
+  const speaker = roster.find((c) => c.id === line.speakerId)
+  return speaker ? oneLine(speaker.name) : line.speakerId
+}
+
+/** A panel next to the one being edited: none (no such panel), or `'unreadable'` (its file is there but cannot be read). */
+export type PanelNeighbor = Panel | 'unreadable' | null
+
 /**
  * The `<panel_context>` block stored with each panel side-chat message. `roster` should include archived
  * characters: they still name the cast and speakers of panels drawn before they were archived.
  */
-export function buildPanelContext(panel: Panel, roster: Character[], prev: Panel | null, next: Panel | null): string {
-  const names = new Map(roster.map((c) => [c.id, c.name]))
+export function buildPanelContext(panel: Panel, roster: Character[], prev: PanelNeighbor, next: PanelNeighbor): string {
+  const names = new Map(roster.map((c) => [c.id, oneLine(c.name)]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
   const position = versionPosition(panel, panel.currentVersionId)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
+  const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, variationOf))
   const lines = [
     '<panel_context>',
     `panel: ${panel.id}`,
@@ -93,7 +104,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], prev: Panel
   ]
   if (panel.continuityNotes.trim() !== '') lines.push(`continuity_notes: ${oneLine(panel.continuityNotes)}`)
   if (panel.offPanelMentions.length > 0) lines.push(`off_panel_mentions: ${panel.offPanelMentions.map(oneLine).join(', ')}`)
-  lines.push(`previous: ${prev ? panelSummary(prev, names, variationOf) : 'none'}`, `next: ${next ? panelSummary(next, names, variationOf) : 'none'}`, '</panel_context>')
+  lines.push(`previous: ${neighbor(prev)}`, `next: ${neighbor(next)}`, '</panel_context>')
   return lines.join('\n')
 }
 

@@ -9,10 +9,10 @@ import type { ProjectContext } from '../storage/project-store'
 import { runAgentLoop } from './loop'
 import type { ToolRegistry } from './tools/registry'
 
-/** A second run was started on a thread (a chat session, or a panel's side chat) that is still running. */
+/** A second run was started on a thread (a chat session, a panel's side chat, ...) that is still running. `subject` names the thread for the user. */
 export class SessionBusyError extends Error {
-  constructor(threadKey: string) {
-    super(threadKey.startsWith('panel:') ? `A run is already in progress for panel ${threadKey.slice('panel:'.length)}` : `A run is already in progress for session ${threadKey}`)
+  constructor(subject: string) {
+    super(`A run is already in progress for ${subject}`)
     this.name = 'SessionBusyError'
   }
 }
@@ -33,8 +33,10 @@ export interface PreparedRun {
 }
 
 export interface RunRequest {
-  /** The session id, or `panel:<panelId>`. One run at a time per key. */
+  /** Identifies the thread (it is the `threadKey` of the bus events). One run at a time per key. */
   threadKey: string
+  /** What the busy error calls the thread, e.g. `session ses_0123456789`. */
+  subject: string
   role: Role
   /** Runs once the thread's slot is held. A throw releases the slot and rejects `start`. */
   prepare(): Promise<PreparedRun>
@@ -77,7 +79,7 @@ export class RunHost {
   async start(req: RunRequest): Promise<{ runId: string }> {
     const { threadKey } = req
     // Check and register with no await in between, so two quick calls cannot both pass.
-    if (this.running.has(threadKey)) throw new SessionBusyError(threadKey)
+    if (this.running.has(threadKey)) throw new SessionBusyError(req.subject)
     const runId = newId('run')
     const controller = new AbortController()
     this.running.set(threadKey, { runId, controller })

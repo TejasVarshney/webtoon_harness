@@ -7,13 +7,9 @@ import type { EventBus } from '../events/bus'
 import { readJson, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
 import { EntityNotFoundError } from './errors'
+import { isNotFound } from '../storage/fs-errors'
 
 const EPISODE_FILE = /^epi_[A-Za-z0-9]+\.json$/
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 const now = (): string => new Date().toISOString()
 

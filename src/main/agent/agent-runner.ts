@@ -52,6 +52,7 @@ export class AgentRunner {
   start(input: StartRunInput): Promise<{ runId: string }> {
     return this.host.start({
       threadKey: input.sessionId,
+      subject: `session ${input.sessionId}`,
       role: 'agent',
       prepare: async () => {
         const { sessions, projects } = this.services

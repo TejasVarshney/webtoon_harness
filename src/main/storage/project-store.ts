@@ -8,6 +8,7 @@ import type { EventBus } from '../events/bus'
 import { readJson, writeJsonAtomic } from './atomic'
 import { KeyedMutex } from './mutex'
 import { ProjectPaths } from './project-paths'
+import { isNotFound } from './fs-errors'
 
 /**
  * What every service needs to work inside one project. `mutex` is the single lock for the whole
@@ -60,11 +61,6 @@ const PROJECT_FILE = 'project.json'
  * It also keeps `..`, separators and drive letters out of the path built from it.
  */
 const PROJECT_ID = /^prj_[a-z0-9]+$/
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 /**
  * The set of projects under one projects root. Each project lives in `<projectsRoot>/<projectId>/`

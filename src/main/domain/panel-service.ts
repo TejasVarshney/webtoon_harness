@@ -12,6 +12,7 @@ import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
 import { hasReadyReference, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt } from './prompts'
+import { isNotFound } from '../storage/fs-errors'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
 export class PanelValidationError extends Error {
@@ -36,11 +37,6 @@ const PANEL_DELETED = 'Panel was deleted'
 const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
 type UploadExt = (typeof UPLOAD_EXTS)[number]
 const PANEL_FILE = /^pnl_[A-Za-z0-9]+\.json$/
-
-function isNotFound(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
 
 const now = (): string => new Date().toISOString()
 

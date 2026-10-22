@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, ToolResult } from '@shared/types'
+import { EntityNotFoundError } from '../../domain/errors'
 import type { ProjectContext } from '../../storage/project-store'
 import { testServices, type TestServices } from '../../test/test-services'
 import { buildPanelChatTools } from './panel-chat-tools'
@@ -407,6 +408,78 @@ describe('get_panel_context', () => {
       { speakerId: null, speaker: null, kind: 'sfx', text: 'Click' }
     ])
     expect(out.cast[0]).toMatchObject({ name: 'Mina' })
+  })
+})
+
+describe('get_panel_context: neighbors that cannot be shown', () => {
+  it('leaves out a neighbor whose file is gone, which is not a problem to report', async () => {
+    const { run, ctx, p3 } = await setup()
+    await fs.promises.rm(ctx.paths.panelFile(p3.id)) // the episode still lists it
+    const out = json(await run('get_panel_context'))
+    expect(out.next).toBeNull()
+    expect(out.previous).toMatchObject({ description: 'Mina waits.' })
+    expect(ctx.problems).toEqual([])
+  })
+
+  it('says a corrupt neighbor is unreadable, keeps the other neighbor, and reports the file once', async () => {
+    const { run, ctx, p1, p3 } = await setup()
+    await fs.promises.writeFile(ctx.paths.panelFile(p1.id), '{ not json', 'utf8')
+    const out = json(await run('get_panel_context'))
+    expect(out.previous).toEqual({ unreadable: true })
+    expect(out.next).toMatchObject({ id: p3.id })
+    await run('get_panel_context')
+    expect(ctx.problems).toEqual([{ path: `panels/${p1.id}.json`, message: expect.stringContaining('invalid JSON') }])
+  })
+
+  it('does not hide any other failure: the tool fails with its message instead of showing no neighbor', async () => {
+    const { run, s, p1 } = await setup()
+    const real = s.panels.get.bind(s.panels)
+    vi.spyOn(s.panels, 'get').mockImplementation((ctx, id) => (id === p1.id ? Promise.reject(new Error('disk on fire')) : real(ctx, id)))
+    expect(await run('get_panel_context')).toMatchObject({ ok: false, content: 'disk on fire' })
+  })
+})
+
+describe('image results never claim a ready version without its label (Ruling P7)', () => {
+  /** Lets the image call finish and be recorded, then makes the service's next read of the panel go wrong. */
+  function breakReadAfter(services: TestServices, method: 'generate' | 'editImage', fail: () => Promise<never>) {
+    let armed = false
+    const real = services.panels[method].bind(services.panels) as (...args: unknown[]) => Promise<unknown>
+    vi.spyOn(services.panels, method).mockImplementation((async (...args: unknown[]) => {
+      const version = await real(...args)
+      armed = true
+      return version
+    }) as never)
+    const get = services.panels.get.bind(services.panels)
+    vi.spyOn(services.panels, 'get').mockImplementation((ctx, id) => (armed ? fail() : get(ctx, id)))
+  }
+
+  it('fails the call when the panel cannot be read back, instead of returning ready with a null label', async () => {
+    const { run, s } = await setup()
+    breakReadAfter(s, 'editImage', () => Promise.reject(new Error('disk on fire')))
+    const r = await run('edit_image', { instruction: 'make her smile' })
+    expect(r).toMatchObject({ ok: false, content: 'disk on fire', images: [] })
+  })
+
+  it('fails the call when the panel no longer lists the new version as ready', async () => {
+    const { run, s, ctx } = await setup()
+    const real = s.panels.editImage.bind(s.panels)
+    vi.spyOn(s.panels, 'editImage').mockImplementation(async (c, id, instruction, o) => {
+      const version = await real(c, id, instruction, o)
+      const file = ctx.paths.panelFile(id)
+      const stored = JSON.parse(await fs.promises.readFile(file, 'utf8')) as { versions: { id: string }[] }
+      stored.versions = stored.versions.map((x) => (x.id === version.id ? { ...x, status: 'failed', imagePath: null, error: 'gone' } : x))
+      await fs.promises.writeFile(file, JSON.stringify(stored))
+      return version
+    })
+    const r = await run('edit_image', { instruction: 'make her smile' })
+    expect(r).toMatchObject({ ok: false, images: [] })
+    expect(r.content).toContain('is no longer a ready version of this panel')
+  })
+
+  it('reports an unknown panel when it was deleted right after the image was recorded', async () => {
+    const { run, s, p2 } = await setup()
+    breakReadAfter(s, 'generate', () => Promise.reject(new EntityNotFoundError('panel', p2.id)))
+    expect(await run('regenerate_image')).toMatchObject({ ok: false, content: `Unknown panel: ${p2.id}` })
   })
 })
 

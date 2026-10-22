@@ -185,4 +185,22 @@ describe('buildPanelContext', () => {
     const s = buildPanelContext(makePanel({ characters: [{ characterId: 'chr_00000000ff', variationId: 'var_00000000ff' }] }), [], null, null)
     expect(s).toContain('\ncast: chr_00000000ff (var_00000000ff)\n')
   })
+
+  it('keeps every name on one line, speakers of the dialogue and of the neighbors included', () => {
+    const odd = makeCharacter({ name: 'Mi\n  na', variations: [makeVariation({ name: 'Base\nlook' })] })
+    const line = { id: 'dlg_0000000001', speakerId: odd.id, kind: 'speech' as const, text: 'Hi' }
+    const here = makePanel({ characters: [{ characterId: odd.id, variationId: 'var_0000000001' }], dialogue: [line] })
+    const s = buildPanelContext(here, [odd], makePanel({ id: 'pnl_00000000a1', dialogue: [line] }), null)
+    expect(s).toContain('\ncast: Mi na (Base look)\n')
+    expect(s).toContain('\ndialogue: Mi na: "Hi"\n')
+    expect(s).toContain('| dialogue: Mi na: "Hi"\n')
+    expect(s.split('\n')).toHaveLength(12)
+  })
+
+  it('says (unreadable) for a neighbor whose file could not be read, and none for one that does not exist', () => {
+    const s = buildPanelContext(makePanel(), [], 'unreadable', null)
+    expect(s).toContain('\nprevious: (unreadable)\n')
+    expect(s).toContain('\nnext: none\n')
+    expect(buildPanelContext(makePanel(), [], null, 'unreadable')).toContain('\nnext: (unreadable)\n')
+  })
 })
