@@ -242,6 +242,9 @@ export const BeatSchema = z.object({
 
 export const OutlineSchema = z.object({ beats: z.array(BeatSchema) })
 
+/** What a caller may change on a beat. Like the other patch schemas it carries no defaults. */
+export const BeatPatchSchema = z.object({ summary: z.string().optional(), status: BeatStatusSchema.optional() })
+
 // ---------------------------------------------------------------------------------------------
 // Chat transcripts (discriminated on `role`)
 // ---------------------------------------------------------------------------------------------

@@ -1016,3 +1016,84 @@ body,
   padding-left: 18px;
   font-size: 13px;
 }
+
+.story-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.story-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.story-tab h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.bible-editor-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 160px;
+}
+
+.bible-editor {
+  flex: 1;
+  min-height: 120px;
+  padding: 8px;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.beat-episode {
+  font-weight: normal;
+  opacity: 0.7;
+}
+
+.beat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.beat-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.beat-summary {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.chip {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: inherit;
+  background: rgba(128, 128, 128, 0.25);
+  border: 0;
+  border-radius: 8px;
+}
+
+.chip-planned {
+  background: rgba(56, 139, 253, 0.3);
+}
+
+.chip-drawn {
+  background: rgba(46, 160, 67, 0.3);
+}
+
+.chip-dropped {
+  text-decoration: line-through;
+}

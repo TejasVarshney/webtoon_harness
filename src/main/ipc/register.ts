@@ -6,6 +6,7 @@ import { panelChatHandlers } from './handlers/panel-chat'
 import { panelsHandlers } from './handlers/panels'
 import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
+import { storyHandlers } from './handlers/story'
 import { uploadsHandlers, type PickFiles } from './handlers/uploads'
 
 /** Electron-backed pieces, injected so the handlers stay testable without Electron. */
@@ -28,6 +29,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...panelChatHandlers(services),
     ...charactersHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
+    ...storyHandlers(services),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles })
   }
   for (const [channel, fn] of Object.entries(handlers)) {

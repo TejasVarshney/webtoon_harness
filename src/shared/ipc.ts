@@ -1,6 +1,8 @@
 // Type-only imports: this module is bundled into the sandboxed preload, so zod must not enter it.
 import type {
   Capability,
+  Beat,
+  BeatPatch,
   Character,
   CharacterInput,
   CharacterPatch,
@@ -18,6 +20,7 @@ import type {
   ProjectProblem,
   Role,
   SessionSummary,
+  StoryMode,
   Variation,
   VariationInput
 } from './types'
@@ -110,6 +113,13 @@ export interface IpcContract {
   /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
   'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
   'panelChat:cancel': { req: { runId: string }; res: void }
+  /** The mode, the bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
+  'story:get': { req: { projectId: string; episodeId?: string }; res: { mode: StoryMode; bible: string; beats: Beat[] } }
+  /** Returns the updated project meta, so the toggle can follow without waiting for `project.changed`. */
+  'story:setMode': { req: { projectId: string; mode: StoryMode }; res: ProjectMeta }
+  /** Replaces the whole bible with the editor's text. */
+  'story:updateBible': { req: { projectId: string; markdown: string }; res: void }
+  'story:updateBeat': { req: { projectId: string; beatId: string; patch: BeatPatch }; res: Beat }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -163,7 +173,11 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:uploadImage': true,
   'panelChat:load': true,
   'panelChat:send': true,
-  'panelChat:cancel': true
+  'panelChat:cancel': true,
+  'story:get': true,
+  'story:setMode': true,
+  'story:updateBible': true,
+  'story:updateBeat': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

@@ -4,6 +4,7 @@
 import type { z } from 'zod'
 import type {
   AssistantMessageSchema,
+  BeatPatchSchema,
   BeatSchema,
   CapabilitySchema,
   CharacterInputSchema,
@@ -48,6 +49,7 @@ export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type PanelVersion = z.infer<typeof PanelVersionSchema>
 export type CheckResult = z.infer<typeof CheckResultSchema>
 export type Beat = z.infer<typeof BeatSchema>
+export type BeatPatch = z.infer<typeof BeatPatchSchema>
 
 export type ChatMessage = z.infer<typeof ChatMessageSchema>
 export type UserMessage = z.infer<typeof UserMessageSchema>

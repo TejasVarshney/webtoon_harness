@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ProjectMeta, ProjectProblem, SessionSummary } from '@shared/types'
+import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
 import { api } from '../api'
 
 export type RightTab = 'webtoon' | 'characters' | 'story'
@@ -39,6 +39,10 @@ export interface AppActions {
   loadProjects(): Promise<void>
   createProject(title: string): Promise<void>
   openProject(id: string): Promise<void>
+  /** Re-reads the open project's meta and problems (what `project.changed` calls). Leaves the sessions and the selection alone. */
+  refreshMeta(): Promise<void>
+  /** Saves the story mode and shows it at once from the meta main returns. Rejects when main refuses. */
+  setStoryMode(mode: StoryMode): Promise<void>
   loadSessions(): Promise<void>
   newSession(): Promise<void>
   selectSession(id: string | null): void
@@ -91,6 +95,22 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
       activeEpisodeId: null
     }))
     await get().loadSessions()
+  },
+
+  async refreshMeta() {
+    const projectId = get().projectId
+    if (projectId === null) return
+    const { meta, problems } = await api.invoke('projects:open', { projectId })
+    // The user may have switched project while this was loading.
+    if (get().projectId !== projectId) return
+    set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)), problems }))
+  },
+
+  async setStoryMode(mode) {
+    const projectId = get().projectId
+    if (projectId === null) return
+    const meta = await api.invoke('story:setMode', { projectId, mode })
+    set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)) }))
   },
 
   async loadSessions() {

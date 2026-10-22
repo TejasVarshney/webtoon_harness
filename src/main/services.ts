@@ -8,6 +8,7 @@ import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
 import { PanelService } from './domain/panel-service'
+import { StoryService } from './domain/story-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
@@ -38,6 +39,7 @@ export interface Services {
   characters: CharacterService
   episodes: EpisodeService
   panels: PanelService
+  story: StoryService
   agent: AgentRunner
   panelChat: PanelChatRunner
 }
@@ -64,10 +66,11 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
   const episodes = new EpisodeService({ bus })
   const panels = new PanelService({ bus, projects, episodes, characters, images, trash: opts.trash })
+  const story = new StoryService({ bus, projects })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters, episodes, panels } as Services
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   return services

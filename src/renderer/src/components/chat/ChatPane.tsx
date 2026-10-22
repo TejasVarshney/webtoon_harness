@@ -6,8 +6,8 @@ import { useChatStore } from '../../stores/chat-store'
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
+import { sendUserMessage } from './send-message'
 import { PanelSideChat } from '../panel-chat/PanelSideChat'
-import { newId } from '@shared/ids'
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -40,21 +40,6 @@ export function ChatPane() {
     }
   }, [projectId, sessionId])
 
-  function send(text: string, imagePaths: string[]): void {
-    if (projectId === null || sessionId === null) return
-    const chat = useChatStore.getState()
-    chat.clearNotices(sessionId)
-    // The runner persists the user message but does not emit it, so show it here. The transcript replaces it on the next load.
-    const optimisticId = newId('msg')
-    chat.addMessage(sessionId, { id: optimisticId, role: 'user', text, imagePaths, stateSnapshot: null, createdAt: new Date().toISOString() })
-    const activeEpisodeId = useAppStore.getState().activeEpisodeId
-    api.invoke('agent:send', { projectId, sessionId, text, imagePaths, activeEpisodeId }).catch((e: unknown) => {
-      // Nothing was sent, so the optimistic message must not stay in the thread.
-      useChatStore.getState().removeMessage(sessionId, optimisticId)
-      useChatStore.getState().addNotice(sessionId, errorText(e))
-    })
-  }
-
   function stop(): void {
     if (sessionId === null || runId === undefined) return
     api.invoke('agent:cancel', { runId }).catch((e: unknown) => useChatStore.getState().addNotice(sessionId, errorText(e)))
@@ -72,7 +57,7 @@ export function ChatPane() {
             ) : (
               <>
                 <MessageList threadKey={sessionId} />
-                <Composer onSend={send} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
+                <Composer onSend={sendUserMessage} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
               </>
             )}
           </div>

@@ -17,7 +17,12 @@ beforeEach(() => {
 
 describe('RightPane', () => {
   it('switches between the Webtoon, Characters and Story tabs', async () => {
-    installFakeApi({ 'characters:list': () => [character()], 'episodes:list': () => [episode()], 'panels:list': () => [] })
+    installFakeApi({
+      'characters:list': () => [character()],
+      'episodes:list': () => [episode()],
+      'panels:list': () => [],
+      'story:get': () => ({ mode: 'user', bible: '# Story Bible\n', beats: [] })
+    })
     render(<RightPane />)
     expect(screen.getByTestId('tab-webtoon')).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByTestId('character-card')).toBeNull()
@@ -31,6 +36,7 @@ describe('RightPane', () => {
     await userEvent.click(screen.getByTestId('tab-story'))
     expect(useAppStore.getState().rightTab).toBe('story')
     expect(screen.queryByTestId('character-card')).toBeNull()
+    expect(await screen.findByTestId('bible-editor')).toHaveValue('# Story Bible\n')
   })
 
   it('shows the webtoon strip on the Webtoon tab', async () => {

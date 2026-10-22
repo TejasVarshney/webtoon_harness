@@ -1,5 +1,7 @@
 import { useModelsStore } from '../../stores/models-store'
+import { ContinueStoryButton } from './ContinueStoryButton'
 import { ModelPicker } from './ModelPicker'
+import { StoryModeToggle } from './StoryModeToggle'
 
 export const MOCK_BANNER_TEXT = "You're using the offline mock model. Add a real endpoint in Settings → Models."
 
@@ -11,7 +13,9 @@ export function ChatHeader() {
 
   return (
     <div className="chat-header">
+      <StoryModeToggle />
       <ModelPicker />
+      <ContinueStoryButton />
       {onMock && (
         <p className="mock-banner" data-testid="mock-banner">
           {MOCK_BANNER_TEXT}
