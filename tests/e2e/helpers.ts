@@ -1,6 +1,6 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test'
 
 const repoRoot = resolve(__dirname, '..', '..')
@@ -68,4 +68,23 @@ export async function sendChat(page: Page, text: string, expectedReply: string):
   await chat.getByTestId('composer-input').first().fill(text)
   await chat.getByTestId('composer-send').first().click()
   await expect(chat.getByTestId('message-assistant').last()).toContainText(expectedReply)
+}
+
+/**
+ * Reads a JSON file of the project under `projectsRoot` (which holds exactly one `prj_*` folder, as a fresh test run does).
+ * `relPath` is project-relative and POSIX, like the paths stored in project files. When it names a folder, the result is
+ * the array of its parsed `*.json` files in file-name order; other entries (side-chat logs, image folders, temp files)
+ * are skipped. The result is `any` on purpose: specs assert on whatever shape they are checking.
+ */
+export async function readProjectJson(projectsRoot: string, relPath: string): Promise<any> {
+  const projects = (await readdir(projectsRoot, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith('prj_'))
+  if (projects.length !== 1) throw new Error(`Expected exactly one project folder in ${projectsRoot}, found ${projects.length}`)
+  const projectDir = join(projectsRoot, projects[0].name)
+  const abs = resolve(projectDir, ...relPath.split('/'))
+  if (abs !== projectDir && !abs.startsWith(projectDir + sep)) throw new Error(`Path leaves the project: ${relPath}`)
+  if ((await stat(abs)).isDirectory()) {
+    const names = (await readdir(abs, { withFileTypes: true })).filter((e) => e.isFile() && e.name.endsWith('.json')).map((e) => e.name).sort()
+    return Promise.all(names.map(async (name) => JSON.parse(await readFile(join(abs, name), 'utf8'))))
+  }
+  return JSON.parse(await readFile(abs, 'utf8'))
 }

@@ -1,5 +1,6 @@
 import { useAppStore, type RightTab } from '../../stores/app-store'
 import { CharacterStudio } from '../characters/CharacterStudio'
+import { WebtoonPane } from '../visualizer/WebtoonPane'
 
 const TABS: { id: RightTab; label: string; testId: string }[] = [
   { id: 'webtoon', label: 'Webtoon', testId: 'tab-webtoon' },
@@ -7,7 +8,7 @@ const TABS: { id: RightTab; label: string; testId: string }[] = [
   { id: 'story', label: 'Story', testId: 'tab-story' }
 ]
 
-/** The visualizer pane: Webtoon and Story are placeholders until their tasks land. */
+/** The visualizer pane: the Webtoon strip and the Characters tab. Story is a placeholder until its task lands. */
 export function RightPane() {
   const tab = useAppStore((s) => s.rightTab)
   const setRightTab = useAppStore((s) => s.setRightTab)
@@ -30,7 +31,7 @@ export function RightPane() {
         ))}
       </div>
       <div className="tab-panel" role="tabpanel" id="right-tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'webtoon' && <p className="placeholder">Webtoon panels</p>}
+        {tab === 'webtoon' && <WebtoonPane />}
         {tab === 'characters' && <CharacterStudio />}
         {tab === 'story' && <p className="placeholder">Story bible and beats</p>}
       </div>

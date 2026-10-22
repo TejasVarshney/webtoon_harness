@@ -4,6 +4,7 @@ import { useAppStore } from './stores/app-store'
 import { useCharactersStore } from './stores/characters-store'
 import { useChatStore } from './stores/chat-store'
 import { useModelsStore } from './stores/models-store'
+import { usePanelsStore } from './stores/panels-store'
 
 function handleEvent(event: AppEvent): void {
   const state = useAppStore.getState()
@@ -14,6 +15,14 @@ function handleEvent(event: AppEvent): void {
     case 'character.changed':
       // `load` records its own failures, so there is nothing to catch here.
       if (event.projectId === state.projectId) void useCharactersStore.getState().load()
+      break
+    // The panel list changes under several events (a generation emits a few), so these overlap; `load` keeps the latest.
+    // `panel.changed` names no episode, so the open one is reloaded. `loadEpisodes` records its own failures, too.
+    case 'panel.changed':
+      if (event.projectId === state.projectId) void usePanelsStore.getState().reloadActive()
+      break
+    case 'episode.changed':
+      if (event.projectId === state.projectId) void usePanelsStore.getState().loadEpisodes()
       break
     case 'models.changed':
       void useModelsStore.getState().load().catch((e: unknown) => console.error('Failed to reload models', e))

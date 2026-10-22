@@ -667,3 +667,284 @@ body,
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* --- Webtoon tab: episode bar, strip, panel cards -------------------------------------------- */
+
+.webtoon-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.episode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.episode-bar .field {
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.episode-form {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.webtoon-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.panel-card {
+  position: relative;
+  width: min(100%, 520px);
+  background: rgba(128, 128, 128, 0.12);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.panel-card:focus-visible {
+  outline: 2px solid #388bfd;
+  outline-offset: 2px;
+}
+
+.panel-card[data-selected='true'] {
+  outline: 3px solid #388bfd;
+  outline-offset: 2px;
+}
+
+.panel-media {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 4px;
+}
+
+.panel-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.panel-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.panel-status {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+}
+
+.panel-status-failed {
+  background: rgba(209, 36, 47, 0.92);
+}
+
+.panel-error {
+  padding: 4px 8px;
+}
+
+/* Hidden until the card is hovered or focused, but always clickable, so a script (or a keyboard) can reach it. */
+.panel-toolbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px 4px 0 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.panel-card:hover .panel-toolbar,
+.panel-card:focus-within .panel-toolbar {
+  opacity: 1;
+}
+
+.insert-panel {
+  display: flex;
+  justify-content: center;
+  width: min(100%, 520px);
+  padding: 4px 0;
+}
+
+.insert-panel-button {
+  min-width: 40px;
+  color: inherit;
+  background: none;
+  border: 1px dashed rgba(128, 128, 128, 0.7);
+  border-radius: 12px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.insert-panel-button:hover,
+.insert-panel-button:focus-visible {
+  opacity: 1;
+}
+
+/* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
+
+.dialogue-overlay {
+  position: absolute;
+  inset: 8px 8px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #111;
+  overflow-wrap: anywhere;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.bubble-speaker {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.bubble-speech {
+  align-self: flex-start;
+  border: 2px solid #111;
+  border-radius: 18px;
+}
+
+.bubble-thought {
+  position: relative;
+  align-self: flex-start;
+  margin-bottom: 10px;
+  padding: 10px 18px;
+  font-style: italic;
+  border: 2px solid #666;
+  border-radius: 45% 55% 50% 50% / 55% 50% 50% 45%;
+}
+
+.bubble-thought::after {
+  position: absolute;
+  bottom: -11px;
+  left: 20px;
+  width: 8px;
+  height: 8px;
+  content: '';
+  background: #fff;
+  border: 2px solid #666;
+  border-radius: 50%;
+}
+
+.bubble-narration {
+  align-self: stretch;
+  max-width: 100%;
+  background: #fff4c7;
+  border: 1px solid #111;
+  border-radius: 0;
+}
+
+.bubble-sfx {
+  align-self: center;
+  max-width: 100%;
+  padding: 0;
+  font-size: 28px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-transform: uppercase;
+  background: none;
+  box-shadow: none;
+  transform: rotate(-6deg) skewX(-10deg);
+  -webkit-text-stroke: 1.5px #111;
+  text-shadow: 2px 2px 0 #111;
+}
+
+/* --- Panel editor ----------------------------------------------------------------------------------- */
+
+.panel-editor {
+  width: min(560px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.panel-editor-form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.panel-editor-form .cast-picker,
+.panel-editor-form .dialogue-editor {
+  padding: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
+}
+
+.cast-row,
+.dialogue-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 6px;
+}
+
+.cast-row .hint {
+  margin: 0;
+}
+
+.panel-editor-error p {
+  margin: 0;
+}
+
+.panel-editor-outcome p {
+  margin: 0 0 4px;
+}
+
+.panel-editor-warnings {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  font-size: 13px;
+}
