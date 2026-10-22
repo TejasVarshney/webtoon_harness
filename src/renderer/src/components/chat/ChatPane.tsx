@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
+import { Group, Panel, Separator } from 'react-resizable-panels'
 import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
+import { PanelSideChat } from '../panel-chat/PanelSideChat'
 import { newId } from '@shared/ids'
 
 function errorText(e: unknown): string {
@@ -16,6 +18,7 @@ export function ChatPane() {
   const projectId = useAppStore((s) => s.projectId)
   const sessionId = useAppStore((s) => s.sessionId)
   const runId = useAppStore((s) => (s.sessionId === null ? undefined : s.runningThreads[s.sessionId]))
+  const selectedPanelId = useAppStore((s) => s.selectedPanelId)
   const draft = useChatStore((s) => s.draft)
   const setDraft = useChatStore((s) => s.setDraft)
 
@@ -60,14 +63,30 @@ export function ChatPane() {
   return (
     <div className="chat-pane">
       <ChatHeader />
-      {sessionId === null ? (
-        <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
-      ) : (
-        <>
-          <MessageList threadKey={sessionId} />
-          <Composer onSend={send} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
-        </>
-      )}
+      {/* The main chat's panel is always there, so opening the side chat below it never remounts the main chat. */}
+      <Group orientation="vertical" className="chat-split">
+        <Panel id="chat-main" defaultSize="55%" minSize="25%">
+          <div className="main-chat">
+            {sessionId === null ? (
+              <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
+            ) : (
+              <>
+                <MessageList threadKey={sessionId} />
+                <Composer onSend={send} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
+              </>
+            )}
+          </div>
+        </Panel>
+        {selectedPanelId !== null && (
+          <>
+            <Separator className="pane-separator pane-separator-row" />
+            <Panel id="chat-side" defaultSize="45%" minSize="20%">
+              {/* Keyed so each panel starts with its own composer text and thread. */}
+              <PanelSideChat key={selectedPanelId} panelId={selectedPanelId} />
+            </Panel>
+          </>
+        )}
+      </Group>
     </div>
   )
 }

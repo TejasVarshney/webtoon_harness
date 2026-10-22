@@ -65,4 +65,11 @@ describe('Composer', () => {
     expect(onSend).toHaveBeenCalledWith('changed from outside', [])
     expect(onValueChange).toHaveBeenLastCalledWith('')
   })
+
+  it('hides Attach when the thread cannot carry images', () => {
+    const { rerender } = render(<Composer onSend={() => undefined} running={false} onStop={() => undefined} />)
+    expect(screen.getByTestId('composer-attach')).toBeInTheDocument()
+    rerender(<Composer onSend={() => undefined} running={false} onStop={() => undefined} allowAttach={false} />)
+    expect(screen.queryByTestId('composer-attach')).toBeNull()
+  })
 })

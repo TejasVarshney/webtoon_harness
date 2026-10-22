@@ -9,9 +9,11 @@ export interface ComposerProps {
   /** Controlled text. Without it the composer keeps its own. */
   value?: string
   onValueChange?(text: string): void
+  /** Show the Attach button. Default true; a thread whose send has no room for images turns it off. */
+  allowAttach?: boolean
 }
 
-export function Composer({ onSend, running, onStop, value, onValueChange }: ComposerProps) {
+export function Composer({ onSend, running, onStop, value, onValueChange, allowAttach = true }: ComposerProps) {
   const projectId = useAppStore((s) => s.projectId)
   const [ownText, setOwnText] = useState('')
   const text = value ?? ownText
@@ -70,9 +72,11 @@ export function Composer({ onSend, running, onStop, value, onValueChange }: Comp
         </p>
       )}
       <div className="composer-row">
-        <button type="button" data-testid="composer-attach" aria-label="Attach images" disabled={projectId === null} onClick={() => void attach()}>
-          Attach
-        </button>
+        {allowAttach && (
+          <button type="button" data-testid="composer-attach" aria-label="Attach images" disabled={projectId === null} onClick={() => void attach()}>
+            Attach
+          </button>
+        )}
         <textarea
           data-testid="composer-input"
           aria-label="Message"

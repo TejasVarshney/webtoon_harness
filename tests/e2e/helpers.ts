@@ -59,14 +59,14 @@ export async function createProjectAndSession(page: Page, title: string): Promis
 }
 
 /**
- * Chats in the main pane: uses the first composer and assistant list on the page (the panel side chat comes
- * later in the DOM), sends `text`, and waits until the last assistant message contains `expectedReply`.
+ * Chats in the main chat only: `.main-chat` is the main chat's container inside `pane-chat`, so a panel side chat
+ * below it (which has composer and assistant-message test ids of its own) is never typed into or read from.
+ * Sends `text`, then waits until the main chat's last assistant message contains `expectedReply`.
  */
 export async function sendChat(page: Page, text: string, expectedReply: string): Promise<void> {
-  // `pane-chat` wraps only the main chat; the panel side chat lives in the visualizer pane.
-  const chat = page.getByTestId('pane-chat')
-  await chat.getByTestId('composer-input').first().fill(text)
-  await chat.getByTestId('composer-send').first().click()
+  const chat = page.getByTestId('pane-chat').locator('.main-chat')
+  await chat.getByTestId('composer-input').fill(text)
+  await chat.getByTestId('composer-send').click()
   await expect(chat.getByTestId('message-assistant').last()).toContainText(expectedReply)
 }
 
