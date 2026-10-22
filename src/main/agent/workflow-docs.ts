@@ -56,24 +56,31 @@ export class WorkflowDocs {
     return this.copy(ctx, true)
   }
 
-  async list(ctx: ProjectContext): Promise<{ name: string; title: string }[]> {
+  /** The project's docs by name (path without `.md`) and title, sorted. AGENTS.md is left out unless `includeAgents`: the system prompt carries it whole. */
+  async list(ctx: ProjectContext, opts: { includeAgents?: boolean } = {}): Promise<{ name: string; title: string }[]> {
     const dir = ctx.paths.agentDocsDir()
     const out: { name: string; title: string }[] = []
     for (const rel of await walk(dir)) {
-      if (!rel.endsWith('.md') || rel === AGENTS) continue
+      if (!rel.endsWith('.md') || (rel === AGENTS && opts.includeAgents !== true)) continue
       const name = rel.slice(0, -'.md'.length)
       out.push({ name, title: firstHeading(await fs.promises.readFile(path.join(dir, ...rel.split('/')), 'utf8')) ?? name })
     }
     return out
   }
 
-  async read(ctx: ProjectContext, name: string): Promise<string> {
+  /** The absolute path of the doc `name` (no `.md`) in the project's docs folder. Throws PathEscapeError for a name that leaves it. */
+  filePath(ctx: ProjectContext, name: string): string {
     const dir = ctx.paths.agentDocsDir()
     const abs = path.resolve(dir, `${name}.md`)
     const rel = path.relative(dir, abs)
     if (name.includes('\0') || name.includes(':') || rel.startsWith('..') || path.isAbsolute(rel)) {
       throw new PathEscapeError(name, 'Invalid doc name')
     }
+    return abs
+  }
+
+  async read(ctx: ProjectContext, name: string): Promise<string> {
+    const abs = this.filePath(ctx, name)
     try {
       return await fs.promises.readFile(abs, 'utf8')
     } catch (error) {

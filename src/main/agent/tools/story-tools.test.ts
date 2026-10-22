@@ -32,9 +32,9 @@ async function setup() {
 }
 
 describe('story tools', () => {
-  it('are the last four tools of the agent tool set, with or without vision', () => {
+  it('are the four tools before read_workflow_doc at the end of the agent tool set, with or without vision', () => {
     for (const vision of [true, false]) {
-      expect(buildAgentTools({ vision }).names().slice(-4)).toEqual(['get_story', 'update_story_bible', 'add_beats', 'update_beat'])
+      expect(buildAgentTools({ vision }).names().slice(-5, -1)).toEqual(['get_story', 'update_story_bible', 'add_beats', 'update_beat'])
     }
   })
 

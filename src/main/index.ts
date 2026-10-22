@@ -70,7 +70,8 @@ void app.whenReady().then(async () => {
       }
       const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
-    }
+    },
+    openPath: (absPath) => shell.openPath(absPath)
   })
   const { agent, panelChat } = services
   // Quitting mid-run: abort so every loop persists results for its pending tool calls.

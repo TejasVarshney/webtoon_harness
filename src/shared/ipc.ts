@@ -42,6 +42,9 @@ export type ModelInput = {
 }
 export type ModelPatch = Partial<Pick<ModelConfig, 'modelId' | 'label' | 'capabilities' | 'params' | 'maxReferenceImages'>>
 
+/** One workflow doc of a project: `name` is its path in the project's `agent/` folder without `.md` (`AGENTS`, `workflows/panel-editing`). */
+export type WorkflowDocEntry = { name: string; title: string }
+
 /** Every request/response pair that crosses the preload bridge. Later tasks add channels here. */
 export interface IpcContract {
   'projects:list': { req: Record<string, never>; res: { projects: ProjectMeta[]; problems: ProjectProblem[] } }
@@ -120,6 +123,12 @@ export interface IpcContract {
   /** Replaces the whole bible with the editor's text. */
   'story:updateBible': { req: { projectId: string; markdown: string }; res: void }
   'story:updateBeat': { req: { projectId: string; beatId: string; patch: BeatPatch }; res: Beat }
+  /** The project's workflow docs: AGENTS first, then the others by name. */
+  'docs:list': { req: { projectId: string }; res: WorkflowDocEntry[] }
+  /** Opens one listed doc in the system's default editor. */
+  'docs:open': { req: { projectId: string; name: string }; res: void }
+  /** Overwrites every doc of the project with its shipped default. */
+  'docs:reset': { req: { projectId: string }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -177,7 +186,10 @@ const channelSet: Record<IpcChannel, true> = {
   'story:get': true,
   'story:setMode': true,
   'story:updateBible': true,
-  'story:updateBeat': true
+  'story:updateBeat': true,
+  'docs:list': true,
+  'docs:open': true,
+  'docs:reset': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

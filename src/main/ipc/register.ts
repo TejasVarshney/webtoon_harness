@@ -1,6 +1,7 @@
 import type { Services } from '../services'
 import { agentHandlers } from './handlers/agent'
 import { charactersHandlers } from './handlers/characters'
+import { docsHandlers, type OpenPath } from './handlers/docs'
 import { modelsHandlers } from './handlers/models'
 import { panelChatHandlers } from './handlers/panel-chat'
 import { panelsHandlers } from './handlers/panels'
@@ -13,6 +14,8 @@ import { uploadsHandlers, type PickFiles } from './handlers/uploads'
 export interface IpcDeps {
   /** Shows the image picker over the window that sent the event; resolves to the chosen absolute paths ([] on cancel). */
   pickImageFiles?: PickFiles
+  /** Opens a file in the system's default app (`shell.openPath`); resolves to an error message, '' on success. */
+  openPath?: OpenPath
 }
 
 export interface IpcRegistrar {
@@ -30,6 +33,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...charactersHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...storyHandlers(services),
+    ...docsHandlers(services, { openPath: deps.openPath }),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles })
   }
   for (const [channel, fn] of Object.entries(handlers)) {
