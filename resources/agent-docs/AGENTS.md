@@ -236,6 +236,7 @@ A result with `"status": "failed"` is not an error message: the panel, character
 
 - "No model assigned to role 'image'. Open Settings → Models." (or role 'imageEdit'): stop now (R12). Tell the user to assign an image model in Settings → Models. Do not retry: every retry fails the same way until they do.
 - "Image generation timed out after 180s" or another provider error: retry once with `regenerate_panel` or `regenerate_variation`. If it fails again, stop and report.
+- "No image yet: upload one or regenerate": the variation was created without an image (`generateBaseImage` or `generateImage` false), usually because the user will upload one. Nothing failed: do not regenerate it unless the user asks.
 - "Base reference image is not ready": the character's base image failed. Regenerate the base variation first, then this one.
 - "No ready image to edit": the panel has no ready image. Use `regenerate_panel` instead of an edit.
 - "Interrupted: the app closed during generation": the app was closed mid-image. Regenerate it when the user wants.

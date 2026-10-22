@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ChatMessage } from '@shared/types'
-import { createIdentityImageOps, loadImageForTextModel } from '../../domain/image-ops'
+import { createIdentityImageOps, createNativeImageOps, loadImageForTextModel, type ImageOps } from '../../domain/image-ops'
+import { fakeNativeImage, WEBP_BYTES } from '../../test/fake-native-image'
 import { tempProject, type TempProject } from '../../test/temp-project'
 import { encodeSolidPng } from './png'
 import { toAnthropicMessages } from './anthropic'
@@ -40,14 +41,13 @@ const toolResult = (callId: string, images: string[]): ChatMessage => ({
   createdAt: at
 })
 
-async function project(files: Record<string, Buffer>): Promise<ImageLoader> {
+async function project(files: Record<string, Buffer>, ops: ImageOps = createIdentityImageOps()): Promise<ImageLoader> {
   tp = await tempProject()
   const ctx = tp.ctx
   for (const [rel, data] of Object.entries(files)) {
     await fs.promises.mkdir(ctx.paths.resolveAsset(rel.split('/').slice(0, -1).join('/')), { recursive: true })
     await fs.promises.writeFile(ctx.paths.resolveAsset(rel), data)
   }
-  const ops = createIdentityImageOps()
   return (rel) => loadImageForTextModel(ctx, ops, rel)
 }
 
@@ -115,6 +115,23 @@ describe('replaying images that are gone (C1)', () => {
     const failing: ImageLoader = () => Promise.reject(new Error('EBUSY: locked by antivirus'))
     await expect(toAnthropicMessages([user('x', ['uploads/a.png'])], failing)).rejects.toThrow('EBUSY')
     await expect(toOpenAIMessages('sys', [user('x', ['uploads/a.png'])], failing, true)).rejects.toThrow('EBUSY')
+  })
+})
+
+describe('WebP in a replayed history (C2, Ruling F1)', () => {
+  // The decoder stands in for Electron's nativeImage, which cannot read WebP (verified on Electron 45).
+  const webpProject = (): Promise<ImageLoader> => project({ 'uploads/w.webp': WEBP_BYTES }, createNativeImageOps(fakeNativeImage()))
+
+  it('anthropic: an attached WebP reaches the model as its own bytes, typed image/webp', async () => {
+    const loadImage = await webpProject()
+    const [m] = await toAnthropicMessages([user('what is this?', ['uploads/w.webp'])], loadImage)
+    expect(m.content).toContainEqual({ type: 'image', source: { type: 'base64', media_type: 'image/webp', data: WEBP_BYTES.toString('base64') } })
+  })
+
+  it('openai: an attached WebP reaches the model as a non-empty image/webp data URL', async () => {
+    const loadImage = await webpProject()
+    const out = await toOpenAIMessages('sys', [user('what is this?', ['uploads/w.webp'])], loadImage, true)
+    expect(out[1].content).toContainEqual({ type: 'image_url', image_url: { url: `data:image/webp;base64,${WEBP_BYTES.toString('base64')}` } })
   })
 })
 
