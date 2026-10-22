@@ -285,17 +285,50 @@ describe('update_panel_fields', () => {
     expect(json(ok).warnings).toEqual([])
   })
 
-  // The brief pins `strictMentions: true`. Ruling T19a made the main agent's update_panel strict only for a
-  // description edit; whether the side chat should follow it is for the controller to decide (see the report).
-  it('is strict on every edit, as the brief says: a dialogue-only edit on a panel with an unattached mention is rejected', async () => {
-    const { run, s, ctx, mina, draft } = await setup()
-    const jin = await s.characters.create(ctx, { name: 'Jin', role: 'supporting', appearanceLock: 'Jin LOCK' }, 'user')
-    await s.characters.generateVariationImage(ctx, jin.id, jin.variations[0].id)
-    const { panel: warned, warnings } = await s.panels.create(ctx, draft('Mina waits while Jin watches.'), { createdBy: 'user', strictMentions: false })
-    expect(warnings).toHaveLength(1)
-    const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hello?' }] }, warned.id)
-    expect(r.ok).toBe(false)
-    expect(r.content).toContain('Mentioned but not attached: Jin')
+  // Ruling T21b (same as T19a for the main agent): the mention guard is strict only when the description changes.
+  describe('a panel saved with an unattached-mention warning (Ruling T21b)', () => {
+    async function warned() {
+      const h = await setup()
+      const jin = await h.s.characters.create(h.ctx, { name: 'Jin', role: 'supporting', appearanceLock: 'Jin LOCK' }, 'user')
+      await h.s.characters.generateVariationImage(h.ctx, jin.id, jin.variations[0].id)
+      const { panel, warnings } = await h.s.panels.create(h.ctx, h.draft('Mina waits while Jin watches.'), { createdBy: 'user', strictMentions: false })
+      expect(warnings).toHaveLength(1)
+      return { ...h, id: panel.id }
+    }
+
+    it('still accepts an edit that does not touch the description, and passes the warning on', async () => {
+      const { run, mina, id, panel } = await warned()
+      const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hello?' }] }, id)
+      expect(r.ok, r.content).toBe(true)
+      const out = json(r)
+      expect(out.updated).toEqual(['dialogue'])
+      expect(out.warnings).toEqual([expect.stringContaining('Mentioned but not attached: Jin')])
+      expect(out.fields.dialogue).toMatchObject([{ speakerId: mina.id, text: 'Hello?' }])
+      expect((await panel(id)).dialogue).toMatchObject([{ text: 'Hello?' }])
+    })
+
+    it('accepts a change of shot or setting the same way', async () => {
+      const { run, id, panel } = await warned()
+      const r = await run('update_panel_fields', { shot: 'wide', setting: 'Rooftop' }, id)
+      expect(r.ok, r.content).toBe(true)
+      expect(json(r).warnings).toHaveLength(1)
+      expect(await panel(id)).toMatchObject({ shot: 'wide', setting: 'Rooftop' })
+    })
+
+    it('rejects a description edit that leaves the character unattached', async () => {
+      const { run, id, panel } = await warned()
+      const r = await run('update_panel_fields', { description: 'Mina waits while Jin watches from the stairs.' }, id)
+      expect(r.ok).toBe(false)
+      expect(r.content).toContain('Mentioned but not attached: Jin')
+      expect((await panel(id)).description).toBe('Mina waits while Jin watches.')
+    })
+
+    it('accepts a description edit once the mention is listed as off-panel', async () => {
+      const { run, id } = await warned()
+      const r = await run('update_panel_fields', { description: 'Mina waits while Jin watches from the stairs.', offPanelMentions: ['Jin'] }, id)
+      expect(r.ok, r.content).toBe(true)
+      expect(json(r).warnings).toEqual([])
+    })
   })
 })
 

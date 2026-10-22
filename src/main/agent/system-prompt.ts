@@ -1,3 +1,4 @@
+import { versionPosition } from '@shared/panel-versions'
 import type { Character, Episode, Panel, PanelCharacter, ProjectMeta } from '@shared/types'
 
 /** AGENTS.md plus the index of the other workflow docs. Stable for a given input. */
@@ -63,17 +64,6 @@ function panelSummary(p: Panel, names: Map<string, string>, detail: (cast: Panel
 const dialogueLine = (p: Panel, names: Map<string, string>): string =>
   p.dialogue.map((d) => `${d.speakerId ? (names.get(d.speakerId) ?? d.speakerId) : d.kind}: "${oneLine(d.text)}"`).join(' / ')
 
-/**
- * Ruling P7: the label a user sees for a version. N is its 1-based position among the panel's READY
- * versions, so failed and pending attempts never use up a number. A version that is not ready (or not
- * the panel's) has no label.
- */
-export function versionLabel(panel: Panel, versionId: string | null): string | null {
-  if (versionId === null) return null
-  const index = panel.versions.filter((v) => v.status === 'ready').findIndex((v) => v.id === versionId)
-  return index === -1 ? null : `v${index + 1}`
-}
-
 /** The names a panel's cast entry shows under: the character's, and the name of the variation it wears. Ids when the roster lacks them. */
 export function castNames(entry: PanelCharacter, roster: Character[]): { name: string; variationName: string } {
   const character = roster.find((c) => c.id === entry.characterId)
@@ -88,12 +78,12 @@ export function castNames(entry: PanelCharacter, roster: Character[]): { name: s
 export function buildPanelContext(panel: Panel, roster: Character[], prev: Panel | null, next: Panel | null): string {
   const names = new Map(roster.map((c) => [c.id, c.name]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
-  const label = versionLabel(panel, panel.currentVersionId)
+  const position = versionPosition(panel, panel.currentVersionId)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
   const lines = [
     '<panel_context>',
     `panel: ${panel.id}`,
-    label ? `version: ${label} of ${panel.versions.filter((v) => v.status === 'ready').length}` : 'version: none',
+    position ? `version: ${position.label} of ${position.readyCount}` : 'version: none',
     `shot: ${panel.shot}`,
     `aspect: ${panel.aspect}`,
     `setting: ${oneLine(panel.setting)}`,

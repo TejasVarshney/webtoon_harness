@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveMockRefs } from '../models/providers/mock'
 import { makeCharacter, makeEpisode, makeMeta, makePanel, makeVariation } from '../test/factories'
 import type { PanelVersion } from '@shared/types'
-import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection, versionLabel } from './system-prompt'
+import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection } from './system-prompt'
 
 describe('system prompt', () => {
   it('builds a stable system prompt', () => {
@@ -76,25 +76,6 @@ const version = (id: string, status: PanelVersion['status']): PanelVersion => ({
   parentVersionId: null,
   check: null,
   createdAt: '2026-01-01T00:00:00.000Z'
-})
-
-describe('versionLabel (Ruling P7)', () => {
-  const panel = makePanel({
-    versions: [version('ver_0000000001', 'ready'), version('ver_0000000002', 'failed'), version('ver_0000000003', 'pending'), version('ver_0000000004', 'ready')],
-    currentVersionId: 'ver_0000000004'
-  })
-
-  it('numbers ready versions only, skipping failed and pending ones', () => {
-    expect(versionLabel(panel, 'ver_0000000001')).toBe('v1')
-    expect(versionLabel(panel, 'ver_0000000004')).toBe('v2')
-  })
-
-  it('has no label for a version that is not ready, or that does not exist', () => {
-    expect(versionLabel(panel, 'ver_0000000002')).toBeNull()
-    expect(versionLabel(panel, 'ver_0000000003')).toBeNull()
-    expect(versionLabel(panel, 'ver_ffffffffff')).toBeNull()
-    expect(versionLabel(panel, null)).toBeNull()
-  })
 })
 
 describe('panel chat system prompt', () => {

@@ -1,11 +1,12 @@
 import { z } from 'zod'
+import { versionLabel } from '@shared/panel-versions'
 import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Episode, Panel, PanelVersion } from '@shared/types'
 import { EntityNotFoundError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
-import { castNames, versionLabel } from '../system-prompt'
+import { castNames } from '../system-prompt'
 import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 /*
@@ -158,13 +159,16 @@ const updatePanelFields = (panelId: string): ToolDefinition =>
   defineTool({
     name: 'update_panel_fields',
     description:
-      "Change fields of this panel. Only the fields you name change, and the merged panel is validated: a roster character named in the description must be cast or listed in offPanelMentions, otherwise the call is rejected. " +
+      'Change fields of this panel. Only the fields you name change, and the merged panel is validated. ' +
+      'When the description changes, a roster character it names must be cast or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
       'This does not redraw the image: a dialogue-only change needs no image at all, and a visual change needs regenerate_image or edit_image afterwards.',
     input: patchInput,
     handler: async (patch, ctx) => {
       let updated: { panel: Panel; warnings: string[] }
       try {
-        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: true })
+        // Ruling T21b (as T19a): strict only for a description edit, so a panel saved with an unattached-mention warning
+        // (the manual editor allows it) stays editable here; the warning is passed on instead.
+        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined })
       } catch (error) {
         throw asToolError(error)
       }
