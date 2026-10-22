@@ -1,9 +1,11 @@
 import type { IpcChannel, IpcContract } from '@shared/ipc'
 import type { AppEvent } from '@shared/types'
 
-const ELECTRON_PREFIX = /^Error invoking remote method '[^']*': (?:Error: )?/
+// Electron prefixes the error's name, whatever it is (`Error: `, `CharacterInUseError: `, ...). Only an
+// identifier ending in `Error` is stripped: a message such as "Invalid input: title: ..." has colons of its own.
+const ELECTRON_PREFIX = /^Error invoking remote method '[^']*': (?:(?:[A-Za-z_$][\w$]*)?Error: )?/
 
-/** Strips Electron's `Error invoking remote method '<channel>': Error: ` prefix so the UI shows the real message. */
+/** Strips Electron's `Error invoking remote method '<channel>': <Name>Error: ` prefix so the UI shows the real message. */
 export function cleanIpcError(e: unknown): Error {
   const message = e instanceof Error ? e.message : String(e)
   return new Error(message.replace(ELECTRON_PREFIX, ''))

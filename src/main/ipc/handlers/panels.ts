@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { z } from 'zod'
 import { PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
+import { parseInput } from '../validate'
 import type { HandlerMap } from './projects'
 import { STORED_EXT, type PickFiles } from './uploads'
 
@@ -18,7 +20,7 @@ function inBackground(task: Promise<unknown>, what: string): void {
 
 /**
  * The renderer shows an error's message as it is. A validation failure travels as a plain `Error`
- * (Electron prefixes the error's name, which `cleanIpcError` only strips for `Error`) holding one issue per line.
+ * holding one issue per line.
  */
 async function showIssues<T>(task: Promise<T>): Promise<T> {
   try {
@@ -29,6 +31,11 @@ async function showIssues<T>(task: Promise<T>): Promise<T> {
   }
 }
 
+const Title = z.string().trim().min(1)
+const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
+const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ title: Title.optional(), synopsis: z.string().optional() }) })
+const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
+
 /** Episodes and the panels in them. */
 export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
   const { episodes, panels } = s
@@ -36,8 +43,14 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
 
   return {
     'episodes:list': async ({ projectId }) => episodes.list(await s.projects.open(projectId)),
-    'episodes:create': async ({ projectId, title, synopsis }) => episodes.create(await s.projects.open(projectId), { title, synopsis }),
-    'episodes:update': async ({ projectId, episodeId, patch }) => episodes.update(await s.projects.open(projectId), episodeId, patch),
+    'episodes:create': async (req) => {
+      const { projectId, title, synopsis } = parseInput(CreateEpisodeSchema, req)
+      return episodes.create(await s.projects.open(projectId), { title, synopsis })
+    },
+    'episodes:update': async (req) => {
+      const { projectId, episodeId, patch } = parseInput(UpdateEpisodeSchema, req)
+      return episodes.update(await s.projects.open(projectId), episodeId, patch)
+    },
 
     'panels:list': async ({ projectId, episodeId }) => panels.list(await s.projects.open(projectId), episodeId),
     'panels:get': async ({ projectId, panelId }) => panels.get(await s.projects.open(projectId), panelId),
@@ -61,7 +74,10 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     },
 
     'panels:delete': async ({ projectId, panelId }) => panels.delete(await s.projects.open(projectId), panelId),
-    'panels:move': async ({ projectId, panelId, toIndex }) => panels.move(await s.projects.open(projectId), panelId, toIndex),
+    'panels:move': async (req) => {
+      const { projectId, panelId, toIndex } = parseInput(MoveSchema, req)
+      return panels.move(await s.projects.open(projectId), panelId, toIndex)
+    },
     'panels:revert': async ({ projectId, panelId, versionId }) => panels.revert(await s.projects.open(projectId), panelId, versionId),
 
     'panels:uploadImage': async ({ projectId, panelId }, event) => {

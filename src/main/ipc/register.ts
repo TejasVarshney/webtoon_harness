@@ -9,6 +9,7 @@ import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
 import { storyHandlers } from './handlers/story'
 import { uploadsHandlers, type PickFiles } from './handlers/uploads'
+import { readableError } from './validate'
 
 /** Electron-backed pieces, injected so the handlers stay testable without Electron. */
 export interface IpcDeps {
@@ -37,6 +38,14 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles })
   }
   for (const [channel, fn] of Object.entries(handlers)) {
-    if (fn) ipc.handle(channel, (e, req) => fn(req as never, e))
+    if (!fn) continue
+    // A schema failure anywhere in a handler reaches the renderer as one readable line, not a ZodError dump.
+    ipc.handle(channel, async (e, req) => {
+      try {
+        return await fn(req as never, e)
+      } catch (error) {
+        throw readableError(error)
+      }
+    })
   }
 }
