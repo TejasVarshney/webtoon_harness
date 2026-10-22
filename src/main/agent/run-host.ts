@@ -45,6 +45,8 @@ export interface RunRequest {
 interface ActiveRun {
   runId: string
   controller: AbortController
+  /** Settles once the loop has ended and the slot is free; unset while the run is still being prepared. */
+  done?: Promise<void>
 }
 
 /**
@@ -71,6 +73,14 @@ export class RunHost {
     for (const run of this.running.values()) if (run.runId === runId) run.controller.abort()
   }
 
+  /** Aborts the thread's run, if any, and resolves once it has ended (its last messages persisted). */
+  async stop(threadKey: string): Promise<void> {
+    const run = this.running.get(threadKey)
+    if (!run) return
+    run.controller.abort()
+    await run.done
+  }
+
   /** Aborts every run (app quit). Each loop still persists a result for its pending tool calls. */
   cancelAll(): void {
     for (const run of this.running.values()) run.controller.abort()
@@ -82,7 +92,8 @@ export class RunHost {
     if (this.running.has(threadKey)) throw new SessionBusyError(req.subject)
     const runId = newId('run')
     const controller = new AbortController()
-    this.running.set(threadKey, { runId, controller })
+    const active: ActiveRun = { runId, controller }
+    this.running.set(threadKey, active)
 
     let background: Promise<void> | null = null
     try {
@@ -125,7 +136,7 @@ export class RunHost {
       this.release(threadKey, runId)
       throw err
     }
-    void background.finally(() => this.release(threadKey, runId))
+    active.done = background.finally(() => this.release(threadKey, runId))
     return { runId }
   }
 

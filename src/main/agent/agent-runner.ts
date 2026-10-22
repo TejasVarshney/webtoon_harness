@@ -44,6 +44,11 @@ export class AgentRunner {
     this.host.cancel(runId)
   }
 
+  /** Aborts the session's run, if any, and resolves once it has ended. */
+  stop(sessionId: string): Promise<void> {
+    return this.host.stop(sessionId)
+  }
+
   /** Aborts every run (app quit). Each loop still persists a result for its pending tool calls. */
   cancelAll(): void {
     this.host.cancelAll()

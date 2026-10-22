@@ -13,7 +13,12 @@ export function sessionsHandlers(s: Services): HandlerMap {
       const { projectId, sessionId, title } = parseInput(RenameSchema, req)
       return s.sessions.rename(await s.projects.open(projectId), sessionId, title)
     },
-    'sessions:delete': async ({ projectId, sessionId }) => s.sessions.delete(await s.projects.open(projectId), sessionId),
+    'sessions:delete': async ({ projectId, sessionId }) => {
+      const ctx = await s.projects.open(projectId)
+      // A run must not keep calling the model (and spending) for a session that is gone.
+      await s.agent.stop(sessionId)
+      return s.sessions.delete(ctx, sessionId)
+    },
     'sessions:load': async ({ projectId, sessionId }) => s.sessions.load(await s.projects.open(projectId), sessionId)
   }
 }
