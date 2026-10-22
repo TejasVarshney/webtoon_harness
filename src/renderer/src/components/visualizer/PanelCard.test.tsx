@@ -77,6 +77,24 @@ describe('PanelCard', () => {
     expect(within(status()).getByRole('button', { name: 'Retry' })).toBeEnabled()
   })
 
+  it('hides a failed regeneration once the user reverts, and shows the next failure again', () => {
+    installFakeApi({})
+    const v1 = panelVersion({ id: 'ver_0000000001' })
+    const v2 = panelVersion({ id: 'ver_0000000002' })
+    const failed = panelVersion({ id: 'ver_0000000003', status: 'failed', imagePath: null, error: 'timeout' })
+    const { rerender } = render(<PanelCard panel={panel({ versions: [v1, v2, failed], currentVersionId: v2.id })} selected={false} />)
+    expect(status()).toHaveTextContent('Failed: timeout')
+
+    // A revert (here, or by the agent in the side chat) is the user's choice of image: the old failure is no news.
+    rerender(<PanelCard panel={panel({ versions: [v1, v2, failed], currentVersionId: v1.id })} selected={false} />)
+    expect(screen.queryByTestId('panel-status')).toBeNull()
+    expect(screen.getByRole('img')).toHaveAttribute('src', assetUrl(projectId, 'panels/pnl_0000000001/ver_0000000001.png'))
+
+    const again = panelVersion({ id: 'ver_0000000004', status: 'failed', imagePath: null, error: 'rate limited' })
+    rerender(<PanelCard panel={panel({ versions: [v1, v2, failed, again], currentVersionId: v1.id })} selected={false} />)
+    expect(status()).toHaveTextContent('Failed: rate limited')
+  })
+
   it('says so when a panel has no image yet', () => {
     installFakeApi({})
     render(<PanelCard panel={panel({ versions: [], currentVersionId: null })} selected={false} />)

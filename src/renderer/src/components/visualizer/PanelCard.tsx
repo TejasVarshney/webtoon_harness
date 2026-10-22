@@ -14,7 +14,8 @@ export interface PanelCardProps {
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
- * pending or failed (a failed regeneration keeps showing the image that was good), and a toolbar on hover.
+ * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
+ * toolbar on hover.
  * Clicking the card selects the panel; the toolbar's buttons and the dialogs it opens do not.
  */
 export function PanelCard({ panel, selected }: PanelCardProps) {
@@ -38,6 +39,17 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
   const imagePath = current?.status === 'ready' ? current.imagePath : null
   const latest = panel.versions.at(-1)
   const generating = latest?.status === 'pending'
+
+  // A revert (from the version switcher, or by the agent) moves the current version while the newest attempt stays
+  // the same failed one: the user chose an image, so that old failure is no longer shown. A later attempt that fails
+  // is new, and shows again. Kept per card, from the data alone: nothing is stored.
+  const [seen, setSeen] = useState({ current: panel.currentVersionId, latest: latest?.id ?? null })
+  const [dismissedFailure, setDismissedFailure] = useState<string | null>(null)
+  if (seen.current !== panel.currentVersionId || seen.latest !== (latest?.id ?? null)) {
+    if (seen.current !== panel.currentVersionId && seen.latest === latest?.id && latest?.status === 'failed') setDismissedFailure(latest.id)
+    setSeen({ current: panel.currentVersionId, latest: latest?.id ?? null })
+  }
+  const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
 
   function run(task: Promise<unknown>): void {
     setBusy(true)
@@ -83,9 +95,9 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
               Generating…
             </div>
           )}
-          {latest?.status === 'failed' && (
+          {failed !== null && (
             <div className="panel-status panel-status-failed" data-testid="panel-status" data-status="failed" role="status">
-              <span>{`Failed: ${latest.error ?? 'Unknown error'}`}</span>
+              <span>{`Failed: ${failed.error ?? 'Unknown error'}`}</span>
               {/* Retry is part of the status, but is its own control: a click on it must not select the panel. */}
               <button
                 type="button"
