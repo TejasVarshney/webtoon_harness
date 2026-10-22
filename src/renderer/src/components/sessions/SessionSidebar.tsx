@@ -3,6 +3,7 @@ import type { SessionSummary } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { SettingsDialog } from '../settings/SettingsDialog'
 import { NewProjectDialog } from './NewProjectDialog'
+import { ProjectProblems } from './ProjectProblems'
 
 function relativeTime(iso: string, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
@@ -110,6 +111,7 @@ export function SessionSidebar() {
         </p>
       )}
       {projectId === null && <p className="placeholder">Create a project to start.</p>}
+      <ProjectProblems />
 
       <ul className="session-list">
         {sessions.map((s) => (

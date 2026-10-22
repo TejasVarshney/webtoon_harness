@@ -516,6 +516,28 @@ body,
   gap: 4px;
 }
 
+.project-problems {
+  padding: 4px 8px;
+  background: rgba(212, 167, 44, 0.2);
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.project-problems summary {
+  cursor: pointer;
+}
+
+.project-problems ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.project-problems li {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
 .notice-info {
   margin: 0;
   padding: 4px 8px;

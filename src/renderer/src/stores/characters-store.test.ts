@@ -99,14 +99,15 @@ describe('useCharactersStore', () => {
 
   describe('character.changed', () => {
     it('reloads for the open project only', async () => {
-      const { calls, emit } = installFakeApi({ 'characters:list': () => [character()] })
+      const { calls, emit } = installFakeApi({ 'characters:list': () => [character()], 'projects:open': () => ({ meta: {}, problems: [] }) })
       stop = startEventSync()
       emit({ type: 'character.changed', projectId: 'prj_bbbbbbbbbb', characterId: 'chr_0000000001' })
       await new Promise((r) => setTimeout(r, 10))
       expect(calls).toEqual([])
       emit({ type: 'character.changed', projectId, characterId: 'chr_0000000001' })
       await new Promise((r) => setTimeout(r, 10))
-      expect(calls.map((c) => c.channel)).toEqual(['characters:list'])
+      // The reload, then the problems it may have found (I1).
+      expect(calls.map((c) => c.channel)).toEqual(['characters:list', 'projects:open'])
       expect(useCharactersStore.getState().characters).toHaveLength(1)
     })
 

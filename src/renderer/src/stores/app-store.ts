@@ -41,6 +41,11 @@ export interface AppActions {
   openProject(id: string): Promise<void>
   /** Re-reads the open project's meta and problems (what `project.changed` calls). Leaves the sessions and the selection alone. */
   refreshMeta(): Promise<void>
+  /**
+   * Re-reads only the open project's problems. Main records an unreadable file while it lists (characters, episodes,
+   * panels, sessions, story), so this runs after those lists load; see `startEventSync`.
+   */
+  refreshProblems(): Promise<void>
   /** Saves the story mode and shows it at once from the meta main returns. Rejects when main refuses. */
   setStoryMode(mode: StoryMode): Promise<void>
   loadSessions(): Promise<void>
@@ -104,6 +109,14 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     // The user may have switched project while this was loading.
     if (get().projectId !== projectId) return
     set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)), problems }))
+  },
+
+  async refreshProblems() {
+    const projectId = get().projectId
+    if (projectId === null) return
+    const { problems } = await api.invoke('projects:open', { projectId })
+    if (get().projectId !== projectId) return
+    set({ problems })
   },
 
   async setStoryMode(mode) {
