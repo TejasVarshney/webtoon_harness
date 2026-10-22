@@ -55,6 +55,14 @@ describe('upsertMarkdownSection', () => {
     expect(upsertMarkdownSection('## A\n1\n\n## A\n2\n', 'a', 'x')).toBe('## A\nx\n\n## A\n2\n')
   })
 
+  it('takes an echoed "## Heading" for the heading itself, and leaves a hash with no space after it alone', () => {
+    expect(upsertMarkdownSection(BIBLE, '## Premise', 'new')).toBe('# Story Bible\n\n## Premise\nnew\n\n## World\nw\n')
+    expect(upsertMarkdownSection(BIBLE, '### World', 'x')).toBe('# Story Bible\n\n## Premise\nold\n\n## World\nx\n')
+    expect(upsertMarkdownSection('## A\n', '## B', 'b')).toBe('## A\n\n## B\nb\n')
+    expect(upsertMarkdownSection('## A\n', '#1 Theory', 'b')).toBe('## A\n\n## #1 Theory\nb\n')
+    expect(() => upsertMarkdownSection(BIBLE, '## ', 'x')).toThrow(/heading/i)
+  })
+
   it('rejects a heading that is empty or spans lines', () => {
     expect(() => upsertMarkdownSection(BIBLE, '  ', 'x')).toThrow(/heading/i)
     expect(() => upsertMarkdownSection(BIBLE, 'A\nB', 'x')).toThrow(/heading/i)

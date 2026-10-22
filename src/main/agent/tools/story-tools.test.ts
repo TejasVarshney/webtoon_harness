@@ -52,6 +52,14 @@ describe('story tools', () => {
     expect(json(await run('get_story', {})).bible).toContain('## Themes\nLoneliness\n')
   })
 
+  it('update_story_bible takes a section name copied with its "## " and replaces that section', async () => {
+    const { ok } = await setup()
+    const written = await ok('update_story_bible', { section: '## Premise', content: 'Echoed heading.' })
+    expect(written.section).toBe('Premise')
+    expect(written.sections).toEqual(['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'])
+    expect((await ok('get_story', {})).bible).toContain('## Premise\nEchoed heading.\n')
+  })
+
   it('get_story reports the story mode', async () => {
     const { services, ctx, ok } = await setup()
     await services.story.setMode(ctx, 'ai')

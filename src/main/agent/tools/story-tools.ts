@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { BeatPatchSchema } from '@shared/schemas'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
-import { listSections } from '../../domain/markdown-sections'
+import { checkedHeading, listSections } from '../../domain/markdown-sections'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition } from './registry'
 
 const episodeId = z.string().describe('Episode id, e.g. epi_0123456789')
@@ -52,7 +52,7 @@ const updateStoryBible = defineTool({
   handler: async ({ section, content }, ctx) => {
     // A section name or content the service refuses comes back to the model as its plain message.
     const bible = await ctx.services.story.updateBibleSection(ctx.project, section, content)
-    return { content: { section: section.trim(), sections: listSections(bible) } }
+    return { content: { section: checkedHeading(section), sections: listSections(bible) } }
   }
 })
 

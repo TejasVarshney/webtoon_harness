@@ -21,9 +21,12 @@ export function listSections(md: string): string[] {
   return out
 }
 
-/** The heading to use for `name`: trimmed. Throws when it is empty or spans lines, since either would not make a `## ` line. */
+/**
+ * The heading to use for `name`: trimmed, and without leading markdown hashes (a model often echoes the `## Premise` line it just
+ * read; `#1 Theory` has no space after the hash and is a plain name). Throws when it is empty or spans lines.
+ */
 export function checkedHeading(name: string): string {
-  const heading = name.trim()
+  const heading = name.trim().replace(/^#+(?:[ \t]+|$)/, '').trim()
   if (heading === '' || /[\r\n]/.test(heading)) throw new Error('A section heading must be one non-empty line')
   return heading
 }
