@@ -152,15 +152,22 @@ export class ModelRegistry {
     })
   }
 
-  updateEndpoint(id: string, patch: EndpointPatch): Promise<EndpointConfig> {
-    return this.mutate((draft) => {
+  /**
+   * Ruling F3: when the base URL moves to another host, the stored key is cleared (`keyCleared`), so a key is
+   * never sent to a server it was not given for. It is cleared before the new URL is written: no failure in
+   * between can pair the old key with the new host.
+   */
+  updateEndpoint(id: string, patch: EndpointPatch): Promise<{ endpoint: EndpointConfig; keyCleared: boolean }> {
+    return this.mutate(async (draft) => {
       const endpoint = this.requireEndpoint(draft, id)
       const next = EndpointConfigSchema.parse({ ...endpoint, ...patch, id })
       for (const m of draft.models.filter((x) => x.endpointId === id)) {
         assertKindAllows(next.kind, m.capabilities, `Model '${m.label}'`)
       }
+      const keyCleared = hostOf(next.baseUrl) !== hostOf(endpoint.baseUrl) && this.secrets.get(id) !== null
+      if (keyCleared) await this.secrets.set(id, null)
       draft.endpoints[draft.endpoints.indexOf(endpoint)] = next
-      return next
+      return { endpoint: next, keyCleared }
     })
   }
 
@@ -271,16 +278,25 @@ export class ModelRegistry {
    * Runs `fn` on a copy of the state under the mutex, writes the copy atomically, then adopts it
    * and emits. `after` runs once the write has succeeded.
    */
-  private mutate<T>(fn: (draft: ModelsFile) => T, after?: () => Promise<void>): Promise<T> {
+  private mutate<T>(fn: (draft: ModelsFile) => T | Promise<T>, after?: () => Promise<void>): Promise<T> {
     return this.mutex.run(this.file, async () => {
       const draft = structuredClone(this.state)
-      const result = fn(draft)
+      const result = await fn(draft)
       await writeJsonAtomic(this.file, draft)
       this.state = draft
       await after?.()
       this.bus.emit({ type: 'models.changed' })
       return result
     })
+  }
+}
+
+/** The host (with port) a base URL points at, compared case-insensitively; the trimmed text when it is no URL. */
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl.trim()).host.toLowerCase()
+  } catch {
+    return baseUrl.trim()
   }
 }
 

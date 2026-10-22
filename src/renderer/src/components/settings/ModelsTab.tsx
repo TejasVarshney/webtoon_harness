@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { EndpointConfig, ModelConfig, Role } from '@shared/types'
 import { useModelsStore } from '../../stores/models-store'
+import { EndpointEditForm } from './EndpointEditForm'
 import { EndpointForm } from './EndpointForm'
 import { ModelForm } from './ModelForm'
 import { RoleAssignments } from './RoleAssignments'
@@ -15,6 +16,7 @@ export function ModelsTab() {
   const view = useModelsStore((s) => s.view)
   const [addingEndpoint, setAddingEndpoint] = useState(false)
   const [editing, setEditing] = useState<Editing | null>(null)
+  const [editingEndpoint, setEditingEndpoint] = useState<string | null>(null)
   const [keyFor, setKeyFor] = useState<string | null>(null)
   const [keyDraft, setKeyDraft] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
@@ -96,6 +98,9 @@ export function ModelsTab() {
                 {!isMock && <span className="endpoint-key">{endpoint.hasKey ? 'Key set' : 'No key'}</span>}
                 {!isMock && (
                   <>
+                    <button type="button" onClick={() => setEditingEndpoint(endpoint.id)}>
+                      Edit endpoint
+                    </button>
                     <button type="button" onClick={() => setKeyFor(endpoint.id)}>
                       {endpoint.hasKey ? 'Replace key' : 'Set key'}
                     </button>
@@ -110,6 +115,16 @@ export function ModelsTab() {
                   </>
                 )}
               </div>
+              {editingEndpoint === endpoint.id && (
+                <EndpointEditForm
+                  endpoint={endpoint}
+                  onCancel={() => setEditingEndpoint(null)}
+                  onDone={({ keyCleared }) => {
+                    setEditingEndpoint(null)
+                    setNotice(keyCleared ? 'Key cleared because the host changed' : null)
+                  }}
+                />
+              )}
               {keyFor === endpoint.id && (
                 <form
                   className="key-form"

@@ -11,7 +11,8 @@ export interface ModelsData {
 export interface ModelsActions {
   load(): Promise<void>
   addEndpoint(input: EndpointInput): Promise<EndpointConfig>
-  updateEndpoint(id: string, patch: EndpointPatch): Promise<EndpointConfig>
+  /** `keyCleared`: the host changed, so main removed the stored key. */
+  updateEndpoint(id: string, patch: EndpointPatch): Promise<{ endpoint: EndpointConfig; keyCleared: boolean }>
   removeEndpoint(id: string): Promise<Role[]>
   /** Write-only: the key goes to the main process and is never read back (the view only has `hasKey`). */
   setApiKey(endpointId: string, key: string | null): Promise<void>

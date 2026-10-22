@@ -58,7 +58,8 @@ export interface IpcContract {
   'sessions:load': { req: { projectId: string; sessionId: string }; res: ChatMessage[] }
   'models:get': { req: Record<string, never>; res: ModelRegistryView }
   'models:addEndpoint': { req: EndpointInput; res: EndpointConfig }
-  'models:updateEndpoint': { req: { id: string; patch: EndpointPatch }; res: EndpointConfig }
+  /** `keyCleared`: the base URL moved to another host, so the stored key was removed (it is never sent to a new host). */
+  'models:updateEndpoint': { req: { id: string; patch: EndpointPatch }; res: { endpoint: EndpointConfig; keyCleared: boolean } }
   'models:removeEndpoint': { req: { id: string }; res: { clearedRoles: Role[] } }
   /** `key: null` removes the stored key. The key travels renderer to main only; it is never sent back. */
   'models:setApiKey': { req: { endpointId: string; key: string | null }; res: void }

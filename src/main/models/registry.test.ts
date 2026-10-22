@@ -196,6 +196,33 @@ describe('ModelRegistry', () => {
     expect(registry.view().endpoints[0]!.hasKey).toBe(false)
   })
 
+  it('clears a stored key when the base URL moves to another host, and says so (Ruling F3)', async () => {
+    const e = await registry.addEndpoint({ name: 'O', kind: 'openai', baseUrl: 'https://api.openai.com/v1' })
+    await registry.setApiKey(e.id, 'sk-old')
+    const hasKey = (): boolean => registry.view().endpoints.find((x) => x.id === e.id)!.hasKey
+
+    expect(await registry.updateEndpoint(e.id, { name: 'O2' })).toMatchObject({ endpoint: { name: 'O2' }, keyCleared: false })
+    expect(await registry.updateEndpoint(e.id, { baseUrl: 'https://API.openai.com/v2/' })).toMatchObject({ keyCleared: false })
+    expect(hasKey()).toBe(true)
+
+    const moved = await registry.updateEndpoint(e.id, { baseUrl: 'https://proxy.example.com/v1' })
+    expect(moved).toEqual({ endpoint: expect.objectContaining({ baseUrl: 'https://proxy.example.com/v1' }), keyCleared: true })
+    expect(hasKey()).toBe(false)
+    expect(registry.resolveModel((await registry.addModel({ endpointId: e.id, modelId: 'm', label: 'm', capabilities: ['text'] })).id).apiKey).toBeNull()
+
+    // A different port is a different server; with no key stored there is nothing to clear.
+    await registry.setApiKey(e.id, 'sk-new')
+    expect(await registry.updateEndpoint(e.id, { baseUrl: 'https://proxy.example.com:8443/v1' })).toMatchObject({ keyCleared: true })
+    expect(await registry.updateEndpoint(e.id, { baseUrl: 'https://elsewhere.example.com' })).toMatchObject({ keyCleared: false })
+  })
+
+  it('compares unparseable base URLs as strings', async () => {
+    const e = await registry.addEndpoint({ name: 'L', kind: 'openai', baseUrl: 'localhost-box' })
+    await registry.setApiKey(e.id, 'k')
+    expect(await registry.updateEndpoint(e.id, { baseUrl: 'localhost-box' })).toMatchObject({ keyCleared: false })
+    expect(await registry.updateEndpoint(e.id, { baseUrl: 'other-box' })).toMatchObject({ keyCleared: true })
+  })
+
   it('emits models.changed after every mutation', async () => {
     events.length = 0
     const e = await registry.addEndpoint({ name: 'O', kind: 'openai', baseUrl: 'u' })

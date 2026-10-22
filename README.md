@@ -76,7 +76,7 @@ Anthropic cannot draw, so a working setup needs an image model from an `openai` 
 | `image` | image-gen | none: image calls fail with a clear message and a Retry | Character and panel images. |
 | `imageEdit` | image-edit | uses `image` | Editing a panel's current image from the side chat. |
 
-Removing an endpoint or model that is assigned to a role clears that role and tells you which. The model form also takes a JSON `params` object; for Anthropic text models `{"effort": "high"}` is the default and `low`, `medium`, `high`, `xhigh` and `max` are accepted. `maxReferenceImages` caps how many reference images are sent with one image request.
+**Edit endpoint** changes an endpoint's name and base URL. Moving the base URL to another host clears the endpoint's stored key, so a key is never sent to a server it was not entered for; the Settings screen says "Key cleared because the host changed", and you set the key again. Removing an endpoint or model that is assigned to a role clears that role and tells you which. The model form also takes a JSON `params` object; for Anthropic text models `{"effort": "high"}` is the default and `low`, `medium`, `high`, `xhigh` and `max` are accepted. `maxReferenceImages` caps how many reference images are sent with one image request.
 
 ### Consistency check (vision role)
 
@@ -86,18 +86,18 @@ Assign a vision-capable model to the `vision` role to turn on the consistency ch
 
 Keys are entered in the Models settings, then encrypted by the main process with the operating system's secret storage through Electron `safeStorage` (Windows DPAPI, macOS Keychain, Linux libsecret) and saved as ciphertext in `secrets.json` in the app's user-data folder. A key never reaches the renderer: the interface only learns whether a key is set ("Key set" or "No key"), and every network call is made in the main process. If the system cannot encrypt (for example Linux without a keyring), saving a key is refused instead of storing it in the clear. A `secrets.json` copied to another machine or user cannot be decrypted; enter the keys again.
 
-The user-data folder is Electron's per-user data folder for the app, for example `%APPDATA%\Webtoon AI Harness` on Windows. It also holds `models.json` (endpoints, models and role assignments, without keys). Set `WEBTOON_USER_DATA` to use another folder.
+The user-data folder is Electron's per-user data folder for the app, for example `%APPDATA%\Webtoon AI Harness` on Windows. It also holds `models.json` (endpoints, models and role assignments, without keys). If you edit `models.json` by hand, do it with the app closed: the app keeps it in memory and rewrites it whenever you change an endpoint, a model or a role in Settings (setting or clearing a key writes only `secrets.json`). Set `WEBTOON_USER_DATA` to use another folder.
 
 ### Server-side refusal fallback
 
 For supported Anthropic models the app asks the API to retry on a fallback model, on the server, when the model refuses a request. This is **on by default** when both hold:
 
-- the endpoint's base URL is exactly `https://api.anthropic.com`, and
+- the endpoint's base URL is `https://api.anthropic.com` (a trailing slash is fine), and
 - the model id starts with `claude-opus-5`, `claude-sonnet-5` or `claude-fable-5`.
 
 Other models (such as `claude-haiku-5-5`) and other base URLs, including proxies, never use it.
 
-There is no switch for it in the interface. To turn it off for an endpoint, quit the app, open `models.json` in the user-data folder, and set `serverSideFallback` to `false` in that endpoint's `options`:
+To turn it off for an endpoint, open **Settings → Models**, choose **Edit endpoint** on that endpoint and clear **Server-side refusal fallback** (it is on unless you clear it). The switch is stored in `models.json` as `serverSideFallback` in the endpoint's `options`:
 
 ```json
 {
@@ -108,8 +108,6 @@ There is no switch for it in the interface. To turn it off for an endpoint, quit
   "options": { "serverSideFallback": false }
 }
 ```
-
-Edit the file only while the app is closed: the app keeps it in memory and rewrites the whole file on every change you make in Settings.
 
 ### OpenAI-compatible local servers
 

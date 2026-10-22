@@ -87,4 +87,59 @@ describe('ModelsTab', () => {
     await userEvent.click(within(screen.getByTestId('model-row-mdl_000000000a')).getByRole('button', { name: 'Test' }))
     expect(await screen.findByText(/bad key/)).toBeInTheDocument()
   })
+
+  describe('editing an endpoint (I2)', () => {
+    const anthropic = { id: 'end_2222222222', name: 'Anthropic', kind: 'anthropic' as const, baseUrl: 'https://api.anthropic.com', options: {}, hasKey: true }
+    const openai = { id: 'end_3333333333', name: 'OpenAI', kind: 'openai' as const, baseUrl: 'https://api.openai.com/v1', options: {}, hasKey: false }
+
+    beforeEach(() => {
+      useModelsStore.setState({ view: view({ endpoints: [...view().endpoints, anthropic, openai] }) })
+    })
+
+    it('saves the name, base URL and the refusal-fallback switch, which is on unless turned off', async () => {
+      const { calls } = installFakeApi({
+        'models:updateEndpoint': (req: { id: string; patch: object }) => ({ endpoint: { ...anthropic, ...req.patch }, keyCleared: false }),
+        'models:get': () => view({ endpoints: [anthropic, openai] })
+      })
+      render(<ModelsTab />)
+      await userEvent.click(within(screen.getByTestId('endpoint-end_2222222222')).getByRole('button', { name: 'Edit endpoint' }))
+      const form = screen.getByRole('form', { name: 'Edit endpoint' })
+      const fallback = within(form).getByLabelText('Server-side refusal fallback')
+      expect(fallback).toBeChecked()
+      expect(within(form).getByLabelText('Base URL')).toHaveValue('https://api.anthropic.com')
+      await userEvent.clear(within(form).getByLabelText('Name'))
+      await userEvent.type(within(form).getByLabelText('Name'), 'Claude direct')
+      await userEvent.click(fallback)
+      await userEvent.click(within(form).getByRole('button', { name: 'Save endpoint' }))
+      await waitFor(() => expect(calls.some((c) => c.channel === 'models:updateEndpoint')).toBe(true))
+      expect(calls.find((c) => c.channel === 'models:updateEndpoint')?.req).toEqual({
+        id: 'end_2222222222',
+        patch: { name: 'Claude direct', baseUrl: 'https://api.anthropic.com', options: { serverSideFallback: false } }
+      })
+      await waitFor(() => expect(screen.queryByRole('form', { name: 'Edit endpoint' })).not.toBeInTheDocument())
+    })
+
+    it('tells the user when the key was cleared because the host changed (Ruling F3)', async () => {
+      installFakeApi({
+        'models:updateEndpoint': () => ({ endpoint: { ...anthropic, baseUrl: 'https://proxy.example.com' }, keyCleared: true }),
+        'models:get': () => view({ endpoints: [{ ...anthropic, hasKey: false }] })
+      })
+      render(<ModelsTab />)
+      await userEvent.click(within(screen.getByTestId('endpoint-end_2222222222')).getByRole('button', { name: 'Edit endpoint' }))
+      const url = within(screen.getByRole('form', { name: 'Edit endpoint' })).getByLabelText('Base URL')
+      await userEvent.clear(url)
+      await userEvent.type(url, 'https://proxy.example.com')
+      await userEvent.click(screen.getByRole('button', { name: 'Save endpoint' }))
+      expect(await screen.findByText('Key cleared because the host changed')).toBeInTheDocument()
+    })
+
+    it('offers the fallback switch only for anthropic endpoints', async () => {
+      installFakeApi({})
+      render(<ModelsTab />)
+      await userEvent.click(within(screen.getByTestId('endpoint-end_3333333333')).getByRole('button', { name: 'Edit endpoint' }))
+      const form = screen.getByRole('form', { name: 'Edit endpoint' })
+      expect(within(form).queryByLabelText('Server-side refusal fallback')).not.toBeInTheDocument()
+      expect(within(screen.getByTestId('endpoint-end_0000000000')).queryByRole('button', { name: 'Edit endpoint' })).not.toBeInTheDocument()
+    })
+  })
 })
