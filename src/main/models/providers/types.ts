@@ -6,7 +6,22 @@ export interface ToolSpec {
   inputSchema: Record<string, unknown>
 }
 
+/**
+ * Loads a project image for a text model. Rejects with `ImageUnavailableError` when the image is gone or
+ * unreadable for good; the adapters then replay a text note in its place instead of failing the turn.
+ */
 export type ImageLoader = (relPath: string) => Promise<{ mime: string; base64: string }>
+
+/** The image a message names is gone, outside the project, empty or undecodable. */
+export class ImageUnavailableError extends Error {
+  constructor(
+    readonly relPath: string,
+    reason: string
+  ) {
+    super(`Image ${relPath} is not available: ${reason}`)
+    this.name = 'ImageUnavailableError'
+  }
+}
 
 export interface TextTurnRequest {
   system: string

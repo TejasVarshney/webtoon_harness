@@ -5,7 +5,7 @@ import { ProviderError } from '../models/providers/types'
 import type { ImageProvider, ImageRef } from '../models/providers/types'
 import type { ModelRegistry } from '../models/registry'
 import type { ProjectContext } from '../storage/project-store'
-import { MAX_REFERENCE_IMAGE_EDGE, type ImageOps } from './image-ops'
+import { MAX_REFERENCE_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 
 export const IMAGE_TIMEOUT_MS = 180_000
 
@@ -81,9 +81,16 @@ export class ImageService {
     }
   }
 
+  /** Callers turn a rejection into a failed variation or version (their never-throw contracts). */
   private async load(ctx: ProjectContext, ref: ImageReferenceInput): Promise<ImageRef> {
     const raw = await fs.promises.readFile(ctx.paths.resolveAsset(ref.relPath))
-    const out = await this.opts.imageOps.downscale(raw, MAX_REFERENCE_IMAGE_EDGE)
+    let out: { mime: string; data: Buffer }
+    try {
+      out = await this.opts.imageOps.downscale(raw, MAX_REFERENCE_IMAGE_EDGE)
+    } catch (error) {
+      if (error instanceof UnreadableImageError) throw new UnreadableImageError(`Reference image ${ref.relPath} is not a readable image (png, jpg, webp or gif)`)
+      throw error
+    }
     return { mime: out.mime as ImageRef['mime'], data: out.data, label: ref.label }
   }
 }

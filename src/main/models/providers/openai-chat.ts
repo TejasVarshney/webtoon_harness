@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import type { ChatCompletionContentPart, ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 import type { ChatMessage, ToolCall } from '@shared/types'
 import type { ResolvedModel } from '../registry'
+import { replayImage, type ReplayImage } from './image-replay'
 import { ProviderError } from './types'
 import type { ImageLoader, TextProvider, TextTurnRequest, TextTurnResult } from './types'
 
@@ -43,11 +44,16 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
 
+function imagePart(image: Extract<ReplayImage, { kind: 'image' }>): ChatCompletionContentPart {
+  return { type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.base64}` } }
+}
+
+/** The images as content parts; one that is gone becomes a text part with its note (C1). */
 async function imageParts(loadImage: ImageLoader, paths: string[]): Promise<ChatCompletionContentPart[]> {
   const parts: ChatCompletionContentPart[] = []
   for (const p of paths) {
-    const { mime, base64 } = await loadImage(p)
-    parts.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } })
+    const image = await replayImage(loadImage, p)
+    parts.push(image.kind === 'note' ? { type: 'text', text: image.text } : imagePart(image))
   }
   return parts
 }
@@ -77,15 +83,20 @@ export async function toOpenAIMessages(
       }))
       out.push({ role: 'assistant', content: m.text || null, ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}) })
     } else {
-      const imagePaths: string[] = []
+      const images: ChatCompletionContentPart[] = []
       for (const res of m.results) {
-        let content = res.content
-        if (!vision && res.images.length > 0) content = [content, ...res.images.map(() => NO_VISION_NOTE)].filter(Boolean).join('\n')
+        // Notes (no vision, image gone) stay with their result's text; only real images move to the user message.
+        const notes: string[] = []
+        for (const p of res.images) {
+          const image: ReplayImage = vision ? await replayImage(loadImage, p) : { kind: 'note', text: NO_VISION_NOTE }
+          if (image.kind === 'note') notes.push(image.text)
+          else images.push(imagePart(image))
+        }
+        const content = [res.content, ...notes].filter(Boolean).join('\n')
         out.push({ role: 'tool', tool_call_id: res.toolCallId, content: content || '(no output)' })
-        if (vision) imagePaths.push(...res.images)
       }
       // Tool messages cannot carry images: they follow as one user message, after all tool messages.
-      if (imagePaths.length > 0) out.push({ role: 'user', content: await imageParts(loadImage, imagePaths) })
+      if (images.length > 0) out.push({ role: 'user', content: images })
     }
   }
   return out

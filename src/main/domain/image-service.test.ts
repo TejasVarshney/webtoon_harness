@@ -1,19 +1,21 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createIdentityImageOps } from './image-ops'
+import { createIdentityImageOps, createNativeImageOps, type ImageOps } from './image-ops'
 import { ImageService } from './image-service'
 import type { ImageEditRequest, ImageProvider, ImageRequest } from '../models/providers/types'
 import { encodeSolidPng } from '../models/providers/png'
+import { fakeNativeImage, WEBP_BYTES } from '../test/fake-native-image'
 import { tempProject } from '../test/temp-project'
 import type { ModelRegistry } from '../models/registry'
 
 const png = encodeSolidPng(2, 2, [1, 2, 3])
 
-async function setup(provider: Partial<ImageProvider>, timeoutMs?: number) {
+async function setup(provider: Partial<ImageProvider>, timeoutMs?: number, ops?: ImageOps) {
   const tp = await tempProject()
-  await fs.promises.mkdir(tp.ctx.paths.resolveAsset('uploads/..'), { recursive: true })
+  await fs.promises.mkdir(tp.ctx.paths.uploadsDir(), { recursive: true })
   await fs.promises.writeFile(tp.ctx.paths.resolveAsset('uploads/a.png'), png)
-  const imageOps = createIdentityImageOps()
+  const identity = createIdentityImageOps()
+  const imageOps = ops ?? identity
   const seen: { req?: ImageRequest | ImageEditRequest; fn?: string } = {}
   const roles: string[] = []
   const registry = {
@@ -31,7 +33,7 @@ async function setup(provider: Partial<ImageProvider>, timeoutMs?: number) {
       edit: async (req) => { seen.req = req; seen.fn = 'edit'; return provider.edit!(req) }
     })
   })
-  return { tp, svc, imageOps, seen, roles }
+  return { tp, svc, imageOps: identity, seen, roles }
 }
 
 const ok = async () => ({ mime: 'image/jpeg' as const, data: Buffer.from('out') })
@@ -60,6 +62,25 @@ describe('ImageService', () => {
     expect((seen.req as ImageEditRequest).source.data.equals(png)).toBe(true)
     expect(svc.maxReferences('imageEdit')).toBe(3)
     expect(svc.maxReferences('image')).toBe(5)
+  })
+
+  it('passes a WebP reference the decoder cannot read through with its MIME (Ruling F1)', async () => {
+    const { tp, svc, seen } = await setup({ generate: ok }, undefined, createNativeImageOps(fakeNativeImage()))
+    cleanup = tp.cleanup
+    await fs.promises.writeFile(tp.ctx.paths.resolveAsset('uploads/w.webp'), WEBP_BYTES)
+    await svc.generate(tp.ctx, { prompt: 'p', references: [{ relPath: 'uploads/w.webp', label: 'Mina' }], aspect: '2:3' })
+    expect(seen.req!.references[0]).toMatchObject({ mime: 'image/webp', label: 'Mina' })
+    expect(seen.req!.references[0].data.equals(WEBP_BYTES)).toBe(true)
+  })
+
+  it('rejects a reference that is no image with an error naming it, before calling the model', async () => {
+    const { tp, svc, seen } = await setup({ generate: ok }, undefined, createNativeImageOps(fakeNativeImage()))
+    cleanup = tp.cleanup
+    await fs.promises.writeFile(tp.ctx.paths.resolveAsset('uploads/junk.webp'), Buffer.from('not an image'))
+    await expect(svc.generate(tp.ctx, { prompt: 'p', references: [{ relPath: 'uploads/junk.webp', label: 'x' }], aspect: '1:1' })).rejects.toThrow(
+      'Reference image uploads/junk.webp is not a readable image (png, jpg, webp or gif)'
+    )
+    expect(seen.fn).toBeUndefined()
   })
 
   it('rejects path escapes', async () => {

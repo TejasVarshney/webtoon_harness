@@ -3,7 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentEvent, AppEvent, PanelDraft } from '@shared/types'
+import { AnthropicTextProvider, type AnthropicClientLike, type AnthropicRequestParams, type AnthropicStreamLike } from '../models/providers/anthropic'
 import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
+import { encodeSolidPng } from '../models/providers/png'
 import type { TextProvider } from '../models/providers/types'
 import { testServices, type TestServices } from '../test/test-services'
 import { AgentRunner, SessionBusyError } from './agent-runner'
@@ -248,6 +250,34 @@ describe('AgentRunner', () => {
     slow.cancelAll()
     await finished(events)
     expect(events.at(-1)).toMatchObject({ outcome: 'cancelled' })
+  })
+
+  it('keeps a session usable after an attached image is deleted (C1, with a provider that loads images)', async () => {
+    const { s, projectId, sessionId, events } = await setup([])
+    const ctx = await s.projects.open(projectId)
+    await fs.promises.writeFile(ctx.paths.resolveAsset('uploads/pic.png'), encodeSolidPng(2, 2, [1, 2, 3]))
+    const requests: AnthropicRequestParams[] = []
+    const stream = (): AnthropicStreamLike => {
+      const st: AnthropicStreamLike = { on: () => st, finalMessage: async () => ({ content: [{ type: 'text', text: 'seen' }], stop_reason: 'end_turn' }) }
+      return st
+    }
+    const client: AnthropicClientLike = {
+      messages: { stream: (params) => (requests.push(structuredClone(params)), stream()) },
+      beta: { messages: { stream: (params) => (requests.push(structuredClone(params)), stream()) } }
+    }
+    const real = new AgentRunner({ services: s, createTextProvider: (r) => new AnthropicTextProvider(r, client) })
+
+    await real.start({ ...input(projectId, sessionId, 'look at this'), imagePaths: ['uploads/pic.png'] })
+    await finished(events)
+    expect(JSON.stringify(requests[0].messages)).toContain('"type":"image"')
+
+    await fs.promises.rm(ctx.paths.resolveAsset('uploads/pic.png'))
+    events.length = 0
+    await real.start(input(projectId, sessionId, 'and again'))
+    await finished(events)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end', error: null })
+    expect(requests).toHaveLength(2)
+    expect(requests[1].messages[0].content).toContainEqual({ type: 'text', text: '[image no longer available: uploads/pic.png]' })
   })
 
   it('rejects an unknown session without leaving the slot busy', async () => {

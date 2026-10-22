@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ImageBlockParam, MessageParam, TextBlockParam, ToolResultBlockParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages'
 import type { ChatMessage, ToolCall } from '@shared/types'
 import type { ResolvedModel } from '../registry'
+import { replayImage } from './image-replay'
 import { ProviderError } from './types'
 import type { ImageLoader, TextProvider, TextTurnRequest, TextTurnResult } from './types'
 
@@ -90,9 +91,11 @@ export function executableToolUses(content: unknown[]): ToolUseBlock[] {
   return afterLastFallback(content).filter((b): b is ToolUseBlock => blockType(b) === 'tool_use')
 }
 
-async function imageBlock(loadImage: ImageLoader, relPath: string): Promise<ImageBlockParam> {
-  const { mime, base64 } = await loadImage(relPath)
-  return { type: 'image', source: { type: 'base64', media_type: mime as MediaType, data: base64 } }
+/** The image, or the note that replaces an image that is gone (C1). */
+async function imageBlock(loadImage: ImageLoader, relPath: string): Promise<ImageBlockParam | TextBlockParam> {
+  const image = await replayImage(loadImage, relPath)
+  if (image.kind === 'note') return { type: 'text', text: image.text }
+  return { type: 'image', source: { type: 'base64', media_type: image.mime as MediaType, data: image.base64 } }
 }
 
 export async function toAnthropicMessages(messages: ChatMessage[], loadImage: ImageLoader): Promise<MessageParam[]> {
