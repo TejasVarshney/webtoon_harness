@@ -201,7 +201,7 @@ Read it in this order:
    - `null`: no check ran. Either no vision model is assigned, or the version is an image edit (edits are never checked). Nothing to do.
    - `"passed": true` with `"skipped": false`: the image matches the references. Good.
    - `"skipped": true`: the checker could not run or could not be read; the issue text says why. Treat the panel as unchecked. Do not retry for this.
-   - `"passed": false`: the image does not match. The app has already redrawn the panel automatically (once by default) with the issues as fix instructions, and this is the final attempt. All attempts stay in the panel's history.
+   - `"passed": false`: the image does not match. The app has already redrawn the panel automatically (once by default) with the issues as fix instructions, and this is the final attempt: the result shows the image that is current now. All attempts stay in the panel's history. (If the automatic redraw itself failed to render, the earlier image stays current, and the failed attempt is only in the history: read it with `get_panel`.)
 
 When `"passed"` is `false`, decide by the issues:
 

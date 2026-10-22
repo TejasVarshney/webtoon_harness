@@ -126,6 +126,22 @@ describe('panel tools: the tool set', () => {
 })
 
 describe('create_panel', () => {
+  it('create_panel waits for the consistency check and its automatic redraw, and reports the version that is current (Task 25)', async () => {
+    const { run, s, character, draft, panel } = await setup()
+    const mina = await character('Mina')
+    vi.spyOn(s.checker, 'check')
+      .mockResolvedValueOnce({ passed: false, issues: ['Mina hair is black'], skipped: false })
+      .mockResolvedValueOnce({ passed: true, issues: [], skipped: false })
+    const r = await run('create_panel', draft([mina]))
+    expect(r.ok, r.content).toBe(true)
+    const out = json(r)
+    const stored = await panel(out.panelId)
+    expect(stored.versions).toHaveLength(2)
+    expect(stored.currentVersionId).toBe(stored.versions[1].id)
+    expect(out).toMatchObject({ versionId: stored.versions[1].id, status: 'ready', check: { passed: true, issues: [], skipped: false } })
+    expect(r.images).toEqual([stored.versions[1].imagePath])
+  })
+
   it('create_panel returns the image and continuity', async () => {
     const { run, character, created, draft, panel } = await setup()
     const mina = await character('Mina')
@@ -452,6 +468,24 @@ describe('update_panel', () => {
 })
 
 describe('regenerate_panel', () => {
+  it('reports the version that became current with its check after an automatic redraw (Task 25)', async () => {
+    const { run, s, created, panel } = await setup()
+    const made = await created([])
+    vi.spyOn(s.checker, 'check')
+      .mockResolvedValueOnce({ passed: false, issues: ['Mina hair is black'], skipped: false })
+      .mockResolvedValueOnce({ passed: false, issues: ['Mina hair is still black'], skipped: false })
+    const r = await run('regenerate_panel', { panelId: made.panelId })
+    expect(r.ok, r.content).toBe(true)
+    const out = json(r)
+    const stored = await panel(made.panelId)
+    // The first check failed the draw, one redraw followed (consistencyRetries 1), and that redraw failed too.
+    expect(stored.versions).toHaveLength(3)
+    expect(stored.versions[2].prompt).toContain('[FIX] Fix these consistency issues: Mina hair is black')
+    expect(stored.currentVersionId).toBe(stored.versions[2].id)
+    expect(out).toMatchObject({ panelId: made.panelId, versionId: stored.versions[2].id, status: 'ready', check: { passed: false, issues: ['Mina hair is still black'], skipped: false } })
+    expect(r.images).toEqual([stored.versions[2].imagePath])
+  })
+
   it('makes a new current version from the current fields', async () => {
     const { run, created, panel } = await setup()
     const made = await created([])

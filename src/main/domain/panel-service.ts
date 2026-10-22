@@ -2,16 +2,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, DialogueLine, Episode, Panel, PanelCharacter, PanelDraft, PanelPatch, PanelVersion, Variation } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Panel, PanelCharacter, PanelDraft, PanelPatch, PanelVersion, Variation } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import type { CharacterService, PanelUsageLookup } from './character-service'
+import type { ConsistencyChecker } from './consistency-checker'
 import type { EpisodeService } from './episode-service'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
 import { hasReadyReference, validatePanelDraft } from './panel-validation'
-import { composePanelPrompt, editPanelPrompt } from './prompts'
+import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { isNotFound } from '../storage/fs-errors'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
@@ -30,6 +31,8 @@ export interface PanelServiceOptions {
   images: ImageService
   /** Moves a path to the OS trash. */
   trash: (absPath: string) => Promise<void>
+  /** The vision consistency check (Task 25). Without one, `generate` never checks or retries. */
+  checker?: Pick<ConsistencyChecker, 'check'>
 }
 
 const INTERRUPTED = 'Interrupted: the app closed during generation'
@@ -51,6 +54,22 @@ interface Attempt {
 
 /** Either the image call to make, or the reason it cannot be made (recorded as a `failed` version). */
 type Preparation = { call: () => Promise<ImageGenResult> } | { error: string }
+
+/** What the consistency check needs to know about a draw, captured while its prompt was composed. */
+interface DrawContext {
+  panel: Panel
+  roster: Character[]
+  /** The references the image model got, in prompt order, with their labels. */
+  references: PanelPromptReference[]
+  /** The project's `consistencyRetries` when the draw started. */
+  retries: number
+}
+
+/** One draw of a panel: its version, and (when the prompt could be composed) what the check needs. */
+interface Draw {
+  version: PanelVersion
+  context: DrawContext | null
+}
 
 /**
  * Panels and their version history (`panels/<pnlId>.json`, images in `panels/<pnlId>/<verId>.<ext>`).
@@ -160,15 +179,51 @@ export class PanelService implements PanelUsageLookup {
   }
 
   /**
-   * Ruling T18a. Prepares first (an unknown cast, no image model, ... becomes a `failed` version and
-   * never a throw), appends the version under the panel lock, calls the model OUTSIDE it, then
-   * re-reads and records the outcome under the lock. A failure leaves `currentVersionId` alone.
-   * Only an unknown panel throws.
+   * Draws the panel, checks the image when a vision model is assigned, and redraws up to the project's
+   * `consistencyRetries` times while the check fails (spec §9, step 5). Resolves to the version that
+   * became current: the last attempt that landed, which is the passing one when any passed. A first
+   * draw that fails is returned as it is (`failed`, never checked).
+   *
+   * Ruling T18a: each draw prepares first (an unknown cast, no image model, ... becomes a `failed`
+   * version and never a throw), appends the version under the panel lock, calls the model OUTSIDE it,
+   * then re-reads and records the outcome under the lock. A ready attempt becomes current when it
+   * lands, a failed one never moves `currentVersionId`. Ruling T25a: the vision call runs outside the
+   * lock too; its verdict is recorded on the version with the same re-read pattern. An abort of
+   * `opts.signal` stops further checks and redraws and keeps what is recorded. Only an unknown panel throws.
    */
   async generate(ctx: ProjectContext, id: string, opts: { signal?: AbortSignal; extraInstruction?: string } = {}): Promise<PanelVersion> {
+    let draw = await this.draw(ctx, id, opts)
+    const { checker } = this.opts
+    if (!checker) return draw.version
+    let landed = draw.version
+    let retriesLeft = draw.context?.retries ?? 0
+    while (draw.context && landed.status === 'ready' && landed.imagePath !== null && !opts.signal?.aborted) {
+      const { panel, roster, references } = draw.context
+      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, signal: opts.signal })
+      if (check === null) return landed
+      const recorded = await this.recordCheck(ctx, id, landed.id, check)
+      landed = { ...landed, check }
+      // A check that is not on the version (panel deleted, file unwritable) ends the loop: a redraw would be unreachable or unrecorded too.
+      if (!recorded || check.passed || check.skipped || retriesLeft <= 0 || opts.signal?.aborted) return landed
+      retriesLeft--
+      try {
+        draw = await this.draw(ctx, id, { signal: opts.signal, extraInstruction: fixInstruction(check.issues) })
+      } catch {
+        return landed // the panel vanished between the attempts
+      }
+      // A redraw that failed is in the history but never became current: the attempt that did is what we report.
+      if (draw.version.status !== 'ready') return landed
+      landed = draw.version
+    }
+    return landed
+  }
+
+  /** One draw: compose the prompt, record the attempt, call the image model. See `generate`. */
+  private async draw(ctx: ProjectContext, id: string, opts: { signal?: AbortSignal; extraInstruction?: string }): Promise<Draw> {
     const panel = await this.get(ctx, id)
     const attempt: Attempt = { source: 'generate', prompt: '', referenceImagePaths: [], instruction: null, parentVersionId: null }
     let request: ImageGenRequest
+    let context: DrawContext
     try {
       const meta = await this.opts.projects.getMeta(ctx)
       const roster = await this.roster(ctx)
@@ -179,10 +234,11 @@ export class PanelService implements PanelUsageLookup {
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: panel.aspect, signal: opts.signal }
+      context = { panel, roster: [...roster.values()], references: composed.references, retries: meta.consistencyRetries }
     } catch (error) {
-      return this.record(ctx, id, attempt, { error: failureMessage(error) })
+      return { version: await this.record(ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
-    return this.record(ctx, id, attempt, { call: () => this.opts.images.generate(ctx, request) })
+    return { version: await this.record(ctx, id, attempt, { call: () => this.opts.images.generate(ctx, request) }), context }
   }
 
   /** Edits the current ready image into a child version. Same recording rules as `generate`. */
@@ -370,6 +426,28 @@ export class PanelService implements PanelUsageLookup {
   }
 
   /**
+   * Stores the check on the version under the panel lock (re-reading the file, so edits made during the
+   * vision call survive). Never throws. Returns whether it was stored: false when the panel or the
+   * version is gone, the file is unreadable (it is left alone) or the write failed.
+   */
+  private async recordCheck(ctx: ProjectContext, panelId: string, versionId: string, check: CheckResult): Promise<boolean> {
+    const file = ctx.paths.panelFile(panelId)
+    let stored: boolean
+    try {
+      stored = await ctx.mutex.run(file, async () => {
+        const current = await readPanelFile(file, panelId)
+        if (!current.versions.some((v) => v.id === versionId)) return false
+        await writeJsonAtomic(file, { ...current, versions: current.versions.map((v) => (v.id === versionId ? { ...v, check } : v)), updatedAt: now() })
+        return true
+      })
+    } catch {
+      return false
+    }
+    if (stored) this.emit(ctx, panelId)
+    return stored
+  }
+
+  /**
    * Under the lock, record the outcome if the version still exists. Never throws: if recording
    * fails the version is marked `failed` (best effort; `recoverInterrupted` is the backstop for a file
    * that cannot be written) and a `failed` version is returned. Success also makes it current.
@@ -541,6 +619,20 @@ function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[],
     if (archived === c.archived && !c.variations.some(unusable)) return c
     return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged' } : v)) }
   })
+}
+
+/** The checker never throws, but a stand-in might: a check that fails to run is no check (the version keeps `check: null`). */
+async function runCheck(checker: Pick<ConsistencyChecker, 'check'>, ctx: ProjectContext, input: Parameters<ConsistencyChecker['check']>[1]): Promise<CheckResult | null> {
+  try {
+    return await checker.check(ctx, input)
+  } catch {
+    return null
+  }
+}
+
+/** The extra instruction for a redraw after a failed check; none when the checker named no issue (the redraw is then a plain re-roll). */
+function fixInstruction(issues: string[]): string | undefined {
+  return issues.length > 0 ? `Fix these consistency issues: ${issues.join('; ')}` : undefined
 }
 
 function withId(line: Omit<DialogueLine, 'id'>): DialogueLine {

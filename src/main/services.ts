@@ -4,6 +4,7 @@ import { AgentRunner } from './agent/agent-runner'
 import { PanelChatRunner } from './agent/panel-chat'
 import { WorkflowDocs } from './agent/workflow-docs'
 import { CharacterService, type PanelUsageLookup } from './domain/character-service'
+import { ConsistencyChecker } from './domain/consistency-checker'
 import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
@@ -36,6 +37,7 @@ export interface Services {
   docs: WorkflowDocs
   imageOps: ImageOps
   images: ImageService
+  checker: ConsistencyChecker
   characters: CharacterService
   episodes: EpisodeService
   panels: PanelService
@@ -65,12 +67,14 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
   const episodes = new EpisodeService({ bus })
-  const panels = new PanelService({ bus, projects, episodes, characters, images, trash: opts.trash })
+  // The vision check is optional at run time: with no model on the `vision` role it returns null and panels are not checked.
+  const checker = new ConsistencyChecker({ registry, docs, imageOps: opts.imageOps })
+  const panels = new PanelService({ bus, projects, episodes, characters, images, checker, trash: opts.trash })
   const story = new StoryService({ bus, projects })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, characters, episodes, panels, story } as Services
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, checker, characters, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   return services

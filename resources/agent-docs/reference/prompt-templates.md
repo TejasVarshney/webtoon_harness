@@ -105,7 +105,22 @@ Edit the first image: {instruction}. Keep everything else unchanged — composit
 When a model is assigned to the vision role (Settings → Models), the app checks every newly generated panel image (not edits, not uploads) with that model:
 
 - **System prompt:** the project's `reference/consistency-checklist` doc, word for word. Editing that doc changes how the checker judges.
-- **User message:** text that lists the reference images in order (the cast members' variation images, then the previous panel), then the cast, one line per character as `Name — appearanceLock — Look: variation name/delta`, then the panel description and the shot.
+- **User message:** four parts in this order: the images in the order they are attached (the cast members' variation images, then the previous panel, then the generated image last), the cast, the panel description and the shot:
+
+```
+Images, in the order attached:
+1. Reference: {name}
+2. Reference: previous panel
+3. Generated panel (the image to check)
+
+Cast:
+- {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
+
+Panel description: {description}
+Shot: {shot}
+```
+
+  The cast has one line per character, in cast order. A variation with no delta reads "Look: {variation.name}". A character whose reference image was not sent (the variation has no ready image, or it was dropped for the reference limit) ends the line with "(no reference image)" and has no entry in the image list. With an empty cast, "Cast:" is followed by "(none)". The Panel Prompt's dialogue, setting and continuity notes are not in this message.
 - **Images:** the reference images in the same order, then the generated image last. All are downscaled to at most 1568 px on the long edge.
 - **Expected answer:** one JSON object, `{"passed": true|false, "issues": ["…"]}`, as the checklist's Output Format says.
 
@@ -115,7 +130,7 @@ What the app does with the answer:
 2. If it cannot read one, the check counts as passed and skipped, with the issue "Checker response could not be parsed".
 3. If the vision model call fails, the check counts as passed and skipped, with the issue "Consistency check failed to run: {message}".
 4. The result is stored as the version's `check`: `passed`, `issues` and `skipped`.
-5. When `passed` is false (and not skipped), the app redraws the panel with the Panel Prompt plus "[FIX] Fix these consistency issues: {issues joined by "; "}", up to the project's consistency retries (1 by default).
-6. Every attempt stays in the panel's history. The current image becomes the last attempt that passed or, if none passed, the last attempt that rendered.
+5. When `passed` is false (and not skipped), the app redraws the panel with the Panel Prompt plus "[FIX] Fix these consistency issues: {issues joined by "; "}", up to the project's consistency retries (1 by default). Each redraw is checked in turn. A failed answer that names no issue is redrawn without the [FIX] line.
+6. Every attempt stays in the panel's history. The current image becomes the last attempt that passed or, if none passed, the last attempt that rendered. A redraw that fails to render never replaces the image that is current.
 
 So the issues the checker writes become fix instructions for the image model: they must be short, concrete and about what is visible (see `reference/consistency-checklist`).

@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { buildCheckMessage } from '../domain/consistency-checker'
 import { listSections } from '../domain/markdown-sections'
 import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, variationPrompt } from '../domain/prompts'
-import { makeCharacter, makeVariation } from '../test/factories'
+import { makeCharacter, makePanel, makeVariation } from '../test/factories'
 import { extractSection } from './system-prompt'
 import { ALL_TOOL_NAMES, buildAgentTools } from './tools'
 import { buildPanelChatTools } from './tools/panel-chat-tools'
@@ -148,6 +149,27 @@ describe('workflow docs lint', () => {
     const variation = makeVariation({ name: '{variation.name}', kind: 'outfit', delta: '{variation.delta}' })
     expect(extractSection(doc, 'Variation Prompt')).toContain(variationPrompt(character, variation, '{stylePreset}'))
     expect(extractSection(doc, 'Panel Edit Prompt')).toContain(editPanelPrompt('{instruction}', [{ name: '{name}', appearanceLock: '{appearanceLock}' }]))
+  })
+
+  it('prompt templates reproduce the consistency checker user message verbatim', () => {
+    const character = makeCharacter({
+      name: '{name}',
+      appearanceLock: '{appearanceLock}',
+      variations: [makeVariation({ name: '{variation.name}', delta: '{variation.delta}', status: 'ready', imagePath: 'characters/a.png' })]
+    })
+    const message = buildCheckMessage({
+      references: [
+        { relPath: 'characters/a.png', label: '{name}' },
+        { relPath: 'panels/b.png', label: 'previous panel' }
+      ],
+      panel: {
+        ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }] }),
+        description: '{description}',
+        shot: '{shot}' as never
+      },
+      roster: [character]
+    })
+    expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
   })
 
   it('the consistency checklist ends with the exact output contract', () => {

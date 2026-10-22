@@ -120,7 +120,7 @@ function asToolError(error: unknown): unknown {
 /** The outcome of an image attempt. A `failed` status is a result for the model to read, not a thrown error. */
 function versionResult(v: PanelVersion, label: string | null): ToolOutput {
   return {
-    content: { versionId: v.id, label, status: v.status, error: v.error, imagePath: v.imagePath },
+    content: { versionId: v.id, label, status: v.status, error: v.error, imagePath: v.imagePath, check: v.check },
     images: v.status === 'ready' && v.imagePath !== null ? [v.imagePath] : []
   }
 }
@@ -211,7 +211,8 @@ const regenerateImage = (panelId: string): ToolDefinition =>
     name: 'regenerate_image',
     description:
       "Draw this panel again from its current fields and wait for the result, which becomes a new version; the old images stay in the history. " +
-      'Use it for a different composition, or after update_panel_fields changed what the picture shows. If the new image fails, the previous image stays current.',
+      'Use it for a different composition, or after update_panel_fields changed what the picture shows. If the new image fails, the previous image stays current. ' +
+      'check is the consistency check of the image that is now current, or null when none ran; a failed check has already been redrawn automatically.',
     input: z.object({}),
     handler: async (_input, ctx) => recordedResult(ctx, panelId, await ctx.services.panels.generate(ctx.project, panelId, { signal: ctx.signal }))
   })

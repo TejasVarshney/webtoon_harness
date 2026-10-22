@@ -1,8 +1,11 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, PanelVersion } from '@shared/types'
-import { NoModelForRoleError, type ModelRegistry } from '../models/registry'
-import { ProviderError, type ImageEditRequest, type ImageProvider, type ImageRequest, type ImageResult } from '../models/providers/types'
+import { NoModelForRoleError, type ModelRegistry, type ResolvedModel } from '../models/registry'
+import type { WorkflowDocs } from '../agent/workflow-docs'
+import { ProviderError, type ImageEditRequest, type ImageProvider, type ImageRequest, type ImageResult, type TextProvider, type TextTurnRequest } from '../models/providers/types'
+import { resetMockScripts } from '../models/providers/mock'
 import { encodeSolidPng } from '../models/providers/png'
 import { writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
@@ -10,6 +13,7 @@ import { makeCharacter, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { testServices } from '../test/test-services'
 import { CharacterInUseError, CharacterService } from './character-service'
+import { ConsistencyChecker } from './consistency-checker'
 import { EntityNotFoundError } from './errors'
 import { EpisodeService } from './episode-service'
 import { createIdentityImageOps } from './image-ops'
@@ -64,7 +68,35 @@ interface Behavior {
   edit: (req: ImageEditRequest) => Promise<ImageResult>
 }
 
-async function setup() {
+const PASS = '{"passed": true, "issues": []}'
+const fail = (...issues: string[]): string => JSON.stringify({ passed: false, issues })
+
+/**
+ * A real ConsistencyChecker over a scripted vision model: `replies` is the queue of answers (the checklist's
+ * JSON contract; an empty queue passes), `onTurn` runs inside the vision call, and `requests` records each call.
+ */
+function visionRig() {
+  const rig = {
+    assigned: true,
+    replies: [] as string[],
+    requests: [] as TextTurnRequest[],
+    onTurn: undefined as undefined | ((n: number, req: TextTurnRequest) => Promise<string | void> | string | void),
+    checker: undefined as unknown as ConsistencyChecker
+  }
+  const registry = { resolveOptional: () => (rig.assigned ? ({ endpoint: { kind: 'mock' }, model: { modelId: 'mock-vision' }, apiKey: null } as unknown as ResolvedModel) : null) } as unknown as ModelRegistry
+  const docs = { read: async () => 'CHECKLIST' } as unknown as WorkflowDocs
+  const provider: TextProvider = {
+    runTurn: async (req) => {
+      rig.requests.push(req)
+      const custom = await rig.onTurn?.(rig.requests.length, req)
+      return { text: typeof custom === 'string' ? custom : (rig.replies.shift() ?? PASS), toolCalls: [], stopReason: 'end', raw: null }
+    }
+  }
+  rig.checker = new ConsistencyChecker({ registry, docs, imageOps: createIdentityImageOps(), createTextProvider: () => provider })
+  return rig
+}
+
+async function setup(opts: { vision?: boolean } = {}) {
   const t = await tempProject()
   tp = t
   const calls: { fn: 'generate' | 'edit'; req: ImageRequest | ImageEditRequest }[] = []
@@ -108,10 +140,11 @@ async function setup() {
     trash,
     usage: { panelsUsingCharacter: (c, id) => svc.panelsUsingCharacter(c, id), panelsUsingVariation: (c, id) => svc.panelsUsingVariation(c, id) }
   })
-  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, images, trash })
+  const vision = visionRig()
+  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, images, trash, checker: opts.vision ? vision.checker : undefined })
   const [epi] = await episodes.list(t.ctx)
   t.events.length = 0
-  return { svc, characters, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior }
+  return { svc, characters, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
 }
 
 interface Cast {
@@ -632,6 +665,374 @@ describe('PanelService generate', () => {
   })
 })
 
+
+describe('PanelService generate with a vision consistency check (Task 25)', () => {
+  /** A panel with Mina in the cast, ready to generate. */
+  async function withPanel(opts: { vision?: boolean } = { vision: true }) {
+    const t = await setup(opts)
+    const m = await mina(t.ctx)
+    const p = (await t.svc.create(t.ctx, draft(t.epi.id, { characters: [castOf(m)] }), USER)).panel
+    return { ...t, m, p }
+  }
+
+  it('retries once with fix instructions and keeps history', async () => {
+    const { svc, ctx, p, m, vision, calls } = await withPanel()
+    vision.replies.push(fail('Mina hair is black'), PASS)
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(2)
+    expect(panel.versions[1].prompt).toContain('[FIX] Fix these consistency issues: Mina hair is black')
+    expect(panel.versions[1].prompt).toBe(`${panel.versions[0].prompt}\n[FIX] Fix these consistency issues: Mina hair is black`)
+    expect(panel.versions[0].prompt).not.toContain('[FIX]')
+    expect(panel.currentVersionId).toBe(v.id)
+    expect(v.id).toBe(panel.versions[1].id)
+    expect(v.check).toMatchObject({ passed: true })
+    expect(panel.versions.map((x) => x.check)).toEqual([{ passed: false, issues: ['Mina hair is black'], skipped: false }, { passed: true, issues: [], skipped: false }])
+    expect(panel.versions.every((x) => x.status === 'ready')).toBe(true)
+    // Every attempt keeps its own image, and the redraw sees the same references as the first draw.
+    expect(panel.versions[0].imagePath).not.toBe(panel.versions[1].imagePath)
+    expect(panelImages(ctx, p.id)).toHaveLength(2)
+    expect(calls).toHaveLength(2)
+    expect(calls[1].req.prompt).toBe(panel.versions[1].prompt)
+    expect(panel.versions[1].referenceImagePaths).toEqual([m.imagePath])
+    // Each draw was judged on its own image, against the references.
+    expect(vision.requests).toHaveLength(2)
+    const sent = (i: number) => (vision.requests[i].messages[0] as { imagePaths: string[] }).imagePaths
+    expect(sent(0)).toEqual([m.imagePath, panel.versions[0].imagePath])
+    expect(sent(1)).toEqual([m.imagePath, panel.versions[1].imagePath])
+  })
+
+  it('stops after consistencyRetries and keeps the last attempt', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    vision.replies.push(fail('first'), fail('second'), fail('third'))
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(2)
+    expect(calls).toHaveLength(2)
+    expect(vision.requests).toHaveLength(2)
+    expect(panel.currentVersionId).toBe(panel.versions[1].id)
+    expect(v.id).toBe(panel.versions[1].id)
+    expect(v.check).toEqual({ passed: false, issues: ['second'], skipped: false })
+    expect(panel.versions[0].check).toMatchObject({ passed: false, issues: ['first'] })
+    expect(panel.versions[1].check).toMatchObject({ passed: false, issues: ['second'] })
+    expect(vision.replies).toEqual([fail('third')])
+  })
+
+  it('counts retries as extra attempts: 0 means one version, 2 means at most three', async () => {
+    const zero = await withPanel()
+    await zero.store.updateMeta(zero.ctx, { consistencyRetries: 0 })
+    zero.vision.replies.push(fail('only'))
+    const v0 = await zero.svc.generate(zero.ctx, zero.p.id)
+    expect((await zero.svc.get(zero.ctx, zero.p.id)).versions).toHaveLength(1)
+    expect(v0.check).toMatchObject({ passed: false, issues: ['only'] })
+    expect(zero.vision.requests).toHaveLength(1)
+    await tp?.cleanup()
+
+    const two = await withPanel()
+    await two.store.updateMeta(two.ctx, { consistencyRetries: 2 })
+    two.vision.replies.push(fail('a'), fail('b'), fail('c'), fail('d'))
+    const v2 = await two.svc.generate(two.ctx, two.p.id)
+    const panel = await two.svc.get(two.ctx, two.p.id)
+    expect(panel.versions).toHaveLength(3)
+    expect(panel.currentVersionId).toBe(v2.id)
+    // Each redraw is told about the latest issues only, not the ones it already got.
+    expect(panel.versions.map((x) => x.prompt.split('\n[FIX] ')[1])).toEqual([undefined, 'Fix these consistency issues: a', 'Fix these consistency issues: b'])
+    await tp?.cleanup()
+
+    const early = await withPanel()
+    await early.store.updateMeta(early.ctx, { consistencyRetries: 3 })
+    early.vision.replies.push(fail('a'), PASS)
+    await early.svc.generate(early.ctx, early.p.id)
+    expect((await early.svc.get(early.ctx, early.p.id)).versions).toHaveLength(2)
+    expect(early.vision.requests).toHaveLength(2)
+  })
+
+  it('joins several issues with "; "', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail('Mina hair is black', 'There is lettering on the window'), PASS)
+    await svc.generate(ctx, p.id)
+    expect((await svc.get(ctx, p.id)).versions[1].prompt).toContain('[FIX] Fix these consistency issues: Mina hair is black; There is lettering on the window')
+  })
+
+  it('redraws without a fix line when the checker failed the panel but named no issue', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail(), PASS)
+    await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(2)
+    expect(panel.versions[1].prompt).toBe(panel.versions[0].prompt)
+  })
+
+  it('a first draw that passes is recorded and not redrawn', async () => {
+    const { svc, ctx, p, vision, events } = await withPanel()
+    events.length = 0
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(1)
+    expect(v.check).toEqual({ passed: true, issues: [], skipped: false })
+    expect(panel.versions[0].check).toEqual({ passed: true, issues: [], skipped: false })
+    expect(panel.currentVersionId).toBe(v.id)
+    expect(vision.requests).toHaveLength(1)
+    // pending append, image landed, check recorded
+    expect(events.filter((e) => e.type === 'panel.changed')).toHaveLength(3)
+  })
+
+  it('records no check when no vision model is assigned', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.assigned = false
+    const v = await svc.generate(ctx, p.id)
+    expect(v.check).toBeNull()
+    expect((await svc.get(ctx, p.id)).versions).toHaveLength(1)
+    expect(vision.requests).toHaveLength(0)
+  })
+
+  it('records no check, and asks nobody, when no checker is configured', async () => {
+    const { svc, ctx, p, vision } = await withPanel({ vision: false })
+    const v = await svc.generate(ctx, p.id)
+    expect(v.check).toBeNull()
+    expect(vision.requests).toHaveLength(0)
+  })
+
+  it('each ready attempt becomes current as it lands (Ruling T18a)', async () => {
+    const { svc, ctx, p, vision, behavior } = await withPanel()
+    const seen: { stage: string; current: string | null; statuses: string[] }[] = []
+    const snap = async (stage: string): Promise<void> => {
+      const panel = await svc.get(ctx, p.id)
+      seen.push({ stage, current: panel.currentVersionId, statuses: panel.versions.map((v) => v.status) })
+    }
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = (n) => snap(`check ${n}`).then(() => undefined)
+    const real = behavior.generate
+    let draws = 0
+    behavior.generate = async (req) => {
+      if (++draws === 2) await snap('redraw')
+      return real(req)
+    }
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    const [first, second] = panel.versions
+    expect(seen).toEqual([
+      { stage: 'check 1', current: first.id, statuses: ['ready'] },
+      { stage: 'redraw', current: first.id, statuses: ['ready', 'pending'] },
+      { stage: 'check 2', current: second.id, statuses: ['ready', 'ready'] }
+    ])
+    expect(v.id).toBe(second.id)
+  })
+
+  it('runs the check outside the panel lock, and records its result on top of edits made meanwhile (Ruling T25a)', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = async (n) => {
+      // update takes the panel's file lock: it would hang here if generate held it across the vision call.
+      if (n === 1) await svc.update(ctx, p.id, { description: 'Edited during the check' }, USER)
+    }
+    await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.description).toBe('Edited during the check')
+    expect(panel.versions.map((v) => v.check?.passed)).toEqual([false, true])
+    // The redraw reads the panel again, so it draws the edited description.
+    expect(panel.versions[1].prompt).toContain('[ACTION] Edited during the check')
+  })
+
+  it('a redraw whose image fails keeps the first attempt current and returns it with its check', async () => {
+    const { svc, ctx, p, vision, behavior } = await withPanel()
+    vision.replies.push(fail('Mina hair is black'))
+    const real = behavior.generate
+    let draws = 0
+    behavior.generate = (req) => (++draws === 2 ? Promise.reject(new ProviderError('network', 'connection reset')) : real(req))
+    const v = await svc.generate(ctx, p.id)
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions.map((x) => x.status)).toEqual(['ready', 'failed'])
+    expect(panel.versions[1].error).toBe('connection reset')
+    expect(panel.currentVersionId).toBe(panel.versions[0].id)
+    expect(v.id).toBe(panel.versions[0].id)
+    expect(v).toMatchObject({ status: 'ready', check: { passed: false, issues: ['Mina hair is black'] } })
+    expect(vision.requests).toHaveLength(1)
+  })
+
+  it('a failed first draw is not checked and nothing is retried', async () => {
+    const { svc, ctx, p, vision, behavior } = await withPanel()
+    behavior.generate = () => Promise.reject(new ProviderError('network', 'down'))
+    const v = await svc.generate(ctx, p.id)
+    expect(v).toMatchObject({ status: 'failed', error: 'down', check: null })
+    expect((await svc.get(ctx, p.id)).versions).toHaveLength(1)
+    expect(vision.requests).toHaveLength(0)
+  })
+
+  it('a draw that fails before the model is called (no image model) is not checked either', async () => {
+    const { svc, ctx, p, vision, noModel } = await withPanel()
+    noModel.add('image')
+    expect(await svc.generate(ctx, p.id)).toMatchObject({ status: 'failed', check: null })
+    expect(vision.requests).toHaveLength(0)
+  })
+
+  it('does not redraw when the check could not run (the vision call failed) or could not be read', async () => {
+    const down = await withPanel()
+    down.vision.onTurn = () => {
+      throw new Error('vision endpoint is down')
+    }
+    const v = await down.svc.generate(down.ctx, down.p.id)
+    expect(v.check).toEqual({ passed: true, issues: ['Consistency check failed to run: vision endpoint is down'], skipped: true })
+    expect((await down.svc.get(down.ctx, down.p.id)).versions).toHaveLength(1)
+    expect((await down.svc.get(down.ctx, down.p.id)).versions[0].check).toEqual(v.check)
+    await tp?.cleanup()
+
+    const babble = await withPanel()
+    babble.vision.replies.push('I think it looks fine!')
+    const w = await babble.svc.generate(babble.ctx, babble.p.id)
+    expect(w.check).toEqual({ passed: true, issues: ['Checker response could not be parsed'], skipped: true })
+    expect((await babble.svc.get(babble.ctx, babble.p.id)).versions).toHaveLength(1)
+  })
+
+  it('treats a checker that throws as no check: generate still resolves with the ready version', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vi.spyOn(vision.checker, 'check').mockRejectedValue(new Error('boom'))
+    const v = await svc.generate(ctx, p.id)
+    expect(v).toMatchObject({ status: 'ready', check: null })
+    expect((await svc.get(ctx, p.id)).versions).toHaveLength(1)
+  })
+
+  it('does not check edits or uploads', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    await svc.generate(ctx, p.id)
+    vision.requests.length = 0
+    const edit = await svc.editImage(ctx, p.id, 'make her smile')
+    const upload = await svc.uploadImage(ctx, p.id, PNG, 'png')
+    expect(edit).toMatchObject({ status: 'ready', check: null })
+    expect(upload.check).toBeNull()
+    expect(vision.requests).toHaveLength(0)
+  })
+
+  it('records the check on the stored version and announces it', async () => {
+    const { svc, ctx, p, vision, events } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    await svc.generate(ctx, p.id)
+    const stored = JSON.parse(fs.readFileSync(ctx.paths.panelFile(p.id), 'utf8')) as Panel
+    expect(stored.versions.map((v) => v.check)).toEqual([{ passed: false, issues: ['x'], skipped: false }, { passed: true, issues: [], skipped: false }])
+    expect(events.filter((e) => e.type === 'panel.changed' && e.panelId === p.id).length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('passes the run signal to the checker', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    const controller = new AbortController()
+    await svc.generate(ctx, p.id, { signal: controller.signal })
+    expect(vision.requests[0].signal).toBe(controller.signal)
+  })
+
+  it('stops retrying when the run is aborted during the check, and keeps what is recorded', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    const controller = new AbortController()
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = () => controller.abort()
+    const v = await svc.generate(ctx, p.id, { signal: controller.signal })
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+    expect(panel.versions[0].check).toMatchObject({ passed: false, issues: ['x'] })
+    expect(panel.currentVersionId).toBe(v.id)
+  })
+
+  it('a check that is cancelled mid-call is recorded as skipped and nothing is redrawn', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    const controller = new AbortController()
+    vision.onTurn = () => {
+      controller.abort()
+      throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
+    }
+    const v = await svc.generate(ctx, p.id, { signal: controller.signal })
+    expect(v).toMatchObject({ status: 'ready', check: { passed: true, skipped: true, issues: ['Consistency check failed to run: Cancelled'] } })
+    expect((await svc.get(ctx, p.id)).versions).toHaveLength(1)
+  })
+
+  it('does not start a check once the run was aborted while the image was landing', async () => {
+    const { svc, ctx, p, vision, behavior } = await withPanel()
+    const controller = new AbortController()
+    behavior.generate = async () => {
+      controller.abort()
+      return { mime: 'image/png', data: nextPng() }
+    }
+    const v = await svc.generate(ctx, p.id, { signal: controller.signal })
+    expect(v).toMatchObject({ status: 'ready', check: null })
+    expect(vision.requests).toHaveLength(0)
+    expect((await svc.get(ctx, p.id)).currentVersionId).toBe(v.id)
+  })
+
+  it('an abort during the redraw ends it as a failed Cancelled attempt and keeps the first one current', async () => {
+    const { svc, ctx, p, vision, behavior } = await withPanel()
+    const controller = new AbortController()
+    vision.replies.push(fail('x'))
+    const real = behavior.generate
+    let draws = 0
+    behavior.generate = (req) => {
+      if (++draws === 1) return real(req)
+      return new Promise((_, reject) => {
+        req.signal.addEventListener('abort', () => reject(req.signal.reason))
+        controller.abort()
+      })
+    }
+    const v = await svc.generate(ctx, p.id, { signal: controller.signal })
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions.map((x) => [x.status, x.error])).toEqual([['ready', null], ['failed', 'Cancelled']])
+    expect(panel.currentVersionId).toBe(panel.versions[0].id)
+    expect(v.id).toBe(panel.versions[0].id)
+    expect(vision.requests).toHaveLength(1)
+  })
+
+  it('a panel deleted during the check ends the loop quietly: no redraw, no throw', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = (n) => (n === 1 ? svc.delete(ctx, p.id) : undefined)
+    const v = await svc.generate(ctx, p.id)
+    expect(v.status).toBe('ready')
+    expect(calls).toHaveLength(1)
+    await expect(svc.get(ctx, p.id)).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  it('a panel that vanishes between the attempts ends the loop with what has landed', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    const real = svc.get.bind(svc)
+    vi.spyOn(svc, 'get').mockImplementationOnce(real).mockRejectedValueOnce(new EntityNotFoundError('panel', p.id))
+    const v = await svc.generate(ctx, p.id)
+    expect(v).toMatchObject({ status: 'ready', check: { passed: false, issues: ['x'] } })
+    expect(vision.requests).toHaveLength(1)
+  })
+
+  it('still reports the check, and does not redraw, when it cannot be written down', async () => {
+    const { svc, ctx, p, vision, calls } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    vision.onTurn = () => {
+      disk.failJsonWrites = 1
+    }
+    const v = await svc.generate(ctx, p.id)
+    expect(v).toMatchObject({ status: 'ready', check: { passed: false, issues: ['x'] } })
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions).toHaveLength(1)
+    expect(panel.versions[0].check).toBeNull()
+    expect(panel.currentVersionId).toBe(v.id)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('leaves a panel file that went corrupt during the check alone', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail('x'))
+    vision.onTurn = () => fs.writeFileSync(ctx.paths.panelFile(p.id), '{ not json')
+    const v = await svc.generate(ctx, p.id)
+    expect(v.status).toBe('ready')
+    expect(fs.readFileSync(ctx.paths.panelFile(p.id), 'utf8')).toBe('{ not json')
+  })
+
+  it('checks a draw that carries an extraInstruction like any other, and redraws with the issues instead of it', async () => {
+    const { svc, ctx, p, vision } = await withPanel()
+    vision.replies.push(fail('x'), PASS)
+    await svc.generate(ctx, p.id, { extraInstruction: 'Make it rainy' })
+    const panel = await svc.get(ctx, p.id)
+    expect(panel.versions[0].prompt).toContain('[FIX] Make it rainy')
+    expect(panel.versions[1].prompt).toContain('[FIX] Fix these consistency issues: x')
+    expect(panel.versions[1].prompt).not.toContain('Make it rainy')
+  })
+})
+
 describe('PanelService recording failures (Review Focus 2)', () => {
   it('records failed and removes the orphan image when the success write fails', async () => {
     const { svc, epi, ctx, behavior } = await setup()
@@ -1053,6 +1454,43 @@ describe('createServices wiring', () => {
       await s.cleanup()
     }
   })
+
+  it('wires the consistency checker: with a vision model assigned, a failed check redraws and the redraw is checked again (Task 25)', async () => {
+    const s = await testServices()
+    try {
+      const script = path.join(s.userDataDir, 'vision-script.json')
+      await fs.promises.mkdir(s.userDataDir, { recursive: true })
+      await fs.promises.writeFile(script, JSON.stringify({ turns: [{ text: fail('Mina hair is black') }, { text: PASS }] }))
+      vi.stubEnv('WEBTOON_MOCK_SCRIPT', script)
+      resetMockScripts()
+      const ctx = await s.projects.create({ title: 'P' })
+      const ch = await s.characters.create(ctx, input, 'user')
+      await s.characters.generateVariationImage(ctx, ch.id, ch.variations[0].id)
+      const [ep] = await s.episodes.list(ctx)
+      const cast = { characterId: ch.id, variationId: ch.variations[0].id, action: '', expression: '', position: 'center' as const }
+      const { panel } = await s.panels.create(ctx, draft(ep.id, { characters: [cast] }), AGENT)
+
+      // The seeded registry has no vision role: no check, one version.
+      const unchecked = await s.panels.generate(ctx, panel.id)
+      expect(unchecked.check).toBeNull()
+      expect((await s.panels.get(ctx, panel.id)).versions).toHaveLength(1)
+
+      await s.registry.assignRole('vision', 'mdl_000000000a')
+      const v = await s.panels.generate(ctx, panel.id)
+      const stored = await s.panels.get(ctx, panel.id)
+      expect(stored.versions).toHaveLength(3)
+      expect(stored.versions[1].check).toEqual({ passed: false, issues: ['Mina hair is black'], skipped: false })
+      expect(stored.versions[2].prompt).toContain('[FIX] Fix these consistency issues: Mina hair is black')
+      expect(v).toMatchObject({ id: stored.versions[2].id, check: { passed: true, issues: [], skipped: false } })
+      expect(stored.currentVersionId).toBe(v.id)
+      expect(s.checker).toBeInstanceOf(ConsistencyChecker)
+    } finally {
+      vi.unstubAllEnvs()
+      resetMockScripts()
+      await s.cleanup()
+    }
+  })
+
 
   it('opens a project whose panel files hold a malformed or mismatched id, reporting them (Ruling T18f)', async () => {
     const s1 = await testServices()

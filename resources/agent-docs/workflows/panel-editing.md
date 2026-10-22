@@ -78,7 +78,7 @@ Pick the smallest change that does the job:
 What each image call does:
 
 - **`edit_image`** keeps the current image and changes what you ask. Composition, framing and light stay. The app adds the cast's appearance locks so faces stay on-model. Edits are not consistency-checked.
-- **`regenerate_image`** draws the whole panel again from its fields, with the cast's reference images and the previous panel's image. Composition will change. It may be consistency-checked and redrawn automatically.
+- **`regenerate_image`** draws the whole panel again from its fields, with the cast's reference images and the previous panel's image. Composition will change. If a vision model is assigned, the new image is consistency-checked and redrawn automatically (once by default) when the check fails. The result describes the image that is current after that, and its `check` is the verdict on it: `null` when no check ran, `"passed": true` when it matches the references, `"skipped": true` when the checker could not run (treat the image as unchecked), and `"passed": false` when it still does not match after the automatic redraw.
 
 How to write an edit instruction:
 
@@ -147,6 +147,7 @@ After each change, tell the user in 1 to 3 sentences:
 - **What changed:** the fields, the image, or both.
 - **The new version label** for an image change: the result's `label` ("Done: this is now v4.").
 - **When the picture did not change:** after a fields-only change, say the image is unchanged and offer to redraw if the change should be visible.
+- **A failed check:** if `check` has `"passed": false` after `regenerate_image`, say what the issues are in plain words and that the app already tried once more. Offer one `edit_image` to fix a detail, or leave it to the user to pick a version (R11). Edits are not checked, so `check` is `null` after `edit_image`.
 - **Failures:** if `status` is `failed`, say the previous image is still shown, give the reason from `error`, and offer one retry. If it fails twice, stop (R12).
 - **Warnings:** read every entry of `warnings` and pass on what matters.
 
