@@ -88,8 +88,13 @@ export function createNativeImageOps(native: NativeImageFactory): ImageOps {
   }
 }
 
+/**
+ * Only formats the decoder cannot read at all (WebP, GIF) pass through. A PNG or JPEG it fails on is corrupt or
+ * truncated, and sending it on would earn a 400 on every turn (Ruling F7).
+ */
 function passThrough(data: Buffer): { mime: string; data: Buffer } {
   const mime = data.length > 0 ? sniffImageMime(data) : null
+  if (mime === 'image/png' || mime === 'image/jpeg') throw new UnreadableImageError('The image is corrupt or truncated')
   if (mime === null) throw new UnreadableImageError()
   return { mime, data }
 }

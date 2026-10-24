@@ -81,6 +81,14 @@ describe('characters IPC handlers', () => {
     expect((await get(created.id)).variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
   })
 
+  it('a missing generate flag from the renderer never leaves a variation pending (Ruling F8)', async () => {
+    const { h, projectId, get } = await setup()
+    const created = await h['characters:create']({ projectId, input: mina } as never)
+    expect((await get(created.id)).variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
+    const added = await h['characters:addVariation']({ projectId, characterId: created.id, input: { name: 'Outfit: Coat', kind: 'outfit', delta: 'long coat' } } as never)
+    expect(added).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
+  })
+
   it('create rejects bad input and duplicate names', async () => {
     const { h, projectId, settled } = await setup()
     await expect(h['characters:create']({ projectId, input: { ...mina, role: 'hero' } as never, generateBase: false })).rejects.toThrow()
