@@ -1,0 +1,282 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import type { AgentEvent, ChatMessage } from '@shared/types'
+import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
+import { ProviderError, type TextProvider, type TextTurnResult } from '../models/providers/types'
+import { repairToolHistory, runAgentLoop } from './loop'
+import { ToolRegistry, defineTool, type ToolContext } from './tools/registry'
+
+type ToolMessage = Extract<ChatMessage, { role: 'tool' }>
+
+let dir: string
+let n = 0
+beforeEach(() => {
+  resetMockScripts()
+  dir = mkdtempSync(join(tmpdir(), 'loop-'))
+})
+afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+function script(turns: unknown[]): MockTextProvider {
+  const p = join(dir, `s${n++}.json`)
+  writeFileSync(p, JSON.stringify({ turns }))
+  return new MockTextProvider(p)
+}
+
+const user: ChatMessage = {
+  id: 'msg_0000000001',
+  role: 'user',
+  text: 'hi',
+  imagePaths: [],
+  stateSnapshot: null,
+  createdAt: '2026-01-01T00:00:00.000Z'
+}
+
+function setup(
+  provider: TextProvider,
+  tools: ToolRegistry,
+  extra: { signal?: AbortSignal; maxSteps?: number; persist?: (m: ChatMessage[]) => Promise<void> } = {}
+) {
+  const persisted: ChatMessage[] = []
+  const events: AgentEvent[] = []
+  const opts = {
+    runId: 'run_0000000001',
+    provider,
+    system: 'sys',
+    history: [user],
+    tools,
+    toolCtx: { project: {}, services: {}, threadKey: 't' } as unknown as Omit<ToolContext, 'signal'>,
+    model: { endpointId: 'end_0000000000', modelId: 'mdl_000000000a' },
+    loadImage: async () => ({ mime: 'image/png', base64: '' }),
+    signal: extra.signal ?? new AbortController().signal,
+    maxSteps: extra.maxSteps,
+    persist:
+      extra.persist ??
+      (async (m: ChatMessage[]) => {
+        persisted.push(...m)
+      }),
+    emit: (e: AgentEvent) => {
+      events.push(e)
+    }
+  }
+  return { opts, persisted, events }
+}
+
+const echo = defineTool({ name: 'echo', description: 'e', input: z.object({ s: z.string() }), handler: async ({ s }) => ({ content: s }) })
+const reg = () => new ToolRegistry([echo])
+const call = { name: 'echo', input: { s: 'x' } }
+
+describe('runAgentLoop', () => {
+  it('runs tool then finishes', async () => {
+    const { opts, persisted, events } = setup(script([{ text: 'calling', toolCalls: [call] }, { text: 'done' }]), reg())
+    const res = await runAgentLoop(opts)
+    expect(res).toEqual({ outcome: 'end', error: null })
+    expect(persisted.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant'])
+    const kinds = events.map((e) => e.kind)
+    expect(kinds).toContain('tool-started')
+    expect(kinds.filter((k) => k === 'run-finished')).toHaveLength(1)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end', error: null })
+    expect(events.filter((e) => e.kind === 'message')).toHaveLength(3)
+    expect(persisted[0]).toMatchObject({
+      role: 'assistant',
+      stopReason: 'tool_use',
+      model: { endpointId: 'end_0000000000', modelId: 'mdl_000000000a' }
+    })
+  })
+
+  it('stops at maxSteps', async () => {
+    const { opts, persisted } = setup(script([{ toolCalls: [call] }, { toolCalls: [call] }, { toolCalls: [call] }]), reg(), { maxSteps: 2 })
+    const res = await runAgentLoop(opts)
+    expect(res.outcome).toBe('max_steps')
+    expect(persisted.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant', 'tool'])
+  })
+
+  it('cancel during tool execution leaves a result for every tool call (Review Focus 1)', async () => {
+    const ctrl = new AbortController()
+    const aborter = defineTool({
+      name: 'abort',
+      description: 'a',
+      input: z.object({}),
+      handler: async (_i, ctx) => {
+        expect(ctx.signal).toBe(ctrl.signal)
+        ctrl.abort()
+        return { content: 'ran' }
+      }
+    })
+    const c = { name: 'abort', input: {} }
+    const { opts, persisted, events } = setup(script([{ toolCalls: [c, c, c] }]), new ToolRegistry([aborter]), { signal: ctrl.signal })
+    const { outcome } = await runAgentLoop(opts)
+    const tool = persisted.find((m) => m.role === 'tool') as ToolMessage
+    expect(outcome).toBe('cancelled')
+    expect(tool.results.map((r) => r.toolCallId)).toEqual(['mock_call_1', 'mock_call_2', 'mock_call_3'])
+    expect(tool.results[0]).toMatchObject({ ok: true, content: 'ran' })
+    expect(tool.results.slice(1).every((r) => !r.ok && r.content === 'Cancelled by user')).toBe(true)
+    expect(events.filter((e) => e.kind === 'tool-started')).toHaveLength(1)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'cancelled' })
+  })
+
+  it('cancels when aborted before the turn or while the provider is in flight, persisting nothing', async () => {
+    const pre = new AbortController()
+    pre.abort()
+    const a = setup(script([{ text: 'x' }]), reg(), { signal: pre.signal })
+    expect((await runAgentLoop(a.opts)).outcome).toBe('cancelled')
+    expect(a.persisted).toEqual([])
+
+    const ctrl = new AbortController()
+    const slow: TextProvider = {
+      runTurn: (req) =>
+        new Promise((_res, rej) => {
+          req.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+          ctrl.abort()
+        })
+    }
+    const b = setup(slow, reg(), { signal: ctrl.signal })
+    expect((await runAgentLoop(b.opts)).outcome).toBe('cancelled')
+    expect(b.persisted).toEqual([])
+    expect(b.events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'cancelled' })
+  })
+
+  it('reports provider errors and refusals', async () => {
+    const rl: TextProvider = {
+      runTurn: async () => {
+        throw new ProviderError('rate_limit', 'rate limited')
+      }
+    }
+    const a = setup(rl, reg())
+    expect(await runAgentLoop(a.opts)).toEqual({ outcome: 'error', error: 'rate limited' })
+    expect(a.events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error', error: 'rate limited' })
+
+    const odd: TextProvider = {
+      runTurn: async () => {
+        throw new TypeError('boom')
+      }
+    }
+    expect(await runAgentLoop(setup(odd, reg()).opts)).toEqual({ outcome: 'error', error: 'boom' })
+
+    const turn = (stopReason: TextTurnResult['stopReason']): TextProvider => ({
+      runTurn: async () => ({ text: 'no', toolCalls: [], stopReason, raw: null })
+    })
+    const r = setup(turn('refusal'), reg())
+    expect(await runAgentLoop(r.opts)).toEqual({ outcome: 'refusal', error: 'The model declined this request.' })
+    expect(r.persisted.map((m) => m.role)).toEqual(['assistant'])
+    expect(await runAgentLoop(setup(turn('max_tokens'), reg()).opts)).toEqual({ outcome: 'max_tokens', error: null })
+  })
+
+  it('returns error (and still finishes the run) when persist throws', async () => {
+    const { opts, events } = setup(script([{ text: 'x' }]), reg(), {
+      persist: async () => {
+        throw new Error('disk full')
+      }
+    })
+    expect(await runAgentLoop(opts)).toEqual({ outcome: 'error', error: 'disk full' })
+    expect(events.filter((e) => e.kind === 'run-finished')).toHaveLength(1)
+  })
+
+  it('a tool that throws becomes an ok:false result and the loop continues', async () => {
+    const bad = defineTool({
+      name: 'bad',
+      description: 'b',
+      input: z.object({}),
+      handler: async () => {
+        throw new Error('nope')
+      }
+    })
+    const { opts, persisted } = setup(script([{ toolCalls: [{ name: 'bad', input: {} }] }, { text: 'ok' }]), new ToolRegistry([bad]))
+    expect((await runAgentLoop(opts)).outcome).toBe('end')
+    expect((persisted[1] as ToolMessage).results[0]).toMatchObject({ ok: false, content: 'nope' })
+  })
+
+  it('a throwing emit never breaks the loop and every call still gets a persisted result', async () => {
+    const { opts, persisted } = setup(script([{ toolCalls: [call, call] }, { text: 'done' }]), reg())
+    opts.emit = () => {
+      throw new Error('window destroyed')
+    }
+    expect(await runAgentLoop(opts)).toEqual({ outcome: 'end', error: null })
+    expect(persisted.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant'])
+    expect((persisted[1] as ToolMessage).results).toHaveLength(2)
+  })
+
+  it('persist failing on the tool message reports error and run-finished still fires', async () => {
+    const { opts, events } = setup(script([{ toolCalls: [call] }]), reg(), {
+      persist: async (m) => {
+        if (m[0].role === 'tool') throw new Error('disk full')
+      }
+    })
+    expect(await runAgentLoop(opts)).toEqual({ outcome: 'error', error: 'disk full' })
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error', error: 'disk full' })
+  })
+
+  it('repairs an orphaned tool_use in the history sent to the provider', async () => {
+    let seen: ChatMessage[] = []
+    const spy: TextProvider = {
+      runTurn: async (req) => {
+        seen = req.messages
+        return { text: 'ok', toolCalls: [], stopReason: 'end', raw: null }
+      }
+    }
+    const { opts } = setup(spy, reg())
+    opts.history = [assistantWith([{ id: 'a', name: 'echo', input: {} }]), { ...user, id: 'msg_0000000002' }]
+    await runAgentLoop(opts)
+    expect(seen.map((m) => m.role)).toEqual(['assistant', 'tool', 'user'])
+  })
+
+  it('strips tool calls from a refused turn before persisting', async () => {
+    const p: TextProvider = {
+      runTurn: async () => ({ text: 'no', toolCalls: [{ id: 'x', name: 'echo', input: {} }], stopReason: 'refusal', raw: null })
+    }
+    const { opts, persisted } = setup(p, reg())
+    await runAgentLoop(opts)
+    expect(persisted[0]).toMatchObject({ role: 'assistant', toolCalls: [] })
+  })
+})
+
+function assistantWith(toolCalls: { id: string; name: string; input: unknown }[]): ChatMessage {
+  return {
+    id: 'msg_00000000a1',
+    role: 'assistant',
+    text: '',
+    toolCalls,
+    stopReason: 'tool_use',
+    model: { endpointId: 'end_0000000000', modelId: 'mdl_000000000a' },
+    raw: null,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+}
+
+function toolMsg(ids: string[]): ChatMessage {
+  return {
+    id: 'msg_00000000b1',
+    role: 'tool',
+    results: ids.map((id) => ({ toolCallId: id, name: 'echo', ok: true, content: 'r', images: [] })),
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+}
+
+describe('repairToolHistory', () => {
+  const calls = [
+    { id: 'a', name: 'echo', input: {} },
+    { id: 'b', name: 'echo', input: {} }
+  ]
+  it('adds a tool message for an orphan at the end', () => {
+    const out = repairToolHistory([user, assistantWith(calls)])
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'tool'])
+    expect((out[2] as ToolMessage).results).toEqual([
+      { toolCallId: 'a', name: 'echo', ok: false, content: 'Interrupted before this tool ran', images: [] },
+      { toolCallId: 'b', name: 'echo', ok: false, content: 'Interrupted before this tool ran', images: [] }
+    ])
+  })
+  it('fills only the missing ids of a partially answered call', () => {
+    const out = repairToolHistory([assistantWith(calls), toolMsg(['a'])])
+    expect(out).toHaveLength(2)
+    expect((out[1] as ToolMessage).results.map((r) => [r.toolCallId, r.ok])).toEqual([
+      ['a', true],
+      ['b', false]
+    ])
+  })
+  it('leaves a fully answered history untouched', () => {
+    const h = [user, assistantWith(calls), toolMsg(['a', 'b'])]
+    expect(repairToolHistory(h)).toEqual(h)
+  })
+})

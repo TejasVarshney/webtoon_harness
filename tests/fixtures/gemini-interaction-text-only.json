@@ -1,0 +1,7 @@
+{
+  "id": "interaction_fixture_2",
+  "status": "completed",
+  "steps": [
+    { "type": "model_output", "content": [{ "type": "text", "text": "I cannot draw that." }] }
+  ]
+}

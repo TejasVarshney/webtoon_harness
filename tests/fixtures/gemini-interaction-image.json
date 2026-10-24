@@ -1,0 +1,13 @@
+{
+  "id": "interaction_fixture_1",
+  "status": "completed",
+  "steps": [
+    {
+      "type": "model_output",
+      "content": [
+        { "type": "text", "text": "Here is your image." },
+        { "type": "image", "mime_type": "image/png", "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" }
+      ]
+    }
+  ]
+}

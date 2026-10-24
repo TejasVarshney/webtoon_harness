@@ -1,0 +1,6 @@
+# gemma4:e4b with a context window big enough for the harness's system prompt (AGENTS.md + doc index),
+# the tool schemas and a few turns of history. Ollama's OpenAI-compatible /v1 endpoint cannot set num_ctx
+# per request, so it is baked into this model tag. Shares weights with gemma4:e4b (no extra disk).
+#   ollama create gemma4-webtoon -f tools/local-models/gemma4-webtoon.Modelfile
+FROM gemma4:e4b
+PARAMETER num_ctx 16384
