@@ -3,3 +3,6 @@ out
 dist
 test-results
 playwright-report
+
+# local-models sandbox (tools/local-models/start-local.ps1)
+.local-env

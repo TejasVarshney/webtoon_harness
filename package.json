@@ -10,7 +10,9 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "local:start": "powershell -ExecutionPolicy Bypass -File tools/local-models/start-local.ps1",
+    "local:smoke": "node tools/local-models/smoke.mjs"
   },
   "license": "UNLICENSED",
   "dependencies": {
