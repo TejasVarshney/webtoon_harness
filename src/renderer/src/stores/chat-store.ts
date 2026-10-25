@@ -1,5 +1,12 @@
 import { create } from 'zustand'
-import type { AgentEvent, ChatMessage } from '@shared/types'
+import type { AgentEvent, ChatMessage, LoopOutcome } from '@shared/types'
+
+/** Outcomes the loop reports without an error message; without a notice the thread would just go quiet. */
+const SILENT_OUTCOME_NOTICES: Partial<Record<LoopOutcome, string>> = {
+  max_tokens:
+    'The model ran out of room before it could answer (its output or context limit). Start a new session, ask for less at once, or use a model with a larger context.',
+  max_steps: 'Stopped at the step limit for one request. Send another message to let the agent continue.'
+}
 
 /** A local, non-persisted message shown in the thread (a failed run or a rejected send). */
 export interface ChatNotice {
@@ -55,10 +62,12 @@ export const useChatStore = create<ChatData & ChatActions>()((set, get) => ({
         get().addMessage(threadKey, e.message)
         set((s) => ({ streaming: { ...s.streaming, [threadKey]: '' } }))
         break
-      case 'run-finished':
+      case 'run-finished': {
         set((s) => ({ streaming: { ...s.streaming, [threadKey]: '' } }))
-        if (e.error !== null) get().addNotice(threadKey, e.error)
+        const notice = e.error ?? SILENT_OUTCOME_NOTICES[e.outcome]
+        if (notice) get().addNotice(threadKey, notice)
         break
+      }
       default:
         break
     }

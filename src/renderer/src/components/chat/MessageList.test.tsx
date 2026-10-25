@@ -73,6 +73,21 @@ describe('MessageList', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("No model assigned to role 'agent'")
   })
 
+  it('explains a run that stopped for running out of room or steps instead of showing nothing', () => {
+    render(<MessageList threadKey={T} />)
+    act(() => useChatStore.getState().applyAgentEvent(T, { kind: 'run-finished', runId: 'run_1', outcome: 'max_tokens', error: null }))
+    expect(screen.getByRole('alert')).toHaveTextContent('ran out of room')
+    act(() => useChatStore.getState().applyAgentEvent(T, { kind: 'run-finished', runId: 'run_2', outcome: 'max_steps', error: null }))
+    expect(screen.getAllByRole('alert').at(-1)).toHaveTextContent('step limit')
+  })
+
+  it('stays quiet when a run simply ends or is cancelled', () => {
+    render(<MessageList threadKey={T} />)
+    act(() => useChatStore.getState().applyAgentEvent(T, { kind: 'run-finished', runId: 'run_1', outcome: 'end', error: null }))
+    act(() => useChatStore.getState().applyAgentEvent(T, { kind: 'run-finished', runId: 'run_2', outcome: 'cancelled', error: null }))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('panel thumbnails select the panel', async () => {
     installFakeApi({ 'panels:get': () => ({ id: 'pnl_0000000001', episodeId: 'epi_0000000001' }) })
     useAppStore.setState({ activeEpisodeId: 'epi_0000000001' })
