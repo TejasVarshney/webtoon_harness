@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { X } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
 import { newId } from '@shared/ids'
 import { api, cleanIpcError } from '../../api'
@@ -60,10 +61,15 @@ export function PanelSideChat({ panelId }: PanelSideChatProps) {
         {panel !== undefined && projectId !== null && imagePath !== null && (
           <img className="side-chat-thumb" src={assetUrl(projectId, imagePath)} alt={panel.description} />
         )}
-        {panel !== undefined && <h2>{`Panel ${index + 1}`}</h2>}
+        {panel !== undefined && (
+          <h2>
+            {`Panel ${index + 1}`}
+            <span className="side-chat-sub">{panel.description}</span>
+          </h2>
+        )}
         {panel !== undefined && <VersionSwitcher panel={panel} />}
-        <button type="button" className="side-chat-close" aria-label="Close panel chat" onClick={() => useAppStore.getState().selectPanel(null)}>
-          ×
+        <button type="button" className="icon-button side-chat-close" aria-label="Close panel chat" title="Close (Esc)" onClick={() => useAppStore.getState().selectPanel(null)}>
+          <X size={16} aria-hidden="true" />
         </button>
       </header>
       {panel !== undefined && projectId !== null ? (
@@ -129,8 +135,8 @@ function PanelThread({ projectId, panelId }: PanelThreadProps) {
   // `panelChat:send` carries text only, so there is nothing to attach images to.
   return (
     <>
-      <MessageList threadKey={threadKey} />
-      <Composer onSend={send} running={runId !== undefined} onStop={stop} allowAttach={false} />
+      <MessageList threadKey={threadKey} emptyTitle="Ask for a change to this panel." emptyHint="An expression, the light, the framing: each edit becomes a new version you can step back from." />
+      <Composer onSend={send} running={runId !== undefined} onStop={stop} allowAttach={false} placeholder="Describe the change to this panel." />
     </>
   )
 }

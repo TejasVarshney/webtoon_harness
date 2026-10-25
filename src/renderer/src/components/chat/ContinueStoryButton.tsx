@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react'
 import { continueStoryPrompt } from '@shared/prompts'
 import { useAppStore } from '../../stores/app-store'
 import { sendUserMessage } from './send-message'
@@ -9,7 +10,14 @@ export function ContinueStoryButton() {
   const running = useAppStore((s) => s.sessionId !== null && s.runningThreads[s.sessionId] !== undefined)
   if (meta === undefined || meta.storyMode !== 'ai') return null
   return (
-    <button type="button" data-testid="continue-story" disabled={sessionId === null || running} onClick={() => sendUserMessage(continueStoryPrompt(meta.autopilotPanels), [])}>
+    <button
+      type="button"
+      className="btn-primary"
+      data-testid="continue-story"
+      disabled={sessionId === null || running}
+      onClick={() => sendUserMessage(continueStoryPrompt(meta.autopilotPanels), [])}
+    >
+      <Sparkles size={15} aria-hidden="true" />
       Continue story
     </button>
   )

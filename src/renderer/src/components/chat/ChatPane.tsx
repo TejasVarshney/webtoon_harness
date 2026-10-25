@@ -3,9 +3,11 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
-import { ChatHeader } from './ChatHeader'
+import { useModelsStore } from '../../stores/models-store'
+import { MOCK_BANNER_TEXT } from './ChatHeader'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
+import { ModelPicker } from './ModelPicker'
 import { sendUserMessage } from './send-message'
 import { PanelSideChat } from '../panel-chat/PanelSideChat'
 
@@ -21,6 +23,10 @@ export function ChatPane() {
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
   const draft = useChatStore((s) => s.draft)
   const setDraft = useChatStore((s) => s.setDraft)
+  const onMock = useModelsStore((s) => {
+    const model = s.view?.models.find((m) => m.id === s.view?.effectiveRoles.agent)
+    return s.view?.endpoints.find((e) => e.id === model?.endpointId)?.kind === 'mock'
+  })
 
   useEffect(() => {
     if (projectId === null || sessionId === null) return
@@ -47,17 +53,23 @@ export function ChatPane() {
 
   return (
     <div className="chat-pane">
-      <ChatHeader />
+      {onMock && (
+        <p className="mock-banner" data-testid="mock-banner">
+          {MOCK_BANNER_TEXT}
+        </p>
+      )}
       {/* The main chat's panel is always there, so opening the side chat below it never remounts the main chat. */}
       <Group orientation="vertical" className="chat-split">
         <Panel id="chat-main" defaultSize="55%" minSize="25%">
           <div className="main-chat">
             {sessionId === null ? (
-              <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
+              <div className="chat-empty">
+                <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
+              </div>
             ) : (
               <>
                 <MessageList threadKey={sessionId} />
-                <Composer onSend={sendUserMessage} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} />
+                <Composer onSend={sendUserMessage} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} tools={<ModelPicker />} />
               </>
             )}
           </div>

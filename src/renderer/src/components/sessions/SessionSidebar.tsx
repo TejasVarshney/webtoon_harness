@@ -1,7 +1,9 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { ChevronsUpDown, Plus, Settings, SquarePen } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { SettingsDialog } from '../settings/SettingsDialog'
+import { BrandMark } from './BrandMark'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ProjectProblems } from './ProjectProblems'
 
@@ -82,27 +84,48 @@ export function SessionSidebar() {
 
   return (
     <div className="session-sidebar">
+      <div className="brand">
+        <BrandMark />
+        <span className="brand-name">Webtoon AI Harness</span>
+      </div>
+
       <div className="sidebar-header">
-        <select
-          data-testid="project-select"
-          aria-label="Project"
-          value={projectId ?? ''}
-          onChange={(e) => e.target.value !== '' && run(openProject(e.target.value))}
+        {projects.length > 0 && (
+          <div className="project-switcher">
+            <select
+              data-testid="project-select"
+              aria-label="Project"
+              value={projectId ?? ''}
+              onChange={(e) => e.target.value !== '' && run(openProject(e.target.value))}
+            >
+              {projectId === null && <option value="">No project</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+            <ChevronsUpDown size={14} className="project-switcher-icon" aria-hidden="true" />
+          </div>
+        )}
+        {/* Before the first project this is the only way in, so it says what it does in words. */}
+        <button
+          type="button"
+          className={projects.length === 0 ? 'btn-primary new-project-first' : 'icon-button'}
+          data-testid="new-project"
+          aria-label="New project"
+          title="New project"
+          onClick={() => setShowNewProject(true)}
         >
-          {projectId === null && <option value="">No project</option>}
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.title}
-            </option>
-          ))}
-        </select>
-        <button type="button" data-testid="new-project" onClick={() => setShowNewProject(true)}>
-          New project
+          <Plus size={16} aria-hidden="true" />
+          {projects.length === 0 && 'New project'}
         </button>
       </div>
 
-      <button type="button" data-testid="new-session" disabled={projectId === null} onClick={() => run(newSession())}>
-        New session
+      <button type="button" className="new-session" data-testid="new-session" disabled={projectId === null} onClick={() => run(newSession())}>
+        <SquarePen size={16} aria-hidden="true" />
+        <span>New session</span>
+        <kbd>Ctrl N</kbd>
       </button>
 
       {error !== null && (
@@ -110,9 +133,10 @@ export function SessionSidebar() {
           {error}
         </p>
       )}
-      {projectId === null && <p className="placeholder">Create a project to start.</p>}
+      {projectId === null && <p className="placeholder sidebar-note">Create a project to start.</p>}
       <ProjectProblems />
 
+      {sessions.length > 0 && <h2 className="sidebar-group">Sessions</h2>}
       <ul className="session-list">
         {sessions.map((s) => (
           <li
@@ -128,7 +152,6 @@ export function SessionSidebar() {
               setMenu({ session: s, x: e.clientX, y: e.clientY })
             }}
           >
-            {runningThreads[s.id] !== undefined && <span className="running-dot" aria-label="Running" />}
             {renamingId === s.id ? (
               <input
                 autoFocus
@@ -143,12 +166,17 @@ export function SessionSidebar() {
             ) : (
               <span className="session-title">{s.title}</span>
             )}
-            <span className="session-time">{relativeTime(s.updatedAt)}</span>
+            {runningThreads[s.id] !== undefined ? (
+              <span className="running-dot" aria-label="Running" />
+            ) : (
+              <span className="session-time">{relativeTime(s.updatedAt)}</span>
+            )}
           </li>
         ))}
       </ul>
 
       <button type="button" data-testid="settings-open" className="settings-open" onClick={() => setShowSettings(true)}>
+        <Settings size={16} aria-hidden="true" />
         Settings
       </button>
 
@@ -180,6 +208,7 @@ export function SessionSidebar() {
               </button>
               <button
                 type="button"
+                className="btn-danger"
                 onClick={() => {
                   const target = confirming
                   setConfirming(null)
