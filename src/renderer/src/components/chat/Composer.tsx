@@ -1,4 +1,5 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
 import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 
@@ -11,9 +12,24 @@ export interface ComposerProps {
   onValueChange?(text: string): void
   /** Show the Attach button. Default true; a thread whose send has no room for images turns it off. */
   allowAttach?: boolean
+  /** Controls set in the composer's footer, between Attach and Send (the main chat's model picker). */
+  tools?: ReactNode
+  placeholder?: string
 }
 
-export function Composer({ onSend, running, onStop, value, onValueChange, allowAttach = true }: ComposerProps) {
+/** The textarea grows with its text up to this height, then scrolls. */
+const MAX_INPUT_HEIGHT = 240
+
+export function Composer({
+  onSend,
+  running,
+  onStop,
+  value,
+  onValueChange,
+  allowAttach = true,
+  tools,
+  placeholder = 'Ask for the next scene, a character, a change…'
+}: ComposerProps) {
   const projectId = useAppStore((s) => s.projectId)
   const [ownText, setOwnText] = useState('')
   const text = value ?? ownText
@@ -23,6 +39,15 @@ export function Composer({ onSend, running, onStop, value, onValueChange, allowA
   }
   const [images, setImages] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const el = inputRef.current
+    if (el === null) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`
+    el.style.overflowY = el.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
+  }, [text])
 
   const canSend = !running && (text.trim() !== '' || images.length > 0)
 
@@ -53,48 +78,69 @@ export function Composer({ onSend, running, onStop, value, onValueChange, allowA
   }
 
   return (
-    <div className="composer">
-      {images.length > 0 && (
-        <ul className="composer-attachments">
-          {images.map((p) => (
-            <li key={p}>
-              <span>{p.split('/').pop()}</span>
-              <button type="button" aria-label={`Remove ${p}`} onClick={() => setImages((prev) => prev.filter((x) => x !== p))}>
-                x
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="composer" data-running={running ? 'true' : undefined}>
       {error !== null && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
-      <div className="composer-row">
-        {allowAttach && (
-          <button type="button" data-testid="composer-attach" aria-label="Attach images" disabled={projectId === null} onClick={() => void attach()}>
-            Attach
-          </button>
+      {/* A click on the box's padding puts the caret in the text, as if the whole box were the field. */}
+      <div
+        className="composer-box"
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return
+          e.preventDefault()
+          inputRef.current?.focus()
+        }}
+      >
+        {images.length > 0 && (
+          <ul className="composer-attachments">
+            {images.map((p) => (
+              <li key={p}>
+                <span>{p.split('/').pop()}</span>
+                <button type="button" className="icon-button" aria-label={`Remove ${p}`} onClick={() => setImages((prev) => prev.filter((x) => x !== p))}>
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         <textarea
+          ref={inputRef}
           data-testid="composer-input"
           aria-label="Message"
-          rows={2}
-          placeholder="Message the agent. Enter to send, Shift+Enter for a new line."
+          rows={1}
+          placeholder={placeholder}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        {running ? (
-          <button type="button" data-testid="composer-stop" onClick={onStop}>
-            Stop
-          </button>
-        ) : (
-          <button type="button" data-testid="composer-send" disabled={!canSend} onClick={send}>
-            Send
-          </button>
-        )}
+        <div className="composer-footer">
+          {allowAttach && (
+            <button
+              type="button"
+              className="icon-button"
+              data-testid="composer-attach"
+              aria-label="Attach images"
+              title="Attach images"
+              disabled={projectId === null}
+              onClick={() => void attach()}
+            >
+              <Paperclip size={16} aria-hidden="true" />
+            </button>
+          )}
+          {tools}
+          <span className="composer-spacer" />
+          {running ? (
+            <button type="button" className="send-button send-button-stop" data-testid="composer-stop" aria-label="Stop" title="Stop the agent" onClick={onStop}>
+              <Square size={12} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : (
+            <button type="button" className="send-button" data-testid="composer-send" aria-label="Send" title="Send (Enter)" disabled={!canSend} onClick={send}>
+              <ArrowUp size={17} strokeWidth={2.25} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

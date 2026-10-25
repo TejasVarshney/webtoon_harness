@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { ArrowDown, ArrowUp, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
@@ -92,6 +93,7 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
           <DialogueOverlay dialogue={panel.dialogue} />
           {generating && (
             <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">
+              <LoaderCircle size={14} className="spin" aria-hidden="true" />
               Generating…
             </div>
           )}
@@ -118,20 +120,28 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
           </p>
         )}
         <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={() => setEditing(true)}>
-            Edit
+          <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
+          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={() => setEditing(true)}>
+            <Pencil size={15} aria-hidden="true" />
           </button>
-          <button type="button" disabled={busy || generating} onClick={() => run(generatePanel(panel.id))}>
-            Regenerate
+          <button type="button" className="icon-button" aria-label="Regenerate" title="Regenerate" disabled={busy || generating} onClick={() => run(generatePanel(panel.id))}>
+            <RefreshCw size={15} aria-hidden="true" />
           </button>
-          <button type="button" disabled={busy || index <= 0} onClick={() => run(movePanel(panel.id, index - 1))}>
-            Move up
+          <button type="button" className="icon-button" aria-label="Move up" title="Move up" disabled={busy || index <= 0} onClick={() => run(movePanel(panel.id, index - 1))}>
+            <ArrowUp size={15} aria-hidden="true" />
           </button>
-          <button type="button" disabled={busy || index < 0 || index >= count - 1} onClick={() => run(movePanel(panel.id, index + 1))}>
-            Move down
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Move down"
+            title="Move down"
+            disabled={busy || index < 0 || index >= count - 1}
+            onClick={() => run(movePanel(panel.id, index + 1))}
+          >
+            <ArrowDown size={15} aria-hidden="true" />
           </button>
-          <button type="button" disabled={busy} onClick={() => setConfirming(true)}>
-            Delete
+          <button type="button" className="icon-button icon-button-danger" aria-label="Delete" title="Delete panel" disabled={busy} onClick={() => setConfirming(true)}>
+            <Trash2 size={15} aria-hidden="true" />
           </button>
         </div>
       </article>
@@ -149,6 +159,7 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
               </button>
               <button
                 type="button"
+                className="btn-danger"
                 onClick={() => {
                   setConfirming(false)
                   run(deletePanel(panel.id))

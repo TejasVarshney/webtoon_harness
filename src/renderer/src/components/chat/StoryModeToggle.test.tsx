@@ -39,6 +39,16 @@ function meta(o: Partial<ProjectMeta> = {}): ProjectMeta {
   }
 }
 
+// The story mode and Continue story live in the top bar (ChatHeader), over the chat they send into.
+function renderChat(): void {
+  render(
+    <>
+      <ChatHeader />
+      <ChatPane />
+    </>
+  )
+}
+
 let stopSync: (() => void) | undefined
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projects: [meta()], projectId: P, sessionId: S, activeEpisodeId: 'epi_0000000001' })
@@ -61,7 +71,7 @@ describe('story mode toggle and continue button', () => {
       'story:setMode': (req: { mode: StoryMode }) => meta({ storyMode: req.mode }),
       'agent:send': () => ({ runId: 'run_0000000001' })
     })
-    render(<ChatPane />)
+    renderChat()
     const toggle = await screen.findByTestId('story-mode-toggle')
     expect(toggle).toHaveValue('user')
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(expect.arrayContaining(['User-led', 'AI-led']))
@@ -85,7 +95,7 @@ describe('story mode toggle and continue button', () => {
   it('uses the project autopilot panel count', async () => {
     useAppStore.setState({ projects: [meta({ storyMode: 'ai', autopilotPanels: 7 })] })
     const { calls } = installFakeApi({ 'sessions:load': () => [], 'agent:send': () => ({ runId: 'run_0000000001' }) })
-    render(<ChatPane />)
+    renderChat()
     await userEvent.click(screen.getByTestId('continue-story'))
     expect((calls.find((c) => c.channel === 'agent:send')?.req as { text: string }).text).toBe('Continue the story (AI-led): plan the next beats and draw the next 7 panels.')
   })
@@ -93,7 +103,7 @@ describe('story mode toggle and continue button', () => {
   it('is disabled while the session runs and without a session, and does not send then', async () => {
     useAppStore.setState({ projects: [meta({ storyMode: 'ai' })], runningThreads: { [S]: 'run_0000000009' } })
     const { calls } = installFakeApi({ 'sessions:load': () => [] })
-    render(<ChatPane />)
+    renderChat()
     expect(screen.getByTestId('continue-story')).toBeDisabled()
     act(() => useAppStore.setState({ runningThreads: {}, sessionId: null }))
     expect(screen.getByTestId('continue-story')).toBeDisabled()
@@ -110,7 +120,7 @@ describe('story mode toggle and continue button', () => {
         throw new Error("Error invoking remote method 'agent:send': Error: No model assigned to role 'agent'. Open Settings → Models.")
       }
     })
-    render(<ChatPane />)
+    renderChat()
     await userEvent.click(screen.getByTestId('continue-story'))
     expect(await screen.findByRole('alert')).toHaveTextContent("No model assigned to role 'agent'. Open Settings → Models.")
     expect(screen.queryByTestId('message-user')).toBeNull()

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { stepReadyVersion, versionPosition } from '@shared/panel-versions'
 import type { Panel } from '@shared/types'
 import { cleanIpcError } from '../../api'
@@ -43,9 +44,10 @@ export function VersionSwitcher({ panel }: VersionSwitcherProps) {
         data-testid="version-prev"
         aria-label="Previous version"
         disabled={busy || previous === null}
+        className="icon-button"
         onClick={() => previous !== null && revertTo(previous.id)}
       >
-        ‹
+        <ChevronLeft size={16} aria-hidden="true" />
       </button>
       <span className="version-label" data-testid="panel-version-label">
         {position === null ? 'No image yet' : `${position.label} / ${position.readyCount}`}
@@ -55,9 +57,10 @@ export function VersionSwitcher({ panel }: VersionSwitcherProps) {
         data-testid="version-next"
         aria-label="Next version"
         disabled={busy || next === null}
+        className="icon-button"
         onClick={() => next !== null && revertTo(next.id)}
       >
-        ›
+        <ChevronRight size={16} aria-hidden="true" />
       </button>
       {error !== null && (
         <p role="alert" className="error version-error">

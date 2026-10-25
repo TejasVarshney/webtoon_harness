@@ -1,12 +1,13 @@
+import { BookOpen, GalleryVertical, Users, type LucideIcon } from 'lucide-react'
 import { useAppStore, type RightTab } from '../../stores/app-store'
 import { CharacterStudio } from '../characters/CharacterStudio'
 import { StoryTab } from '../story/StoryTab'
 import { WebtoonPane } from '../visualizer/WebtoonPane'
 
-const TABS: { id: RightTab; label: string; testId: string }[] = [
-  { id: 'webtoon', label: 'Webtoon', testId: 'tab-webtoon' },
-  { id: 'characters', label: 'Characters', testId: 'tab-characters' },
-  { id: 'story', label: 'Story', testId: 'tab-story' }
+const TABS: { id: RightTab; label: string; testId: string; icon: LucideIcon }[] = [
+  { id: 'webtoon', label: 'Webtoon', testId: 'tab-webtoon', icon: GalleryVertical },
+  { id: 'characters', label: 'Characters', testId: 'tab-characters', icon: Users },
+  { id: 'story', label: 'Story', testId: 'tab-story', icon: BookOpen }
 ]
 
 /** The visualizer pane: the Webtoon strip, the Characters tab and the Story tab. */
@@ -27,6 +28,7 @@ export function RightPane() {
             data-testid={t.testId}
             onClick={() => setRightTab(t.id)}
           >
+            <t.icon size={15} aria-hidden="true" />
             {t.label}
           </button>
         ))}

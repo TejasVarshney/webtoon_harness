@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { ChatHeader } from './components/chat/ChatHeader'
 import { ChatPane } from './components/chat/ChatPane'
 import { RightPane } from './components/layout/RightPane'
 import { ThreePaneLayout } from './components/layout/ThreePaneLayout'
@@ -17,6 +18,7 @@ export function App() {
 
   return (
     <ThreePaneLayout
+      header={<ChatHeader />}
       left={<SessionSidebar />}
       middle={<ChatPane />}
       right={<RightPane />}
