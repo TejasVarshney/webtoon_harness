@@ -208,8 +208,9 @@ def make_handler(engine: Engine):
     class Handler(BaseHTTPRequestHandler):
         server_version = "webtoon-image-server/1"
 
-        def log_message(self, fmt, *a):  # quieter default logging
-            log(f"{self.command} {self.path} -> {fmt % a}")
+        def log_message(self, fmt, *a):  # quieter default logging; health polls are noise
+            if self.path.rstrip("/") != "/health":
+                log(f"{self.command} {self.path} -> {fmt % a}")
 
         def _json(self, code: int, body: dict) -> None:
             data = json.dumps(body).encode()

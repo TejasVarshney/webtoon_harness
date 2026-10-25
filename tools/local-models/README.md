@@ -31,7 +31,8 @@ Options (pass after `--`, e.g. `npm run local:start -- -Reseed`):
 |---|---|
 | `-Vision` | Marks gemma4 vision-capable and makes it the consistency checker. Off by default (see below). |
 | `-Reseed` | Rewrites `models.json` (close the app first). |
-| `-NoImageServer` | Don't start the bridge (it already runs). |
+| `-NoImageServer` | Don't start the bridge. (A bridge that is already running is detected and reused anyway.) |
+| `-BridgeOnly` | Start the bridge and stop there, without the app — e.g. before `npm run local:smoke -- --images`. |
 | `-Offload model\|sequential` | `sequential` (default) needs ~1 GB VRAM; `model` is faster but needs ~6 GB free. |
 | `-Scale 0.75` / `-Steps 20` | Image size multiplier and sampler steps (defaults keep one image under the app's 180 s limit). |
 

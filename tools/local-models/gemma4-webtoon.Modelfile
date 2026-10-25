@@ -1,6 +1,8 @@
-# gemma4:e4b with a context window big enough for the harness's system prompt (AGENTS.md + doc index),
-# the tool schemas and a few turns of history. Ollama's OpenAI-compatible /v1 endpoint cannot set num_ctx
-# per request, so it is baked into this model tag. Shares weights with gemma4:e4b (no extra disk).
+# gemma4:e4b with a context window big enough for the harness: the system prompt (AGENTS.md + doc index,
+# ~6k tokens), the tool schemas (~5k), a workflow doc read with read_workflow_doc (~5k each) and the chat
+# history. 16k ran out as soon as one doc was read (every later turn came back empty with "max_tokens").
+# Ollama's OpenAI-compatible /v1 endpoint cannot set num_ctx per request, so it is baked into this tag.
+# Shares weights with gemma4:e4b (no extra disk). Re-run after editing:
 #   ollama create gemma4-webtoon -f tools/local-models/gemma4-webtoon.Modelfile
 FROM gemma4:e4b
-PARAMETER num_ctx 16384
+PARAMETER num_ctx 32768

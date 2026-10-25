@@ -114,7 +114,12 @@ await check(`${TEXT_MODEL} sees an image (only needed for start-local.ps1 -Visio
 }, { optional: true })
 
 const healthy = await check('image bridge is ready', async () => {
-  const res = await fetch(`${IMAGES}/health`)
+  let res
+  try {
+    res = await fetch(`${IMAGES}/health`)
+  } catch {
+    throw new Error(`nothing answers on ${IMAGES} — start the bridge with \`npm run local:start\` (or tools/local-models/image_server.py) first`)
+  }
   const h = await res.json()
   if (h.status !== 'ready') throw new Error(`status ${h.status}${h.error ? `: ${h.error}` : ''}`)
   return `lora ${h.lora}`
@@ -149,4 +154,6 @@ if (withImages && healthy) {
 }
 
 console.log(failed === 0 ? '\nAll checks passed.' : `\n${failed} check(s) failed.`)
-process.exit(failed === 0 ? 0 : 1)
+// exitCode, not process.exit(): exiting while fetch's sockets are still closing aborts Node on Windows
+// ("Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)").
+process.exitCode = failed === 0 ? 0 : 1

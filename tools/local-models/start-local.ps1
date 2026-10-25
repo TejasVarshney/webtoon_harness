@@ -17,6 +17,7 @@ param(
   [switch]$Vision,            # mark gemma4 vision-capable + assign the vision role (needs a working Ollama vision encoder)
   [switch]$Reseed,            # overwrite .local-env\user-data\models.json
   [switch]$NoImageServer,     # do not start the bridge (e.g. it already runs)
+  [switch]$BridgeOnly,        # start the bridge and stop there (no app), e.g. before `npm run local:smoke -- --images`
   [string]$InfiniteRoot = 'E:\claude\InfiniteWebtoons',
   [string]$Offload = 'sequential',
   [double]$Scale = 0.75,
@@ -39,21 +40,35 @@ if (-not ($tags -contains 'gemma4-webtoon:latest')) {
   ollama create gemma4-webtoon -f (Join-Path $PSScriptRoot 'gemma4-webtoon.Modelfile')
 }
 
-if (-not $NoImageServer) {
+function Get-BridgeHealth {
+  try { Invoke-RestMethod -TimeoutSec 3 "http://127.0.0.1:$ImagePort/health" } catch { $null }
+}
+# Single-quoted PowerShell literal (paths here contain spaces, e.g. "Webtoon AI Harness").
+function Quote([string]$s) { "'" + ($s -replace "'", "''") + "'" }
+
+if (-not $NoImageServer -and (Get-BridgeHealth).status -eq 'ready') {
+  Write-Host "== SDXL image bridge already running on port $ImagePort"
+}
+elseif (-not $NoImageServer) {
   Write-Host '== SDXL image bridge'
   $log = Join-Path $envDir 'image-server.log'
   $server = Join-Path $PSScriptRoot 'image_server.py'
-  $cmd = "uv run --project `"$InfiniteRoot`" python `"$server`" --port $ImagePort --offload $Offload --scale $Scale --steps $Steps 2>&1 | Tee-Object -FilePath `"$log`""
-  Start-Process powershell -ArgumentList '-NoExit', '-Command', $cmd -WindowStyle Normal | Out-Null
+  $cmd = "`$host.UI.RawUI.WindowTitle = 'SDXL image bridge (close to stop)'; " +
+    "uv run --project $(Quote $InfiniteRoot) python $(Quote $server) --port $ImagePort --offload $Offload --scale $Scale --steps $Steps 2>&1 | " +
+    "ForEach-Object { `"`$_`" } | Tee-Object -FilePath $(Quote $log)"
+  # -EncodedCommand: a plain -Command string loses its inner quotes on the way through Start-Process.
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+  Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', $encoded -WindowStyle Normal | Out-Null
   $deadline = (Get-Date).AddMinutes(6)
   do {
     Start-Sleep -Seconds 3
-    try { $h = Invoke-RestMethod -TimeoutSec 3 "http://127.0.0.1:$ImagePort/health" } catch { $h = $null }
+    $h = Get-BridgeHealth
     if ($h -and $h.status -eq 'error') { throw "image bridge failed to load: $($h.error) (see $log)" }
   } until (($h -and $h.status -eq 'ready') -or (Get-Date) -gt $deadline)
-  if (-not $h -or $h.status -ne 'ready') { throw "image bridge not ready after 6 minutes (see $log)" }
+  if (-not $h -or $h.status -ne 'ready') { throw "image bridge not ready after 6 minutes (see $log and the bridge window)" }
   Write-Host "bridge ready on http://127.0.0.1:$ImagePort/v1"
 }
+if ($BridgeOnly) { return }
 
 Write-Host '== models.json'
 $seedArgs = @('tools/local-models/seed-models.mjs', '--user-data', $userData)
