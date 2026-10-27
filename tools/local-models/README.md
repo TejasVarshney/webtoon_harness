@@ -80,6 +80,14 @@ Measured on this machine, with desktop apps already holding ~4 GB of VRAM:
   restart with `-Vision -Reseed`.
 - **References are blended.** IP-Adapter mixes all references into one embedding, so the seeded image model
   uses `maxReferenceImages: 2`. Two characters in one panel will look less distinct than with a hosted model.
+- **Panels trade some likeness for their setting.** At the config's IP-Adapter scale (0.6), a full-body sheet's gray
+  backdrop was copied into every panel, whatever the prompt's setting. For panels the bridge now paints a sheet's flat
+  backdrop white and uses scale 0.4 (`image_server.py --panel-ip-scale` / `--panel-ref-mode`). Character sheets and
+  edits keep 0.6 and the reference as is. Across the seeds tried, hair, jacket and outfit held; small details such as
+  eye color drift more than at 0.6.
+- **"No text" means nothing to SDXL.** The bridge drops the harness's "No text, no speech bubbles, no captions, no
+  watermark." clauses from the positive prompt (with them, SDXL sometimes drew an empty speech bubble) and relies on
+  the negative prompt instead.
 - **Edits are img2img.** "Make her smile" re-draws the panel at strength 0.6 with the references; small,
   local edits are not as precise as a hosted edit model.
 - A small local model is less reliable than Claude at following the workflow docs; expect to nudge it.

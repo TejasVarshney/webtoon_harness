@@ -9,6 +9,9 @@ The harness's `openai` image adapter talks to this server exactly as it would to
 
 Responses are `{"created": ..., "data": [{"b64_json": "<png>"}]}`. One job runs on the GPU at a time.
 
+Tuning fields the harness never sends (for A/B runs; both endpoints accept them): `seed`, `ip_scale` (a float, or
+diffusers' block-wise JSON such as {"up": {"block_0": [0.0, 1.0, 0.0]}}) and `ref_mode` (pad | cutout | crop).
+
 Run it with the InfiniteWebtoons environment (it imports that project's pipeline and reads its configs/.env):
 
   uv run --project E:\\claude\\InfiniteWebtoons python tools/local-models/image_server.py
@@ -21,6 +24,7 @@ import base64
 import io
 import json
 import random
+import re
 import sys
 import threading
 import time
@@ -34,6 +38,59 @@ from pathlib import Path
 MODEL_ID = "sdxl-webtoon"
 # SDXL is trained on ~1 MP buckets; the harness asks for OpenAI sizes (1024x1536 ...), so map by aspect ratio.
 SDXL_BUCKETS = [(1024, 1024), (832, 1216), (1216, 832), (896, 1152), (1152, 896), (768, 1344), (1344, 768)]
+# The harness's base and variation sheet prompts (src/main/domain/prompts.ts) start with this; any other request
+# with references and no source image is a panel.
+SHEET_PREFIX = "Character reference sheet"
+REF_MODES = ("pad", "cutout", "crop")
+
+
+def flat_backdrop_mask(im, tol: int = 24):
+    """Boolean mask of a flat backdrop (a reference sheet's plain background), or None when the border is not mostly
+    one color (a drawn scene, such as the previous panel). Only backdrop pixels connected to the border count, so a
+    gray shirt inside the outline is kept."""
+    import cv2
+    import numpy as np
+
+    a = np.asarray(im.convert("RGB")).astype(np.int16)
+    border = lambda x: np.concatenate([x[0], x[-1], x[:, 0], x[:, -1]])
+    near = (np.abs(a - np.median(border(a), axis=0)).max(axis=2) <= tol).astype(np.uint8)
+    edge = border(near).astype(bool)
+    if edge.mean() < 0.6:
+        return None
+    _, labels = cv2.connectedComponents(near, connectivity=4)
+    return np.isin(labels, np.unique(border(labels)[edge]))
+
+
+def prepare_ref(im, mode: str):
+    """A reference image for IP-Adapter. `pad` uses it as is; `cutout` paints a flat backdrop white, so a panel's
+    setting comes from the prompt instead of the sheet's gray; `crop` also crops to the figure's upper half (face,
+    hair, outfit), which the encoder's 224 px input would otherwise see small."""
+    import numpy as np
+    from PIL import Image
+
+    im = im.convert("RGB")
+    mask = None if mode == "pad" else flat_backdrop_mask(im)
+    if mask is None:
+        return im
+    a = np.asarray(im).copy()
+    a[mask] = 255
+    out = Image.fromarray(a)
+    if mode == "crop":
+        ys, xs = np.nonzero(~mask)
+        top, bottom = ys.min(), ys.max()
+        out = out.crop((xs.min(), top, xs.max() + 1, top + (bottom - top) // 2 + 1))
+    return out
+
+
+def parse_ip_scale(v):
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float, dict)):
+        return v
+    try:
+        return float(v)
+    except ValueError:
+        return json.loads(v)
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +104,13 @@ def parse_args() -> argparse.Namespace:
                         "desktop apps often hold several GB of an 8 GB card, and spilling into shared memory is far slower)")
     p.add_argument("--scale", type=float, default=1.0, help="resolution multiplier on the ~1 MP SDXL sizes (e.g. 0.75)")
     p.add_argument("--edit-strength", type=float, default=0.6, help="img2img strength for edits (0..1)")
+    # Measured on a full-body sheet at seeds 1234/7/99: configs/generate.yaml's 0.6 with the sheet as is copies its gray
+    # backdrop into every panel; cutout at 0.4 gets the prompt's setting and keeps hair, jacket and outfit. Crop copies
+    # the crop's framing (a wide shot comes out as a close-up). Sheets keep the config scale and the sheet as is.
+    p.add_argument("--panel-ip-scale", type=float, default=0.4, help="IP-Adapter scale for panels (default 0.4)")
+    p.add_argument("--panel-ref-mode", choices=REF_MODES, default="cutout",
+                   help="how panel references are prepared: pad (as is), cutout (flat backdrop to white, default), "
+                        "crop (cutout + upper half)")
     p.add_argument("--ollama-url", default="http://localhost:11434")
     p.add_argument("--keep-ollama", action="store_true", help="do not unload Ollama models before generating")
     p.add_argument("--lazy", action="store_true", help="load the pipeline on the first request instead of at start")
@@ -125,17 +189,27 @@ class Engine:
         return snap(bw), snap(bh)
 
     # The harness's reference-sheet prompts ask for "even studio lighting"; SDXL tends to draw the studio itself.
-    EXTRA_NEGATIVE = "light stand, studio equipment, microphone, softbox, tripod"
+    # "caption" stands in for the "no captions" that NEGATION drops; the config's negative has the other terms.
+    EXTRA_NEGATIVE = "light stand, studio equipment, microphone, softbox, tripod, caption"
+    # SDXL has no "no": "no speech bubbles" in the positive prompt draws speech bubbles. The harness's prompts end
+    # their style line with such negations, so drop them here and leave the job to the negative prompt. Only a whole
+    # clause goes (one that starts a sentence or follows a comma, and ends at punctuation), so "a sign with no text on
+    # it" in a description is left alone.
+    NEGATION = re.compile(r"(?:(?:^|(?<=\.))\s*|[,;]\s*)\bno (?:text|speech bubbles?|captions?|watermarks?)\b(?=\s*(?:[,.;]|$))",
+                          re.IGNORECASE | re.MULTILINE)
 
     def prompts(self, prompt: str) -> tuple[str, str]:
         cfg = self.cfg
         trigger = cfg.lora_trigger if cfg.lora_path else ""
-        positive = ", ".join(p for p in (trigger, cfg.style_prompt, prompt.strip()) if p)
+        # A sentence of negations leaves its full stop behind ("wide shot.."); an ellipsis is kept.
+        prompt = re.sub(r"(?<!\.)\.\s*\.(?!\.)", ".", self.NEGATION.sub("", prompt)).strip()
+        positive = ", ".join(p for p in (trigger, cfg.style_prompt, prompt) if p)
         return positive, f"{cfg.negative_prompt}, {self.EXTRA_NEGATIVE}"
 
     # ------------------------------------------------------------------ generation
 
-    def generate(self, prompt: str, size: str | None, refs: list, source, seed: int | None):
+    def generate(self, prompt: str, size: str | None, refs: list, source, seed: int | None,
+                 ip_scale=None, ref_mode: str | None = None):
         self.ensure()  # puts InfiniteWebtoons/src on sys.path
         import torch
         from PIL import Image
@@ -145,12 +219,16 @@ class Engine:
         W, H = self.size_for(size)
         positive, negative = self.prompts(prompt)
         pipe = self.gen.pipe
+        # Sheets want the reference copied closely, backdrop and all; panels want the character but their own setting.
+        panel = bool(refs) and source is None and not prompt.lstrip().startswith(SHEET_PREFIX)
         if refs:
-            ip_images = [square_pad(r.convert("RGB")) for r in refs]
-            pipe.set_ip_adapter_scale(self.cfg.ip_adapter.scale)
+            ref_mode = ref_mode or (self.args.panel_ref_mode if panel else "pad")
+            if ip_scale is None:
+                ip_scale = self.args.panel_ip_scale if panel else self.cfg.ip_adapter.scale
+            ip_images = [square_pad(prepare_ref(r, ref_mode)) for r in refs]
         else:  # IP-Adapter is loaded, so it needs an image: a blank one at scale 0
-            ip_images = [Image.new("RGB", (224, 224), "white")]
-            pipe.set_ip_adapter_scale(0.0)
+            ip_images, ip_scale, ref_mode = [Image.new("RGB", (224, 224), "white")], 0.0, "none"
+        pipe.set_ip_adapter_scale(ip_scale)
         seed = seed if seed is not None else random.randint(0, 2**31 - 1)
         started = time.time()
 
@@ -183,7 +261,9 @@ class Engine:
                 width=W, height=H, **common,
             ).images[0]
         vram = round(torch.cuda.max_memory_allocated() / 1e9, 2) if torch.cuda.is_available() else None
-        log(f"{'edit' if source is not None else 'generate'} {W}x{H} refs={len(refs)} seed={seed} in {time.time() - t0:.1f}s peak_vram={vram}GB")
+        kind = "edit" if source is not None else "panel" if panel else "generate"
+        log(f"{kind} {W}x{H} refs={len(refs)} ref_mode={ref_mode} ip_scale={json.dumps(ip_scale)} seed={seed} "
+            f"in {time.time() - t0:.1f}s peak_vram={vram}GB")
         return image
 
     def _img2img(self):
@@ -238,17 +318,19 @@ def make_handler(engine: Engine):
             path = self.path.rstrip("/")
             try:
                 if path == "/v1/images/generations":
-                    body = json.loads(self._body() or b"{}")
-                    prompt, size, seed = body.get("prompt"), body.get("size"), body.get("seed")
-                    refs, source = [], None
+                    fields, refs, source = json.loads(self._body() or b"{}"), [], None
                 elif path == "/v1/images/edits":
-                    prompt, size, seed, refs, source = self._parse_edit()
+                    fields, refs, source = self._parse_edit()
                 else:
                     return self._error(404, f"Unknown path {self.path}")
+                prompt, size, seed, ref_mode = (fields.get(k) for k in ("prompt", "size", "seed", "ref_mode"))
                 if not isinstance(prompt, str) or not prompt.strip():
                     return self._error(400, "prompt is required")
+                if ref_mode not in (None, "", *REF_MODES):
+                    return self._error(400, f"ref_mode must be one of {', '.join(REF_MODES)}")
                 with engine.lock:
-                    image = engine.generate(prompt, size, refs, source, int(seed) if seed not in (None, "") else None)
+                    image = engine.generate(prompt, size, refs, source, int(seed) if seed not in (None, "") else None,
+                                            ip_scale=parse_ip_scale(fields.get("ip_scale")), ref_mode=ref_mode or None)
                 self._json(200, {"created": int(time.time()), "data": [{"b64_json": png_b64(image)}]})
             except ValueError as e:
                 self._error(400, str(e))
@@ -281,7 +363,7 @@ def make_handler(engine: Engine):
                     source = img
                 else:
                     refs.append(img)
-            return fields.get("prompt"), fields.get("size"), fields.get("seed"), refs, source
+            return fields, refs, source
 
     return Handler
 
