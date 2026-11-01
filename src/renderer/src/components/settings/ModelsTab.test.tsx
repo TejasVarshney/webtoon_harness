@@ -133,6 +133,66 @@ describe('ModelsTab', () => {
       expect(await screen.findByText('Key cleared because the host changed')).toBeInTheDocument()
     })
 
+    async function editTimeout(endpointId: string, text: string) {
+      await userEvent.click(within(screen.getByTestId(`endpoint-${endpointId}`)).getByRole('button', { name: 'Edit endpoint' }))
+      const form = screen.getByRole('form', { name: 'Edit endpoint' })
+      const field = within(form).getByLabelText('Image and check timeout (seconds)')
+      await userEvent.clear(field)
+      if (text !== '') await userEvent.type(field, text)
+      await userEvent.click(within(form).getByRole('button', { name: 'Save endpoint' }))
+    }
+
+    it('saves an image and check timeout for an endpoint of any kind', async () => {
+      const { calls } = installFakeApi({
+        'models:updateEndpoint': (req: { id: string; patch: object }) => ({ endpoint: { ...openai, ...req.patch }, keyCleared: false }),
+        'models:get': () => view({ endpoints: [anthropic, openai] })
+      })
+      render(<ModelsTab />)
+      await editTimeout('end_3333333333', '600')
+      await waitFor(() => expect(calls.some((c) => c.channel === 'models:updateEndpoint')).toBe(true))
+      expect(calls.find((c) => c.channel === 'models:updateEndpoint')?.req).toEqual({
+        id: 'end_3333333333',
+        patch: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', options: { timeoutSeconds: 600 } }
+      })
+    })
+
+    it('keeps the refusal fallback when only the timeout changes', async () => {
+      const { calls } = installFakeApi({
+        'models:updateEndpoint': (req: { id: string; patch: object }) => ({ endpoint: { ...anthropic, ...req.patch }, keyCleared: false }),
+        'models:get': () => view({ endpoints: [anthropic, openai] })
+      })
+      useModelsStore.setState({ view: view({ endpoints: [...view().endpoints, { ...anthropic, options: { serverSideFallback: false } }, openai] }) })
+      render(<ModelsTab />)
+      await editTimeout('end_2222222222', '300')
+      await waitFor(() => expect(calls.some((c) => c.channel === 'models:updateEndpoint')).toBe(true))
+      expect(calls.find((c) => c.channel === 'models:updateEndpoint')?.req).toMatchObject({ patch: { options: { serverSideFallback: false, timeoutSeconds: 300 } } })
+    })
+
+    it('an empty timeout goes back to the default', async () => {
+      const slow = { ...openai, options: { timeoutSeconds: 600 } }
+      const { calls } = installFakeApi({
+        'models:updateEndpoint': (req: { id: string; patch: object }) => ({ endpoint: { ...slow, ...req.patch }, keyCleared: false }),
+        'models:get': () => view({ endpoints: [anthropic, openai] })
+      })
+      useModelsStore.setState({ view: view({ endpoints: [...view().endpoints, anthropic, slow] }) })
+      render(<ModelsTab />)
+      await userEvent.click(within(screen.getByTestId('endpoint-end_3333333333')).getByRole('button', { name: 'Edit endpoint' }))
+      expect(within(screen.getByRole('form', { name: 'Edit endpoint' })).getByLabelText('Image and check timeout (seconds)')).toHaveValue('600')
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await editTimeout('end_3333333333', '')
+      await waitFor(() => expect(calls.some((c) => c.channel === 'models:updateEndpoint')).toBe(true))
+      const patch = (calls.find((c) => c.channel === 'models:updateEndpoint')?.req as { patch: { options: object } }).patch
+      expect(Object.keys(patch.options)).toEqual([])
+    })
+
+    it('refuses a timeout outside 10 to 3600 seconds without saving', async () => {
+      const { calls } = installFakeApi({})
+      render(<ModelsTab />)
+      await editTimeout('end_3333333333', '600000')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Timeout must be a whole number of seconds from 10 to 3600, or empty for the default (180).')
+      expect(calls.some((c) => c.channel === 'models:updateEndpoint')).toBe(false)
+    })
+
     it('offers the fallback switch only for anthropic endpoints', async () => {
       installFakeApi({})
       render(<ModelsTab />)

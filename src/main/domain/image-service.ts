@@ -30,7 +30,7 @@ export interface ImageServiceOptions {
   registry: ModelRegistry
   imageOps: ImageOps
   createImageProvider?: typeof defaultCreateImageProvider
-  /** Test seam; production uses 180 s. */
+  /** The limit when the endpoint sets no `timeoutSeconds`. Test seam; production uses 180 s. */
   timeoutMs?: number
 }
 
@@ -67,16 +67,18 @@ export class ImageService {
     req: ImageGenRequest,
     call: (provider: ImageProvider, refs: ImageRef[], signal: AbortSignal) => Promise<{ mime: string; data: Buffer }>
   ): Promise<ImageGenResult> {
-    const provider = this.create(this.opts.registry.resolve(role))
+    const resolved = this.opts.registry.resolve(role)
+    const provider = this.create(resolved)
     const refs: ImageRef[] = []
     for (const r of req.references) refs.push(await this.load(ctx, r))
-    const timeout = AbortSignal.timeout(this.timeoutMs)
+    const timeoutMs = (resolved.endpoint.options.timeoutSeconds ?? 0) * 1000 || this.timeoutMs
+    const timeout = AbortSignal.timeout(timeoutMs)
     const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout
     try {
       const out = await call(provider, refs, signal)
       return { data: out.data, ext: EXT[out.mime] ?? 'png' }
     } catch (err) {
-      if (timeout.aborted && !req.signal?.aborted) throw new ProviderError('timeout', 'Image generation timed out after 180s')
+      if (timeout.aborted && !req.signal?.aborted) throw new ProviderError('timeout', `Image generation timed out after ${timeoutMs / 1000}s`)
       throw err
     }
   }

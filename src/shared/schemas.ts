@@ -302,7 +302,12 @@ export const EndpointConfigSchema = z.object({
   name: z.string(),
   kind: EndpointKindSchema,
   baseUrl: z.string(),
-  options: z.object({ serverSideFallback: z.boolean().optional() })
+  options: z.object({
+    serverSideFallback: z.boolean().optional(),
+    // How long one image draw or consistency check on this endpoint may take; unset means 180 s. Bounded so a
+    // value typed in milliseconds is refused instead of overflowing the timer (which would fire at once).
+    timeoutSeconds: z.number().int().min(10).max(3600).optional()
+  })
 })
 
 export const ModelConfigSchema = z.object({
