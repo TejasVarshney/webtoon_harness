@@ -304,6 +304,13 @@ describe('models file', () => {
     expect(() => EndpointConfigSchema.parse({ ...base, kind: 'cohere' })).toThrow()
   })
 
+  it('takes an endpoint timeout in whole seconds from 10 to 3600', () => {
+    const base = { id: 'end_0000000001', name: 'E', kind: 'openai', baseUrl: 'http://127.0.0.1:7870/v1' }
+    for (const timeoutSeconds of [10, 600, 3600]) expect(EndpointConfigSchema.parse({ ...base, options: { timeoutSeconds } }).options).toEqual({ timeoutSeconds })
+    // 600000 is a timeout typed in milliseconds: refused rather than overflowing the timer.
+    for (const timeoutSeconds of [0, 9, 3601, 600_000, 1.5, '600']) expect(() => EndpointConfigSchema.parse({ ...base, options: { timeoutSeconds } })).toThrow()
+  })
+
   it('role assignments are optional per role', () => {
     expect(RoleAssignmentsSchema.parse({})).toEqual({})
     expect(RoleAssignmentsSchema.parse({ agent: 'mdl_0000000001', imageEdit: 'mdl_0000000002' })).toEqual({

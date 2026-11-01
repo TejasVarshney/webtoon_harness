@@ -1,5 +1,6 @@
 import fs from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { EndpointConfig } from '@shared/types'
 import { createIdentityImageOps, createNativeImageOps, type ImageOps } from './image-ops'
 import { ImageService } from './image-service'
 import type { ImageEditRequest, ImageProvider, ImageRequest } from '../models/providers/types'
@@ -10,7 +11,7 @@ import type { ModelRegistry } from '../models/registry'
 
 const png = encodeSolidPng(2, 2, [1, 2, 3])
 
-async function setup(provider: Partial<ImageProvider>, timeoutMs?: number, ops?: ImageOps) {
+async function setup(provider: Partial<ImageProvider>, timeoutMs?: number, ops?: ImageOps, endpointOptions: EndpointConfig['options'] = {}) {
   const tp = await tempProject()
   await fs.promises.mkdir(tp.ctx.paths.uploadsDir(), { recursive: true })
   await fs.promises.writeFile(tp.ctx.paths.resolveAsset('uploads/a.png'), png)
@@ -21,7 +22,7 @@ async function setup(provider: Partial<ImageProvider>, timeoutMs?: number, ops?:
   const registry = {
     resolve: (role: string) => {
       roles.push(role)
-      return { endpoint: { kind: 'mock' }, model: { maxReferenceImages: role === 'imageEdit' ? 3 : 5 }, apiKey: null }
+      return { endpoint: { kind: 'mock', options: endpointOptions }, model: { maxReferenceImages: role === 'imageEdit' ? 3 : 5 }, apiKey: null }
     }
   } as unknown as ModelRegistry
   const svc = new ImageService({
@@ -93,8 +94,41 @@ describe('ImageService', () => {
     const { tp, svc } = await setup({ generate: never }, 30)
     cleanup = tp.cleanup
     await expect(svc.generate(tp.ctx, { prompt: 'p', references: [], aspect: '1:1' })).rejects.toMatchObject({
-      name: 'ProviderError', kind: 'timeout', message: 'Image generation timed out after 180s'
+      name: 'ProviderError', kind: 'timeout', message: 'Image generation timed out after 0.03s'
     })
+  })
+
+  it('gives the image call 180 s unless its endpoint sets timeoutSeconds', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    try {
+      const plain = await setup({ generate: ok })
+      cleanup = plain.tp.cleanup
+      await plain.svc.generate(plain.tp.ctx, { prompt: 'p', references: [], aspect: '1:1' })
+      expect(timeout).toHaveBeenLastCalledWith(180_000)
+      await cleanup()
+
+      const slow = await setup({ edit: ok }, undefined, undefined, { timeoutSeconds: 600 })
+      cleanup = slow.tp.cleanup
+      await slow.svc.edit(slow.tp.ctx, { prompt: 'p', references: [], aspect: '1:1', sourceRelPath: 'uploads/a.png' })
+      expect(timeout).toHaveBeenLastCalledWith(600_000)
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it("names the endpoint's timeout when it runs out", async () => {
+    const real = AbortSignal.timeout.bind(AbortSignal)
+    // The endpoint asks for 600 s; the signal it gets fires after 20 ms so the test does not wait.
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(20))
+    try {
+      const { tp, svc } = await setup({ generate: never }, undefined, undefined, { timeoutSeconds: 600 })
+      cleanup = tp.cleanup
+      await expect(svc.generate(tp.ctx, { prompt: 'p', references: [], aspect: '1:1' })).rejects.toMatchObject({
+        name: 'ProviderError', kind: 'timeout', message: 'Image generation timed out after 600s'
+      })
+    } finally {
+      timeout.mockRestore()
+    }
   })
 
   it('caller abort propagates as AbortError, not timeout', async () => {

@@ -10,7 +10,10 @@ import { loadImageForTextModel, type ImageOps } from './image-ops'
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
 export const CHECKLIST_DOC = 'reference/consistency-checklist'
 
-/** How long the vision call may take before the check is given up (Ruling T25c); the image call has the same limit. */
+/**
+ * How long the vision call may take before the check is given up (Ruling T25c), unless the vision model's endpoint
+ * sets `timeoutSeconds`; the image call has the same default.
+ */
 export const CHECK_TIMEOUT_MS = 180_000
 
 export interface ConsistencyCheckInput {
@@ -31,7 +34,7 @@ export interface ConsistencyCheckerOptions {
   imageOps: ImageOps
   /** Test seam; production uses the provider factory. */
   createTextProvider?: (r: ResolvedModel) => TextProvider
-  /** Test seam; production uses 180 s. */
+  /** The limit when the endpoint sets no `timeoutSeconds`. Test seam; production uses 180 s. */
   timeoutMs?: number
 }
 
@@ -165,7 +168,8 @@ export class ConsistencyChecker {
   async check(ctx: ProjectContext, input: ConsistencyCheckInput): Promise<CheckResult | null> {
     const resolved = this.opts.registry.resolveOptional('vision')
     if (!resolved) return null
-    const timeout = AbortSignal.timeout(this.timeoutMs)
+    const timeoutMs = (resolved.endpoint.options.timeoutSeconds ?? 0) * 1000 || this.timeoutMs
+    const timeout = AbortSignal.timeout(timeoutMs)
     const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout
     try {
       const system = await this.opts.docs.read(ctx, CHECKLIST_DOC)
@@ -190,7 +194,7 @@ export class ConsistencyChecker {
       )
       return parseCheckResponse(turn.text)
     } catch (error) {
-      if (timeout.aborted && !input.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${this.timeoutMs / 1000}s`], skipped: true }
+      if (timeout.aborted && !input.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${timeoutMs / 1000}s`], skipped: true }
       return skipped(failureMessage(error, input.signal))
     }
   }

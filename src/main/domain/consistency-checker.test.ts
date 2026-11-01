@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Character, ChatMessage } from '@shared/types'
+import type { Character, ChatMessage, EndpointConfig } from '@shared/types'
 import { WorkflowDocs } from '../agent/workflow-docs'
 import { encodeSolidPng } from '../models/providers/png'
 import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/providers/types'
@@ -76,7 +76,7 @@ afterEach(async () => {
 
 const PNG = encodeSolidPng(2, 3, [1, 2, 3])
 const CHECKLIST_TEMPLATE = fs.readFileSync(path.resolve('resources', 'agent-docs', 'reference', 'consistency-checklist.md'), 'utf8')
-const RESOLVED = { endpoint: { id: 'end_0000000000', kind: 'mock' }, model: { id: 'mdl_000000000a', modelId: 'mock-text' }, apiKey: null } as unknown as ResolvedModel
+const RESOLVED = { endpoint: { id: 'end_0000000000', kind: 'mock', options: {} }, model: { id: 'mdl_000000000a', modelId: 'mock-text' }, apiKey: null } as unknown as ResolvedModel
 
 interface Turn {
   req: TextTurnRequest
@@ -99,7 +99,9 @@ function fakeProvider(reply: (req: TextTurnRequest) => string | Promise<string> 
   return { provider, turns }
 }
 
-async function setup(opts: { vision?: boolean; reply?: Parameters<typeof fakeProvider>[0]; provider?: TextProvider; timeoutMs?: number } = {}) {
+async function setup(
+  opts: { vision?: boolean; reply?: Parameters<typeof fakeProvider>[0]; provider?: TextProvider; timeoutMs?: number; endpointOptions?: EndpointConfig['options'] } = {}
+) {
   const t = await tempProject()
   tp = t
   const docs = new WorkflowDocs(path.resolve('resources', 'agent-docs'))
@@ -110,7 +112,8 @@ async function setup(opts: { vision?: boolean; reply?: Parameters<typeof fakePro
   const registry = {
     resolveOptional: vi.fn((role: string) => {
       expect(role).toBe('vision')
-      return opts.vision === false ? null : RESOLVED
+      if (opts.vision === false) return null
+      return opts.endpointOptions ? { ...RESOLVED, endpoint: { ...RESOLVED.endpoint, options: opts.endpointOptions } } : RESOLVED
     })
   } as unknown as ModelRegistry
   const createTextProvider = vi.fn((r: ResolvedModel) => {
@@ -340,6 +343,19 @@ describe('ConsistencyChecker timeout (Ruling T25c)', () => {
       const { checker, ctx } = await setup()
       await checker.check(ctx, await input(ctx))
       expect(timeout).toHaveBeenCalledWith(180_000)
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it("gives the vision call its endpoint's timeoutSeconds instead, and names it when it runs out", async () => {
+    const real = AbortSignal.timeout.bind(AbortSignal)
+    // The endpoint asks for 600 s; the signal it gets fires after 20 ms so the test does not wait.
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(20))
+    try {
+      const { checker, ctx } = await setup({ timeoutMs: 5_000, endpointOptions: { timeoutSeconds: 600 }, provider: { runTurn: never } })
+      expect(await checker.check(ctx, await input(ctx))).toEqual({ passed: true, issues: ['Consistency check timed out after 600s'], skipped: true })
+      expect(timeout).toHaveBeenCalledWith(600_000)
     } finally {
       timeout.mockRestore()
     }

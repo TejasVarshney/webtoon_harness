@@ -76,7 +76,7 @@ Anthropic cannot draw, so a working setup needs an image model from an `openai` 
 | `image` | image-gen | none: image calls fail with a clear message and a Retry | Character and panel images. |
 | `imageEdit` | image-edit | uses `image` | Editing a panel's current image from the side chat. |
 
-**Edit endpoint** changes an endpoint's name and base URL. Moving the base URL to another host clears the endpoint's stored key, so a key is never sent to a server it was not entered for; the Settings screen says "Key cleared because the host changed", and you set the key again. Removing an endpoint or model that is assigned to a role clears that role and tells you which. The model form also takes a JSON `params` object; for Anthropic text models `{"effort": "high"}` is the default and `low`, `medium`, `high`, `xhigh` and `max` are accepted. `maxReferenceImages` caps how many reference images are sent with one image request.
+**Edit endpoint** changes an endpoint's name, base URL and timeout (see [Slow providers](#slow-providers)). Moving the base URL to another host clears the endpoint's stored key, so a key is never sent to a server it was not entered for; the Settings screen says "Key cleared because the host changed", and you set the key again. Removing an endpoint or model that is assigned to a role clears that role and tells you which. The model form also takes a JSON `params` object; for Anthropic text models `{"effort": "high"}` is the default and `low`, `medium`, `high`, `xhigh` and `max` are accepted. `maxReferenceImages` caps how many reference images are sent with one image request.
 
 ### Consistency check (vision role)
 
@@ -106,6 +106,22 @@ To turn it off for an endpoint, open **Settings → Models**, choose **Edit endp
   "kind": "anthropic",
   "baseUrl": "https://api.anthropic.com",
   "options": { "serverSideFallback": false }
+}
+```
+
+### Slow providers
+
+One image draw, and one consistency check, may take 180 seconds by default. A draw that takes longer fails with "Image generation timed out after 180s" and a Retry; a check that takes longer counts as passed and skipped. The limit counts from when the app sends the request, so time the server spends with the request waiting in its own queue counts too.
+
+For a slower endpoint, such as a local image server on a small GPU or a bridge that serves one request at a time, raise its limit: open **Settings → Models**, choose **Edit endpoint** and set **Image and check timeout (seconds)**, a whole number from 10 to 3600. Leave it empty for the default. The limit applies to the image draws of the endpoint's image models and to the checks of its vision model; agent turns are not affected. It is stored in `models.json` as `timeoutSeconds` in the endpoint's `options`:
+
+```json
+{
+  "id": "end_0123456789",
+  "name": "Local image server",
+  "kind": "openai",
+  "baseUrl": "http://127.0.0.1:7870/v1",
+  "options": { "timeoutSeconds": 600 }
 }
 ```
 

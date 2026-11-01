@@ -83,7 +83,7 @@ function visionRig(timeoutMs?: number) {
     onTurn: undefined as undefined | ((n: number, req: TextTurnRequest) => Promise<string | void> | string | void),
     checker: undefined as unknown as ConsistencyChecker
   }
-  const registry = { resolveOptional: () => (rig.assigned ? ({ endpoint: { kind: 'mock' }, model: { modelId: 'mock-vision' }, apiKey: null } as unknown as ResolvedModel) : null) } as unknown as ModelRegistry
+  const registry = { resolveOptional: () => (rig.assigned ? ({ endpoint: { kind: 'mock', options: {} }, model: { modelId: 'mock-vision' }, apiKey: null } as unknown as ResolvedModel) : null) } as unknown as ModelRegistry
   const docs = { read: async () => 'CHECKLIST' } as unknown as WorkflowDocs
   const provider: TextProvider = {
     runTurn: async (req) => {
@@ -112,7 +112,7 @@ async function setup(opts: { vision?: boolean; visionTimeoutMs?: number } = {}) 
     resolve: (role: string) => {
       roles.push(role)
       if (noModel.has(role)) throw new NoModelForRoleError(role as 'image')
-      return { endpoint: { kind: 'mock' }, model: { maxReferenceImages: maxRefs[role] ?? 4 }, apiKey: null }
+      return { endpoint: { kind: 'mock', options: {} }, model: { maxReferenceImages: maxRefs[role] ?? 4 }, apiKey: null }
     }
   } as unknown as ModelRegistry
   const provider: ImageProvider = {
