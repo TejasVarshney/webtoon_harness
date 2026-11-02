@@ -9,12 +9,17 @@ import { ModelRegistry } from './registry'
 import { SecretStore } from './secrets'
 
 const SEED = path.resolve(__dirname, '../../../tools/local-models/seed-models.mjs')
+const BRIDGE_SEED = path.resolve(__dirname, '../../../tools/local-models/seed-bridge-models.mjs')
 const dirs: string[] = []
 
 async function seededRegistry(...flags: string[]): Promise<ModelRegistry> {
+  return seededRegistryFrom(SEED, ...flags)
+}
+
+async function seededRegistryFrom(script: string, ...flags: string[]): Promise<ModelRegistry> {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'local seed '))
   dirs.push(dir)
-  execFileSync(process.execPath, [SEED, '--user-data', dir, ...flags])
+  execFileSync(process.execPath, [script, '--user-data', dir, ...flags])
   const secrets = new SecretStore(path.join(dir, 'secrets.json'), new FakeEncryptor())
   await secrets.load()
   const registry = new ModelRegistry({ file: path.join(dir, 'models.json'), secrets, bus: new EventBus() })
@@ -40,5 +45,19 @@ describe('tools/local-models/seed-models.mjs', () => {
     const registry = await seededRegistry('--vision')
     expect(registry.view().effectiveRoles.vision).toBe('mdl_00000000a1')
     expect(registry.resolve('vision').model.capabilities).toEqual(['text', 'vision'])
+  })
+})
+
+describe('tools/local-models/seed-bridge-models.mjs', () => {
+  it('writes a models.json the app accepts, drawing and checking through the ChatGPT bridge without a key', async () => {
+    const registry = await seededRegistryFrom(BRIDGE_SEED)
+    const view = registry.view()
+    expect(view.effectiveRoles).toEqual({ agent: 'mdl_000000000a', panelChat: 'mdl_000000000a', vision: 'mdl_00000000b2', image: 'mdl_00000000b1', imageEdit: 'mdl_00000000b1' })
+    expect(registry.resolve('image')).toMatchObject({
+      endpoint: { kind: 'openai', baseUrl: 'http://127.0.0.1:7870/v1', options: { timeoutSeconds: 600 } },
+      model: { modelId: 'chatgpt-image', capabilities: ['image-gen', 'image-edit'], maxReferenceImages: 4 },
+      apiKey: null
+    })
+    expect(registry.resolve('vision').model).toMatchObject({ modelId: 'chatgpt', capabilities: ['text', 'vision'] })
   })
 })
