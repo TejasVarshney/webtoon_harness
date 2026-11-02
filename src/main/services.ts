@@ -8,6 +8,7 @@ import { ConsistencyChecker } from './domain/consistency-checker'
 import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
+import { ItemService, type ItemUsageLookup } from './domain/item-service'
 import { PanelService } from './domain/panel-service'
 import { StoryService } from './domain/story-service'
 import { EventBus } from './events/bus'
@@ -39,6 +40,7 @@ export interface Services {
   images: ImageService
   checker: ConsistencyChecker
   characters: CharacterService
+  items: ItemService
   episodes: EpisodeService
   panels: PanelService
   story: StoryService
@@ -66,6 +68,12 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
   }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
+  // Lazy for the same reason. PanelService answers these once panels can attach items; until then no panel uses one.
+  const itemUsage: ItemUsageLookup = {
+    panelsUsingItem: async () => [],
+    panelsUsingItemUsage: async () => []
+  }
+  const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash })
   const episodes = new EpisodeService({ bus })
   // The vision check is optional at run time: with no model on the `vision` role it returns null and panels are not checked.
   const checker = new ConsistencyChecker({ registry, docs, imageOps: opts.imageOps })
@@ -73,8 +81,9 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const story = new StoryService({ bus, projects })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
+  projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, checker, characters, episodes, panels, story } as Services
+  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   return services
