@@ -34,6 +34,7 @@ export interface Services {
   bus: EventBus
   projects: ProjectStore
   sessions: SessionStore
+  secrets: SecretStore
   registry: ModelRegistry
   docs: WorkflowDocs
   imageOps: ImageOps
@@ -83,7 +84,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
+  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   return services
