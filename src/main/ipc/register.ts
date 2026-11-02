@@ -6,6 +6,7 @@ import { itemsHandlers } from './handlers/items'
 import { modelsHandlers } from './handlers/models'
 import { panelChatHandlers } from './handlers/panel-chat'
 import { panelsHandlers } from './handlers/panels'
+import { pluginsHandlers } from './handlers/plugins'
 import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
 import { storyHandlers } from './handlers/story'
@@ -37,7 +38,8 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...storyHandlers(services),
     ...docsHandlers(services, { openPath: deps.openPath }),
-    ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles })
+    ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles }),
+    ...pluginsHandlers(services)
   }
   for (const [channel, fn] of Object.entries(handlers)) {
     if (!fn) continue

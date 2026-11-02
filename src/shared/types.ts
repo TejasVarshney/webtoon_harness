@@ -118,6 +118,19 @@ export interface ModelRegistryView {
   effectiveRoles: Record<Role, string | null>
 }
 
+/** A plugin's own report of how it is doing, shown on its Settings card. */
+export type PluginStatus = { state: 'off' | 'running' | 'error'; message: string }
+
+/** What the renderer sees of a built-in plugin. */
+export interface PluginView {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  status: PluginStatus
+  config: Record<string, unknown>
+}
+
 /** How an agent loop run ended. Distinct from an assistant message's `stopReason`. */
 export type LoopOutcome = 'end' | 'max_steps' | 'cancelled' | 'error' | 'refusal' | 'max_tokens'
 
@@ -137,5 +150,6 @@ export type AppEvent =
   | { type: 'panel.changed'; projectId: string; panelId: string }
   | { type: 'story.changed'; projectId: string }
   | { type: 'models.changed' }
+  | { type: 'plugins.changed' }
   /** `threadKey` is a session id for the main chat, or `panel:<panelId>` for a panel side chat. */
   | { type: 'agent.event'; projectId: string; threadKey: string; event: AgentEvent }

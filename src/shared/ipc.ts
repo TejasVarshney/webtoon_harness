@@ -21,6 +21,7 @@ import type {
   PanelDraft,
   PanelPatch,
   PanelVersion,
+  PluginView,
   ProjectMeta,
   ProjectProblem,
   Role,
@@ -152,6 +153,13 @@ export interface IpcContract {
   'docs:open': { req: { projectId: string; name: string }; res: void }
   /** Overwrites every doc of the project with its shipped default. */
   'docs:reset': { req: { projectId: string }; res: void }
+  /** The built-in plugins with their on/off state, status line and config. */
+  'plugins:list': { req: Record<string, never>; res: PluginView[] }
+  'plugins:setEnabled': { req: { id: string; enabled: boolean }; res: PluginView }
+  /** Merges `patch` into the plugin's config; a running plugin is restarted. */
+  'plugins:setConfig': { req: { id: string; patch: Record<string, unknown> }; res: PluginView }
+  /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
+  'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -223,7 +231,11 @@ const channelSet: Record<IpcChannel, true> = {
   'story:updateBeat': true,
   'docs:list': true,
   'docs:open': true,
-  'docs:reset': true
+  'docs:reset': true,
+  'plugins:list': true,
+  'plugins:setEnabled': true,
+  'plugins:setConfig': true,
+  'app:setActiveContext': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

@@ -87,11 +87,23 @@ if (primary) void app.whenReady().then(async () => {
     },
     openPath: (absPath) => shell.openPath(absPath)
   })
-  const { agent, panelChat } = services
-  // Quitting mid-run: abort so every loop persists results for its pending tool calls.
-  app.on('before-quit', () => {
+  void services.plugins.startEnabled()
+  const { agent, panelChat, plugins } = services
+  // Quitting mid-run: abort so every loop persists results for its pending tool calls. `before-quit` cannot wait,
+  // so the first one is held back while the plugins stop (5 s cap each), then the quit is run again and passes.
+  let pluginsStopped = false
+  let stoppingPlugins = false
+  app.on('before-quit', (event) => {
+    if (pluginsStopped) return
+    event.preventDefault()
+    if (stoppingPlugins) return
+    stoppingPlugins = true
     agent.cancelAll()
     panelChat.cancelAll()
+    void plugins.stopAll().finally(() => {
+      pluginsStopped = true
+      app.quit()
+    })
   })
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {

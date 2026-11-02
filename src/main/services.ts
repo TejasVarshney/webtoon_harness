@@ -14,6 +14,9 @@ import { StoryService } from './domain/story-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
+import { ActiveContext } from './plugins/active-context'
+import { builtinPlugins } from './plugins'
+import { PluginManager } from './plugins/plugin-manager'
 import { SessionStore } from './sessions/session-store'
 import { ProjectStore } from './storage/project-store'
 
@@ -47,6 +50,8 @@ export interface Services {
   story: StoryService
   agent: AgentRunner
   panelChat: PanelChatRunner
+  activeContext: ActiveContext
+  plugins: PluginManager
 }
 
 /** The one place main-process services are constructed and wired together. */
@@ -87,5 +92,14 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
+  services.activeContext = new ActiveContext()
+  services.plugins = new PluginManager({
+    file: join(opts.userDataDir, 'plugins.json'),
+    plugins: builtinPlugins(),
+    services,
+    activeContext: services.activeContext
+  })
+  // A corrupt plugins.json is reported by `plugins.loadError()` and leaves every plugin off; it does not stop the app.
+  await services.plugins.load()
   return services
 }
