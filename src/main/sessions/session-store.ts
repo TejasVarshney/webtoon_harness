@@ -13,7 +13,13 @@ import { isNotFound } from '../storage/fs-errors'
 const DEFAULT_TITLE = 'New session'
 const TITLE_MAX = 60
 
-const MetaRecord = z.object({ type: z.literal('meta'), id: z.string(), title: z.string(), createdAt: z.string() })
+const MetaRecord = z.object({
+  type: z.literal('meta'),
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  driver: z.enum(['claude-code']).nullable().optional()
+})
 const TitleRecord = z.object({ type: z.literal('title'), title: z.string(), at: z.string() })
 const MessageRecord = z.object({ type: z.literal('message'), message: ChatMessageSchema })
 const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord])
@@ -34,7 +40,7 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
       updatedAt = record.message.createdAt
     }
   }
-  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount }
+  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null }
 }
 
 /** Chat transcripts, one JSONL file per session under `sessions/` (spec §5). */
@@ -71,13 +77,16 @@ export class SessionStore {
     return summaries.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
   }
 
-  async create(ctx: ProjectContext): Promise<SessionSummary> {
+  /** `driver` marks a session written by something other than the in-app chat (e.g. Claude Code over MCP). */
+  async create(ctx: ProjectContext, opts: { title?: string; driver?: 'claude-code' | null } = {}): Promise<SessionSummary> {
     const id = newId('ses')
     const createdAt = new Date().toISOString()
+    const title = opts.title ?? DEFAULT_TITLE
+    const driver = opts.driver ?? null
     const file = ctx.paths.sessionFile(id)
-    await ctx.mutex.run(file, () => appendJsonl(file, [{ type: 'meta', id, title: DEFAULT_TITLE, createdAt }]))
+    await ctx.mutex.run(file, () => appendJsonl(file, [{ type: 'meta', id, title, createdAt, driver }]))
     this.emit(ctx, id)
-    return { id, title: DEFAULT_TITLE, createdAt, updatedAt: createdAt, messageCount: 0 }
+    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0, driver }
   }
 
   async load(ctx: ProjectContext, sessionId: string): Promise<ChatMessage[]> {

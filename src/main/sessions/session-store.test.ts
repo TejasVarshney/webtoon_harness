@@ -40,6 +40,27 @@ describe('SessionStore', () => {
     expect(list[1].title).toBe('New session')
   })
 
+  it('creates a session with a title and driver, and defaults to none', async () => {
+    const { ctx } = t
+    const plain = await sessions.create(ctx)
+    expect(plain).toMatchObject({ title: 'New session', driver: null })
+    const driven = await sessions.create(ctx, { title: 'Claude Code', driver: 'claude-code' })
+    expect(driven).toMatchObject({ title: 'Claude Code', driver: 'claude-code' })
+    const list = await sessions.list(ctx)
+    expect(list.find((x) => x.id === driven.id)).toMatchObject({ title: 'Claude Code', driver: 'claude-code' })
+    expect(list.find((x) => x.id === plain.id)).toMatchObject({ title: 'New session', driver: null })
+  })
+
+  it('lists a session written before the driver field existed with driver null', async () => {
+    const { ctx } = t
+    const id = 'ses_0ld0000000'
+    await fs.promises.mkdir(ctx.paths.sessionsDir(), { recursive: true })
+    await fs.promises.writeFile(ctx.paths.sessionFile(id), `${JSON.stringify({ type: 'meta', id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z' })}\n`)
+    expect(await sessions.list(ctx)).toEqual([
+      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null }
+    ])
+  })
+
   it('does not retitle once titled', async () => {
     const { ctx } = t
     const a = await sessions.create(ctx)

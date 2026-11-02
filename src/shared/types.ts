@@ -99,6 +99,7 @@ export interface SessionSummary {
   createdAt: string
   updatedAt: string
   messageCount: number
+  driver: 'claude-code' | null
 }
 
 /** A project file that failed to load (corrupt JSON, schema mismatch); the project still opens. */

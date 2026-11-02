@@ -24,7 +24,7 @@ function project(id: string, title: string): ProjectMeta {
 }
 
 function session(id: string, title: string): SessionSummary {
-  return { id, title, createdAt: NOW, updatedAt: NOW, messageCount: 0 }
+  return { id, title, createdAt: NOW, updatedAt: NOW, messageCount: 0, driver: null }
 }
 
 beforeEach(() => {
