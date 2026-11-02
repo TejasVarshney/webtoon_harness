@@ -74,11 +74,28 @@ interface SnapshotCharacter {
   name: string
   variations: SnapshotVariation[]
 }
+interface SnapshotItem {
+  id: string
+  name: string
+  usages: SnapshotVariation[]
+}
 
-function parseSnapshot(snapshot: string): { episodeId: string | null; characters: SnapshotCharacter[] } {
+function parseSnapshot(snapshot: string): { episodeId: string | null; characters: SnapshotCharacter[]; items: SnapshotItem[] } {
   const episodeId = /^current_episode: (epi_[A-Za-z0-9]+)/m.exec(snapshot)?.[1] ?? null
   const characters: SnapshotCharacter[] = []
+  const items: SnapshotItem[] = []
   for (const line of snapshot.split('\n')) {
+    // An item line has an itm_ id and no [role]; panel lines start with pnl_, so neither can be mistaken for the other.
+    const im = /^- (itm_[A-Za-z0-9]+) (.+?) usages: (.*)$/.exec(line)
+    if (im) {
+      const usages: SnapshotVariation[] = []
+      for (const entry of im[3].split(/, (?=use_[A-Za-z0-9]+ )/)) {
+        const u = /^(use_[A-Za-z0-9]+) (.*?)(?: \([a-z]+\))?$/.exec(entry)
+        if (u) usages.push({ id: u[1], name: u[2] })
+      }
+      items.push({ id: im[1], name: im[2], usages })
+      continue
+    }
     const m = /^- (chr_[A-Za-z0-9]+) (.+?) \[[^\]]*\] variations: (.*)$/.exec(line)
     if (!m) continue
     const variations: SnapshotVariation[] = []
@@ -89,11 +106,11 @@ function parseSnapshot(snapshot: string): { episodeId: string | null; characters
     }
     characters.push({ id: m[1], name: m[2], variations })
   }
-  return { episodeId, characters }
+  return { episodeId, characters, items }
 }
 
 /**
- * Replaces `{"$character": name}`, `{"$variation": [character, variation]}` and `{"$episode": "current"}`
+ * Replaces `{"$character": name}`, `{"$variation": [character, variation]}`, `{"$item": name}`, `{"$usage": [item, usage]}` and `{"$episode": "current"}`
  * with ids read from a state snapshot, so scripted tool calls need no random ids. Anything that
  * cannot be resolved is left as is and surfaces as a validation error from the tool.
  */
@@ -110,6 +127,12 @@ export function resolveMockRefs(input: unknown, snapshot: string | null): unknow
       if (found) return found.id
     } else if (keys[0] === '$variation' && Array.isArray(arg) && arg.length === 2) {
       const found = state.characters.find((c) => c.name === arg[0])?.variations.find((v) => v.name === arg[1])
+      if (found) return found.id
+    } else if (keys[0] === '$item' && typeof arg === 'string') {
+      const found = state.items.find((i) => i.name === arg)
+      if (found) return found.id
+    } else if (keys[0] === '$usage' && Array.isArray(arg) && arg.length === 2) {
+      const found = state.items.find((i) => i.name === arg[0])?.usages.find((u) => u.name === arg[1])
       if (found) return found.id
     } else if (keys[0] === '$episode' && arg === 'current' && state.episodeId) {
       return state.episodeId

@@ -17,7 +17,7 @@ test('settings lists the workflow docs of the project and resets them after conf
   for (const path of ['agent/AGENTS.md', 'agent/workflows/panel-generation.md', 'agent/reference/consistency-checklist.md']) {
     await expect(dialog.getByText(path, { exact: true })).toBeVisible()
   }
-  await expect(dialog.locator('.doc-list li')).toHaveCount(8)
+  await expect(dialog.locator('.doc-list li')).toHaveCount(9)
 
   await writeFile(agentsFile, '# My own rules\n', 'utf8')
   await dialog.getByRole('button', { name: 'Reset all to defaults' }).click()

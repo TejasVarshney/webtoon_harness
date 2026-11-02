@@ -110,6 +110,19 @@ describe('resolveMockRefs', () => {
     ).toEqual({ e: 'epi_00000000e1', c: [{ characterId: 'chr_00000000c1', variationId: 'var_00000000v2' }] })
   })
 
+  it('resolves $item and $usage from the items lines', () => {
+    // The panel line also ends in "items: ..." and must not be read as an item.
+    const itemSnap =
+      '<project_state>\ncharacters:\n- chr_00000000c1 Mina [protagonist] variations: var_00000000v1 Base (ready)\nitems:\n- itm_0000000001 Kestrel blaster usages: use_0000000001 At rest (ready), use_0000000002 Firing (ready)\nrecent_panels:\n- pnl_0000000001 [medium] cast: Mina | Mina aims | dialogue: none | items: Kestrel blaster (Firing)\n</project_state>'
+    expect(resolveMockRefs({ itemId: { $item: 'Kestrel blaster' }, usageId: { $usage: ['Kestrel blaster', 'Firing'] }, c: { $character: 'Mina' } }, itemSnap)).toEqual({
+      itemId: 'itm_0000000001',
+      usageId: 'use_0000000002',
+      c: 'chr_00000000c1'
+    })
+    const input = { a: { $item: 'Nope' }, b: { $usage: ['Kestrel blaster', 'Nope'] } }
+    expect(resolveMockRefs(input, itemSnap)).toEqual(input)
+  })
+
   it('leaves unresolvable placeholders and plain values alone', () => {
     const input = { a: { $character: 'Nobody' }, b: { $variation: ['Mina', 'Nope'] }, c: 3, d: 'x' }
     expect(resolveMockRefs(input, snap)).toEqual(input)
