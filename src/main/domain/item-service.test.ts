@@ -156,8 +156,8 @@ describe('ItemService', () => {
     const item = await svc.create(ctx, input(), 'user', { generate: false })
     expect(item.usages[0].status).toBe('failed')
     const running = svc.generateUsageImage(ctx, item.id, item.usages[0].id)
-    await new Promise((r) => setTimeout(r, 30))
-    expect((await svc.get(ctx, item.id)).usages[0].status).toBe('pending')
+    // The pending write is disk I/O; wait for it rather than a fixed delay, which is too short on a loaded machine.
+    await vi.waitFor(async () => expect((await svc.get(ctx, item.id)).usages[0].status).toBe('pending'), { timeout: 4000, interval: 10 })
     await svc.update(ctx, item.id, { notes: 'edited meanwhile' })
     release()
     expect((await running).status).toBe('ready')
