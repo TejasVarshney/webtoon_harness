@@ -2202,6 +2202,7 @@ kbd {
 }
 
 .panel-editor-form .cast-picker,
+.panel-editor-form .item-picker,
 .panel-editor-form .dialogue-editor {
   padding: 12px;
   border: 1px solid var(--border);

@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
 import { PanelAspectSchema, ShotTypeSchema } from '@shared/schemas'
-import type { Panel, PanelCharacter, PanelDraft, PanelPatch } from '@shared/types'
+import type { Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
 import { CastPicker } from './CastPicker'
 import { DialogueEditor, type DialogueDraftLine } from './DialogueEditor'
+import { ItemPicker } from './ItemPicker'
+import { useItemRoster } from './use-item-roster'
 import { useRoster } from './use-roster'
 
 const SHOTS = ShotTypeSchema.options
@@ -29,6 +31,7 @@ interface Values {
   shot: Panel['shot']
   aspect: Panel['aspect']
   characters: PanelCharacter[]
+  items: PanelItem[]
   dialogue: DialogueDraftLine[]
 }
 
@@ -39,6 +42,7 @@ function fromPanel(panel: Panel): Values {
     shot: panel.shot,
     aspect: panel.aspect,
     characters: panel.characters,
+    items: panel.items,
     dialogue: panel.dialogue.map(({ speakerId, kind, text }) => ({ speakerId, kind, text }))
   }
 }
@@ -51,6 +55,7 @@ function normalize(v: Values): Values {
     shot: v.shot,
     aspect: v.aspect,
     characters: v.characters.map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position })),
+    items: v.items.map((i) => ({ itemId: i.itemId, usageId: i.usageId, heldBy: i.heldBy, action: i.action.trim() })),
     dialogue: v.dialogue.filter((l) => l.text.trim() !== '').map((l) => ({ speakerId: l.speakerId, kind: l.kind, text: l.text.trim() }))
   }
 }
@@ -65,6 +70,7 @@ function changes(before: Values, after: Values): PanelPatch {
   if (before.shot !== after.shot) patch.shot = after.shot
   if (before.aspect !== after.aspect) patch.aspect = after.aspect
   if (!same(before.characters, after.characters)) patch.characters = after.characters
+  if (!same(before.items, after.items)) patch.items = after.items
   if (!same(before.dialogue, after.dialogue)) patch.dialogue = after.dialogue
   return patch
 }
@@ -92,8 +98,9 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
   const editing = mode === 'edit' && panel !== undefined
   const defaultAspect = useAppStore((s) => s.projects.find((p) => p.id === s.projectId)?.defaultAspect)
   const roster = useRoster()
+  const itemRoster = useItemRoster()
   const [initial] = useState<Values>(() =>
-    editing ? fromPanel(panel) : { description: '', setting: '', shot: 'medium', aspect: defaultAspect ?? '2:3', characters: [], dialogue: [] }
+    editing ? fromPanel(panel) : { description: '', setting: '', shot: 'medium', aspect: defaultAspect ?? '2:3', characters: [], items: [], dialogue: [] }
   )
   const [values, setValues] = useState<Values>(initial)
   const [open, setOpen] = useState(true)
@@ -104,12 +111,23 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
 
   if (!open) return null
 
-  const set = <K extends keyof Values>(key: K, value: Values[K]): void => setValues((v) => ({ ...v, [key]: value }))
+  // An item cannot be held by someone who left the cast, whichever control changed the cast.
+  const set = <K extends keyof Values>(key: K, value: Values[K]): void =>
+    setValues((v) => {
+      const next = { ...v, [key]: value }
+      if (key === 'characters') {
+        const cast = new Set(next.characters.map((c) => c.characterId))
+        next.items = next.items.map((i) => (i.heldBy !== null && !cast.has(i.heldBy) ? { ...i, heldBy: null } : i))
+      }
+      return next
+    })
   const patch = editing ? changes(normalize(initial), normalize(values)) : {}
   const dirty = Object.keys(patch).length > 0
   // A cast row with no ready variation could only come back as a server error; say so before it is sent.
   const castReady = values.characters.every((c) => c.variationId !== '')
-  const locked = busy || !castReady
+  // Likewise an item row with no ready usage.
+  const itemsReady = values.items.every((i) => i.usageId !== '')
+  const locked = busy || !castReady || !itemsReady
 
   function close(): void {
     setOpen(false)
@@ -138,6 +156,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
           shot: v.shot,
           aspect: v.aspect,
           characters: v.characters,
+          items: v.items,
           dialogue: v.dialogue
         }
         const created = await createPanel(draft, intent.generate)
@@ -202,6 +221,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
               </Field>
             </div>
             <CastPicker characters={roster} value={values.characters} onChange={(next) => set('characters', next)} />
+            <ItemPicker items={itemRoster} cast={values.characters} characters={roster} value={values.items} onChange={(next) => set('items', next)} />
             <DialogueEditor characters={roster} cast={values.characters} value={values.dialogue} onChange={(next) => set('dialogue', next)} />
           </fieldset>
         </form>
