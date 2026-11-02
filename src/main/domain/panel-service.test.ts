@@ -9,7 +9,7 @@ import { resetMockScripts } from '../models/providers/mock'
 import { encodeSolidPng } from '../models/providers/png'
 import { writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
-import { makeCharacter, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { testServices } from '../test/test-services'
 import { CharacterInUseError, CharacterService } from './character-service'
@@ -18,6 +18,7 @@ import { EntityNotFoundError } from './errors'
 import { EpisodeService } from './episode-service'
 import { createIdentityImageOps } from './image-ops'
 import { ImageService } from './image-service'
+import { ItemInUseError, ItemService } from './item-service'
 import { PanelService, PanelValidationError } from './panel-service'
 
 // Failure injection: while `disk.failJsonWrites > 0`, that many writeJsonAtomic calls reject.
@@ -141,10 +142,17 @@ async function setup(opts: { vision?: boolean; visionTimeoutMs?: number } = {}) 
     usage: { panelsUsingCharacter: (c, id) => svc.panelsUsingCharacter(c, id), panelsUsingVariation: (c, id) => svc.panelsUsingVariation(c, id) }
   })
   const vision = visionRig(opts.visionTimeoutMs)
-  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, images, trash, checker: opts.vision ? vision.checker : undefined })
+  const items = new ItemService({
+    bus: t.bus,
+    images,
+    projects: t.store,
+    trash,
+    usage: { panelsUsingItem: (c, id) => svc.panelsUsingItem(c, id), panelsUsingItemUsage: (c, id) => svc.panelsUsingItemUsage(c, id) }
+  })
+  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, items, images, trash, checker: opts.vision ? vision.checker : undefined })
   const [epi] = await episodes.list(t.ctx)
   t.events.length = 0
-  return { svc, characters, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
+  return { svc, characters, items, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
 }
 
 interface Cast {
@@ -168,6 +176,37 @@ async function addCharacter(ctx: ProjectContext, key: string, name: string, over
   await writeJsonAtomic(ctx.paths.characterFile(id), makeCharacter({ id, name, archived: over.archived ?? false, variations: [variation(varId, 'base'), variation(varId2, 'outfit')] }))
   return { id, name, varId, varId2, imagePath }
 }
+
+interface Gear {
+  id: string
+  name: string
+  useId: string
+  useId2: string
+  imagePath: string
+}
+
+/** An item whose base usage (and a second usage) are `ready` with real image files. */
+async function addItem(ctx: ProjectContext, key: string, name: string, over: { archived?: boolean; ready?: boolean } = {}): Promise<Gear> {
+  const id = `itm_${key}`
+  const useId = `use_${key}`
+  const useId2 = `use_${key.slice(0, 9)}2`
+  const imagePath = `items/${id}/${useId}.png`
+  await writeFileAtomic(ctx.paths.resolveAsset(imagePath), PNG)
+  const status = over.ready === false ? ('failed' as const) : ('ready' as const)
+  const usage = (uid: string, kind: 'base' | 'state') =>
+    makeItemUsage({ id: uid, itemId: id, name: kind === 'base' ? 'At rest' : 'Charged', kind, status, imagePath: status === 'ready' ? imagePath : null })
+  await writeJsonAtomic(ctx.paths.itemFile(id), makeItem({ id, name, archived: over.archived ?? false, usages: [usage(useId, 'base'), usage(useId2, 'state')] }))
+  return { id, name, useId, useId2, imagePath }
+}
+
+const blaster = (ctx: ProjectContext): Promise<Gear> => addItem(ctx, 'cccccccccc', 'Kestrel blaster')
+
+const itemOf = (g: Gear, extra: { usageId?: string; heldBy?: string | null; action?: string } = {}) => ({
+  itemId: g.id,
+  usageId: extra.usageId ?? g.useId,
+  heldBy: extra.heldBy ?? null,
+  action: extra.action ?? ''
+})
 
 const mina = (ctx: ProjectContext): Promise<Cast> => addCharacter(ctx, 'aaaaaaaaaa', 'Mina')
 const zed = (ctx: ProjectContext): Promise<Cast> => addCharacter(ctx, 'bbbbbbbbbb', 'Zed')
@@ -1269,6 +1308,152 @@ describe('PanelService editImage', () => {
     expect(await svc.editImage(ctx, 'pnl_4444444444', 'x')).toMatchObject({ status: 'failed', error: 'Variation var_ffffffffff does not belong to Mina' })
     expect(calls).toEqual([])
     expect((await svc.get(ctx, 'pnl_3333333333')).currentVersionId).toBe('ver_0000000001')
+  })
+})
+
+describe('PanelService items', () => {
+  it('draws a panel with its item reference and [ITEMS] block', async () => {
+    const { svc, epi, ctx, calls } = await setup()
+    const m = await mina(ctx)
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)], items: [itemOf(b, { heldBy: m.id })] }), USER)).panel
+    expect(p.items).toEqual([{ itemId: b.id, usageId: b.useId, heldBy: m.id, action: '' }])
+    const v = await svc.generate(ctx, p.id)
+    expect(v.status).toBe('ready')
+    expect(v.referenceImagePaths).toEqual([m.imagePath, b.imagePath])
+    expect(calls[0].req.references.map((r) => r.label)).toEqual(['Mina', 'Kestrel blaster'])
+    expect(v.prompt).toContain('[ITEMS]')
+    expect(v.prompt).toContain('Held by: Mina.')
+  })
+
+  it('stores no items for a draft without any', async () => {
+    const { svc, epi, ctx } = await setup()
+    expect((await svc.create(ctx, draft(epi.id), USER)).panel.items).toEqual([])
+  })
+
+  it('rejects create with an item usage that has no ready image, or an unknown item', async () => {
+    const { svc, epi, ctx } = await setup()
+    const g = await addItem(ctx, 'dddddddddd', 'Broken lamp', { ready: false })
+    await expect(svc.create(ctx, draft(epi.id, { items: [itemOf(g)] }), USER)).rejects.toMatchObject({ issues: ['Usage "At rest" of Broken lamp has no ready reference image'] })
+    await expect(svc.create(ctx, draft(epi.id, { items: [{ itemId: 'itm_ffffffffff', usageId: 'use_ffffffffff', heldBy: null, action: '' }] }), USER)).rejects.toMatchObject({
+      issues: ['Unknown item: itm_ffffffffff']
+    })
+  })
+
+  it('rejects an update that removes the holder from the cast', async () => {
+    const { svc, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)], items: [itemOf(b, { heldBy: m.id })] }), USER)).panel
+    await expect(svc.update(ctx, p.id, { characters: [] }, USER)).rejects.toThrow('Kestrel blaster is held by Mina, who is not in the cast')
+    expect((await svc.get(ctx, p.id)).characters).toHaveLength(1)
+    // A patch without items keeps the stored ones; one with items replaces them.
+    expect((await svc.update(ctx, p.id, { setting: 'Roof' }, USER)).panel.items).toHaveLength(1)
+    expect((await svc.update(ctx, p.id, { items: [] }, USER)).panel.items).toEqual([])
+  })
+
+  it('keeps a panel editable after its item is archived or its usage regeneration failed, but checks new or changed entries', async () => {
+    const { svc, items, epi, ctx, calls } = await setup()
+    const b = await blaster(ctx)
+    const other = await addItem(ctx, 'eeeeeeeeee', 'Brass key')
+    const p = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), AGENT)).panel
+    await items.archive(ctx, b.id)
+    await items.archive(ctx, other.id)
+
+    const acted = await svc.update(ctx, p.id, { items: [itemOf(b, { action: 'raised' })] }, AGENT)
+    expect(acted.panel.items[0].action).toBe('raised')
+    expect((await svc.update(ctx, p.id, { description: 'A door opens again.' }, AGENT)).panel.description).toBe('A door opens again.')
+    await expect(svc.update(ctx, p.id, { items: [itemOf(b), itemOf(other)] }, AGENT)).rejects.toMatchObject({ issues: ['Item Brass key is archived'] })
+    await expect(svc.update(ctx, p.id, { items: [itemOf(b, { usageId: b.useId2 })] }, AGENT)).rejects.toMatchObject({ issues: ['Item Kestrel blaster is archived'] })
+    await expect(svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), AGENT)).rejects.toMatchObject({ issues: ['Item Kestrel blaster is archived'] })
+
+    // The usage's regeneration fails later (the old image path is kept): still editable, and a new usage is checked.
+    const stored = await items.get(ctx, b.id)
+    await writeJsonAtomic(ctx.paths.itemFile(b.id), { ...stored, archived: false, usages: stored.usages.map((u) => ({ ...u, status: 'failed', error: 'boom' })) })
+    expect((await svc.update(ctx, p.id, { items: [itemOf(b, { action: 'lowered' })] }, AGENT)).panel.items[0].action).toBe('lowered')
+    await expect(svc.update(ctx, p.id, { items: [itemOf(b, { usageId: b.useId2 })] }, AGENT)).rejects.toMatchObject({ issues: ['Usage "Charged" of Kestrel blaster has no ready reference image'] })
+
+    // Once the usage works again, an archived item still composes, so the panel regenerates.
+    await writeJsonAtomic(ctx.paths.itemFile(b.id), { ...stored, archived: true })
+    const v = await svc.generate(ctx, p.id)
+    expect(v.status).toBe('ready')
+    expect(v.referenceImagePaths).toEqual([b.imagePath])
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still reports an unknown item, a foreign usage or an absent holder in an unchanged item entry', async () => {
+    const { svc, episodes, epi, ctx } = await setup()
+    const b = await blaster(ctx)
+    await plant(ctx, episodes, makePanel({ id: 'pnl_7777777771', episodeId: epi.id, items: [{ itemId: 'itm_ffffffffff', usageId: 'use_ffffffffff' }] }))
+    await plant(ctx, episodes, makePanel({ id: 'pnl_7777777772', episodeId: epi.id, items: [{ itemId: b.id, usageId: 'use_ffffffffff' }] }))
+    await plant(ctx, episodes, makePanel({ id: 'pnl_7777777773', episodeId: epi.id, items: [{ itemId: b.id, usageId: b.useId, heldBy: 'chr_ffffffffff' }] }))
+    const patch = { dialogue: [{ speakerId: null, kind: 'narration' as const, text: 'x' }] }
+    await expect(svc.update(ctx, 'pnl_7777777771', patch, USER)).rejects.toMatchObject({ issues: ['Unknown item: itm_ffffffffff'] })
+    await expect(svc.update(ctx, 'pnl_7777777772', patch, USER)).rejects.toMatchObject({ issues: ['Usage use_ffffffffff does not belong to Kestrel blaster'] })
+    await expect(svc.update(ctx, 'pnl_7777777773', patch, USER)).rejects.toMatchObject({ issues: ['Kestrel blaster is held by chr_ffffffffff, who is not in the cast'] })
+  })
+
+  it('lists panels using an item and a usage, and ItemService refuses to delete what a panel uses', async () => {
+    const { svc, items, epi, ctx } = await setup()
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), USER)).panel
+    const q = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b, { usageId: b.useId2 })] }), USER)).panel
+    await svc.create(ctx, draft(epi.id), USER)
+    expect((await svc.panelsUsingItem(ctx, b.id)).sort()).toEqual([p.id, q.id].sort())
+    expect(await svc.panelsUsingItemUsage(ctx, b.useId)).toEqual([p.id])
+    expect(await svc.panelsUsingItemUsage(ctx, b.useId2)).toEqual([q.id])
+    expect(await svc.panelsUsingItem(ctx, 'itm_ffffffffff')).toEqual([])
+
+    await expect(items.delete(ctx, b.id)).rejects.toBeInstanceOf(ItemInUseError)
+    await expect(items.deleteUsage(ctx, b.id, b.useId2)).rejects.toBeInstanceOf(ItemInUseError)
+    await svc.delete(ctx, p.id)
+    await svc.delete(ctx, q.id)
+    await items.delete(ctx, b.id)
+  })
+
+  it('wires the lookup in createServices: deleting an item that a panel attaches is refused', async () => {
+    const s = await testServices()
+    try {
+      const ctx = await s.projects.create({ title: 'P' })
+      const item = await s.items.create(ctx, { name: 'Kestrel blaster', appearanceLock: 'LOCK' }, 'user')
+      const usage = item.usages[0]
+      const rel = `items/${item.id}/${usage.id}.png`
+      await writeFileAtomic(ctx.paths.resolveAsset(rel), PNG)
+      await writeJsonAtomic(ctx.paths.itemFile(item.id), { ...item, usages: [{ ...usage, status: 'ready', imagePath: rel }] })
+      const [episode] = await s.episodes.list(ctx)
+      const { panel } = await s.panels.create(ctx, draft(episode.id, { items: [{ itemId: item.id, usageId: usage.id, heldBy: null, action: '' }] }), USER)
+      await expect(s.items.delete(ctx, item.id)).rejects.toBeInstanceOf(ItemInUseError)
+      await expect(s.items.delete(ctx, item.id)).rejects.toThrow(panel.id)
+    } finally {
+      await s.cleanup()
+    }
+  })
+
+  it('passes items to the checker', async () => {
+    const { svc, epi, ctx, vision } = await setup({ vision: true })
+    const m = await mina(ctx)
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)], items: [itemOf(b, { heldBy: m.id })] }), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    expect(v.check).toMatchObject({ passed: true })
+    const sent = vision.requests[0].messages[0] as { text: string; imagePaths: string[] }
+    expect(sent.imagePaths.slice(0, 2)).toEqual([m.imagePath, b.imagePath])
+    expect(sent.text).toContain('Items:')
+    expect(sent.text).toContain('- Kestrel blaster — ')
+    expect(sent.text).toContain('Held by: Mina')
+    expect(sent.text).not.toContain('(no reference image)')
+  })
+
+  it('keeps items on-model in an edit and gives it their references', async () => {
+    const { svc, epi, ctx, calls } = await setup()
+    const m = await mina(ctx)
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)], items: [itemOf(b, { heldBy: m.id })] }), USER)).panel
+    await svc.generate(ctx, p.id)
+    const v = await svc.editImage(ctx, p.id, 'make it rain')
+    expect(v).toMatchObject({ source: 'edit', status: 'ready', referenceImagePaths: [m.imagePath, b.imagePath] })
+    expect(v.prompt).toContain('keep these items on-model: Kestrel blaster: Matte grey pistol')
+    expect(calls.find((c) => c.fn === 'edit')!.req.references.map((r) => r.label)).toEqual(['Mina', 'Kestrel blaster'])
   })
 })
 

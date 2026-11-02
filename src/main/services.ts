@@ -68,16 +68,16 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
   }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
-  // These return no panels until PanelService can answer them, once panels can attach items.
+  // Lazy for the same reason as `usage`: PanelService does not exist yet when ItemService is built.
   const itemUsage: ItemUsageLookup = {
-    panelsUsingItem: async () => [],
-    panelsUsingItemUsage: async () => []
+    panelsUsingItem: (ctx, itemId) => services.panels.panelsUsingItem(ctx, itemId),
+    panelsUsingItemUsage: (ctx, usageId) => services.panels.panelsUsingItemUsage(ctx, usageId)
   }
   const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash })
   const episodes = new EpisodeService({ bus })
   // The vision check is optional at run time: with no model on the `vision` role it returns null and panels are not checked.
   const checker = new ConsistencyChecker({ registry, docs, imageOps: opts.imageOps })
-  const panels = new PanelService({ bus, projects, episodes, characters, images, checker, trash: opts.trash })
+  const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash })
   const story = new StoryService({ bus, projects })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
