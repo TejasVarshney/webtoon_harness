@@ -29,4 +29,14 @@ describe('SettingsDialog', () => {
     expect(await screen.findByText('Webtoon Agent')).toBeInTheDocument()
     expect(screen.queryByLabelText('agent role')).not.toBeInTheDocument()
   })
+
+  it('has a Plugins tab', async () => {
+    useModelsStore.setState({ view: { endpoints: [], models: [], roles: {}, effectiveRoles: { agent: null, panelChat: null, vision: null, image: null, imageEdit: null } } })
+    installFakeApi({ 'plugins:list': () => [], 'plugins:loadError': () => null })
+    render(<SettingsDialog onClose={() => undefined} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Plugins' }))
+    expect(screen.getByRole('tab', { name: 'Plugins' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('heading', { name: 'Plugins' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('agent role')).not.toBeInTheDocument()
+  })
 })

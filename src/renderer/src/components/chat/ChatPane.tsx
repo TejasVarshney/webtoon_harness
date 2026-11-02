@@ -11,6 +11,9 @@ import { ModelPicker } from './ModelPicker'
 import { sendUserMessage } from './send-message'
 import { PanelSideChat } from '../panel-chat/PanelSideChat'
 
+/** Shown above a session that Claude Code drives. */
+export const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
+
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
@@ -21,6 +24,8 @@ export function ChatPane() {
   const sessionId = useAppStore((s) => s.sessionId)
   const runId = useAppStore((s) => (s.sessionId === null ? undefined : s.runningThreads[s.sessionId]))
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
+  // Claude Code writes this session's steps through the MCP link, so the app's own agent has nothing to say in it.
+  const driven = useAppStore((s) => s.sessions.find((x) => x.id === s.sessionId)?.driver === 'claude-code')
   const draft = useChatStore((s) => s.draft)
   const setDraft = useChatStore((s) => s.setDraft)
   const onMock = useModelsStore((s) => {
@@ -68,8 +73,21 @@ export function ChatPane() {
               </div>
             ) : (
               <>
+                {driven && (
+                  <p className="driver-banner" data-testid="driver-banner">
+                    {DRIVER_BANNER_TEXT}
+                  </p>
+                )}
                 <MessageList threadKey={sessionId} />
-                <Composer onSend={sendUserMessage} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} tools={<ModelPicker />} />
+                <Composer
+                  onSend={sendUserMessage}
+                  running={runId !== undefined}
+                  onStop={stop}
+                  value={draft}
+                  onValueChange={setDraft}
+                  tools={driven ? undefined : <ModelPicker />}
+                  disabled={driven}
+                />
               </>
             )}
           </div>

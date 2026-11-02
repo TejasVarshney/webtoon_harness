@@ -19,6 +19,7 @@ function claudeCode(s: Services): ClaudeCodePlugin {
 export function pluginsHandlers(s: Services): HandlerMap {
   return {
     'plugins:list': async () => s.plugins.list(),
+    'plugins:loadError': async () => s.plugins.loadError(),
     'plugins:setEnabled': async (req) => {
       const { id, enabled } = parseInput(SetEnabledSchema, req)
       return s.plugins.setEnabled(id, enabled)

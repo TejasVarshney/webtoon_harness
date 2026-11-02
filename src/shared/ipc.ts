@@ -155,6 +155,8 @@ export interface IpcContract {
   'docs:reset': { req: { projectId: string }; res: void }
   /** The built-in plugins with their on/off state, status line and config. */
   'plugins:list': { req: Record<string, never>; res: PluginView[] }
+  /** Why `plugins.json` could not be read (every plugin is then off until it is fixed), or null. */
+  'plugins:loadError': { req: Record<string, never>; res: string | null }
   'plugins:setEnabled': { req: { id: string; enabled: boolean }; res: PluginView }
   /** Merges `patch` into the plugin's config; a running plugin is restarted. */
   'plugins:setConfig': { req: { id: string; patch: Record<string, unknown> }; res: PluginView }
@@ -237,6 +239,7 @@ const channelSet: Record<IpcChannel, true> = {
   'docs:open': true,
   'docs:reset': true,
   'plugins:list': true,
+  'plugins:loadError': true,
   'plugins:setEnabled': true,
   'plugins:setConfig': true,
   'claudeCode:connectCommand': true,

@@ -72,4 +72,14 @@ describe('Composer', () => {
     rerender(<Composer onSend={() => undefined} running={false} onStop={() => undefined} allowAttach={false} />)
     expect(screen.queryByTestId('composer-attach')).toBeNull()
   })
+
+  it('does not accept text, files or a send while disabled', async () => {
+    const onSend = vi.fn()
+    render(<Composer onSend={onSend} running={false} onStop={() => undefined} value="draft" disabled />)
+    expect(screen.getByTestId('composer-input')).toBeDisabled()
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    expect(screen.getByTestId('composer-attach')).toBeDisabled()
+    await userEvent.click(screen.getByTestId('composer-send'))
+    expect(onSend).not.toHaveBeenCalled()
+  })
 })

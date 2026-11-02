@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ChatMessage, ModelRegistryView } from '@shared/types'
+import type { ChatMessage, ModelRegistryView, SessionSummary } from '@shared/types'
 import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
@@ -22,6 +22,10 @@ const mockView: ModelRegistryView = {
 
 function assistant(id: string, text: string): ChatMessage {
   return { id, role: 'assistant', text, toolCalls: [], stopReason: 'end', model: { endpointId: 'end_0000000000', modelId: 'mock-text' }, raw: null, createdAt: NOW }
+}
+
+function summary(driver: SessionSummary['driver']): SessionSummary {
+  return { id: S, title: driver === null ? 'Chat' : 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver }
 }
 
 beforeEach(() => {
@@ -115,5 +119,24 @@ describe('ChatPane', () => {
     emit({ type: 'models.changed' })
     await waitFor(() => expect(useModelsStore.getState().view?.effectiveRoles.agent).toBeNull())
     stop()
+  })
+
+  it('shows the driven banner and a disabled composer for a session Claude Code drives', async () => {
+    installFakeApi({ 'sessions:load': () => [assistant('msg_0000000009', 'Earlier step')] })
+    useAppStore.setState({ sessions: [summary('claude-code')] })
+    render(<ChatPane />)
+    expect(await screen.findByTestId('driver-banner')).toHaveTextContent('Driven by Claude Code')
+    expect(await screen.findByText('Earlier step')).toBeInTheDocument()
+    expect(screen.getByTestId('composer-input')).toBeDisabled()
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    expect(screen.getByTestId('composer-attach')).toBeDisabled()
+  })
+
+  it('shows neither for a normal session', async () => {
+    installFakeApi({ 'sessions:load': () => [] })
+    useAppStore.setState({ sessions: [summary(null)] })
+    render(<ChatPane />)
+    expect(await screen.findByTestId('composer-input')).toBeEnabled()
+    expect(screen.queryByTestId('driver-banner')).toBeNull()
   })
 })

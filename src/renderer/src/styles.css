@@ -823,6 +823,22 @@ kbd {
   border-radius: var(--radius-control);
 }
 
+/* The banner over a session that Claude Code drives; its composer is disabled. */
+.driver-banner {
+  flex: none;
+  margin: 12px 16px 0;
+  padding: 7px 12px;
+  font-size: var(--fs-small);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-control);
+}
+
+.composer[data-disabled='true'] .composer-box {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .chat-split {
   flex: 1;
   min-height: 0;
@@ -2181,6 +2197,71 @@ kbd {
 
 .test-ok {
   color: var(--accent);
+}
+
+/* --- Settings -> Plugins -------------------------------------------------------------------------------- */
+
+.plugins-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.plugin-card > .hint {
+  margin: 0;
+}
+
+.plugin-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plugin-status {
+  flex: 1;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.plugin-status[data-state='running'] {
+  color: var(--accent);
+}
+
+.plugin-status[data-state='error'] {
+  color: var(--negative);
+}
+
+.plugin-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.plugin-controls .hint {
+  margin: 0;
+}
+
+.plugin-port,
+.plugin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-port input {
+  width: 96px;
 }
 
 /* --- Panel editor ----------------------------------------------------------------------------------- */

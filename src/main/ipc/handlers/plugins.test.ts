@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -58,6 +59,15 @@ describe('plugins IPC handlers', () => {
     await expect(h['plugins:setConfig']({ id: 'fake', patch: [] as never })).rejects.toThrow('Invalid input: patch: ')
     await expect(h['plugins:setEnabled']({ id: 'nope', enabled: true })).rejects.toThrow('Unknown plugin: nope')
     expect((await h['plugins:list']({}))[0].enabled).toBe(false)
+  })
+
+  it('reports a corrupt plugins.json through plugins:loadError, and null when it is fine', async () => {
+    const { h } = await setup()
+    expect(await h['plugins:loadError']({})).toBeNull()
+    await fs.promises.writeFile(path.join(s!.userDataDir, 'plugins.json'), '{"plugins": oops')
+    await s!.plugins.load()
+    expect(await h['plugins:loadError']({})).toContain('plugins.json')
+    expect(await h['plugins:loadError']({})).toBe(s!.plugins.loadError())
   })
 
   it('records the project and episode the window shows', async () => {

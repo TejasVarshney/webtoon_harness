@@ -6,6 +6,7 @@ import { useChatStore } from './stores/chat-store'
 import { useItemsStore } from './stores/items-store'
 import { useModelsStore } from './stores/models-store'
 import { usePanelsStore } from './stores/panels-store'
+import { usePluginsStore } from './stores/plugins-store'
 import { useStoryStore } from './stores/story-store'
 
 function handleEvent(event: AppEvent): void {
@@ -40,6 +41,9 @@ function handleEvent(event: AppEvent): void {
       break
     case 'models.changed':
       void useModelsStore.getState().load().catch((e: unknown) => console.error('Failed to reload models', e))
+      break
+    case 'plugins.changed':
+      void usePluginsStore.getState().load().catch((e: unknown) => console.error('Failed to reload plugins', e))
       break
     case 'agent.event': {
       const { threadKey, event: e } = event

@@ -5,6 +5,7 @@ import { startEventSync } from './events'
 import { initialAppState, useAppStore } from './stores/app-store'
 import { initialCharactersState, useCharactersStore } from './stores/characters-store'
 import { initialPanelsState, usePanelsStore } from './stores/panels-store'
+import { initialPluginsState, usePluginsStore } from './stores/plugins-store'
 import { installFakeApi } from './test/fake-api'
 
 const projectId = 'prj_aaaaaaaaaa'
@@ -69,5 +70,18 @@ describe('project problems refresh (I1)', () => {
     useAppStore.setState({ projectId: 'prj_bbbbbbbbbb', problems: [] })
     await refreshing
     expect(useAppStore.getState().problems).toEqual([])
+  })
+})
+
+describe('plugins.changed', () => {
+  it('reloads the plugins store', async () => {
+    usePluginsStore.setState({ ...initialPluginsState })
+    const { emit } = installFakeApi({
+      'plugins:list': () => [{ id: 'claude-code', name: 'Claude Code', description: '', enabled: true, status: { state: 'error', message: 'Port 7880 is in use' }, config: {} }],
+      'plugins:loadError': () => null
+    })
+    stop = startEventSync()
+    emit({ type: 'plugins.changed' })
+    await waitFor(() => expect(usePluginsStore.getState().plugins?.[0].status.message).toBe('Port 7880 is in use'))
   })
 })
