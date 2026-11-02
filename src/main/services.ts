@@ -68,7 +68,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
   }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
-  // Lazy for the same reason. PanelService answers these once panels can attach items; until then no panel uses one.
+  // These return no panels until PanelService can answer them, once panels can attach items.
   const itemUsage: ItemUsageLookup = {
     panelsUsingItem: async () => [],
     panelsUsingItemUsage: async () => []

@@ -102,7 +102,7 @@ describe('ItemService', () => {
     await svc.addUsage(ctx, item.id, { name: 'Firing', kind: 'action', delta: 'x' }, 'user')
     const dup = svc.addUsage(ctx, item.id, { name: ' firing ', kind: 'action', delta: 'y' }, 'user')
     await expect(dup).rejects.toBeInstanceOf(DuplicateUsageError)
-    await expect(dup).rejects.toThrow('Kestrel blaster already has a usage named " firing ": use that one')
+    await expect(dup).rejects.toThrow('Kestrel blaster already has a usage named "Firing": use that one')
     await expect(svc.addUsage(ctx, item.id, { name: 'AT REST', kind: 'state', delta: 'y' }, 'user')).rejects.toBeInstanceOf(DuplicateUsageError)
     expect((await svc.get(ctx, item.id)).usages).toHaveLength(2)
   })
@@ -152,7 +152,9 @@ describe('ItemService', () => {
       await gate
       return { data: PNG, ext: 'png' }
     })
-    const item = await svc.create(ctx, input(), 'user')
+    // `generate: false` starts the usage `failed`, so `pending` below can only come from the generation itself.
+    const item = await svc.create(ctx, input(), 'user', { generate: false })
+    expect(item.usages[0].status).toBe('failed')
     const running = svc.generateUsageImage(ctx, item.id, item.usages[0].id)
     await new Promise((r) => setTimeout(r, 30))
     expect((await svc.get(ctx, item.id)).usages[0].status).toBe('pending')

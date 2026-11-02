@@ -204,7 +204,9 @@ export class ItemService {
     // The duplicate check runs inside the item's lock, so two concurrent adds of one name cannot both pass it.
     await this.mutate(ctx, itemId, (i) => {
       const wanted = input.name.trim().toLowerCase()
-      if (i.usages.some((u) => u.name.trim().toLowerCase() === wanted)) throw new DuplicateUsageError(i.name, input.name)
+      // Name the usage that already exists, so the caller is pointed at the one to reuse.
+      const existing = i.usages.find((u) => u.name.trim().toLowerCase() === wanted)
+      if (existing) throw new DuplicateUsageError(i.name, existing.name)
       return { item: { ...i, usages: [...i.usages, usage], updatedAt: now() } }
     })
     return usage
