@@ -96,7 +96,7 @@ export class McpLinkServer {
   async close(): Promise<void> {
     const server = this.http
     if (!server) return
-    this.closing.abort()
+    this.closing.abort(new Error('The MCP link server closed'))
     await this.closeSessions()
     this.http = null
     this.boundPort = null

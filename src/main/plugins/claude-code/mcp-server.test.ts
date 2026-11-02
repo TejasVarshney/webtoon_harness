@@ -327,6 +327,8 @@ describe('McpLinkServer', () => {
       const signal = await slow.started
       await server.close()
       expect(signal.aborted).toBe(true)
+      // The server's own close reason, not only the SDK's abort when the transport closes.
+      expect((signal.reason as Error).message).toBe('The MCP link server closed')
       expect(server.port).toBeNull()
     })
 
