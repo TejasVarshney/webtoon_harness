@@ -22,7 +22,7 @@ const MetaRecord = z.object({
 })
 const TitleRecord = z.object({ type: z.literal('title'), title: z.string(), at: z.string() })
 const MessageRecord = z.object({ type: z.literal('message'), message: ChatMessageSchema })
-/** The Claude Code session this chat continues (`--resume`); the last one wins. */
+/** The Claude Code session this chat continues (`--resume`); the last one wins, and '' clears it. */
 const LinkRecord = z.object({ type: z.literal('link'), claudeSessionId: z.string(), at: z.string() })
 const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord, LinkRecord])
 type SessionRecord = z.infer<typeof RecordSchema>
@@ -42,7 +42,7 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
       messageCount++
       updatedAt = record.message.createdAt
     } else if (record.type === 'link') {
-      claudeSessionId = record.claudeSessionId
+      claudeSessionId = record.claudeSessionId === '' ? null : record.claudeSessionId
     }
   }
   return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null, claudeSessionId }
@@ -125,7 +125,7 @@ export class SessionStore {
     this.emit(ctx, sessionId)
   }
 
-  /** Records the Claude Code session id the next run resumes. Does not change `updatedAt`. */
+  /** Records the Claude Code session id the next run resumes ('' forgets it). Does not change `updatedAt`. */
   async setClaudeSessionId(ctx: ProjectContext, sessionId: string, claudeSessionId: string): Promise<void> {
     const file = ctx.paths.sessionFile(sessionId)
     await ctx.mutex.run(file, async () => {

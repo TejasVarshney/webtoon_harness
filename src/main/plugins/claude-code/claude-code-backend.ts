@@ -2,6 +2,7 @@ import child_process, { type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { newId } from '@shared/ids'
 import type { AgentEvent, AssistantMessage, LoopOutcome, UserMessage } from '@shared/types'
 import type { StartRunInput } from '../../agent/agent-runner'
@@ -48,6 +49,16 @@ interface ActiveRun {
   done: Promise<void>
 }
 
+/** One `claude` process: what to run and what it is fed. */
+interface Launch {
+  exe: string
+  args: string[]
+  /** Written to stdin, which is then closed. */
+  prompt: string
+  /** Whether `args` include `--resume`. */
+  resumed: boolean
+}
+
 interface RunEnd {
   outcome: LoopOutcome
   error: string | null
@@ -55,15 +66,26 @@ interface RunEnd {
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** `cmd` in the PATH folders: `claude.exe`, then `claude.cmd` on Windows; `claude` elsewhere. */
-function findOnPath(cmd: string): string | null {
-  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean)
-  const names = process.platform === 'win32' ? [`${cmd}.exe`, `${cmd}.cmd`] : [cmd]
-  for (const name of names) {
-    for (const dir of dirs) {
-      const candidate = path.join(dir, name)
-      if (fs.existsSync(candidate)) return candidate
-    }
+export interface PathLookupOptions {
+  platform: NodeJS.Platform
+  /** The PATH variable. */
+  pathEnv: string
+  exists: (p: string) => boolean
+}
+
+/**
+ * `cmd` in the PATH folders, in order: `claude.exe` on Windows, `claude` elsewhere. A Windows `.cmd` launcher (npm's)
+ * is skipped on purpose: it cannot be spawned without a shell, and finding it would hide the desktop app's install.
+ */
+export function findOnPath(
+  cmd: string,
+  opts: PathLookupOptions = { platform: process.platform, pathEnv: process.env.PATH ?? '', exists: fs.existsSync }
+): string | null {
+  const p = opts.platform === 'win32' ? path.win32 : path.posix
+  const name = opts.platform === 'win32' ? `${cmd}.exe` : cmd
+  for (const dir of opts.pathEnv.split(p.delimiter).filter(Boolean)) {
+    const candidate = p.join(dir, name)
+    if (opts.exists(candidate)) return candidate
   }
   return null
 }
@@ -80,7 +102,10 @@ function listDir(dir: string): string[] {
 function killTree(child: ChildProcess): void {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return
   if (process.platform === 'win32') {
-    child_process.execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => undefined)
+    // If taskkill itself fails, still end the direct child so `stop()` does not wait forever.
+    child_process.execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      if (error) child.kill()
+    })
   } else {
     child.kill('SIGTERM')
   }
@@ -204,10 +229,13 @@ export class ClaudeCodeBackend implements AgentBackend {
         }
       }
       await fs.promises.writeFile(configFile, JSON.stringify(config), { mode: 0o600 })
+      const stateFile = path.join(dir, 'state.md')
+      await fs.promises.writeFile(stateFile, snapshot, { mode: 0o600 })
       if (run.cancelled) return { outcome: 'cancelled', error: null }
+      // The prompt goes on stdin (ruling R12): as an argument, a message starting with `-` or naming a subcommand
+      // ("update") would be read by the CLI, and Windows caps the command line at about 32K characters.
       const args = [
         '-p',
-        input.text,
         '--output-format',
         'stream-json',
         '--verbose',
@@ -215,35 +243,47 @@ export class ClaudeCodeBackend implements AgentBackend {
         '--mcp-config',
         configFile,
         '--strict-mcp-config',
+        // The project folder is the cwd: its `.claude/settings*.json` (hooks run shell commands) must not apply (R13).
+        '--setting-sources',
+        'user',
         '--tools',
         '',
         '--allowedTools',
         'mcp__webtoon__*',
-        '--append-system-prompt',
-        snapshot,
+        '--append-system-prompt-file',
+        stateFile,
         ...(resume ? ['--resume', resume] : [])
       ]
-      return await this.runProcess(run, exe, args, ctx, input.sessionId, emit)
+      return await this.runProcess(run, { exe, args, prompt: input.text, resumed: resume !== null }, ctx, input.sessionId, emit)
     } finally {
-      await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5 })
+      // A leftover temp dir is not worth replacing the run's real outcome.
+      await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5 }).catch((error: unknown) => {
+        console.warn(`Could not delete the Claude Code run folder ${dir}:`, error)
+      })
     }
   }
 
   /** Spawns `claude`, relays its stream, and resolves with the outcome once the process has closed and every write is done. */
-  private runProcess(run: ActiveRun, exe: string, args: string[], ctx: ProjectContext, sessionId: string, emit: (event: AgentEvent) => void): Promise<RunEnd> {
+  private runProcess(run: ActiveRun, launch: Launch, ctx: ProjectContext, sessionId: string, emit: (event: AgentEvent) => void): Promise<RunEnd> {
     const { sessions } = this.services
+    const { exe, args } = launch
     return new Promise<RunEnd>((resolve) => {
       let child: ChildProcess
       try {
-        child = this.spawn(exe, args, { cwd: ctx.paths.root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+        child = this.spawn(exe, args, { cwd: ctx.paths.root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
       } catch (error) {
         resolve({ outcome: 'error', error: `Could not start Claude Code (${exe}): ${messageOf(error)}` })
         return
       }
       run.child = child
+      // A process that dies before reading its prompt makes this write fail (EPIPE); 'close' still reports the run.
+      child.stdin?.on('error', () => undefined)
+      child.stdin?.end(launch.prompt, 'utf8')
 
       const parser = new StreamJsonParser()
+      const stderrDecoder = new StringDecoder('utf8')
       let stderr = ''
+      let sawInit = false
       let result: Extract<ClaudeStreamEvent, { kind: 'result' }> | null = null
       let writeError: string | null = null
       let settled = false
@@ -259,6 +299,7 @@ export class ClaudeCodeBackend implements AgentBackend {
         for (const event of events) {
           switch (event.kind) {
             case 'init':
+              sawInit = true
               if (event.sessionId !== '') later(() => sessions.setClaudeSessionId(ctx, sessionId, event.sessionId))
               break
             case 'text-delta':
@@ -293,6 +334,11 @@ export class ClaudeCodeBackend implements AgentBackend {
         if (settled) return
         settled = true
         handle(parser.end())
+        // A --resume run that ended before Claude Code started the session could not resume it (moved project,
+        // cleared history, another install). Forget the id, or every later run in this chat fails the same way.
+        if (launch.resumed && !sawInit && !result && !run.cancelled && !spawnError) {
+          later(() => sessions.setClaudeSessionId(ctx, sessionId, ''))
+        }
         await queue
         if (run.cancelled) return resolve({ outcome: 'cancelled', error: null })
         if (spawnError) return resolve({ outcome: 'error', error: `Could not start Claude Code (${exe}): ${spawnError.message}` })
@@ -300,13 +346,14 @@ export class ClaudeCodeBackend implements AgentBackend {
           const end = endOf(result)
           return resolve(end.outcome === 'end' && writeError ? { outcome: 'error', error: `The chat could not be saved: ${writeError}` } : end)
         }
+        stderr += stderrDecoder.end()
         const tail = stderr.split(/\r?\n/).filter((line) => line.trim() !== '').slice(-STDERR_LINES).join('\n')
         resolve({ outcome: 'error', error: tail || `Claude Code exited with code ${code ?? 'unknown'} before finishing` })
       }
 
       child.stdout?.on('data', (chunk: Buffer) => handle(parser.push(chunk)))
       child.stderr?.on('data', (chunk: Buffer) => {
-        stderr = (stderr + chunk.toString('utf8')).slice(-STDERR_KEEP)
+        stderr = (stderr + stderrDecoder.write(chunk)).slice(-STDERR_KEEP)
       })
       child.on('error', (error) => {
         // Only a process that never started ends the run here; anything else is followed by 'close'.

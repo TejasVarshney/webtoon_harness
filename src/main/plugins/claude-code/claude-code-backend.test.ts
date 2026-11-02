@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentEvent, AppEvent, AssistantMessage, UserMessage } from '@shared/types'
 import { SessionBusyError } from '../../agent/run-host'
 import { testServices, type TestServices } from '../../test/test-services'
-import { ClaudeCodeBackend } from './claude-code-backend'
+import { ClaudeCodeBackend, findOnPath } from './claude-code-backend'
+import { locateClaude } from './locate-claude'
 
 const FAKE = path.resolve(__dirname, 'fixtures', 'fake-claude.mjs')
 const fixture = (name: string): string => path.resolve(__dirname, 'fixtures', name)
@@ -33,6 +34,10 @@ interface FakeRecord {
   pid: number
   cwd: string
   config: { mcpServers: { webtoon: { type: string; url: string; headers: Record<string, string> } } }
+  /** What the backend wrote to the fake's stdin: the prompt. */
+  stdin: string
+  /** The contents of the `--append-system-prompt-file` file while the run was going. */
+  systemPrompt: string | null
 }
 
 interface Setup {
@@ -124,11 +129,17 @@ describe('ClaudeCodeBackend', () => {
     expect(events.at(-1)).toEqual({ kind: 'run-finished', runId, outcome: 'end', error: null })
 
     const rec = record()
-    expect(rec.argv.slice(0, 2)).toEqual(['-p', 'Say hi'])
+    expect(rec.stdin).toBe('Say hi')
+    expect(rec.argv).not.toContain('Say hi')
+    expect(rec.argv.slice(0, 2)).toEqual(['-p', '--output-format'])
     expect(rec.argv).toEqual(expect.arrayContaining(['--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--strict-mcp-config']))
     expect(rec.argv[rec.argv.indexOf('--tools') + 1]).toBe('')
     expect(rec.argv[rec.argv.indexOf('--allowedTools') + 1]).toBe('mcp__webtoon__*')
-    expect(rec.argv[rec.argv.indexOf('--append-system-prompt') + 1]).toBe(user.stateSnapshot)
+    expect(rec.argv[rec.argv.indexOf('--setting-sources') + 1]).toBe('user')
+    expect(rec.argv).not.toContain('--append-system-prompt')
+    const promptFile = rec.argv[rec.argv.indexOf('--append-system-prompt-file') + 1]
+    expect(path.dirname(promptFile)).toBe(tempDirOf(rec))
+    expect(rec.systemPrompt).toBe(user.stateSnapshot)
     expect(rec.argv).not.toContain('--resume')
     expect(rec.argv.join(' ')).not.toContain(TOKEN)
     expect(rec.config).toEqual({
@@ -149,9 +160,58 @@ describe('ClaudeCodeBackend', () => {
     await backend.start(input(projectId, sessionId, 'Again'))
     await finished(events)
     const rec = record()
-    expect(rec.argv.slice(0, 2)).toEqual(['-p', 'Again'])
+    expect(rec.stdin).toBe('Again')
     expect(rec.argv.slice(-2)).toEqual(['--resume', SESSION_ID])
     expect(fs.existsSync(tempDirOf(rec))).toBe(false)
+  })
+
+  it('passes a prompt that looks like an option or a subcommand on stdin, untouched', async () => {
+    const { backend, projectId, sessionId, events, record } = await setup({ env: { FAKE_CLAUDE_FIXTURE: fixture('hello.jsonl') } })
+    const text = '- make it darker\n- and "moodier" → ok'
+    await backend.start(input(projectId, sessionId, text))
+    await finished(events)
+    expect(record().stdin).toBe(text)
+    expect(record().argv).not.toContain(text)
+    expect(record().argv.some((a) => a.includes('make it darker'))).toBe(false)
+
+    events.length = 0
+    await backend.start(input(projectId, sessionId, 'update'))
+    await finished(events)
+    expect(record().stdin).toBe('update')
+    expect(record().argv).not.toContain('update')
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
+  })
+
+  it('forgets a --resume id that Claude Code could not resume, so the next run starts fresh', async () => {
+    const { s, backend, ctx, projectId, sessionId, events, fake, record } = await setup({
+      env: { FAKE_CLAUDE_EXIT: '1', FAKE_CLAUDE_STDERR: 'No conversation found with session ID: stale-id\n' }
+    })
+    await s.sessions.setClaudeSessionId(ctx, sessionId, 'stale-id')
+    await backend.start(input(projectId, sessionId))
+    await finished(events)
+    expect(record().argv.slice(-2)).toEqual(['--resume', 'stale-id'])
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error', error: 'No conversation found with session ID: stale-id' })
+    expect((await s.sessions.list(ctx)).find((x) => x.id === sessionId)?.claudeSessionId).toBeNull()
+
+    events.length = 0
+    fake.env.FAKE_CLAUDE_FIXTURE = fixture('hello.jsonl')
+    delete fake.env.FAKE_CLAUDE_EXIT
+    delete fake.env.FAKE_CLAUDE_STDERR
+    await backend.start(input(projectId, sessionId, 'Again'))
+    await finished(events)
+    expect(record().argv).not.toContain('--resume')
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
+    expect((await s.sessions.list(ctx)).find((x) => x.id === sessionId)?.claudeSessionId).toBe(SESSION_ID)
+  })
+
+  it('keeps a --resume id when the run got as far as init', async () => {
+    const f = writeFixture([{ type: 'system', subtype: 'init', session_id: SESSION_ID }])
+    const { s, backend, ctx, projectId, sessionId, events } = await setup({ env: { FAKE_CLAUDE_FIXTURE: f, FAKE_CLAUDE_EXIT: '1' } })
+    await s.sessions.setClaudeSessionId(ctx, sessionId, SESSION_ID)
+    await backend.start(input(projectId, sessionId))
+    await finished(events)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error' })
+    expect((await s.sessions.list(ctx)).find((x) => x.id === sessionId)?.claudeSessionId).toBe(SESSION_ID)
   })
 
   it('does not save an empty session id', async () => {
@@ -271,5 +331,32 @@ describe('ClaudeCodeBackend', () => {
     expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error' })
     expect((events.at(-1) as { error: string }).error).toContain('ENOENT')
     expect(backend.isRunning(ses.id)).toBe(false)
+  })
+})
+
+describe('findOnPath', () => {
+  const exists = (files: string[]) => (p: string) => files.includes(p)
+
+  it('on Windows finds only claude.exe, so an npm claude.cmd does not hide the desktop install', () => {
+    const npmCmd = String.raw`C:\npm\claude.cmd`
+    const toolsExe = String.raw`C:\tools\claude.exe`
+    const pathEnv = String.raw`C:\npm;C:\tools`
+    expect(findOnPath('claude', { platform: 'win32', pathEnv, exists: exists([npmCmd]) })).toBeNull()
+    expect(findOnPath('claude', { platform: 'win32', pathEnv, exists: exists([npmCmd, toolsExe]) })).toBe(toolsExe)
+
+    const appExe = String.raw`C:\AppData\Claude\claude-code\2.1.309\abc\claude.exe`
+    const located = locateClaude({
+      configured: '',
+      pathLookup: (cmd) => findOnPath(cmd, { platform: 'win32', pathEnv, exists: exists([npmCmd, appExe]) }),
+      appData: String.raw`C:\AppData`,
+      exists: exists([npmCmd, appExe]),
+      listDir: (dir) => (dir.endsWith('claude-code') ? ['2.1.309'] : dir.endsWith('2.1.309') ? ['abc'] : [])
+    })
+    expect(located).toBe(appExe)
+  })
+
+  it('elsewhere finds `claude` in PATH order', () => {
+    expect(findOnPath('claude', { platform: 'linux', pathEnv: '/usr/bin:/opt/bin', exists: exists(['/opt/bin/claude', '/usr/bin/claude']) })).toBe('/usr/bin/claude')
+    expect(findOnPath('claude', { platform: 'linux', pathEnv: '/usr/bin', exists: exists([]) })).toBeNull()
   })
 })

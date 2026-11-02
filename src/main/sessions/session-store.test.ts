@@ -74,6 +74,9 @@ describe('SessionStore', () => {
     const [summary] = await sessions.list(ctx)
     expect(summary).toMatchObject({ id: a.id, claudeSessionId: 'cc-2', messageCount: 0, updatedAt: a.createdAt })
     expect(seen).toEqual([a.id, a.id])
+    await sessions.setClaudeSessionId(ctx, a.id, '')
+    expect((await sessions.list(ctx))[0].claudeSessionId).toBeNull()
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-2')
     await expect(sessions.setClaudeSessionId(ctx, 'ses_missing000', 'cc-3')).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
