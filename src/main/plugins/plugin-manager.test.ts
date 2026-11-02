@@ -300,7 +300,7 @@ describe('PluginManager', () => {
   })
 
   describe('agentBackend', () => {
-    const backend: AgentBackend = { start: async () => ({ runId: 'run_1' }), stop: async () => undefined, isRunning: () => false }
+    const backend: AgentBackend = { start: async () => ({ runId: 'run_1' }), stop: async () => undefined, cancel: () => undefined, isRunning: () => false }
 
     it('is null unless the plugin is enabled and set to be the agent', async () => {
       const p = fakePlugin()

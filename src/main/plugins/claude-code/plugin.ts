@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { HarnessPlugin, PluginHost, PluginStatus } from '../types'
+import { ClaudeCodeBackend, LINK_OFF, type ClaudeCodeLink } from './claude-code-backend'
 import { McpLinkServer } from './mcp-server'
 import { McpToolAdapter } from './mcp-tools'
 import { DriverSessionLog } from './session-log'
@@ -9,12 +10,12 @@ const DEFAULT_PORT = 7880
 const MIN_PORT = 1024
 const MAX_PORT = 65535
 const HOST = '127.0.0.1'
-export const LINK_OFF = "Turn on the Claude Code plugin's link first."
+export { LINK_OFF }
 const PORT_RANGE = `Port must be between ${MIN_PORT} and ${MAX_PORT}`
 
 type LinkServerOptions = ConstructorParameters<typeof McpLinkServer>[0]
 
-export interface ClaudeCodePlugin extends HarnessPlugin {
+export interface ClaudeCodePlugin extends HarnessPlugin, ClaudeCodeLink {
   /** The `claude mcp add` line for the running link. Throws while the plugin is off. */
   connectCommand(): string
   /** Replaces the token and ends every open MCP session. Throws while the plugin is off. */
@@ -50,6 +51,14 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
   let port = DEFAULT_PORT
   let token = ''
   let failure: string | null = null
+  /** Created on the first start (it needs the services) and kept, so the plugin manager always sees the same one. */
+  let backend: ClaudeCodeBackend | undefined
+
+  const link: ClaudeCodeLink = {
+    linkUrl: () => (server?.port != null ? `http://${HOST}:${server.port}/mcp` : null),
+    token: () => token,
+    config: () => host?.config() ?? {}
+  }
 
   const requireStarted = (): PluginHost => {
     if (!started || !host) throw new Error(LINK_OFF)
@@ -61,10 +70,16 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
     name: 'Claude Code',
     description: 'Lets Claude Code drive this app through an MCP link, and (optionally) act as the agent.',
 
+    /** Runs the main chat when the config has `useAsAgent` (spec §6). */
+    get agentBackend() {
+      return backend
+    },
+
     async start(h) {
       host = h
       started = true
       failure = null
+      backend ??= new ClaudeCodeBackend({ services: h.services, plugin: link })
       try {
         port = readPort(h.config())
         const stored = h.secrets.get(SECRET_KEY)
@@ -91,7 +106,7 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
       started = false
       failure = null
       log = null
-      await closing?.close()
+      await Promise.all([backend?.stopAll(), closing?.close()])
     },
 
     status(): PluginStatus {
@@ -121,10 +136,6 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
       await server?.closeSessions()
     },
 
-    linkUrl: () => (server?.port != null ? `http://${HOST}:${server.port}/mcp` : null),
-
-    token: () => token,
-
-    config: () => host?.config() ?? {}
+    ...link
   }
 }

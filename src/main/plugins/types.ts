@@ -41,5 +41,7 @@ export interface AgentBackend {
   /** Same shape as AgentRunner.start: appends the user message, streams AgentEvents for `threadKey`, persists the outcome. */
   start(input: StartRunInput): Promise<{ runId: string }>
   stop(sessionId: string): Promise<void>
+  /** Stops the run with this id, if it is one of this backend's; does not wait for it to end. */
+  cancel(runId: string): void
   isRunning(threadKey: string): boolean
 }

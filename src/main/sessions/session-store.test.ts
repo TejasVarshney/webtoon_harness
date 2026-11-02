@@ -57,8 +57,24 @@ describe('SessionStore', () => {
     await fs.promises.mkdir(ctx.paths.sessionsDir(), { recursive: true })
     await fs.promises.writeFile(ctx.paths.sessionFile(id), `${JSON.stringify({ type: 'meta', id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z' })}\n`)
     expect(await sessions.list(ctx)).toEqual([
-      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null }
+      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null, claudeSessionId: null }
     ])
+  })
+
+  it('saves the Claude Code session id for the next run, the newest one winning', async () => {
+    const { ctx } = t
+    const a = await sessions.create(ctx)
+    expect(a.claudeSessionId).toBeNull()
+    const seen: string[] = []
+    t.bus.subscribe((e) => {
+      if (e.type === 'session.changed') seen.push(e.sessionId)
+    })
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-1')
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-2')
+    const [summary] = await sessions.list(ctx)
+    expect(summary).toMatchObject({ id: a.id, claudeSessionId: 'cc-2', messageCount: 0, updatedAt: a.createdAt })
+    expect(seen).toEqual([a.id, a.id])
+    await expect(sessions.setClaudeSessionId(ctx, 'ses_missing000', 'cc-3')).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
   it('does not retitle once titled', async () => {

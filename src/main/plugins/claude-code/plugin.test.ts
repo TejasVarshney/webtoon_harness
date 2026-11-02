@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { testServices, type TestServices } from '../../test/test-services'
 import { ActiveContext } from '../active-context'
 import { PluginManager } from '../plugin-manager'
+import { ClaudeCodeBackend } from './claude-code-backend'
 import { McpLinkServer } from './mcp-server'
 import { createClaudeCodePlugin } from './plugin'
 
@@ -197,5 +198,20 @@ describe('claude-code plugin', () => {
     expect(plugin.config()).toEqual({ port })
     await manager.setConfig('claude-code', { useAsAgent: true })
     expect(plugin.config()).toEqual({ port, useAsAgent: true })
+  })
+
+  it('is the agent backend once started with useAsAgent, and stops its runs when it stops', async () => {
+    const { plugin, manager } = await setup()
+    expect(plugin.agentBackend).toBeUndefined()
+    await manager.setEnabled('claude-code', true)
+    expect(plugin.agentBackend).toBeInstanceOf(ClaudeCodeBackend)
+    expect(manager.agentBackend()).toBeNull()
+    await manager.setConfig('claude-code', { useAsAgent: true })
+    const backend = plugin.agentBackend as ClaudeCodeBackend
+    expect(manager.agentBackend()).toBe(backend)
+    const stopAll = vi.spyOn(backend, 'stopAll')
+    await manager.setEnabled('claude-code', false)
+    expect(stopAll).toHaveBeenCalled()
+    expect(manager.agentBackend()).toBeNull()
   })
 })

@@ -1,12 +1,13 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, AppEvent, PanelDraft } from '@shared/types'
 import { AnthropicTextProvider, type AnthropicClientLike, type AnthropicRequestParams, type AnthropicStreamLike } from '../models/providers/anthropic'
 import { MockTextProvider, resetMockScripts } from '../models/providers/mock'
 import { encodeSolidPng } from '../models/providers/png'
 import type { TextProvider } from '../models/providers/types'
+import type { AgentBackend } from '../plugins/types'
 import { testServices, type TestServices } from '../test/test-services'
 import { AgentRunner, SessionBusyError } from './agent-runner'
 
@@ -297,5 +298,57 @@ describe('AgentRunner', () => {
     const { runner, projectId } = await setup([])
     await expect(runner.start(input(projectId, 'ses_doesnotexist'))).rejects.toThrow(/Unknown session/)
     expect(runner.isRunning('ses_doesnotexist')).toBe(false)
+  })
+
+  describe('with a plugin agent backend', () => {
+    function fakeBackend(running = new Set<string>()) {
+      return {
+        start: vi.fn(async () => ({ runId: 'run_backend000' })),
+        stop: vi.fn(async () => undefined),
+        cancel: vi.fn(),
+        isRunning: vi.fn((key: string) => running.has(key))
+      } satisfies AgentBackend
+    }
+
+    it('sends start, stop, cancel and isRunning to the backend and leaves the model loop alone', async () => {
+      const { s, runner, projectId, sessionId, events } = await setup([{ text: 'should not run' }])
+      const backend = fakeBackend(new Set([sessionId]))
+      vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+      const req = input(projectId, sessionId, 'Hello Claude')
+
+      await expect(runner.start(req)).resolves.toEqual({ runId: 'run_backend000' })
+      expect(backend.start).toHaveBeenCalledWith(req)
+      expect(events).toEqual([])
+      expect(await s.sessions.load(await s.projects.open(projectId), sessionId)).toEqual([])
+
+      expect(runner.isRunning(sessionId)).toBe(true)
+      expect(backend.isRunning).toHaveBeenCalledWith(sessionId)
+      runner.cancel('run_backend000')
+      expect(backend.cancel).toHaveBeenCalledWith('run_backend000')
+      await runner.stop(sessionId)
+      expect(backend.stop).toHaveBeenCalledWith(sessionId)
+    })
+
+    it('runs the model loop when no plugin is set to be the agent', async () => {
+      const { s, runner, projectId, sessionId, events } = await setup([{ text: 'Hello from mock' }])
+      expect(s.plugins.agentBackend()).toBeNull()
+      await runner.start(input(projectId, sessionId))
+      await finished(events)
+      expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
+    })
+
+    it('still stops a model-loop run that started before the backend was switched on', async () => {
+      const { s, projectId, sessionId, events } = await setup([])
+      const runner = new AgentRunner({ services: s, createTextProvider: () => hangingProvider })
+      await runner.start(input(projectId, sessionId))
+      const backend = fakeBackend()
+      vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+      expect(runner.isRunning(sessionId)).toBe(true)
+      await expect(runner.start(input(projectId, sessionId))).rejects.toBeInstanceOf(SessionBusyError)
+      expect(backend.start).not.toHaveBeenCalled()
+      await runner.stop(sessionId)
+      expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'cancelled' })
+      expect(runner.isRunning(sessionId)).toBe(false)
+    })
   })
 })

@@ -25,7 +25,7 @@ function assistant(id: string, text: string): ChatMessage {
 }
 
 function summary(driver: SessionSummary['driver']): SessionSummary {
-  return { id: S, title: driver === null ? 'Chat' : 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver }
+  return { id: S, title: driver === null ? 'Chat' : 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver, claudeSessionId: null }
 }
 
 beforeEach(() => {
