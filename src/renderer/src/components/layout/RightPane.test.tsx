@@ -3,22 +3,26 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialItemsState, useItemsStore } from '../../stores/items-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
+import { item } from '../../test/item-fixtures'
 import { episode, panel } from '../../test/panel-fixtures'
 import { RightPane } from './RightPane'
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId })
   useCharactersStore.setState({ ...initialCharactersState })
+  useItemsStore.setState({ ...initialItemsState })
   usePanelsStore.setState({ ...initialPanelsState })
 })
 
 describe('RightPane', () => {
-  it('switches between the Webtoon, Characters and Story tabs', async () => {
+  it('switches between the Webtoon, Characters, Items and Story tabs', async () => {
     installFakeApi({
       'characters:list': () => [character()],
+      'items:list': () => [item()],
       'episodes:list': () => [episode()],
       'panels:list': () => [],
       'story:get': () => ({ mode: 'user', bible: '# Story Bible\n', beats: [] })
@@ -33,7 +37,15 @@ describe('RightPane', () => {
     expect(useAppStore.getState().rightTab).toBe('characters')
     expect(await screen.findByTestId('character-card')).toBeInTheDocument()
 
+    await userEvent.click(screen.getByTestId('tab-items'))
+    expect(screen.getByTestId('tab-items')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('tab-characters')).toHaveAttribute('aria-selected', 'false')
+    expect(useAppStore.getState().rightTab).toBe('items')
+    expect(screen.queryByTestId('character-card')).toBeNull()
+    expect(await screen.findByTestId('item-card')).toBeInTheDocument()
+
     await userEvent.click(screen.getByTestId('tab-story'))
+    expect(screen.queryByTestId('item-card')).toBeNull()
     expect(useAppStore.getState().rightTab).toBe('story')
     expect(screen.queryByTestId('character-card')).toBeNull()
     expect(await screen.findByTestId('bible-editor')).toHaveValue('# Story Bible\n')
@@ -52,6 +64,6 @@ describe('RightPane', () => {
     installFakeApi({ 'characters:list': () => [], 'episodes:list': () => [episode()], 'panels:list': () => [] })
     render(<RightPane />)
     expect(screen.getByRole('tablist')).toBeInTheDocument()
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Webtoon', 'Characters', 'Story'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Webtoon', 'Characters', 'Items', 'Story'])
   })
 })
