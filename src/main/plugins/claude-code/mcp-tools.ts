@@ -64,7 +64,7 @@ export class McpToolAdapter {
     return { id: newId('call'), name, input: args }
   }
 
-  /** Runs `toolCall` for `ctx`. Never throws for a tool failure: it comes back as an `isError` result. */
+  /** Runs `toolCall` for `ctx`. Always resolves: a tool failure, or an image that cannot be loaded, comes back inside the result (`isError` for a failed tool). */
   async call(
     ctx: ProjectContext,
     toolCall: ToolCall,
@@ -72,17 +72,21 @@ export class McpToolAdapter {
   ): Promise<{ result: McpCallResult; toolResult: ToolResult }> {
     const toolResult =
       toolCall.name === PROJECT_STATE_TOOL
-        ? {
-            toolCallId: toolCall.id,
-            name: toolCall.name,
-            ok: true,
-            content: await projectStateText(this.services, ctx, this.activeContext.get().episodeId),
-            images: []
-          }
+        ? await this.projectState(ctx, toolCall)
         : await this.registry.execute(toolCall, { project: ctx, services: this.services, signal: opts.signal, threadKey: opts.threadKey })
     const content: McpContent[] = [{ type: 'text', text: toolResult.content }]
     for (const relPath of toolResult.images) content.push(await this.imageContent(ctx, relPath))
     return { result: { content, ...(toolResult.ok ? {} : { isError: true }) }, toolResult }
+  }
+
+  /** The snapshot as a ToolResult; a failure to gather it is an `ok: false` result, as `execute` makes of a handler's. */
+  private async projectState(ctx: ProjectContext, toolCall: ToolCall): Promise<ToolResult> {
+    try {
+      const content = await projectStateText(this.services, ctx, this.activeContext.get().episodeId)
+      return { toolCallId: toolCall.id, name: toolCall.name, ok: true, content, images: [] }
+    } catch (error) {
+      return { toolCallId: toolCall.id, name: toolCall.name, ok: false, content: error instanceof Error ? error.message : String(error), images: [] }
+    }
   }
 
   /** `buildAgentSystemPrompt` for the project, then the MCP paragraph; the paragraph alone with no project. */
@@ -92,14 +96,14 @@ export class McpToolAdapter {
     return `${prompt}\n\n${CONNECTION_INSTRUCTIONS}`
   }
 
-  /** A downscaled JPEG of a project image; an image that is gone for good becomes a text note, as in a replayed history. */
+  /** A downscaled JPEG of a project image. The tool has already run, so an image that cannot be loaded becomes a text note rather than failing the call. */
   private async imageContent(ctx: ProjectContext, relPath: string): Promise<McpContent> {
     try {
       const { mime, base64 } = await loadImageForTextModel(ctx, this.services.imageOps, relPath)
       return { type: 'image', data: base64, mimeType: mime }
     } catch (error) {
-      if (error instanceof ImageUnavailableError) return { type: 'text', text: unavailableNote(relPath) }
-      throw error
+      // Gone for good: the same note a replayed history carries. Anything else (a locked file, a failed resize) is named as unloadable.
+      return { type: 'text', text: error instanceof ImageUnavailableError ? unavailableNote(relPath) : `[image could not be loaded: ${relPath}]` }
     }
   }
 }

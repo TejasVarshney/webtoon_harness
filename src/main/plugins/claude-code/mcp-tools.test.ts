@@ -86,6 +86,35 @@ describe('McpToolAdapter', () => {
     ])
   })
 
+  it('keeps the tool result when an image cannot be loaded', async () => {
+    const stub = defineTool({
+      name: 'draw',
+      description: 'stub',
+      input: z.object({}),
+      handler: async () => ({ content: 'drew it', images: ['characters/x.png'] })
+    })
+    const { adapter, ctx, opts, s } = await setup(new ToolRegistry([stub]))
+    s.imageOps.downscale = async () => {
+      throw new Error('EBUSY')
+    }
+    await fs.promises.mkdir(ctx.paths.resolveAsset('characters'), { recursive: true })
+    await fs.promises.writeFile(ctx.paths.resolveAsset('characters/x.png'), encodeSolidPng(2, 2, [1, 2, 3]))
+    const { result, toolResult } = await adapter.call(ctx, adapter.makeCall('draw', {}), opts)
+    expect(toolResult.ok).toBe(true)
+    expect(result).toEqual({ content: [{ type: 'text', text: 'drew it' }, { type: 'text', text: '[image could not be loaded: characters/x.png]' }] })
+  })
+
+  it('turns a failure to gather the project state into an error result', async () => {
+    const { adapter, ctx, opts, s } = await setup()
+    s.characters.list = async () => {
+      throw new Error('characters.json is locked')
+    }
+    const toolCall = adapter.makeCall('get_project_state', {})
+    const { result, toolResult } = await adapter.call(ctx, toolCall, opts)
+    expect(toolResult).toEqual({ toolCallId: toolCall.id, name: 'get_project_state', ok: false, content: 'characters.json is locked', images: [] })
+    expect(result).toEqual({ content: [{ type: 'text', text: 'characters.json is locked' }], isError: true })
+  })
+
   it('returns the project state snapshot for get_project_state', async () => {
     const { adapter, ctx, opts } = await setup()
     const toolCall = adapter.makeCall('get_project_state', {})
@@ -97,13 +126,12 @@ describe('McpToolAdapter', () => {
 
   it('get_project_state names the episode the window shows', async () => {
     const { adapter, ctx, opts, s } = await setup()
-    const first = await s.episodes.create(ctx, { title: 'First Light' })
+    await s.episodes.create(ctx, { title: 'First Light' })
     const second = await s.episodes.create(ctx, { title: 'Second Moon' })
     s.activeContext.set({ projectId: ctx.id, episodeId: second.id })
     const { toolResult } = await adapter.call(ctx, adapter.makeCall('get_project_state', {}), opts)
     expect(toolResult.content).toContain('Second Moon')
     expect(toolResult.content).not.toContain('First Light')
-    expect(first.id).not.toBe(second.id)
   })
 
   it('hands the request signal and thread key to the handler', async () => {
