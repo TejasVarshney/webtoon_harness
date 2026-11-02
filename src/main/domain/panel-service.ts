@@ -109,7 +109,7 @@ export class PanelService implements PanelUsageLookup {
     if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
 
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
-    const check = validatePanelDraft(draft, roster, { strictMentions: opts.strictMentions })
+    const check = validatePanelDraft(draft, roster, [], { strictMentions: opts.strictMentions })
     if (check.errors.length > 0) throw new PanelValidationError(check.errors)
 
     const meta = await this.opts.projects.getMeta(ctx)
@@ -168,7 +168,7 @@ export class PanelService implements PanelUsageLookup {
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), { strictMentions: opts.strictMentions })
+      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), [], { strictMentions: opts.strictMentions })
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
