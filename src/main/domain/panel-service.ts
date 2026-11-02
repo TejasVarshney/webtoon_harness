@@ -200,7 +200,7 @@ export class PanelService implements PanelUsageLookup {
     let retriesLeft = draw.context?.retries ?? 0
     while (draw.context && landed.status === 'ready' && landed.imagePath !== null && !opts.signal?.aborted) {
       const { panel, roster, references } = draw.context
-      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, signal: opts.signal })
+      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, itemRoster: [], signal: opts.signal })
       if (check === null) return landed
       const stored = await this.recordCheck(ctx, id, landed.id, check)
       landed = { ...landed, check }
@@ -233,7 +233,7 @@ export class PanelService implements PanelUsageLookup {
       const roster = await this.roster(ctx)
       const previous = readyImage(await this.previousOf(ctx, panel))
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, previous, maxReferences })
+      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(), previous, maxReferences })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
@@ -258,7 +258,7 @@ export class PanelService implements PanelUsageLookup {
       const maxReferences = this.opts.images.maxReferences('imageEdit')
       // The cast references (and the unknown-cast errors) come from composePanelPrompt so an edit
       // sees exactly the images a generation would; the edit has no previous panel and its own prompt.
-      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, previous: null, maxReferences })
+      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(), previous: null, maxReferences })
       const cast = panel.characters.flatMap((entry) => {
         const character = roster.get(entry.characterId)
         return character ? [{ name: character.name, appearanceLock: character.appearanceLock }] : []

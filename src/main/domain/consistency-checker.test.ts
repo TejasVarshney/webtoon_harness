@@ -8,9 +8,9 @@ import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/pr
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
-import { makeCharacter, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
-import { CHECK_TIMEOUT_MS, ConsistencyChecker, parseCheckResponse, type ConsistencyCheckInput } from './consistency-checker'
+import { buildCheckMessage, CHECK_TIMEOUT_MS, ConsistencyChecker, parseCheckResponse, type ConsistencyCheckInput } from './consistency-checker'
 import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE } from './image-ops'
 
 const UNPARSEABLE = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
@@ -159,9 +159,9 @@ async function input(ctx: ProjectContext, over: Partial<ConsistencyCheckInput> =
   return {
     imageRelPath: GENERATED,
     references: [
-      { relPath: MINA_REF, label: 'Mina' },
-      { relPath: JIN_REF, label: 'Jin' },
-      { relPath: PREVIOUS, label: 'previous panel' }
+      { relPath: MINA_REF, label: 'Mina', subject: { kind: 'character', id: 'chr_aaaaaaaaaa' } },
+      { relPath: JIN_REF, label: 'Jin', subject: { kind: 'character', id: 'chr_bbbbbbbbbb' } },
+      { relPath: PREVIOUS, label: 'previous panel', subject: { kind: 'previous' } }
     ],
     panel: makePanel({
       description: 'Mina and Jin wait at the bus stop.',
@@ -169,6 +169,7 @@ async function input(ctx: ProjectContext, over: Partial<ConsistencyCheckInput> =
       characters: [cast('chr_aaaaaaaaaa', 'var_aaaaaaaaa2'), cast('chr_bbbbbbbbbb', 'var_bbbbbbbbbb')]
     }),
     roster: [mina(), jin()],
+    itemRoster: [],
     ...over
   }
 }
@@ -393,5 +394,68 @@ describe('ConsistencyChecker timeout (Ruling T25c)', () => {
   it('does not disturb an answer that arrives in time', async () => {
     const { checker, ctx } = await setup({ timeoutMs: 5_000, reply: () => '{"passed": false, "issues": ["x"]}' })
     expect(await checker.check(ctx, await input(ctx))).toEqual({ passed: false, issues: ['x'], skipped: false })
+  })
+})
+
+describe('buildCheckMessage with items', () => {
+  const NOVA_USAGE = makeItemUsage({ id: 'use_nova_fire', itemId: 'itm_nova', name: 'Firing', kind: 'action', delta: 'cyan beam', status: 'ready', imagePath: 'items/itm_nova/fire.png' })
+  const novaItem = makeItem({ id: 'itm_nova', name: 'Nova', appearanceLock: 'NOVA ITEM LOCK', usages: [NOVA_USAGE] })
+  const novaCharacter = makeCharacter({
+    id: 'chr_nova',
+    name: 'Nova',
+    appearanceLock: 'NOVA CHAR LOCK',
+    variations: [makeVariation({ id: 'var_nova', characterId: 'chr_nova', name: 'Base', status: 'ready', imagePath: 'characters/chr_nova/base.png' })]
+  })
+  const panel = makePanel({
+    description: 'Nova draws.',
+    shot: 'medium',
+    characters: [{ characterId: 'chr_nova', variationId: 'var_nova', action: '', expression: '', position: 'center' }],
+    items: [{ itemId: 'itm_nova', usageId: 'use_nova_fire', heldBy: 'chr_nova', action: 'aimed' }]
+  })
+  const characterRef = { relPath: 'characters/chr_nova/base.png', label: 'Nova', subject: { kind: 'character' as const, id: 'chr_nova' } }
+  const itemRef = { relPath: 'items/itm_nova/fire.png', label: 'Nova', subject: { kind: 'item' as const, id: 'itm_nova' } }
+
+  it('lists the items after the cast, with holder and usage', () => {
+    const text = buildCheckMessage({ references: [characterRef, itemRef], panel, roster: [novaCharacter], itemRoster: [novaItem] })
+    expect(text.split('\n')).toEqual([
+      'Images, in the order attached:',
+      '1. Reference: Nova',
+      '2. Reference: Nova',
+      '3. Generated panel (the image to check)',
+      '',
+      'Cast:',
+      '- Nova — NOVA CHAR LOCK — Look: Base',
+      '',
+      'Items:',
+      '- Nova — NOVA ITEM LOCK — Use: Firing — cyan beam — Held by: Nova',
+      '',
+      'Panel description: Nova draws.',
+      'Shot: medium'
+    ])
+  })
+
+  it('matches references by subject, not label, when a character and an item share a name', () => {
+    // Only the item reference was sent: the character line must say so, and the item line must not.
+    const itemOnly = buildCheckMessage({ references: [itemRef], panel, roster: [novaCharacter], itemRoster: [novaItem] })
+    expect(itemOnly).toContain('- Nova — NOVA CHAR LOCK — Look: Base (no reference image)')
+    expect(itemOnly).toContain('Held by: Nova\n')
+    expect(itemOnly).not.toContain('Held by: Nova (no reference image)')
+
+    // Only the character reference was sent: the reverse.
+    const characterOnly = buildCheckMessage({ references: [characterRef], panel, roster: [novaCharacter], itemRoster: [novaItem] })
+    expect(characterOnly).toContain('- Nova — NOVA CHAR LOCK — Look: Base\n')
+    expect(characterOnly).toContain('- Nova — NOVA ITEM LOCK — Use: Firing — cyan beam — Held by: Nova (no reference image)')
+  })
+
+  it('writes nobody for an unheld item and omits the delta dash when it is empty', () => {
+    const plain = makeItem({ id: 'itm_nova', name: 'Nova', appearanceLock: 'NOVA ITEM LOCK', usages: [{ ...NOVA_USAGE, delta: '' }] })
+    const unheld = makePanel({ description: 'd', items: [{ itemId: 'itm_nova', usageId: 'use_nova_fire', heldBy: null, action: '' }] })
+    const text = buildCheckMessage({ references: [], panel: unheld, roster: [], itemRoster: [plain] })
+    expect(text).toContain('Cast:\n(none)\n\nItems:\n- Nova — NOVA ITEM LOCK — Use: Firing — Held by: nobody (no reference image)\n\nPanel description: d')
+  })
+
+  it('has no Items block for a panel without items, and throws for an item that is gone', () => {
+    expect(buildCheckMessage({ references: [], panel: makePanel(), roster: [], itemRoster: [novaItem] })).not.toContain('Items:')
+    expect(() => buildCheckMessage({ references: [], panel, roster: [novaCharacter], itemRoster: [] })).toThrow('Unknown item entry: itm_nova/use_nova_fire')
   })
 })

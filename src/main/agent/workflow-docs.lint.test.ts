@@ -137,9 +137,11 @@ describe('workflow docs lint', () => {
         shot: '{shot}' as never,
         aspect: '{aspect}' as never,
         characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
+        items: [],
         continuityNotes: '{continuityNotes}'
       },
       roster: new Map([[character.id, character]]),
+      itemRoster: new Map(),
       previous: { panelId: 'pnl_0000000002', imagePath: 'panels/b.png' },
       maxReferences: 4
     }).prompt.replace('(reference image 1)', '(reference image {n})').replace('(reference image 2)', '(reference image {m})')
@@ -159,15 +161,16 @@ describe('workflow docs lint', () => {
     })
     const message = buildCheckMessage({
       references: [
-        { relPath: 'characters/a.png', label: '{name}' },
-        { relPath: 'panels/b.png', label: 'previous panel' }
+        { relPath: 'characters/a.png', label: '{name}', subject: { kind: 'character', id: character.id } },
+        { relPath: 'panels/b.png', label: 'previous panel', subject: { kind: 'previous' } }
       ],
       panel: {
         ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }] }),
         description: '{description}',
         shot: '{shot}' as never
       },
-      roster: [character]
+      roster: [character],
+      itemRoster: []
     })
     expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
   })
