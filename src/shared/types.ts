@@ -16,10 +16,17 @@ import type {
   EndpointConfigSchema,
   EndpointKindSchema,
   EpisodeSchema,
+  ItemInputSchema,
+  ItemPatchSchema,
+  ItemSchema,
+  ItemUsageInputSchema,
+  ItemUsageKindSchema,
+  ItemUsageSchema,
   ModelConfigSchema,
   PanelAspectSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
+  PanelItemSchema,
   PanelPatchSchema,
   PanelSchema,
   PanelVersionSchema,
@@ -42,9 +49,12 @@ import type {
 export type ProjectMeta = z.infer<typeof ProjectMetaSchema>
 export type Character = z.infer<typeof CharacterSchema>
 export type Variation = z.infer<typeof VariationSchema>
+export type Item = z.infer<typeof ItemSchema>
+export type ItemUsage = z.infer<typeof ItemUsageSchema>
 export type Episode = z.infer<typeof EpisodeSchema>
 export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
+export type PanelItem = z.infer<typeof PanelItemSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type PanelVersion = z.infer<typeof PanelVersionSchema>
 export type CheckResult = z.infer<typeof CheckResultSchema>
@@ -67,11 +77,15 @@ export type PanelPatch = z.infer<typeof PanelPatchSchema>
 export type CharacterInput = z.infer<typeof CharacterInputSchema>
 export type CharacterPatch = z.infer<typeof CharacterPatchSchema>
 export type VariationInput = z.infer<typeof VariationInputSchema>
+export type ItemInput = z.infer<typeof ItemInputSchema>
+export type ItemPatch = z.infer<typeof ItemPatchSchema>
+export type ItemUsageInput = z.infer<typeof ItemUsageInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
 export type ShotType = z.infer<typeof ShotTypeSchema>
 export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>
+export type ItemUsageKind = z.infer<typeof ItemUsageKindSchema>
 
 export type Role = z.infer<typeof RoleSchema>
 export type Capability = z.infer<typeof CapabilitySchema>
@@ -117,6 +131,7 @@ export type AppEvent =
   | { type: 'project.changed'; projectId: string }
   | { type: 'session.changed'; projectId: string; sessionId: string }
   | { type: 'character.changed'; projectId: string; characterId: string }
+  | { type: 'item.changed'; projectId: string; itemId: string }
   | { type: 'episode.changed'; projectId: string; episodeId: string }
   | { type: 'panel.changed'; projectId: string; panelId: string }
   | { type: 'story.changed'; projectId: string }

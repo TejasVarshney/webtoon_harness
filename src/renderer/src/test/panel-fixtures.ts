@@ -33,6 +33,7 @@ export function panel(o: Partial<Panel> = {}): Panel {
     shot: 'medium',
     aspect: '2:3',
     characters: [],
+    items: [],
     dialogue: [],
     continuityNotes: '',
     offPanelMentions: [],

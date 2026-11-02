@@ -15,6 +15,9 @@ describe('ProjectPaths layout (spec §5)', () => {
     expect(paths.charactersDir()).toBe(abs('characters'))
     expect(paths.characterFile('chr_0000000001')).toBe(abs('characters', 'chr_0000000001.json'))
     expect(paths.characterDir('chr_0000000001')).toBe(abs('characters', 'chr_0000000001'))
+    expect(paths.itemsDir()).toBe(abs('items'))
+    expect(paths.itemFile('itm_0000000001')).toBe(abs('items', 'itm_0000000001.json'))
+    expect(paths.itemDir('itm_0000000001')).toBe(abs('items', 'itm_0000000001'))
     expect(paths.episodesDir()).toBe(abs('episodes'))
     expect(paths.episodeFile('epi_0000000001')).toBe(abs('episodes', 'epi_0000000001.json'))
     expect(paths.panelsDir()).toBe(abs('panels'))
@@ -32,6 +35,8 @@ describe('ProjectPaths id guard (ruling T3a)', () => {
   const idMethods: [string, (id: string) => string][] = [
     ['characterFile', (id) => paths.characterFile(id)],
     ['characterDir', (id) => paths.characterDir(id)],
+    ['itemFile', (id) => paths.itemFile(id)],
+    ['itemDir', (id) => paths.itemDir(id)],
     ['episodeFile', (id) => paths.episodeFile(id)],
     ['panelFile', (id) => paths.panelFile(id)],
     ['panelDir', (id) => paths.panelDir(id)],
@@ -43,6 +48,7 @@ describe('ProjectPaths id guard (ruling T3a)', () => {
   it('rejects traversal through ids', () => {
     expect(() => paths.panelFile('../x')).toThrow(PathEscapeError)
     expect(() => paths.panelFile('pnl_1/../..')).toThrow(PathEscapeError)
+    expect(() => paths.itemDir('../x')).toThrow(PathEscapeError)
   })
 
   it.each(idMethods)('%s rejects anything that is not <prefix>_<alphanumerics>', (_name, fn) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CharacterSchema, EpisodeSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
-import { makeCharacter, makeEpisode, makeMeta, makePanel, makeVariation } from './factories'
+import { CharacterSchema, EpisodeSchema, ItemSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
+import { makeCharacter, makeEpisode, makeItem, makeMeta, makePanel, makeVariation } from './factories'
 
 describe('test factories', () => {
   it('return schema-valid objects with deterministic ids', () => {
@@ -31,6 +31,13 @@ describe('test factories', () => {
     const c = makeCharacter({ id: 'chr_0000000007' })
     expect(c.variations).toHaveLength(1)
     expect(c.variations[0]).toMatchObject({ kind: 'base', characterId: 'chr_0000000007' })
+  })
+
+  it('give every item exactly one At rest base usage that points back at it', () => {
+    expect(ItemSchema.parse(makeItem())).toEqual(makeItem())
+    const i = makeItem({ id: 'itm_0000000007' })
+    expect(i.usages).toHaveLength(1)
+    expect(i.usages[0]).toMatchObject({ name: 'At rest', kind: 'base', itemId: 'itm_0000000007' })
   })
 
   it('reject overrides that break the schema', () => {

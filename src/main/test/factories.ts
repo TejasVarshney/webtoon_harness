@@ -1,6 +1,6 @@
 import type { z } from 'zod'
-import { CharacterSchema, EpisodeSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
-import type { Character, Episode, Panel, ProjectMeta, Variation } from '@shared/types'
+import { CharacterSchema, EpisodeSchema, ItemSchema, ItemUsageSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
+import type { Character, Episode, Item, ItemUsage, Panel, ProjectMeta, Variation } from '@shared/types'
 
 // Test factories. Each one returns a schema-valid object with fixed, deterministic ids and
 // timestamps; pass overrides for anything a test cares about. Overrides are typed as the schema's
@@ -33,6 +33,34 @@ export function makeCharacter(o: Overrides<typeof CharacterSchema> = {}): Charac
     role: 'protagonist',
     appearanceLock: 'Slim build, shoulder-length black bob haircut, amber eyes, round glasses',
     variations: [makeVariation({ characterId: id })],
+    createdBy: 'user',
+    createdAt: T,
+    updatedAt: T,
+    ...o
+  })
+}
+
+export function makeItemUsage(o: Overrides<typeof ItemUsageSchema> = {}): ItemUsage {
+  return ItemUsageSchema.parse({
+    id: 'use_0000000001',
+    itemId: 'itm_0000000001',
+    name: 'At rest',
+    kind: 'base',
+    status: 'pending',
+    createdBy: 'user',
+    createdAt: T,
+    ...o
+  })
+}
+
+/** An item with exactly one base usage (`At rest`) that points back at it. */
+export function makeItem(o: Overrides<typeof ItemSchema> = {}): Item {
+  const id = o.id ?? 'itm_0000000001'
+  return ItemSchema.parse({
+    id,
+    name: 'Kestrel blaster',
+    appearanceLock: 'Matte grey pistol with a brass barrel ring and a cracked amber power cell',
+    usages: [makeItemUsage({ itemId: id })],
     createdBy: 'user',
     createdAt: T,
     updatedAt: T,
