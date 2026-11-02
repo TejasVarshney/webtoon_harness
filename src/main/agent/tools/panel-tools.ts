@@ -124,6 +124,7 @@ const createPanel = defineTool({
     'Add a panel to an episode (at the end, or after afterPanelId; null puts it first) and generate its image, waiting for it. ' +
     'Cast every character who appears with characterId and variationId from list_characters; the variation must have a ready image. ' +
     'A roster character named in the description must be cast or listed in offPanelMentions, otherwise the call is rejected. ' +
+    'An item that is shown goes in items with a usageId that has a ready image; an item named in the description must be attached or listed in offPanelMentions. ' +
     "Describe the action and composition, not the characters' looks: each cast member's appearanceLock is added to the image prompt for you. " +
     'Dialogue is stored as data and drawn over the image, so the picture contains no text. ' +
     'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran.',
@@ -134,9 +135,12 @@ const createPanel = defineTool({
     setting: z.string().describe('Where and when, e.g. "Apartment hallway, evening"'),
     aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect'),
     characters: z.array(PanelCharacterSchema).describe('Who is in the panel, at most three in the foreground. Empty for a scene without characters.'),
+    items: PanelDraftSchema.shape.items.describe(
+      "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
+    ),
     dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx.'),
     continuityNotes: z.string().optional().describe('What must match the previous panel: lighting, time of day, props, outfits. Default empty.'),
-    offPanelMentions: z.array(z.string()).optional().describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
+    offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
   handler: async (draft, ctx) => {
     await loadEpisode(ctx, draft.episodeId)
@@ -157,12 +161,12 @@ const updatePanel = defineTool({
   name: 'update_panel',
   description:
     'Change fields of a panel. Only the fields named in patch change, and the merged panel is validated like create_panel; ' +
-    'when the description changes, a roster character it names must be cast or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
+    'when the description changes, a roster character or item it names must be cast, attached or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
     'This does not redraw the image: pass regenerate true to generate a new one now and wait for it (the result is then the new version, like create_panel), ' +
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters or dialogue list replaces the whole list.'),
+    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

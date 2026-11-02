@@ -20,6 +20,7 @@ const REQUIRED: Record<string, string[]> = {
   AGENTS: ['Mission', 'Operating Loop', 'Story Modes', 'Hard Rules', 'Tool Catalog', 'Workflow Docs Index', 'Communication Style', 'Failure Handling'],
   'workflows/story-direction': ['Purpose', 'User-Led Mode', 'AI-Led Mode', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
   'workflows/character-creation': ['Purpose', 'Character Sheet', 'Writing the Appearance Lock', 'Base Reference Image', 'Variations', 'Variation Naming', 'When Not to Create a Variation', 'Automating Creation from Chat', 'Updating Characters', 'Examples'],
+  'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
   'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
   'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],

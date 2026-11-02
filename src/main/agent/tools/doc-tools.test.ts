@@ -21,6 +21,7 @@ const SHIPPED = [
   'reference/prompt-templates',
   'reference/webtoon-style-guide',
   'workflows/character-creation',
+  'workflows/item-creation',
   'workflows/panel-editing',
   'workflows/panel-generation',
   'workflows/story-direction'

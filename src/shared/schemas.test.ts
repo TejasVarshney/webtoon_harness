@@ -447,7 +447,7 @@ describe('input schemas', () => {
   })
 
   it('tool inputs can be converted to JSON Schema', () => {
-    for (const schema of [PanelDraftSchema, PanelPatchSchema, CharacterInputSchema, CharacterPatchSchema, VariationInputSchema])
+    for (const schema of [PanelDraftSchema, PanelPatchSchema, CharacterInputSchema, CharacterPatchSchema, VariationInputSchema, ItemInputSchema, ItemPatchSchema, ItemUsageInputSchema])
       expect(z.toJSONSchema(schema, { io: 'input' })).toMatchObject({ type: 'object' })
   })
 })
