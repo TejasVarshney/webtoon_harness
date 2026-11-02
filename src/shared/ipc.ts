@@ -10,6 +10,11 @@ import type {
   EndpointConfig,
   EndpointKind,
   Episode,
+  Item,
+  ItemInput,
+  ItemPatch,
+  ItemUsage,
+  ItemUsageInput,
   ModelConfig,
   ModelRegistryView,
   Panel,
@@ -89,6 +94,23 @@ export interface IpcContract {
   'characters:deleteVariation': { req: { projectId: string; characterId: string; variationId: string }; res: void }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as the variation's image. `null` when the dialog is cancelled. */
   'characters:uploadVariationImage': { req: { projectId: string; characterId: string; variationId: string }; res: Variation | null }
+  'items:list': { req: { projectId: string; includeArchived?: boolean }; res: Item[] }
+  'items:get': { req: { projectId: string; itemId: string }; res: Item }
+  /** Returns the new item at once with a pending base usage; the base image follows through `item.changed`. */
+  'items:create': { req: { projectId: string; input: ItemInput; generateBase: boolean }; res: Item }
+  'items:update': { req: { projectId: string; itemId: string; patch: ItemPatch }; res: Item }
+  'items:archive': { req: { projectId: string; itemId: string }; res: void }
+  'items:unarchive': { req: { projectId: string; itemId: string }; res: void }
+  /** Refused with an "archive it instead" error while any panel uses the item. */
+  'items:delete': { req: { projectId: string; itemId: string }; res: void }
+  /** Returns the new usage at once (pending); its image follows through `item.changed` when `generate` is set. */
+  'items:addUsage': { req: { projectId: string; itemId: string; input: ItemUsageInput; generate: boolean }; res: ItemUsage }
+  /** Starts generation without waiting for it; the outcome follows through `item.changed`. */
+  'items:generateUsage': { req: { projectId: string; itemId: string; usageId: string }; res: ItemUsage }
+  /** Refused for the base usage and while any panel uses the usage. */
+  'items:deleteUsage': { req: { projectId: string; itemId: string; usageId: string }; res: void }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the usage's image. `null` when the dialog is cancelled. */
+  'items:uploadUsageImage': { req: { projectId: string; itemId: string; usageId: string }; res: ItemUsage | null }
   /** A project with no episode yet gets `Episode 1` on the first call. */
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
@@ -169,6 +191,17 @@ const channelSet: Record<IpcChannel, true> = {
   'characters:generateVariation': true,
   'characters:deleteVariation': true,
   'characters:uploadVariationImage': true,
+  'items:list': true,
+  'items:get': true,
+  'items:create': true,
+  'items:update': true,
+  'items:archive': true,
+  'items:unarchive': true,
+  'items:delete': true,
+  'items:addUsage': true,
+  'items:generateUsage': true,
+  'items:deleteUsage': true,
+  'items:uploadUsageImage': true,
   'episodes:list': true,
   'episodes:create': true,
   'episodes:update': true,

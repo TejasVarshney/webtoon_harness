@@ -2,6 +2,7 @@ import type { Services } from '../services'
 import { agentHandlers } from './handlers/agent'
 import { charactersHandlers } from './handlers/characters'
 import { docsHandlers, type OpenPath } from './handlers/docs'
+import { itemsHandlers } from './handlers/items'
 import { modelsHandlers } from './handlers/models'
 import { panelChatHandlers } from './handlers/panel-chat'
 import { panelsHandlers } from './handlers/panels'
@@ -32,6 +33,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...agentHandlers(services),
     ...panelChatHandlers(services),
     ...charactersHandlers(services, { pickFiles: deps.pickImageFiles }),
+    ...itemsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...storyHandlers(services),
     ...docsHandlers(services, { openPath: deps.openPath }),
