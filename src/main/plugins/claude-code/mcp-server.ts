@@ -71,7 +71,8 @@ export class McpLinkServer {
   async listen(port: number): Promise<void> {
     if (this.http) throw new Error('The MCP link server is already listening')
     const server = http.createServer((req, res) => {
-      this.handle(req, res).catch(() => {
+      this.handle(req, res).catch((error: unknown) => {
+        console.error('MCP link: request failed', error)
         if (!res.headersSent) res.writeHead(500)
         res.end()
       })
@@ -160,12 +161,13 @@ export class McpLinkServer {
 
   /** A Server and transport for one MCP session; `closing` is the close signal of the listen() it belongs to. */
   private async openSession(port: number, closing: AbortSignal): Promise<McpSession> {
-    const instructions = await this.adapter.instructions(await this.adapter.activeProject())
+    const instructions = await this.instructions()
     const server = new Server(SERVER_INFO, { capabilities: { tools: {} }, instructions })
     const hosts = localHosts(port)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (id) => void this.sessions.set(id, session),
+      // close() may have taken its snapshot of the map while this request was in flight: such a session is closed, not added.
+      onsessioninitialized: (id) => (closing.aborted ? server.close() : void this.sessions.set(id, session)),
       // Already checked above; kept on as a second guard.
       enableDnsRebindingProtection: true,
       allowedHosts: hosts,
@@ -185,6 +187,20 @@ export class McpLinkServer {
     }
     await server.connect(transport)
     return session
+  }
+
+  /**
+   * The adapter's instructions for the active project. When the project prompt cannot be built (AGENTS.md
+   * missing, a read error) the connection paragraph alone is sent, so the link still connects.
+   */
+  private async instructions(): Promise<string> {
+    const ctx = await this.adapter.activeProject()
+    try {
+      return await this.adapter.instructions(ctx)
+    } catch (error) {
+      console.error('MCP link: the project instructions could not be built', error)
+      return this.adapter.instructions(null)
+    }
   }
 
   /** Spec §5.4 order: project, log session, call message, run, result message. With no project nothing is logged. */

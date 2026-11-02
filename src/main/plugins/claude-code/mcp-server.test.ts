@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { defineTool, ToolRegistry } from '../../agent/tools/registry'
+import { EntityNotFoundError } from '../../domain/errors'
 import type { ProjectContext } from '../../storage/project-store'
 import { testServices, type TestServices } from '../../test/test-services'
 import { McpLinkServer, PortInUseError } from './mcp-server'
@@ -23,6 +24,7 @@ let servers: McpLinkServer[] = []
 let clients: Client[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   for (const client of clients) await client.close().catch(() => {})
   for (const server of servers) await server.close()
   await s?.cleanup()
@@ -219,6 +221,27 @@ describe('McpLinkServer', () => {
       const { port, adapter, ctx } = await setup()
       const client = await connect(port)
       expect(client.getInstructions()).toBe(await adapter.instructions(ctx))
+    })
+
+    it('connects with the connection paragraph alone when AGENTS.md cannot be read', async () => {
+      const { port, adapter, s } = await setup()
+      // Opening a project reinstalls missing docs, so the read itself is made to fail as a missing file does.
+      const missing = new EntityNotFoundError('doc', 'AGENTS')
+      vi.spyOn(s.docs, 'agentsMd').mockRejectedValue(missing)
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const client = await connect(port)
+      expect(client.getInstructions()).toBe(await adapter.instructions(null))
+      expect(logged).toHaveBeenCalledWith('MCP link: the project instructions could not be built', missing)
+      expect((await client.listTools()).tools.length).toBeGreaterThan(0)
+    })
+
+    it('logs a request that fails and answers 500', async () => {
+      const { port, adapter } = await setup()
+      const failure = new Error('boom')
+      vi.spyOn(adapter, 'instructions').mockRejectedValue(failure)
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expect(await raw(port)).toEqual({ status: 500, body: '' })
+      expect(logged).toHaveBeenCalledWith('MCP link: request failed', failure)
     })
 
     it('runs a tool against the active project and logs the call and its result', async () => {
