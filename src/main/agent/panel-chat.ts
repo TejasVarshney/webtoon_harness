@@ -73,14 +73,14 @@ export class PanelChatRunner {
       prepare: async () => {
         const ctx = await this.services.projects.open(input.projectId)
         // An unknown panel rejects here, before anything is written.
-        const { panel, roster, previous, next } = await loadPanelBundle(this.services, ctx, input.panelId)
+        const { panel, roster, itemRoster, previous, next } = await loadPanelBundle(this.services, ctx, input.panelId)
         const history = await this.load(ctx, panel.id)
         const userMessage: UserMessage = {
           id: newId('msg'),
           role: 'user',
           text: input.text,
           imagePaths: [],
-          stateSnapshot: buildPanelContext(panel, roster, previous, next),
+          stateSnapshot: buildPanelContext(panel, roster, itemRoster, previous, next),
           createdAt: new Date().toISOString()
         }
         const persist = (msgs: ChatMessage[]): Promise<void> => this.append(ctx, panel.id, msgs)

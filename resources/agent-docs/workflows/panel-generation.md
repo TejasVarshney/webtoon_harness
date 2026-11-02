@@ -8,7 +8,7 @@ What the app does for you when you call `create_panel`:
 
 1. It checks your input: every cast member is a roster character, not archived, with a variation that belongs to them and has a ready reference image; no one is cast twice; every speaker is a roster character; every roster name in the description is cast or declared off-panel.
 2. It builds the image prompt: the style, your setting and description, and one line per cast member with their appearance lock, variation, action, expression and position. Dialogue is never in the prompt.
-3. It sends reference images with the prompt: each cast member's variation image (in cast order), then the previous panel's current image.
+3. It sends reference images with the prompt: each cast member's variation image (in cast order), then the image of the usage of each attached item (in panel order), then the previous panel's current image.
 4. It generates the image and stores it as a new version of the panel.
 5. If a vision model is assigned, it checks the image against the references and redraws automatically when the check fails (see Reading the Consistency Check).
 
@@ -20,7 +20,7 @@ Follow these 10 steps for every new panel.
 
 1. **Read the state.** Look at `<project_state>` and call `list_panels` for the episode (R4). If your model can see images, `view_panel_image` the last panel. Know where everyone is, what they wear and what just happened.
 2. **Choose the beat.** The next `planned` beat (from `get_story`), or what the user asked for. One beat per panel (R5).
-3. **Choose the cast.** Who is visible in this frame. At most 3 in the foreground. Named characters must be in the roster (R1); unnamed extras are described in words.
+3. **Choose the cast.** Who is visible in this frame. At most 3 in the foreground. Named characters must be in the roster (R1); unnamed extras are described in words. If a roster item is used or shown, also decide its usage and holder (see Attaching Items).
 4. **Choose variations.** Keep each character's variation from the previous panel, unless the story changes their look.
 5. **Choose shot and aspect.** What the reader must see decides the shot; the pace decides the aspect.
 6. **Write the description.** Action and composition, never appearance (R2), never text (R6).
@@ -47,7 +47,7 @@ Rules:
 
 - **Visible means cast.** If a named character can be seen, even small or from behind, cast them (R2). If they cannot be seen, do not cast them.
 - **At most 3 in the foreground.** More faces means less likeness for each. Put a fourth person in `background`, or split the moment into two panels.
-- **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4). When there are too many, the previous panel's image is dropped first, then cast members from the end of the list. With 3 cast members plus the previous panel you are at that limit.
+- **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4). When there are too many, the previous panel's image is dropped first, then items from the end, then cast members from the end of the list. With 3 cast members plus the previous panel you are at that limit; each attached item takes one more slot (see Attaching Items).
 - **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1; in user-led mode, ask first).
 - **A scene with nobody in it** (an establishing shot, an object close-up) has `"characters": []`.
 
@@ -106,6 +106,25 @@ Pick the aspect by pace (default: the project's default aspect, usually 2:3, whe
 | `4:3`, `16:9` | Wide places, groups, landscapes, panoramas. |
 
 Do not repeat the same shot three times in a row. More in `reference/webtoon-style-guide`.
+
+## Attaching Items
+
+An item is a roster object with reference images (`workflows/item-creation`). A panel shows one by attaching it in `items`, one entry per item:
+
+```json
+{"itemId": "itm_3f9a1c0b7e", "usageId": "use_8d2e4a6c1f", "heldBy": "chr_9f61b2d47a", "action": "aimed down the aisle, muzzle glowing"}
+```
+
+- **Attach every item that is visible**, the way you cast every visible character. An item named in the description that is neither attached nor listed in `offPanelMentions` is rejected (R10).
+- **Choosing the usage.** Ask what the item is doing in this frame and pick the usage that matches, from `list_items` or the `items:` lines of `<project_state>`. A usage is a way of using the item, not a moment: "Firing" fits any frame where it fires. The usage must have status `ready`. If none fits, create it first with `create_item_usage` and wait for its image: the panel draw never creates usages.
+- **`heldBy`.** The character id of who holds the item, or `null` when nobody does (on a table, in the air, in a holster). The holder must be in the same panel's cast, so cast the holder first. The item's `ownerId` is only a hint: it does not put the character in the panel.
+- **`action`.** What the item itself does in this frame, a short phrase without a final period. What the holder's body does goes in the cast entry's `action`.
+- **Do not describe the item's looks** in the description (R2): its lock and its reference image carry them. Name it and say what happens: "Jin fires the Kestrel blaster down the aisle".
+- **Gray hands.** The reference image of an action usage shows gray hands only to show the grip. The panel prompt asks the image model to draw the holder's own hands, and the consistency check fails a panel that shows gray hands.
+
+The reference order is: cast variations, then items (in the order of `items`), then the previous panel. The image model takes a limited number of references (often 4). When there are too many, the previous panel is dropped first, then items from the end, then cast members from the end. A dropped item keeps its lock in the prompt but loses its reference image, so its look and use drift. When an item matters (the first time it fires, the reveal of an artifact), keep the cast to 2 characters, or use just the character who holds it. Two items in one panel use two slots: attach both only if the story needs both visible.
+
+To change the usage or the holder of a drawn panel, send the whole `items` list again with `update_panel`, and add `"regenerate": true` to redraw it. A list that leaves an item out removes it.
 
 ## Writing the Description
 

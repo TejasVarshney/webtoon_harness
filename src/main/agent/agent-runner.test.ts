@@ -91,6 +91,19 @@ describe('AgentRunner', () => {
     expect(user.stateSnapshot).not.toContain('Jun')
   })
 
+  it('puts the active items and their usages, not archived items, in the state snapshot', async () => {
+    const { s, runner, projectId, sessionId, events } = await setup([{ text: 'ok' }])
+    const ctx = await s.projects.open(projectId)
+    const blaster = await s.items.create(ctx, { name: 'Kestrel blaster', appearanceLock: 'LOCK' }, 'user')
+    const key = await s.items.create(ctx, { name: 'Old key', appearanceLock: 'LOCK' }, 'user')
+    await s.items.archive(ctx, key.id)
+    await runner.start(input(projectId, sessionId))
+    await finished(events)
+    const user = (await s.sessions.load(ctx, sessionId))[0] as { stateSnapshot: string }
+    expect(user.stateSnapshot).toContain(`\nitems:\n- ${blaster.id} Kestrel blaster usages: ${blaster.usages[0].id} At rest (pending)\n`)
+    expect(user.stateSnapshot).not.toContain('Old key')
+  })
+
   describe('state snapshot: current episode and recent panels', () => {
     async function snapshotOf(h: Awaited<ReturnType<typeof setup>>, activeEpisodeId: string | null = null): Promise<string> {
       const runner = new AgentRunner({ services: h.s, createTextProvider: () => new MockTextProvider(script([{ text: 'ok' }])) })

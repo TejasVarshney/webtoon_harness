@@ -1,5 +1,5 @@
 import { versionPosition } from '@shared/panel-versions'
-import type { Character, DialogueLine, Episode, Panel, PanelCharacter, ProjectMeta } from '@shared/types'
+import type { Character, DialogueLine, Episode, Item, Panel, PanelCharacter, PanelItem, ProjectMeta } from '@shared/types'
 
 /** AGENTS.md plus the index of the other workflow docs. Stable for a given input. */
 export function buildAgentSystemPrompt(agentsMd: string, index: { name: string; title: string }[]): string {
@@ -27,6 +27,8 @@ const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
 export interface StateSnapshotInput {
   meta: ProjectMeta
   characters: Character[]
+  /** Every item, archived ones included: the snapshot drops them from the list but they still name the items of existing panels. */
+  items: Item[]
   episode: Episode | null
   recentPanels: Panel[]
 }
@@ -46,19 +48,29 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
       lines.push(`- ${c.id} ${oneLine(c.name)} [${c.role}] variations: ${vars || 'none'}`)
     }
   }
+  const activeItems = s.items.filter((i) => !i.archived)
+  if (activeItems.length === 0) lines.push('items: none')
+  else {
+    lines.push('items:')
+    for (const i of activeItems) {
+      const usages = i.usages.map((u) => `${u.id} ${oneLine(u.name)} (${u.status})`).join(', ')
+      lines.push(`- ${i.id} ${oneLine(i.name)} usages: ${usages || 'none'}`)
+    }
+  }
   if (s.recentPanels.length === 0) lines.push('recent_panels: none')
   else {
     lines.push('recent_panels:')
-    for (const p of s.recentPanels) lines.push(`- ${panelSummary(p, names, (pc) => pc.variationId)}`)
+    for (const p of s.recentPanels) lines.push(`- ${panelSummary(p, names, s.items, (pc) => pc.variationId)}`)
   }
   lines.push('</project_state>')
   return lines.join('\n')
 }
 
-/** One line: id, shot, cast, the first 160 characters of the description, and the dialogue. `detail` is what follows a cast member's name. */
-function panelSummary(p: Panel, names: Map<string, string>, detail: (cast: PanelCharacter) => string): string {
+/** One line: id, shot, cast, the first 160 characters of the description, the dialogue and, only when it has any, its items. `detail` is what follows a cast member's name. */
+function panelSummary(p: Panel, names: Map<string, string>, items: Item[], detail: (cast: PanelCharacter) => string): string {
   const cast = p.characters.map((pc) => `${names.get(pc.characterId) ?? pc.characterId} (${detail(pc)})`).join(', ')
-  return `${p.id} [${p.shot}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}`
+  const shown = p.items.map((entry) => itemNames(entry, items)).map((n) => `${n.name} (${n.usageName})`)
+  return `${p.id} [${p.shot}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}`
 }
 
 const dialogueLine = (p: Panel, names: Map<string, string>): string =>
@@ -69,6 +81,13 @@ export function castNames(entry: PanelCharacter, roster: Character[]): { name: s
   const character = roster.find((c) => c.id === entry.characterId)
   const variation = character?.variations.find((v) => v.id === entry.variationId)
   return { name: character ? oneLine(character.name) : entry.characterId, variationName: variation ? oneLine(variation.name) : entry.variationId }
+}
+
+/** The names a panel's item entry shows under: the item's, and the name of the usage it is used as. Ids when the roster lacks them. */
+export function itemNames(entry: PanelItem, items: Item[]): { name: string; usageName: string } {
+  const item = items.find((i) => i.id === entry.itemId)
+  const usage = item?.usages.find((u) => u.id === entry.usageId)
+  return { name: item ? oneLine(item.name) : entry.itemId, usageName: usage ? oneLine(usage.name) : entry.usageId }
 }
 
 /** Who says a dialogue line: the character's name (the id when the roster lacks it), or null for narration and sound effects. */
@@ -83,14 +102,14 @@ export type PanelNeighbor = Panel | 'unreadable' | null
 
 /**
  * The `<panel_context>` block stored with each panel side-chat message. `roster` should include archived
- * characters: they still name the cast and speakers of panels drawn before they were archived.
+ * characters and `itemRoster` every item, archived ones too: they still name the cast, speakers and items of panels drawn before they were archived.
  */
-export function buildPanelContext(panel: Panel, roster: Character[], prev: PanelNeighbor, next: PanelNeighbor): string {
+export function buildPanelContext(panel: Panel, roster: Character[], itemRoster: Item[], prev: PanelNeighbor, next: PanelNeighbor): string {
   const names = new Map(roster.map((c) => [c.id, oneLine(c.name)]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
   const position = versionPosition(panel, panel.currentVersionId)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
-  const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, variationOf))
+  const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, itemRoster, variationOf))
   const lines = [
     '<panel_context>',
     `panel: ${panel.id}`,
@@ -102,6 +121,13 @@ export function buildPanelContext(panel: Panel, roster: Character[], prev: Panel
     `cast: ${cast || 'none'}`,
     `dialogue: ${dialogueLine(panel, names) || 'none'}`
   ]
+  if (panel.items.length > 0) {
+    const shown = panel.items.map((entry) => {
+      const { name, usageName } = itemNames(entry, itemRoster)
+      return `${name} (${usageName}${entry.heldBy === null ? '' : `, held by ${names.get(entry.heldBy) ?? entry.heldBy}`})`
+    })
+    lines.push(`items: ${shown.join(', ')}`)
+  }
   if (panel.continuityNotes.trim() !== '') lines.push(`continuity_notes: ${oneLine(panel.continuityNotes)}`)
   if (panel.offPanelMentions.length > 0) lines.push(`off_panel_mentions: ${panel.offPanelMentions.map(oneLine).join(', ')}`)
   lines.push(`previous: ${neighbor(prev)}`, `next: ${neighbor(next)}`, '</panel_context>')

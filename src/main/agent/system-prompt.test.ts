@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveMockRefs } from '../models/providers/mock'
-import { makeCharacter, makeEpisode, makeMeta, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeEpisode, makeItem, makeItemUsage, makeMeta, makePanel, makeVariation } from '../test/factories'
 import type { PanelVersion } from '@shared/types'
 import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection } from './system-prompt'
 
@@ -14,12 +14,13 @@ describe('system prompt', () => {
   })
 
   it('renders the state snapshot', () => {
-    const s = buildStateSnapshot({ meta: makeMeta({ title: 'Moon Diary' }), characters: [], episode: null, recentPanels: [] })
+    const s = buildStateSnapshot({ meta: makeMeta({ title: 'Moon Diary' }), characters: [], items: [], episode: null, recentPanels: [] })
     expect(s.split('\n')[0]).toBe('<project_state>')
     expect(s).toContain('title: Moon Diary')
     expect(s).toContain('story_mode: user')
     expect(s).toContain('current_episode: none')
     expect(s).toContain('characters: none')
+    expect(s).toContain('items: none')
     expect(s).toContain('recent_panels: none')
     expect(s.trim().endsWith('</project_state>')).toBe(true)
   })
@@ -37,6 +38,7 @@ describe('system prompt', () => {
     const s = buildStateSnapshot({
       meta: makeMeta(),
       characters: [mina, gone],
+      items: [],
       episode: makeEpisode({ title: 'Episode 1', panelIds: ['pnl_0000000001'] }),
       recentPanels: [panel]
     })
@@ -47,6 +49,36 @@ describe('system prompt', () => {
     expect(s).not.toContain('x'.repeat(161))
   })
 
+  it('lists items and their usages in project_state, leaving archived items out', () => {
+    const blaster = makeItem({
+      usages: [
+        makeItemUsage({ status: 'ready' }),
+        makeItemUsage({ id: 'use_0000000002', name: 'Firing', kind: 'action', status: 'pending' })
+      ]
+    })
+    const old = makeItem({ id: 'itm_0000000002', name: 'Old key', archived: true, usages: [makeItemUsage({ id: 'use_0000000003', itemId: 'itm_0000000002' })] })
+    const odd = makeItem({ id: 'itm_0000000003', name: 'Moon\n  lantern', usages: [makeItemUsage({ id: 'use_0000000004', itemId: 'itm_0000000003', name: 'At\nrest' })] })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [blaster, old, odd], episode: null, recentPanels: [] })
+    expect(s).toContain('\nitems:\n- itm_0000000001 Kestrel blaster usages: use_0000000001 At rest (ready), use_0000000002 Firing (pending)\n')
+    expect(s).toContain('\n- itm_0000000003 Moon lantern usages: use_0000000004 At rest (pending)\n')
+    expect(s).not.toContain('Old key')
+    expect(s).not.toContain('items: none')
+  })
+
+  it('says items: none when every item is archived', () => {
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [makeItem({ archived: true })], episode: null, recentPanels: [] })
+    expect(s).toContain('\nitems: none\n')
+  })
+
+  it('adds a panel\'s items to its recent_panels line only when it has some, naming archived items too', () => {
+    const blaster = makeItem({ archived: true, usages: [makeItemUsage({ status: 'ready' }), makeItemUsage({ id: 'use_0000000002', name: 'Firing', kind: 'action', status: 'ready' })] })
+    const plain = makePanel({ id: 'pnl_0000000002' })
+    const armed = makePanel({ items: [{ itemId: blaster.id, usageId: 'use_0000000002', heldBy: null, action: '' }] })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [blaster], episode: null, recentPanels: [plain, armed] })
+    expect(s).toContain('- pnl_0000000002 [medium] cast: none | Mina opens the apartment door. | dialogue: none\n')
+    expect(s).toContain('- pnl_0000000001 [medium] cast: none | Mina opens the apartment door. | dialogue: none | items: Kestrel blaster (Firing)\n')
+  })
+
   it('extracts a section body', () => {
     const md = '# T\n\n## Mission\nGo.\n\n## Hard Rules\nR1 a\nR2 b\n\n## Other\nz\n'
     expect(extractSection(md, 'Hard Rules')).toBe('R1 a\nR2 b')
@@ -55,7 +87,7 @@ describe('system prompt', () => {
 
   it('round-trips through the mock ref resolver', () => {
     const mina = makeCharacter({ variations: [makeVariation({ status: 'ready' })] })
-    const snap = buildStateSnapshot({ meta: makeMeta(), characters: [mina], episode: makeEpisode(), recentPanels: [] })
+    const snap = buildStateSnapshot({ meta: makeMeta(), characters: [mina], items: [], episode: makeEpisode(), recentPanels: [] })
     expect(resolveMockRefs({ c: { $character: 'Mina' }, e: { $episode: 'current' }, v: { $variation: ['Mina', 'Base'] } }, snap)).toEqual({
       c: 'chr_0000000001',
       e: 'epi_0000000001',
@@ -132,7 +164,7 @@ describe('buildPanelContext', () => {
   })
 
   it('is wrapped in <panel_context> and carries the panel fields', () => {
-    const s = buildPanelContext(panel, [mina, jin], null, null)
+    const s = buildPanelContext(panel, [mina, jin], [], null, null)
     const lines = s.split('\n')
     expect(lines[0]).toBe('<panel_context>')
     expect(lines.at(-1)).toBe('</panel_context>')
@@ -149,19 +181,19 @@ describe('buildPanelContext', () => {
   })
 
   it('counts ready versions only, and says none when the current version is not ready', () => {
-    expect(buildPanelContext({ ...panel, currentVersionId: 'ver_0000000001' }, [mina, jin], null, null)).toContain('version: v1 of 2')
+    expect(buildPanelContext({ ...panel, currentVersionId: 'ver_0000000001' }, [mina, jin], [], null, null)).toContain('version: v1 of 2')
     const pendingOnly = makePanel({ versions: [version('ver_0000000001', 'pending')], currentVersionId: null })
-    expect(buildPanelContext(pendingOnly, [], null, null)).toContain('\nversion: none\n')
-    expect(buildPanelContext(makePanel(), [], null, null)).toContain('\nversion: none\n')
+    expect(buildPanelContext(pendingOnly, [], [], null, null)).toContain('\nversion: none\n')
+    expect(buildPanelContext(makePanel(), [], [], null, null)).toContain('\nversion: none\n')
   })
 
   it('shows an empty cast and no dialogue as none, and adds continuity notes and off-panel mentions only when set', () => {
-    const bare = buildPanelContext(makePanel(), [], null, null)
+    const bare = buildPanelContext(makePanel(), [], [], null, null)
     expect(bare).toContain('\ncast: none\n')
     expect(bare).toContain('\ndialogue: none\n')
     expect(bare).not.toContain('continuity')
     expect(bare).not.toContain('off_panel')
-    const noted = buildPanelContext(makePanel({ continuityNotes: 'Same lighting.', offPanelMentions: ['Jin', 'Ren'] }), [], null, null)
+    const noted = buildPanelContext(makePanel({ continuityNotes: 'Same lighting.', offPanelMentions: ['Jin', 'Ren'] }), [], [], null, null)
     expect(noted).toContain('\ncontinuity_notes: Same lighting.\n')
     expect(noted).toContain('\noff_panel_mentions: Jin, Ren\n')
   })
@@ -175,14 +207,14 @@ describe('buildPanelContext', () => {
       dialogue: [{ id: 'dlg_0000000003', speakerId: mina.id, kind: 'speech', text: 'Ready?' }]
     })
     const next = makePanel({ id: 'pnl_00000000a2', shot: 'establishing', description: 'City skyline.' })
-    const s = buildPanelContext(panel, [mina, jin], prev, next)
+    const s = buildPanelContext(panel, [mina, jin], [], prev, next)
     expect(s).toContain(`\nprevious: pnl_00000000a1 [wide] cast: Mina (Base) | ${'x'.repeat(160)} | dialogue: Mina: "Ready?"\n`)
     expect(s).not.toContain('x'.repeat(161))
     expect(s).toContain('\nnext: pnl_00000000a2 [establishing] cast: none | City skyline. | dialogue: none\n')
   })
 
   it('falls back to ids for a character or variation that is not in the roster', () => {
-    const s = buildPanelContext(makePanel({ characters: [{ characterId: 'chr_00000000ff', variationId: 'var_00000000ff' }] }), [], null, null)
+    const s = buildPanelContext(makePanel({ characters: [{ characterId: 'chr_00000000ff', variationId: 'var_00000000ff' }] }), [], [], null, null)
     expect(s).toContain('\ncast: chr_00000000ff (var_00000000ff)\n')
   })
 
@@ -190,17 +222,26 @@ describe('buildPanelContext', () => {
     const odd = makeCharacter({ name: 'Mi\n  na', variations: [makeVariation({ name: 'Base\nlook' })] })
     const line = { id: 'dlg_0000000001', speakerId: odd.id, kind: 'speech' as const, text: 'Hi' }
     const here = makePanel({ characters: [{ characterId: odd.id, variationId: 'var_0000000001' }], dialogue: [line] })
-    const s = buildPanelContext(here, [odd], makePanel({ id: 'pnl_00000000a1', dialogue: [line] }), null)
+    const s = buildPanelContext(here, [odd], [], makePanel({ id: 'pnl_00000000a1', dialogue: [line] }), null)
     expect(s).toContain('\ncast: Mi na (Base look)\n')
     expect(s).toContain('\ndialogue: Mi na: "Hi"\n')
     expect(s).toContain('| dialogue: Mi na: "Hi"\n')
     expect(s.split('\n')).toHaveLength(12)
   })
 
+  it('lists the panel items with their usage and holder, and the neighbors\' items, only when there are some', () => {
+    expect(buildPanelContext(makePanel(), [], [], null, null)).not.toContain('items')
+    const blaster = makeItem({ usages: [makeItemUsage({ status: 'ready' }), makeItemUsage({ id: 'use_0000000002', name: 'Firing', kind: 'action', status: 'ready' })] })
+    const entry = { itemId: blaster.id, usageId: 'use_0000000002', heldBy: mina.id, action: 'aimed' }
+    const s = buildPanelContext({ ...panel, items: [entry, { itemId: 'itm_00000000ff', usageId: 'use_00000000ff', heldBy: null, action: '' }] }, [mina, jin], [blaster], makePanel({ id: 'pnl_00000000a1', items: [{ ...entry, heldBy: null }] }), null)
+    expect(s).toContain('\nitems: Kestrel blaster (Firing, held by Mina), itm_00000000ff (use_00000000ff)\n')
+    expect(s).toContain('| dialogue: none | items: Kestrel blaster (Firing)\n')
+  })
+
   it('says (unreadable) for a neighbor whose file could not be read, and none for one that does not exist', () => {
-    const s = buildPanelContext(makePanel(), [], 'unreadable', null)
+    const s = buildPanelContext(makePanel(), [], [], 'unreadable', null)
     expect(s).toContain('\nprevious: (unreadable)\n')
     expect(s).toContain('\nnext: none\n')
-    expect(buildPanelContext(makePanel(), [], null, 'unreadable')).toContain('\nnext: (unreadable)\n')
+    expect(buildPanelContext(makePanel(), [], [], null, 'unreadable')).toContain('\nnext: (unreadable)\n')
   })
 })

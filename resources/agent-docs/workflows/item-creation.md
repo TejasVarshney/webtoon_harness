@@ -59,10 +59,10 @@ Rules:
 - **Do not describe a usage in the lock.** The lock is the item at rest. Its glow while firing, its folded shape or its damage are usages.
 - **Same words forever.** The lock is pasted verbatim; any change changes every future image (R3).
 
-Good lock (67 words):
+Good lock (66 words):
 
 ```
-Compact sci-fi pistol, a hand and a half long, boxy frame with a short rounded barrel. Matte graphite-gray alloy body, brushed brass trim, three thin brass stripes on the left of the slide. A thin cyan light strip runs along the top of the barrel and a small cyan dot glows at the muzzle. Fin-shaped rear sight, oversized round trigger guard, grip wrapped in dark teal cord.
+Compact pistol, a hand and a half long, boxy frame with a short rounded barrel. Matte graphite-gray alloy body, brushed brass trim, three thin brass stripes on the left of the slide. A thin cyan light strip runs along the top of the barrel and a small cyan dot glows at the muzzle. Fin-shaped rear sight, oversized round trigger guard, grip wrapped in dark teal cord.
 ```
 
 Bad lock, and what is wrong with it:
@@ -135,8 +135,8 @@ Gray hands in an action image only show the grip. The panel draws the holder's o
 
 Usage names are unique per item, and every duplicate is a second image of the same thing that may look different. So before you create a usage:
 
-1. **List the item's usages first.** `list_items` shows every usage with its name, kind and status. `get_item` also shows each `delta`.
-2. **Reuse the one whose action matches.** "Jin shoots the Kestrel" matches "Firing". "Jin draws it" matches "At rest" (or "Holstered" if you made it). Compare meaning, not spelling.
+1. **List the item's usages first.** `list_items` shows every usage with its name, kind and status. `get_item` also shows each `delta`: use it whenever the names alone do not settle the question.
+2. **Reuse the one whose action matches.** "Jin shoots the Kestrel" matches "Firing"; "Jin folds it away" matches "Folded". Compare meaning, not spelling. When a name could fit two usages, or you are not sure which one fits, call `get_item` and read the deltas of the usages before you decide whether to reuse one or create a new one.
 3. **Create a usage only when no existing one fits.**
 
 Never create "Shooting" when "Firing" exists. If you try to create a usage whose name is already taken, the call is refused with `Kestrel blaster already has a usage named "Firing": use that one`. Do what it says: use that usage's id in the panel. Do not retry with a slightly different name.
@@ -219,7 +219,7 @@ create_item {
   "aliases": ["the Kestrel"],
   "ownerId": "chr_9f61b2d47a",
   "notes": "Jin's late sister's sidearm. Jams when it overheats; the beam only works at night.",
-  "appearanceLock": "Compact sci-fi pistol, a hand and a half long, boxy frame with a short rounded barrel. Matte graphite-gray alloy body, brushed brass trim, three thin brass stripes on the left of the slide. A thin cyan light strip runs along the top of the barrel and a small cyan dot glows at the muzzle. Fin-shaped rear sight, oversized round trigger guard, grip wrapped in dark teal cord."
+  "appearanceLock": "Compact pistol, a hand and a half long, boxy frame with a short rounded barrel. Matte graphite-gray alloy body, brushed brass trim, three thin brass stripes on the left of the slide. A thin cyan light strip runs along the top of the barrel and a small cyan dot glows at the muzzle. Fin-shaped rear sight, oversized round trigger guard, grip wrapped in dark teal cord."
 }
 ```
 

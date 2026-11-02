@@ -82,12 +82,13 @@ describe('panel chat tools: the tool set', () => {
     expect(schema('revert_to_version').required).toEqual(['versionId'])
     expect(schema('update_panel_fields').required ?? []).toEqual([])
     expect(Object.keys(schema('update_panel_fields').properties)).toEqual(
-      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'characters', 'dialogue', 'continuityNotes', 'offPanelMentions'])
+      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
     )
     expect(schema('update_panel_fields').properties.shot.enum).toContain('close-up')
-    for (const field of ['description', 'setting', 'characters', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
+    for (const field of ['description', 'setting', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))
     }
+    expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('get_panel_context').properties ?? {}).toEqual({})
   })
 })
@@ -440,6 +441,54 @@ describe('get_panel_context', () => {
       { speakerId: null, speaker: null, kind: 'sfx', text: 'Click' }
     ])
     expect(out.cast[0]).toMatchObject({ name: 'Mina' })
+  })
+})
+
+describe('the panel side chat sees the panel items', () => {
+  /** A Kestrel blaster with a ready "At rest" and a ready "Firing" usage, attached to p2 and held by Mina. */
+  async function armed() {
+    const t = await setup()
+    const item = await t.s.items.create(t.ctx, { name: 'Kestrel blaster', appearanceLock: 'Matte grey pistol' }, 'user')
+    await t.s.items.generateUsageImage(t.ctx, item.id, item.usages[0].id)
+    const firing = await t.s.items.addUsage(t.ctx, item.id, { name: 'Firing', kind: 'action', delta: 'Both hands grip it' }, 'user')
+    await t.s.items.generateUsageImage(t.ctx, item.id, firing.id)
+    const entry = { itemId: item.id, usageId: firing.id, heldBy: t.mina.id, action: 'aimed down the hall' }
+    return { ...t, item, firing, entry }
+  }
+
+  it('get_panel_context shows the items with their usage names and holders, and the items of the neighbors', async () => {
+    const { run, s, ctx, p2, p3, item, firing, entry, mina } = await armed()
+    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true })
+    await s.panels.update(ctx, p3.id, { items: [{ ...entry, heldBy: null, action: '' }] }, { strictMentions: true })
+    const out = json(await run('get_panel_context'))
+    expect(out.items).toEqual([{ itemId: item.id, name: 'Kestrel blaster', usageId: firing.id, usageName: 'Firing', heldBy: mina.id, action: 'aimed down the hall' }])
+    expect(out.next.items).toEqual([{ name: 'Kestrel blaster', usageName: 'Firing' }])
+    expect(out.previous.items).toEqual([])
+  })
+
+  it('still names an archived item', async () => {
+    const { run, s, ctx, p2, item, entry } = await armed()
+    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true })
+    await s.items.archive(ctx, item.id)
+    expect(json(await run('get_panel_context')).items[0]).toMatchObject({ name: 'Kestrel blaster', usageName: 'Firing' })
+  })
+
+  it('update_panel_fields replaces the items and reads them back', async () => {
+    const { run, p2, panel, entry, mina } = await armed()
+    const r = await run('update_panel_fields', { items: [entry] })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r)).toMatchObject({ updated: ['items'], fields: { items: [{ name: 'Kestrel blaster', usageName: 'Firing', heldBy: mina.id }] } })
+    expect((await panel(p2.id)).items).toEqual([entry])
+    const cleared = await run('update_panel_fields', { items: [] })
+    expect(json(cleared).fields.items).toEqual([])
+  })
+
+  it('update_panel_fields rejects a holder who is not in the cast', async () => {
+    const { run, entry, panel, p2 } = await armed()
+    const r = await run('update_panel_fields', { items: [{ ...entry, heldBy: 'chr_ffffffffff' }] })
+    expect(r.ok).toBe(false)
+    expect(r.content).toContain('who is not in the cast')
+    expect((await panel(p2.id)).items).toEqual([])
   })
 })
 

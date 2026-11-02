@@ -93,9 +93,11 @@ export class AgentRunner {
   protected async gatherState(ctx: ProjectContext, activeEpisodeId: string | null): Promise<Parameters<typeof buildStateSnapshot>[0]> {
     // Archived characters are included on purpose: the snapshot drops them from the roster but still uses them to name panel speakers.
     const characters = await this.services.characters.list(ctx, { includeArchived: true })
+    // Archived items too, for the same reason: they still name the items of existing panels.
+    const items = await this.services.items.list(ctx, { includeArchived: true })
     const episodes = await this.services.episodes.list(ctx)
     const episode = episodes.find((e) => e.id === activeEpisodeId) ?? episodes[0] ?? null
     const recentPanels = episode ? (await this.services.panels.list(ctx, episode.id)).slice(-RECENT_PANELS) : []
-    return { meta: await this.services.projects.getMeta(ctx), characters, episode, recentPanels }
+    return { meta: await this.services.projects.getMeta(ctx), characters, items, episode, recentPanels }
   }
 }

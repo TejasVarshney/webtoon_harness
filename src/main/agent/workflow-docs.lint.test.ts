@@ -3,8 +3,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildCheckMessage } from '../domain/consistency-checker'
 import { listSections } from '../domain/markdown-sections'
-import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, variationPrompt } from '../domain/prompts'
-import { makeCharacter, makePanel, makeVariation } from '../test/factories'
+import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, variationPrompt } from '../domain/prompts'
+import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
 import { extractSection } from './system-prompt'
 import { ALL_TOOL_NAMES, buildAgentTools } from './tools'
 import { buildPanelChatTools } from './tools/panel-chat-tools'
@@ -21,10 +21,10 @@ const REQUIRED: Record<string, string[]> = {
   'workflows/story-direction': ['Purpose', 'User-Led Mode', 'AI-Led Mode', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
   'workflows/character-creation': ['Purpose', 'Character Sheet', 'Writing the Appearance Lock', 'Base Reference Image', 'Variations', 'Variation Naming', 'When Not to Create a Variation', 'Automating Creation from Chat', 'Updating Characters', 'Examples'],
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
-  'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
+  'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Attaching Items', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
   'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
-  'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
+  'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
   'reference/consistency-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance']
 }
 const DOCS = Object.keys(REQUIRED)
@@ -154,6 +154,59 @@ describe('workflow docs lint', () => {
     expect(extractSection(doc, 'Panel Edit Prompt')).toContain(editPanelPrompt('{instruction}', [{ name: '{name}', appearanceLock: '{appearanceLock}' }]))
   })
 
+  const placeholderItem = () => makeItem({ name: '{item.name}', appearanceLock: '{item.appearanceLock}' })
+  const placeholderUsage = (kind: 'state' | 'action') => makeItemUsage({ name: '{usage.name}', kind, delta: '{usage.delta}' })
+  /** A character and an item with a ready action usage, both written with placeholders. */
+  function withItem() {
+    const character = makeCharacter({
+      name: '{name}',
+      appearanceLock: '{appearanceLock}',
+      variations: [makeVariation({ name: '{variation.name}', delta: '{variation.delta}', status: 'ready', imagePath: 'characters/a.png' })]
+    })
+    const item = makeItem({
+      name: '{item.name}',
+      appearanceLock: '{item.appearanceLock}',
+      usages: [makeItemUsage({ name: '{usage.name}', kind: 'action', delta: '{usage.delta}', status: 'ready', imagePath: 'items/a.png' })]
+    })
+    return { character, item, entry: { itemId: item.id, usageId: item.usages[0].id, heldBy: character.id, action: '{item.action}' } }
+  }
+
+  it('prompt templates reproduce the item prompt builders verbatim', () => {
+    const doc = read('reference/prompt-templates')
+    expect(extractSection(doc, 'Item Reference Prompt')).toContain(itemReferencePrompt(placeholderItem(), '{stylePreset}'))
+    expect(extractSection(doc, 'Item Usage Prompt')).toContain(itemUsagePrompt(placeholderItem(), placeholderUsage('state'), '{stylePreset}'))
+    expect(extractSection(doc, 'Item Usage Prompt')).toContain(itemUsagePrompt(placeholderItem(), placeholderUsage('action'), '{stylePreset}'))
+  })
+
+  it('prompt templates reproduce a panel prompt with items verbatim', () => {
+    const { character, item, entry } = withItem()
+    const prompt = composePanelPrompt({
+      stylePreset: '{stylePreset}',
+      panel: {
+        description: '{description}',
+        setting: '{setting}',
+        shot: '{shot}' as never,
+        aspect: '{aspect}' as never,
+        characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
+        items: [entry],
+        continuityNotes: '{continuityNotes}'
+      },
+      roster: new Map([[character.id, character]]),
+      itemRoster: new Map([[item.id, item]]),
+      previous: { panelId: 'pnl_0000000002', imagePath: 'panels/b.png' },
+      maxReferences: 4
+    })
+      .prompt.replace('(reference image 1)', '(reference image {n})')
+      .replace('(reference image 2)', '(reference image {k})')
+      .replace('(reference image 3)', '(reference image {m})')
+    expect(extractSection(read('reference/prompt-templates'), 'Panel Prompt')).toContain(prompt)
+  })
+
+  it('prompt templates reproduce a panel edit prompt with items verbatim', () => {
+    const edit = editPanelPrompt('{instruction}', [{ name: '{name}', appearanceLock: '{appearanceLock}' }], [{ name: '{item.name}', appearanceLock: '{item.appearanceLock}' }])
+    expect(extractSection(read('reference/prompt-templates'), 'Panel Edit Prompt')).toContain(edit)
+  })
+
   it('prompt templates reproduce the consistency checker user message verbatim', () => {
     const character = makeCharacter({
       name: '{name}',
@@ -174,6 +227,36 @@ describe('workflow docs lint', () => {
       itemRoster: []
     })
     expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
+  })
+
+  it('prompt templates reproduce the consistency checker user message with items verbatim', () => {
+    const { character, item, entry } = withItem()
+    const message = buildCheckMessage({
+      references: [
+        { relPath: 'characters/a.png', label: '{name}', subject: { kind: 'character', id: character.id } },
+        { relPath: 'items/a.png', label: '{item.name}', subject: { kind: 'item', id: item.id } },
+        { relPath: 'panels/b.png', label: 'previous panel', subject: { kind: 'previous' } }
+      ],
+      panel: {
+        ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }], items: [{ ...entry, action: '' }] }),
+        description: '{description}',
+        shot: '{shot}' as never
+      },
+      roster: [character],
+      itemRoster: [item]
+    })
+    expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
+  })
+
+  it('the checklist makes gray hands Major and checks each item against its reference', () => {
+    const checklist = read('reference/consistency-checklist')
+    expect(extractSection(checklist, 'Severity')).toContain('gray hands')
+    expect(extractSection(checklist, 'Checklist')).toContain('**Items, per item.**')
+  })
+
+  it('panel-generation explains how items are attached', () => {
+    const section = extractSection(read('workflows/panel-generation'), 'Attaching Items')
+    for (const word of ['usageId', 'heldBy', 'reference image']) expect(section).toContain(word)
   })
 
   it('the consistency checklist ends with the exact output contract', () => {
