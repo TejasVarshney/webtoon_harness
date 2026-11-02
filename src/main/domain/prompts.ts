@@ -1,4 +1,4 @@
-import type { Character, Panel, Variation } from '@shared/types'
+import type { Character, Item, ItemUsage, Panel, Variation } from '@shared/types'
 import { hasReadyReference } from './panel-validation'
 
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
@@ -10,6 +10,18 @@ export function baseReferencePrompt(c: Character, stylePreset: string): string {
 
 export function variationPrompt(c: Character, v: Variation, stylePreset: string): string {
   return `Character reference sheet. ${stylePreset}. Full body, front view, plain light-gray background, no text. ${c.appearanceLock} Variation: ${v.name} — ${v.delta}. Keep face, hair, body and colors identical to the reference image except for the variation.`
+}
+
+export function itemReferencePrompt(item: Item, stylePreset: string): string {
+  return `Item reference sheet. ${stylePreset}. The object alone, three-quarter view, centered, plain light-gray background, even studio lighting, no people, no hands, no text. ${item.appearanceLock}`
+}
+
+/** Action usages show only the gray grip; every other kind (state, and base, which `itemReferencePrompt` makes) uses the state wording. */
+export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: string): string {
+  if (usage.kind === 'action') {
+    return `Item usage reference sheet. ${stylePreset}. Plain light-gray background, no text. ${item.appearanceLock} Usage: ${usage.name} — ${usage.delta}. Show only plain gray hands and forearms, cropped at the elbow, with no face, body, clothing or jewelry, so the sheet shows only the grip, the motion and the effect. Keep shape, size, materials, colors and markings identical to the reference image.`
+  }
+  return `Item reference sheet. ${stylePreset}. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. ${item.appearanceLock} State: ${usage.name} — ${usage.delta}. Keep shape, size, materials, colors and markings identical to the reference image except for the state.`
 }
 
 // ---------------------------------------------------------------------------------------------

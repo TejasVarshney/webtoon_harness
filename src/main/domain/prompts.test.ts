@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Character, Panel, PanelCharacter } from '@shared/types'
-import { makeCharacter, makePanel, makeVariation } from '../test/factories'
-import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, variationPrompt } from './prompts'
+import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
+import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, variationPrompt } from './prompts'
 
 describe('character prompts', () => {
   it('pins the base reference prompt', () =>
@@ -14,6 +14,27 @@ describe('character prompts', () => {
       variationPrompt(makeCharacter({ appearanceLock: 'LOCK' }), makeVariation({ name: 'Outfit: School uniform', kind: 'outfit', delta: 'navy blazer' }), 'STYLE')
     ).toBe(
       'Character reference sheet. STYLE. Full body, front view, plain light-gray background, no text. LOCK Variation: Outfit: School uniform — navy blazer. Keep face, hair, body and colors identical to the reference image except for the variation.'
+    ))
+})
+
+describe('item prompts', () => {
+  it('item base prompt', () =>
+    expect(itemReferencePrompt(makeItem({ appearanceLock: 'LOCK' }), 'STYLE')).toBe(
+      'Item reference sheet. STYLE. The object alone, three-quarter view, centered, plain light-gray background, even studio lighting, no people, no hands, no text. LOCK'
+    ))
+
+  it('state usage prompt', () =>
+    expect(
+      itemUsagePrompt(makeItem({ appearanceLock: 'LOCK' }), makeItemUsage({ kind: 'state', name: 'Folded', delta: 'barrel folded back' }), 'STYLE')
+    ).toBe(
+      'Item reference sheet. STYLE. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. LOCK State: Folded — barrel folded back. Keep shape, size, materials, colors and markings identical to the reference image except for the state.'
+    ))
+
+  it('action usage prompt shows hands only', () =>
+    expect(
+      itemUsagePrompt(makeItem({ appearanceLock: 'LOCK' }), makeItemUsage({ kind: 'action', name: 'Firing', delta: 'cyan beam' }), 'STYLE')
+    ).toBe(
+      'Item usage reference sheet. STYLE. Plain light-gray background, no text. LOCK Usage: Firing — cyan beam. Show only plain gray hands and forearms, cropped at the elbow, with no face, body, clothing or jewelry, so the sheet shows only the grip, the motion and the effect. Keep shape, size, materials, colors and markings identical to the reference image.'
     ))
 })
 
