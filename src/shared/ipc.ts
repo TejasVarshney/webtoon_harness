@@ -158,6 +158,10 @@ export interface IpcContract {
   'plugins:setEnabled': { req: { id: string; enabled: boolean }; res: PluginView }
   /** Merges `patch` into the plugin's config; a running plugin is restarted. */
   'plugins:setConfig': { req: { id: string; patch: Record<string, unknown> }; res: PluginView }
+  /** The `claude mcp add` line (with the token) for the Claude Code link. Fails while the plugin is off. */
+  'claudeCode:connectCommand': { req: Record<string, never>; res: { command: string } }
+  /** Replaces the Claude Code link's token and disconnects its clients. Fails while the plugin is off. */
+  'claudeCode:regenerateToken': { req: Record<string, never>; res: void }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
 }
@@ -235,6 +239,8 @@ const channelSet: Record<IpcChannel, true> = {
   'plugins:list': true,
   'plugins:setEnabled': true,
   'plugins:setConfig': true,
+  'claudeCode:connectCommand': true,
+  'claudeCode:regenerateToken': true,
   'app:setActiveContext': true
 }
 

@@ -1,5 +1,7 @@
+import http from 'node:http'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createClaudeCodePlugin } from '../../plugins/claude-code/plugin'
 import { PluginManager } from '../../plugins/plugin-manager'
 import type { HarnessPlugin } from '../../plugins/types'
 import { testServices, type TestServices } from '../../test/test-services'
@@ -28,11 +30,11 @@ function fakePlugin(): HarnessPlugin {
   }
 }
 
-async function setup() {
+async function setup(plugins: HarnessPlugin[] = [fakePlugin()]) {
   s = await testServices()
   s.plugins = new PluginManager({
     file: path.join(s.userDataDir, 'plugins.json'),
-    plugins: [fakePlugin()],
+    plugins,
     services: s,
     activeContext: s.activeContext
   })
@@ -72,5 +74,50 @@ describe('plugins IPC handlers', () => {
     await expect(h['app:setActiveContext']({ projectId: 5 as never, episodeId: null })).rejects.toThrow('Invalid input: projectId: ')
     await expect(h['app:setActiveContext']({ projectId: null } as never)).rejects.toThrow('Invalid input: episodeId: ')
     expect(services.activeContext.get()).toEqual({ projectId: null, episodeId: null })
+  })
+
+  describe('Claude Code link', () => {
+    const OFF = "Turn on the Claude Code plugin's link first."
+    afterEach(() => s?.plugins.stopAll())
+
+    async function freePort(): Promise<number> {
+      const probe = http.createServer()
+      await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', () => resolve()))
+      const { port } = probe.address() as { port: number }
+      await new Promise<void>((resolve) => probe.close(() => resolve()))
+      return port
+    }
+
+    it('fails with a readable error while the plugin is off', async () => {
+      const { h } = await setup([createClaudeCodePlugin()])
+      await expect(h['claudeCode:connectCommand']({})).rejects.toThrow(OFF)
+      await expect(h['claudeCode:regenerateToken']({})).rejects.toThrow(OFF)
+    })
+
+    it('fails when the plugin is not built in', async () => {
+      const { h } = await setup()
+      await expect(h['claudeCode:connectCommand']({})).rejects.toThrow(OFF)
+    })
+
+    it('returns the connect command and replaces the token', async () => {
+      const plugin = createClaudeCodePlugin()
+      const { h } = await setup([plugin])
+      const port = await freePort()
+      await h['plugins:setConfig']({ id: 'claude-code', patch: { port } })
+      await h['plugins:setEnabled']({ id: 'claude-code', enabled: true })
+      const { command } = await h['claudeCode:connectCommand']({})
+      expect(command).toBe(
+        `claude mcp add --transport http webtoon http://127.0.0.1:${port}/mcp --header "Authorization: Bearer ${plugin.token()}"`
+      )
+      const before = plugin.token()
+      await expect(h['claudeCode:regenerateToken']({})).resolves.toBeUndefined()
+      expect(plugin.token()).not.toBe(before)
+      expect((await h['claudeCode:connectCommand']({})).command).toContain(plugin.token())
+    })
+
+    it('rejects a port outside 1024-65535 through plugins:setConfig', async () => {
+      const { h } = await setup([createClaudeCodePlugin()])
+      await expect(h['plugins:setConfig']({ id: 'claude-code', patch: { port: 80 } })).rejects.toThrow('Port must be between 1024 and 65535')
+    })
   })
 })

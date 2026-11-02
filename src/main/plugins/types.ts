@@ -18,6 +18,8 @@ export interface HarnessPlugin {
   stop(): Promise<void>
   /** A short line for Settings, e.g. "Listening on 127.0.0.1:7880" or "Port 7880 is in use". */
   status(): PluginStatus
+  /** Called with a config patch before it is saved; throws a readable error to refuse it. */
+  validateConfig?(patch: Record<string, unknown>): void
   /** Phase 2. */
   agentBackend?: AgentBackend
 }

@@ -106,9 +106,10 @@ export class PluginManager {
     })
   }
 
-  /** Merges `patch` into the plugin's config and saves it; a running plugin is restarted so it sees the change. */
+  /** Merges `patch` into the plugin's config and saves it (unless the plugin's `validateConfig` refuses it); a running plugin is restarted so it sees the change. */
   async setConfig(id: string, patch: Record<string, unknown>): Promise<PluginView> {
     const plugin = this.require(id)
+    plugin.validateConfig?.(patch)
     return this.mutex.run(LIFECYCLE_KEY, async () => {
       await this.mutate((draft) => {
         const e = entry(draft, id)

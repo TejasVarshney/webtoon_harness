@@ -213,6 +213,21 @@ describe('PluginManager', () => {
     await expect(m.setConfig('nope', {})).rejects.toThrow('Unknown plugin: nope')
   })
 
+  it('refuses a config the plugin rejects, before saving or restarting', async () => {
+    const p = fakePlugin()
+    p.validateConfig = (patch) => {
+      if (patch.port === 80) throw new Error('Port must be between 1024 and 65535')
+    }
+    const m = manager([p])
+    await m.load()
+    await m.setEnabled('fake', true)
+    await expect(m.setConfig('fake', { port: 80 })).rejects.toThrow('Port must be between 1024 and 65535')
+    expect(p.calls).toEqual(['start'])
+    expect(await readFile()).toEqual({ plugins: { fake: { enabled: true, config: {} } } })
+    await m.setConfig('fake', { port: 7900 })
+    expect(m.list()[0].config).toEqual({ port: 7900 })
+  })
+
   it('announces every change with plugins.changed', async () => {
     const m = manager([fakePlugin()])
     await m.load()
