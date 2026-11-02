@@ -6,6 +6,7 @@ import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
 import { useModelsStore } from '../../stores/models-store'
+import { initialPluginsState, usePluginsStore } from '../../stores/plugins-store'
 import { installFakeApi } from '../../test/fake-api'
 import { ChatPane } from './ChatPane'
 
@@ -32,6 +33,7 @@ beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId: P, sessionId: S, activeEpisodeId: 'epi_0000000001' })
   useChatStore.setState({ messages: {}, streaming: {}, notices: {} })
   useModelsStore.setState({ view: mockView })
+  usePluginsStore.setState({ ...initialPluginsState })
 })
 
 describe('ChatPane', () => {
@@ -63,6 +65,18 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('composer-send')).toBeInTheDocument()
     expect(useAppStore.getState().runningThreads).toEqual({})
     stop()
+  })
+
+  it('hides the offline-mock banner and labels the picker while Claude Code runs the chat', async () => {
+    installFakeApi({ 'sessions:load': () => [] })
+    usePluginsStore.setState({
+      plugins: [{ id: 'claude-code', name: 'Claude Code', description: '', enabled: true, status: { state: 'running', message: '' }, config: { useAsAgent: true } }]
+    })
+    render(<ChatPane />)
+    expect(await screen.findByTestId('composer-input')).toBeEnabled()
+    expect(screen.queryByTestId('mock-banner')).toBeNull()
+    expect(screen.getByTestId('model-picker')).toBeDisabled()
+    expect(screen.getByTestId('model-picker')).toHaveDisplayValue('Claude Code')
   })
 
   it('cancels the running run on Stop', async () => {

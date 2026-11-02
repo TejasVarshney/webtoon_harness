@@ -164,6 +164,8 @@ export interface IpcContract {
   'claudeCode:connectCommand': { req: Record<string, never>; res: { command: string } }
   /** Replaces the Claude Code link's token and disconnects its clients. Fails while the plugin is off. */
   'claudeCode:regenerateToken': { req: Record<string, never>; res: void }
+  /** Where a run would find the Claude Code executable (the saved path, then PATH, then the desktop app's install), or null. Works while the plugin is off. */
+  'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
 }
@@ -244,6 +246,7 @@ const channelSet: Record<IpcChannel, true> = {
   'plugins:setConfig': true,
   'claudeCode:connectCommand': true,
   'claudeCode:regenerateToken': true,
+  'claudeCode:detect': true,
   'app:setActiveContext': true
 }
 

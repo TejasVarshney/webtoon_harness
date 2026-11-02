@@ -7,6 +7,7 @@ import { SessionSidebar } from './components/sessions/SessionSidebar'
 import { startEventSync } from './events'
 import { startActiveContextSync, useAppStore } from './stores/app-store'
 import { useModelsStore } from './stores/models-store'
+import { usePluginsStore } from './stores/plugins-store'
 
 export function App() {
   useEffect(() => {
@@ -14,6 +15,8 @@ export function App() {
     const stopContext = startActiveContextSync()
     void useAppStore.getState().loadProjects()
     void useModelsStore.getState().load().catch((e: unknown) => console.error('Failed to load models', e))
+    // The model picker needs to know whether Claude Code runs the chat, before Settings is ever opened.
+    void usePluginsStore.getState().load().catch((e: unknown) => console.error('Failed to load plugins', e))
     return () => {
       stopEvents()
       stopContext()

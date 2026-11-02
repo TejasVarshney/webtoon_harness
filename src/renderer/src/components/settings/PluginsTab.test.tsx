@@ -143,6 +143,116 @@ describe('PluginsTab', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Token replaced')
   })
 
+  describe('Claude Code as the agent', () => {
+    const exe = 'C:\\Users\\me\\AppData\\Roaming\\Claude\\claude-code\\2.1.3\\abc\\claude.exe'
+
+    it('shows the switch off by default and turns it on through plugins:setConfig', async () => {
+      const { calls } = installFakeApi({
+        'plugins:list': () => [running],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => ({ path: null }),
+        'plugins:setConfig': () => plugin({ ...running, config: { port: 7880, useAsAgent: true } })
+      })
+      render(<PluginsTab />)
+      const agent = await screen.findByRole('switch', { name: 'Use Claude Code as the agent' })
+      expect(agent).not.toBeChecked()
+      await userEvent.click(agent)
+      await waitFor(() => expect(calls.find((c) => c.channel === 'plugins:setConfig')?.req).toEqual({ id: 'claude-code', patch: { useAsAgent: true } }))
+      expect(await screen.findByRole('switch', { name: 'Use Claude Code as the agent' })).toBeChecked()
+    })
+
+    it('shows the switch on when the config says so, and turns it off', async () => {
+      const on = plugin({ ...running, config: { port: 7880, useAsAgent: true } })
+      const { calls } = installFakeApi({
+        'plugins:list': () => [on],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => ({ path: null }),
+        'plugins:setConfig': () => running
+      })
+      render(<PluginsTab />)
+      const agent = await screen.findByRole('switch', { name: 'Use Claude Code as the agent' })
+      expect(agent).toBeChecked()
+      await userEvent.click(agent)
+      await waitFor(() => expect(calls.find((c) => c.channel === 'plugins:setConfig')?.req).toEqual({ id: 'claude-code', patch: { useAsAgent: false } }))
+    })
+
+    it('has no agent controls while the plugin is off', async () => {
+      installFakeApi({ 'plugins:list': () => [plugin()], 'plugins:loadError': () => null })
+      render(<PluginsTab />)
+      await screen.findByText('Claude Code')
+      expect(screen.queryByRole('switch', { name: 'Use Claude Code as the agent' })).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Claude Code path')).not.toBeInTheDocument()
+    })
+
+    it('shows the saved path and what was detected', async () => {
+      installFakeApi({
+        'plugins:list': () => [plugin({ ...running, config: { port: 7880, claudePath: 'D:\\tools\\claude.exe' } })],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => ({ path: exe })
+      })
+      render(<PluginsTab />)
+      expect(await screen.findByLabelText('Claude Code path')).toHaveValue('D:\\tools\\claude.exe')
+      expect(await screen.findByText(`Detected: ${exe}`)).toBeInTheDocument()
+    })
+
+    it('says Not found when nothing is detected', async () => {
+      installFakeApi({ 'plugins:list': () => [running], 'plugins:loadError': () => null, 'claudeCode:detect': () => ({ path: null }) })
+      render(<PluginsTab />)
+      expect(await screen.findByText('Not found')).toBeInTheDocument()
+      expect(screen.getByLabelText('Claude Code path')).toHaveValue('')
+    })
+
+    it('saves the path, then detects again', async () => {
+      let saved = ''
+      const { calls } = installFakeApi({
+        'plugins:list': () => [running],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => ({ path: saved === '' ? null : saved }),
+        'plugins:setConfig': (req: { patch: { claudePath: string } }) => {
+          saved = req.patch.claudePath
+          return plugin({ ...running, config: { port: 7880, claudePath: saved } })
+        }
+      })
+      render(<PluginsTab />)
+      expect(await screen.findByText('Not found')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save path' })).toBeDisabled()
+      await userEvent.type(screen.getByLabelText('Claude Code path'), 'D:\\tools\\claude.exe')
+      await userEvent.click(screen.getByRole('button', { name: 'Save path' }))
+      await waitFor(() =>
+        expect(calls.find((c) => c.channel === 'plugins:setConfig')?.req).toEqual({ id: 'claude-code', patch: { claudePath: 'D:\\tools\\claude.exe' } })
+      )
+      expect(await screen.findByText('Detected: D:\\tools\\claude.exe')).toBeInTheDocument()
+    })
+
+    it('shows the refusal for a bad path inline', async () => {
+      installFakeApi({
+        'plugins:list': () => [running],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => ({ path: null }),
+        'plugins:setConfig': () => {
+          throw new Error('claudePath must be text')
+        }
+      })
+      render(<PluginsTab />)
+      await userEvent.type(await screen.findByLabelText('Claude Code path'), 'x')
+      await userEvent.click(screen.getByRole('button', { name: 'Save path' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('claudePath must be text')
+    })
+
+    it('says so when detection itself fails, without blocking the rest', async () => {
+      installFakeApi({
+        'plugins:list': () => [running],
+        'plugins:loadError': () => null,
+        'claudeCode:detect': () => {
+          throw new Error('boom')
+        }
+      })
+      render(<PluginsTab />)
+      expect(await screen.findByText('Could not look for Claude Code')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Copy command' })).toBeInTheDocument()
+    })
+  })
+
   it('shows a corrupt plugins.json at the top, naming the problem', async () => {
     installFakeApi({ 'plugins:list': () => [plugin()], 'plugins:loadError': () => 'Unexpected token o' })
     render(<PluginsTab />)

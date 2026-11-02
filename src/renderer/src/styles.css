@@ -2264,6 +2264,18 @@ kbd {
   width: 96px;
 }
 
+.plugin-agent-switch,
+.plugin-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-path input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* --- Panel editor ----------------------------------------------------------------------------------- */
 
 .panel-editor {

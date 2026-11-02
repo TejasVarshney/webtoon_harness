@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createClaudeCodePlugin } from '../../plugins/claude-code/plugin'
@@ -31,7 +32,7 @@ function fakePlugin(): HarnessPlugin {
   }
 }
 
-async function setup(plugins: HarnessPlugin[] = [fakePlugin()]) {
+async function setup(plugins: HarnessPlugin[] = [fakePlugin()], detect?: (configured: string) => string | null) {
   s = await testServices()
   s.plugins = new PluginManager({
     file: path.join(s.userDataDir, 'plugins.json'),
@@ -40,7 +41,7 @@ async function setup(plugins: HarnessPlugin[] = [fakePlugin()]) {
     activeContext: s.activeContext
   })
   await s.plugins.load()
-  const h = pluginsHandlers(s) as Required<HandlerMap>
+  const h = pluginsHandlers(s, detect) as Required<HandlerMap>
   return { services: s, h }
 }
 
@@ -123,6 +124,35 @@ describe('plugins IPC handlers', () => {
       await expect(h['claudeCode:regenerateToken']({})).resolves.toBeUndefined()
       expect(plugin.token()).not.toBe(before)
       expect((await h['claudeCode:connectCommand']({})).command).toContain(plugin.token())
+    })
+
+    it('detects Claude Code from the configured path, even while the plugin is off', async () => {
+      const exe = path.join(os.tmpdir(), `claude-detect-${process.pid}.exe`)
+      await fs.promises.writeFile(exe, '')
+      try {
+        const { h } = await setup([createClaudeCodePlugin()])
+        await h['plugins:setConfig']({ id: 'claude-code', patch: { claudePath: exe } })
+        expect(await h['claudeCode:detect']({})).toEqual({ path: exe })
+      } finally {
+        await fs.promises.rm(exe, { force: true })
+      }
+    })
+
+    it('hands the saved claudePath to the lookup and reports null when nothing is found', async () => {
+      const seen: string[] = []
+      const { h } = await setup([createClaudeCodePlugin()], (configured) => {
+        seen.push(configured)
+        return null
+      })
+      expect(await h['claudeCode:detect']({})).toEqual({ path: null })
+      await h['plugins:setConfig']({ id: 'claude-code', patch: { claudePath: 'D:\tools\claude.exe' } })
+      expect(await h['claudeCode:detect']({})).toEqual({ path: null })
+      expect(seen).toEqual(['', 'D:\tools\claude.exe'])
+    })
+
+    it('detects nothing special when the plugin is not built in', async () => {
+      const { h } = await setup([], () => null)
+      expect(await h['claudeCode:detect']({})).toEqual({ path: null })
     })
 
     it('rejects a port outside 1024-65535 through plugins:setConfig', async () => {

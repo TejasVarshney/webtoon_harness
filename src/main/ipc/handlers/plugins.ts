@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Services } from '../../services'
+import { locateClaudeOnThisMachine } from '../../plugins/claude-code/claude-code-backend'
 import { LINK_OFF, type ClaudeCodePlugin } from '../../plugins/claude-code/plugin'
 import { IdSchema, parseInput } from '../validate'
 import type { HandlerMap } from './projects'
@@ -16,7 +17,7 @@ function claudeCode(s: Services): ClaudeCodePlugin {
 }
 
 /** The built-in plugins, and the window's active project and episode that they act on. */
-export function pluginsHandlers(s: Services): HandlerMap {
+export function pluginsHandlers(s: Services, detectClaude: (configured: string) => string | null = locateClaudeOnThisMachine): HandlerMap {
   return {
     'plugins:list': async () => s.plugins.list(),
     'plugins:loadError': async () => s.plugins.loadError(),
@@ -30,6 +31,11 @@ export function pluginsHandlers(s: Services): HandlerMap {
     },
     'claudeCode:connectCommand': async () => ({ command: claudeCode(s).connectCommand() }),
     'claudeCode:regenerateToken': async () => claudeCode(s).regenerateToken(),
+    // Reads the saved path whether or not the plugin is on, so Settings can show it before the link is switched on.
+    'claudeCode:detect': async () => {
+      const claudePath = s.plugins.list().find((p) => p.id === 'claude-code')?.config.claudePath
+      return { path: detectClaude(typeof claudePath === 'string' ? claudePath : '') }
+    },
     'app:setActiveContext': async (req) => {
       s.activeContext.set(parseInput(ActiveContextSchema, req))
     }

@@ -98,6 +98,11 @@ function listDir(dir: string): string[] {
   }
 }
 
+/** Where `claude` is on this machine, given the path saved in Settings → Plugins ('' when unset). A run and the Settings hint both use it. */
+export function locateClaudeOnThisMachine(configured: string): string | null {
+  return locateClaude({ configured, pathLookup: findOnPath, appData: process.env.APPDATA ?? '', exists: fs.existsSync, listDir })
+}
+
 /** Ends the process and everything it started (MCP clients, sub-agents). */
 function killTree(child: ChildProcess): void {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return
@@ -136,14 +141,7 @@ export class ClaudeCodeBackend implements AgentBackend {
     this.spawn = opts.spawn ?? child_process.spawn
     this.locate =
       opts.locate ??
-      (() =>
-        locateClaude({
-          configured: String(this.plugin.config().claudePath ?? ''),
-          pathLookup: findOnPath,
-          appData: process.env.APPDATA ?? '',
-          exists: fs.existsSync,
-          listDir
-        }))
+      (() => locateClaudeOnThisMachine(String(this.plugin.config().claudePath ?? '')))
   }
 
   isRunning(threadKey: string): boolean {

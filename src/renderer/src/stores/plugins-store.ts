@@ -19,6 +19,12 @@ export interface PluginsActions {
 
 export const initialPluginsState: PluginsData = { plugins: null, loadError: null }
 
+/** Whether the Claude Code plugin is on and set to run the main chat; the app's own agent model is then not used. */
+export function claudeCodeIsAgent(s: PluginsData): boolean {
+  const plugin = s.plugins?.find((p) => p.id === 'claude-code')
+  return plugin?.enabled === true && plugin.config.useAsAgent === true
+}
+
 export const usePluginsStore = create<PluginsData & PluginsActions>()((set) => {
   /** Shows the view main returned for one plugin at once; the change event follows with the rest. */
   const replace = (view: PluginView): void =>

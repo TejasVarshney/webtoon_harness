@@ -20,12 +20,33 @@ interface ClaudeCodeControlsProps {
   run(task: Promise<unknown>, done?: string): void
 }
 
-/** What the `claude-code` card adds while the plugin is on: the port, the connect command and the token. */
+/** What the `claude-code` card adds while the plugin is on: the port, the connect command, the token and the agent settings. */
 function ClaudeCodeControls({ plugin, run }: ClaudeCodeControlsProps) {
   const saved = typeof plugin.config.port === 'number' ? plugin.config.port : DEFAULT_PORT
   const [port, setPort] = useState(String(saved))
+  const savedPath = typeof plugin.config.claudePath === 'string' ? plugin.config.claudePath : ''
+  const [claudePath, setClaudePath] = useState(savedPath)
+  /** What a run would use: a path, null for none, undefined while looking, 'failed' when the lookup itself failed. */
+  const [detected, setDetected] = useState<string | null | undefined | 'failed'>(undefined)
 
   useEffect(() => setPort(String(saved)), [saved])
+  useEffect(() => setClaudePath(savedPath), [savedPath])
+  // Looks again whenever the saved path changes, so the hint always describes what is saved.
+  useEffect(() => {
+    let stale = false
+    setDetected(undefined)
+    api.invoke('claudeCode:detect', {}).then(
+      ({ path }) => {
+        if (!stale) setDetected(path)
+      },
+      () => {
+        if (!stale) setDetected('failed')
+      }
+    )
+    return () => {
+      stale = true
+    }
+  }, [savedPath])
 
   async function copyCommand(): Promise<void> {
     const { command } = await api.invoke('claudeCode:connectCommand', {})
@@ -57,6 +78,34 @@ function ClaudeCodeControls({ plugin, run }: ClaudeCodeControlsProps) {
         </button>
       </div>
       <p className="hint">Saving a new port restarts the link. Regenerating the token disconnects every client that uses the old one.</p>
+      <label className="plugin-agent-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={plugin.config.useAsAgent === true}
+          onChange={(e) => run(usePluginsStore.getState().setConfig(plugin.id, { useAsAgent: e.target.checked }))}
+        />
+        Use Claude Code as the agent
+      </label>
+      <p className="hint">The main chat then runs on your Claude Code sign-in instead of the model chosen in Settings → Models.</p>
+      <form
+        className="plugin-path"
+        onSubmit={(e) => {
+          e.preventDefault()
+          run(usePluginsStore.getState().setConfig(plugin.id, { claudePath: claudePath.trim() }))
+        }}
+      >
+        <label htmlFor={`${plugin.id}-path`}>Claude Code path</label>
+        <input id={`${plugin.id}-path`} type="text" value={claudePath} placeholder="Leave empty to find it automatically" onChange={(e) => setClaudePath(e.target.value)} />
+        <button type="submit" disabled={claudePath.trim() === savedPath}>
+          Save path
+        </button>
+      </form>
+      {detected !== undefined && (
+        <p className="hint" data-testid="claude-code-detected">
+          {detected === 'failed' ? 'Could not look for Claude Code' : detected === null ? 'Not found' : `Detected: ${detected}`}
+        </p>
+      )}
     </div>
   )
 }

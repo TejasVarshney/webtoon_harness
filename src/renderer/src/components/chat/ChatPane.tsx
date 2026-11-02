@@ -4,6 +4,7 @@ import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
 import { useModelsStore } from '../../stores/models-store'
+import { claudeCodeIsAgent, usePluginsStore } from '../../stores/plugins-store'
 import { MOCK_BANNER_TEXT } from './ChatHeader'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
@@ -28,6 +29,7 @@ export function ChatPane() {
   const driven = useAppStore((s) => s.sessions.find((x) => x.id === s.sessionId)?.driver === 'claude-code')
   const draft = useChatStore((s) => s.draft)
   const setDraft = useChatStore((s) => s.setDraft)
+  const claudeCodeAgent = usePluginsStore(claudeCodeIsAgent)
   const onMock = useModelsStore((s) => {
     const model = s.view?.models.find((m) => m.id === s.view?.effectiveRoles.agent)
     return s.view?.endpoints.find((e) => e.id === model?.endpointId)?.kind === 'mock'
@@ -58,7 +60,7 @@ export function ChatPane() {
 
   return (
     <div className="chat-pane">
-      {onMock && (
+      {onMock && !claudeCodeAgent && (
         <p className="mock-banner" data-testid="mock-banner">
           {MOCK_BANNER_TEXT}
         </p>
