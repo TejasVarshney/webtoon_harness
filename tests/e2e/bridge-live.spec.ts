@@ -39,20 +39,35 @@ async function assertBridgeUsable(): Promise<void> {
 }
 
 /**
- * Waits until a card (a variation, usage or panel) shows its image. A failed generation ends the wait at once with the card's own
- * text, rather than after the 8 minute limit. `state` reads the card: its status and whether it has an image.
+ * Waits until a card (a variation, usage or panel) shows its image. ChatGPT sometimes refuses an image ("may violate our
+ * guardrails") and draws the same prompt on a second try, so the first failure is logged and `retry` (the card's own Retry or
+ * Regenerate control) is clicked once; a second failure fails the test at once with the card's text, not after the 8 minute limit.
+ * `state` reads the card: its status and whether it has an image.
  */
-async function waitForImage(what: string, state: () => Promise<{ status: string | null; hasImage: boolean; text: string }>): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const s = await state()
-        if (s.status === 'failed') throw new Error(`${what} failed: ${s.text.replace(/\s+/g, ' ').trim()}`)
-        return s.status === 'ready' && s.hasImage
-      },
-      { message: `${what} should get its image`, timeout: IMAGE_TIMEOUT, intervals: [2_000] }
-    )
-    .toBe(true)
+async function waitForImage(
+  what: string,
+  state: () => Promise<{ status: string | null; hasImage: boolean; text: string }>,
+  retry: () => Promise<void>
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const deadline = Date.now() + IMAGE_TIMEOUT
+    let failure: string
+    for (;;) {
+      const s = await state()
+      if (s.status === 'failed') {
+        failure = s.text.replace(/\s+/g, ' ').trim()
+        break
+      }
+      if (s.status === 'ready' && s.hasImage) return
+      if (Date.now() > deadline) throw new Error(`${what} did not get its image within ${IMAGE_TIMEOUT / 60_000} minutes`)
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+    }
+    if (attempt >= 2) throw new Error(`${what} failed again after a retry: ${failure}`)
+    console.log(`${what} failed (${failure}); retrying once`)
+    await retry()
+    // The card keeps showing the old failure until the new attempt is recorded as pending.
+    await expect.poll(async () => (await state()).status, { message: `${what} should start its retry`, timeout: 30_000, intervals: [500] }).not.toBe('failed')
+  }
 }
 
 const cardState = (card: Locator) => async () => ({
@@ -89,7 +104,8 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
     await characterForm.getByLabel('Role', { exact: true }).selectOption('protagonist')
     await characterForm.getByLabel('Appearance lock').fill(MINA_LOCK)
     await characterForm.getByRole('button', { name: 'Create character' }).click()
-    await waitForImage('Mina base image', cardState(page.getByTestId('variation-card').first()))
+    const minaCard = page.getByTestId('variation-card').first()
+    await waitForImage('Mina base image', cardState(minaCard), () => minaCard.getByRole('button', { name: 'Retry' }).click())
     await page.getByRole('button', { name: 'Back to characters' }).click()
     await expect(page.getByTestId('character-card').filter({ hasText: 'Mina' }).locator('img')).toBeVisible()
 
@@ -101,7 +117,8 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
     await itemForm.getByLabel('Owner').selectOption({ label: 'Mina' })
     await itemForm.getByTestId('item-form-lock').fill(BLASTER_LOCK)
     await itemForm.getByTestId('item-form-save').click()
-    await waitForImage('Kestrel blaster At rest image', cardState(page.getByTestId('usage-card').filter({ hasText: 'At rest' })))
+    const atRestCard = page.getByTestId('usage-card').filter({ hasText: 'At rest' })
+    await waitForImage('Kestrel blaster At rest image', cardState(atRestCard), () => atRestCard.getByRole('button', { name: 'Regenerate' }).click())
 
     // Firing: the action-usage sheet with gray hands.
     await page.getByTestId('usage-add').click()
@@ -110,7 +127,8 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
     await usageForm.getByLabel('Kind').selectOption({ label: 'Action' })
     await usageForm.getByLabel('How it is used / what changes').fill(FIRING_DELTA)
     await usageForm.getByTestId('usage-submit').click()
-    await waitForImage('Kestrel blaster Firing image', cardState(page.getByTestId('usage-card').filter({ hasText: 'Firing' })))
+    const firingCard = page.getByTestId('usage-card').filter({ hasText: 'Firing' })
+    await waitForImage('Kestrel blaster Firing image', cardState(firingCard), () => firingCard.getByRole('button', { name: 'Regenerate' }).click())
 
     // The panel, through the panel editor: Mina in her base look, the blaster in Firing, held by her.
     await openTab(page, 'webtoon')
@@ -130,15 +148,17 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
     await picker.getByLabel('Item action').fill('firing at the drone')
     await editor.getByRole('button', { name: 'Create & generate' }).click()
 
-    await waitForImage('Panel image', async () => {
-      const card = page.getByTestId('panel-card')
-      const failed = page.getByTestId('panel-status').and(page.locator('[data-status="failed"]'))
-      return {
-        status: (await failed.count()) > 0 ? 'failed' : (await card.locator('img').count()) > 0 ? 'ready' : 'pending',
-        hasImage: (await card.locator('img').count()) > 0,
-        text: (await failed.count()) > 0 ? await failed.first().innerText() : ''
-      }
-    })
+    const panelCard = page.getByTestId('panel-card')
+    const panelFailed = page.getByTestId('panel-status').and(page.locator('[data-status="failed"]'))
+    await waitForImage(
+      'Panel image',
+      async () => {
+        const failed = (await panelFailed.count()) > 0
+        const hasImage = (await panelCard.locator('img').count()) > 0
+        return { status: failed ? 'failed' : hasImage ? 'ready' : 'pending', hasImage, text: failed ? await panelFailed.first().innerText() : '' }
+      },
+      () => panelCard.getByRole('button', { name: 'Retry' }).click() // the failed status's own Retry draws the panel again
+    )
 
     // The files on disk. The consistency check is recorded after the image lands (and a failed one earns one redraw),
     // so wait for the check of the final version before reading it.
