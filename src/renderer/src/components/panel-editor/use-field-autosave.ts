@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import type { Panel, PanelCharacter, PanelItem, PanelPatch } from '@shared/types'
 import { errorText } from '../characters/controls'
-import { queuePanelSave } from './panel-save-queue'
+import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 
 /** How long a field waits after the last change before it saves. */
 export const AUTOSAVE_MS = 600
@@ -170,7 +170,7 @@ function patchesFor<K extends AutosaveField>(panel: Panel, field: K, value: Pane
 export interface FieldAutosave<T> extends Autosave<T> {
   /** The last save the service refused, until the next save or `undo`. */
   error: string | null
-  /** From the service's last save of this field: it was saved, but something deserves a look. */
+  /** From the service, when the panel's last save was of this field: it was saved, but something deserves a look. */
   warnings: string[]
 }
 
@@ -181,19 +181,15 @@ export interface FieldAutosave<T> extends Autosave<T> {
  */
 export function useFieldAutosave<K extends AutosaveField>(panel: Panel, field: K): FieldAutosave<Panel[K]> {
   const [error, setError] = useState<string | null>(null)
-  const [warnings, setWarnings] = useState<string[]>([])
   const panelId = panel.id
+  const warnings = useLastWarnings(panelId, [field])
   const draft = useAutosave<Panel[K]>(panel[field], {
     normalize: (value) => normalizeField(field, value),
     sendable: (value) => sendableField(field, value),
     send: (value) => {
       setError(null)
-      return queuePanelSave(panelId, (current) => patchesFor(current, field, value)).then(
-        (result) => {
-          if (result === null) return 'dropped'
-          setWarnings(result.warnings)
-          return 'saved'
-        },
+      return queuePanelSave(panelId, (current) => patchesFor(current, field, value), field).then(
+        (result) => (result === null ? 'dropped' : 'saved'),
         (e: unknown) => {
           setError(errorText(e))
           return 'refused'

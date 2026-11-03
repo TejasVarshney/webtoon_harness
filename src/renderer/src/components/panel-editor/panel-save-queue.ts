@@ -1,3 +1,4 @@
+import { useCallback, useSyncExternalStore } from 'react'
 import type { Panel, PanelPatch } from '@shared/types'
 import { usePanelsStore } from '../../stores/panels-store'
 
@@ -22,6 +23,45 @@ export interface SaveResult {
 
 const queues = new Map<string, Queue>()
 
+/** The warnings of a panel's last save, and what made it: a field's name, or `dialogue`. */
+interface LastWarnings {
+  by: string
+  warnings: string[]
+}
+
+/**
+ * Each panel's last save's warnings. The service checks the whole panel on every save, so the last save's warnings
+ * replace the ones before, whoever made them (spec §6: they show until the next save). Kept only while a tab shows them.
+ */
+const lastWarnings = new Map<string, { last: LastWarnings | null; listeners: Set<() => void> }>()
+
+function recordWarnings(panelId: string, by: string, warnings: string[]): void {
+  const entry = lastWarnings.get(panelId)
+  if (entry === undefined) return
+  entry.last = { by, warnings }
+  entry.listeners.forEach((listener) => listener())
+}
+
+const NONE: string[] = []
+
+/** The warnings of the panel's last save, when one of `by` made it: the tab that made a save shows them. */
+export function useLastWarnings(panelId: string, by: readonly string[]): string[] {
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const entry = lastWarnings.get(panelId) ?? { last: null, listeners: new Set<() => void>() }
+      lastWarnings.set(panelId, entry)
+      entry.listeners.add(listener)
+      return () => {
+        entry.listeners.delete(listener)
+        if (entry.listeners.size === 0 && lastWarnings.get(panelId) === entry) lastWarnings.delete(panelId)
+      }
+    },
+    [panelId]
+  )
+  const last = useSyncExternalStore(subscribe, () => lastWarnings.get(panelId)?.last ?? null)
+  return last !== null && by.includes(last.by) ? last.warnings : NONE
+}
+
 /** The panel as the store has it, in whichever loaded episode has it. */
 export function findPanel(panelId: string): Panel | undefined {
   for (const panels of Object.values(usePanelsStore.getState().panelsByEpisode)) {
@@ -40,9 +80,9 @@ function caughtUp(stored: Panel | undefined, queue: Queue): boolean {
  * Sends the patches `build` makes of the panel, in order, once the saves queued before them have settled. A refused
  * patch stops the ones after it. Resolves to the last result, or `null` when nothing was sent: `build` made no patch,
  * or the panel left the store (R2). Rejects when the service refuses a patch or `build` throws; neither holds up the
- * saves queued after it.
+ * saves queued after it. `by` (a field's name, or `dialogue`) is what made the save: its warnings show there.
  */
-export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[]): Promise<SaveResult | null> {
+export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[], by: string): Promise<SaveResult | null> {
   const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, latest: null }
   queues.set(panelId, queue)
   queue.waiting += 1
@@ -54,6 +94,7 @@ export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPa
     for (const patch of build(panel)) {
       result = await usePanelsStore.getState().updatePanel(panelId, patch)
       queue.latest = result.panel
+      recordWarnings(panelId, by, result.warnings)
     }
     return result
   })

@@ -80,7 +80,7 @@ export function useDialogueSaver(panelId: string): DialogueSaver {
         }
         report(panelId, { conflict: false, error: null }, false)
         return [{ dialogue }]
-      }).then(
+      }, 'dialogue').then(
         (result) => (conflict ? 'conflict' : result === null ? 'skipped' : 'saved'),
         (e: unknown) => {
           report(panelId, { error: errorText(e) }, true)

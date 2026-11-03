@@ -26,9 +26,8 @@ export interface PanelInspectorProps {
   onSelectLine(i: number | null): void
 }
 
-/** A tab's refused saves, each with "Undo my change", then the service's warnings as a quiet list. */
-function SaveStatus({ fields }: { fields: FieldAutosave<unknown>[] }) {
-  const warnings = [...new Set(fields.flatMap((f) => f.warnings))]
+/** A tab's refused saves, each with "Undo my change", then the warnings of its last save as a quiet list. */
+function SaveStatus({ fields, warnings }: { fields: FieldAutosave<unknown>[]; warnings: string[] }) {
   return (
     <>
       {fields.map(
@@ -124,19 +123,19 @@ export function PanelInspector({ panel, selectedLine, onSelectLine }: PanelInspe
         {tab === 'cast' && (
           // The pickers' inputs have no blur of their own: leaving any of them saves at once.
           <div className="inspector-fields" onBlur={flushPickers}>
-            <SaveStatus fields={[characters, items]} />
+            <SaveStatus fields={[characters, items]} warnings={characters.warnings} />
             <CastPicker characters={roster} value={characters.value} onChange={setCast} />
           </div>
         )}
         {tab === 'items' && (
           <div className="inspector-fields" onBlur={flushPickers}>
-            <SaveStatus fields={[items, characters]} />
+            <SaveStatus fields={[items, characters]} warnings={items.warnings} />
             <ItemPicker items={itemRoster} cast={characters.value} characters={roster} value={items.value} onChange={setItems} />
           </div>
         )}
         {tab === 'scene' && (
           <div className="inspector-fields">
-            <SaveStatus fields={Object.values(scene)} />
+            <SaveStatus fields={Object.values(scene)} warnings={Object.values(scene).flatMap((f) => f.warnings)} />
             <SceneTab fields={scene} />
           </div>
         )}

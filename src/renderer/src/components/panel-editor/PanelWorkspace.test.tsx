@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { visualFields } from '@shared/visual-fields'
 import type { Panel, PanelPatch } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
@@ -317,6 +317,39 @@ describe('PanelWorkspace', () => {
     focus(within(row).getByLabelText('Text'))
     expect(within(within(workspace()).getByTestId('panel-stage')).getByLabelText('Line 1')).toHaveAttribute('data-selected', 'true')
     expect(row).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('keeps one stage when stepping, and saves what was typed in a bubble and a nudge still waiting', async () => {
+    const keyWarnings = vi.spyOn(console, 'error')
+    // jsdom has no layout: the panel is 400x600 at the origin, and every bubble is 100x50 at its top left corner.
+    const rect = (width: number, height: number): DOMRect => ({ left: 0, top: 0, width, height, x: 0, y: 0, right: width, bottom: height, toJSON: () => ({}) }) as DOMRect
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('bubble') ? rect(100, 50) : rect(400, 600)
+    })
+    const line = (text: string) => ({ id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text, placement: { x: 0.5, y: 0.8 } })
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line('Night fell.')] }, { ...third, dialogue: [line('Dawn.')] }] } })
+    const { calls } = mount({ 'panels:update': (req: { panelId: string }) => ({ panel: req.panelId === B ? second : third, warnings: [] }) })
+    const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')
+    const saved = (): { panelId: string; patch: PanelPatch }[] => calls.filter((c) => c.channel === 'panels:update').map((c) => c.req as { panelId: string; patch: PanelPatch })
+
+    // Text typed into a bubble, then a step with the button.
+    fireEvent.doubleClick(within(stage()).getByLabelText('Line 1'))
+    fireEvent.change(within(stage()).getByRole('textbox', { name: 'Line text' }), { target: { value: 'Night came.' } })
+    await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+    expect(within(workspace()).getAllByTestId('panel-stage')).toHaveLength(1)
+    expect(within(stage()).getByLabelText('Line 1')).toHaveTextContent('Dawn.')
+    await waitFor(() => expect(saved()).toHaveLength(1))
+    expect(saved()[0]).toMatchObject({ panelId: B, patch: { dialogue: [{ text: 'Night came.' }] } })
+
+    // A nudge still waiting, then a step from elsewhere (a chat thumbnail): the stage it was made on saves it as it goes.
+    focus(within(stage()).getByLabelText('Line 1'))
+    fireEvent.keyDown(within(stage()).getByLabelText('Line 1'), { key: 'ArrowRight' })
+    act(() => useAppStore.getState().selectPanel(A))
+    expect(within(workspace()).getAllByTestId('panel-stage')).toHaveLength(1)
+    await waitFor(() => expect(saved()).toHaveLength(2))
+    expect(saved()[1]).toMatchObject({ panelId: C, patch: { dialogue: [{ placement: { x: 0.51, y: 0.8 } }] } })
+    expect(keyWarnings.mock.calls.filter((args) => String(args[0]).includes('same key'))).toEqual([])
+    vi.restoreAllMocks()
   })
 
   it('saves what was typed in Scene when stepping to the next panel (Review Focus 3)', async () => {

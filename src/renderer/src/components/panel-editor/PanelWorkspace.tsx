@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Group, Panel as Column, Separator } from 'react-resizable-panels'
 import { staleVisualFields } from '@shared/visual-fields'
@@ -142,12 +142,12 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
             )}
             <div className="editing-body">
               {panel !== undefined ? (
-                <>
-                  {/* Each panel gets its own stage and tabs, so nothing of one panel's editing carries to the next, and
-                      what is still waiting to save is saved when the user steps away or goes back. */}
-                  <PanelStage key={panel.id} panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} />
-                  <PanelInspector key={panel.id} panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} />
-                </>
+                // Each panel gets its own stage and tabs, keyed together, so nothing of one panel's editing carries to the
+                // next, and what is still waiting to save is saved when the user steps away or goes back.
+                <Fragment key={panel.id}>
+                  <PanelStage panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} />
+                  <PanelInspector panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} />
+                </Fragment>
               ) : loaded ? (
                 <p className="placeholder">Panel not in the current episode</p>
               ) : loadError !== null ? (

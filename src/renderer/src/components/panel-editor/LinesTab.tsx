@@ -3,10 +3,13 @@ import { DialogueKindSchema } from '@shared/schemas'
 import type { Character, DialogueLine, Panel } from '@shared/types'
 import { Field } from '../characters/controls'
 import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'
+import { useLastWarnings } from './panel-save-queue'
 import { useDialogueSaver, type DialogueSaver } from './use-dialogue-saver'
 import { useAutosave } from './use-field-autosave'
 
 const KINDS = DialogueKindSchema.options
+/** The saves Lines shows the warnings of: the dialogue's, from here or from the stage. */
+const DIALOGUE = ['dialogue'] as const
 
 /** How long a row waits after a press is released before it is scrolled to: the second click of a double-click may be coming. */
 export const AFTER_PRESS_MS = 400
@@ -336,6 +339,7 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
  */
 export function LinesTab({ panel, characters, selectedLine, onSelectLine, presses }: LinesTabProps) {
   const { save, conflict, error, clear } = useDialogueSaver(panel.id)
+  const warnings = useLastWarnings(panel.id, DIALOGUE)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
   const rows = useRef<(HTMLLIElement | null)[]>([])
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
@@ -360,6 +364,13 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, presse
             Undo my change
           </button>
         </div>
+      )}
+      {warnings.length > 0 && (
+        <ul className="inspector-warnings">
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
       )}
       {panel.dialogue.length === 0 && adding === null ? (
         <p className="placeholder">No lines yet. Double-click the panel to place one.</p>

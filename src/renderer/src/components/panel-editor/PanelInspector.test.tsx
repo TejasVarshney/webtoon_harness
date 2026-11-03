@@ -33,12 +33,15 @@ let stored: Panel
 let ids = 0
 /** While set, `panels:update` refuses with it. */
 let refusal: string | null = null
+/** What the next `panels:update` warns about (the service checks the whole panel on every save). */
+let warnings: string[] = []
 const originalScroll = Element.prototype.scrollIntoView
 
 beforeEach(() => {
   stored = panel({ id: A, characters: cast, dialogue: [hello, night] })
   ids = 100
   refusal = null
+  warnings = []
   useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, selectedPanelId: A })
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [stored] } })
   useCharactersStore.setState({ ...initialCharactersState, projectId: P, characters: [mina, sora], loaded: true })
@@ -64,7 +67,7 @@ function installApi() {
       // Like the service: a dialogue save gives every line a new id.
       const lines = dialogue?.map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null }))
       stored = { ...stored, ...rest, ...(lines !== undefined ? { dialogue: lines } : {}) } as Panel
-      return { panel: stored, warnings: [] }
+      return { panel: stored, warnings }
     },
     'panels:list': () => [stored]
   })
@@ -360,6 +363,43 @@ describe('PanelInspector', () => {
       expect(within(tabPanel()).getByText(/no ready variation/i)).toBeInTheDocument()
       await act(async () => undefined)
       expect(updates(calls)).toEqual([])
+    })
+  })
+
+  describe('warnings', () => {
+    const warningList = (): HTMLElement | null => tabPanel().querySelector('.inspector-warnings')
+
+    it("shows the last save's warnings in the tab that made it, and drops them on the next save, whoever makes it", async () => {
+      const { calls } = mount()
+      open('Scene')
+      warnings = ['Mentioned but not attached: Sora. Attach them to characters or list them in offPanelMentions.']
+      act(() => field('Description').focus())
+      fireEvent.change(field('Description'), { target: { value: 'Mina waves at Sora.' } })
+      act(() => field('Description').blur())
+      await waitFor(() => expect(warningList()).toHaveTextContent('Mentioned but not attached: Sora.'))
+
+      // Sora is cast: that save checks the panel again, and has nothing to say.
+      warnings = []
+      open('Cast')
+      expect(warningList()).toBeNull()
+      act(() => within(tabPanel()).getByRole('button', { name: 'Add character' }).focus())
+      fireEvent.click(within(tabPanel()).getByRole('button', { name: 'Add character' }))
+      act(() => within(tabPanel()).getByRole('button', { name: 'Add character' }).blur())
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      open('Scene')
+      await waitFor(() => expect(warningList()).toBeNull())
+    })
+
+    it("shows a dialogue save's warnings in Lines", async () => {
+      const { calls } = mount()
+      warnings = ['Unknown speaker: chr_ffffffffff']
+      act(() => text(0).focus())
+      fireEvent.change(text(0), { target: { value: 'Hi.' } })
+      act(() => text(0).blur())
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      await waitFor(() => expect(warningList()).toHaveTextContent('Unknown speaker: chr_ffffffffff'))
+      open('Scene')
+      expect(warningList()).toBeNull()
     })
   })
 
