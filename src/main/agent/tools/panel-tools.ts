@@ -52,10 +52,10 @@ function versionBrief(panel: Panel): { id: string; status: PanelVersion['status'
 
 /** The layout inputs with their describe texts, shared by create_panel and the panel chat's update_panel_fields. */
 export const layoutFields = {
-  frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade.'),
-  beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false."),
-  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change.'),
-  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band.')
+  frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade. No redraw needed.'),
+  beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false. No redraw needed."),
+  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.'),
+  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band. No redraw needed.')
 }
 
 const episodeSummary = (e: Episode) => ({ id: e.id, number: e.number, title: e.title, synopsis: e.synopsis, panelCount: e.panelIds.length })

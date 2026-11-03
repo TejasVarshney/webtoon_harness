@@ -88,6 +88,7 @@ describe('panel chat tools: the tool set', () => {
     for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))
     }
+    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('get_panel_context').properties ?? {}).toEqual({})
   })

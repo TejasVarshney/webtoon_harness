@@ -256,6 +256,20 @@ describe('workflow docs lint', () => {
     expect(extractSection(checklist, 'Checklist')).toContain('**Items, per item.**')
   })
 
+  it('panel-editing says a layout change needs no redraw (spec §5.1), where the panel side chat reads it', () => {
+    const table = extractSection(read('workflows/panel-editing'), 'Edit vs Regenerate')
+    const row = table.split('\n').find((line) => line.includes('`frame`'))
+    expect(row, 'a row for the layout fields').toBeDefined()
+    for (const word of ['`beside`', '`gapAfter`', '`gutter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
+    expect(row!.trimEnd().endsWith('| no |')).toBe(true)
+    // The composition row is about the picture's arrangement, not the panel's layout.
+    expect(table.split('\n').find((line) => line.includes('A different composition'))).not.toMatch(/\blayout\b/)
+    const catalog = extractSection(read('AGENTS'), 'Tool Catalog')
+    const update = catalog.split('\n').find((line) => line.startsWith('- `update_panel` '))!
+    expect(update).toContain('`frame`, `beside`, `gapAfter` and `gutter` need no redraw')
+    expect(update).toContain('an aspect change between 9:16, 1:2 and 1:3')
+  })
+
   it('panel-generation explains how items are attached', () => {
     const section = extractSection(read('workflows/panel-generation'), 'Attaching Items')
     for (const word of ['usageId', 'heldBy', 'reference image']) expect(section).toContain(word)

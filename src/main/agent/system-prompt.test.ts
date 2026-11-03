@@ -190,6 +190,14 @@ describe('buildPanelContext', () => {
     expect(lines).toContain('next: none')
   })
 
+  it('shows the layout only where it differs from the defaults', () => {
+    expect(buildPanelContext(panel, [mina, jin], [], null, null)).not.toContain('layout:')
+    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const lines = buildPanelContext(laidOut, [], [], null, null).split('\n')
+    expect(lines).toContain('layout: beside, slanted, gap long, gutter black')
+    expect(lines.indexOf('layout: beside, slanted, gap long, gutter black')).toBe(lines.indexOf('aspect: 2:3') + 1)
+  })
+
   it('counts ready versions only, and says none when the current version is not ready', () => {
     expect(buildPanelContext({ ...panel, currentVersionId: 'ver_0000000001' }, [mina, jin], [], null, null)).toContain('version: v1 of 2')
     const pendingOnly = makePanel({ versions: [version('ver_0000000001', 'pending')], currentVersionId: null })

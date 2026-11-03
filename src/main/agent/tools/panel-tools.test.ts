@@ -125,6 +125,7 @@ describe('panel tools: the tool set', () => {
     for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) {
       expect(schema('create_panel').required).not.toContain(field)
       expect(schema('create_panel').properties[field].description, field).toEqual(expect.any(String))
+      expect(schema('create_panel').properties[field].description, field).toContain('No redraw needed.')
     }
     expect(schema('list_panels').required).toEqual(['episodeId'])
     expect(schema('update_panel').required).toEqual(['panelId', 'patch'])
