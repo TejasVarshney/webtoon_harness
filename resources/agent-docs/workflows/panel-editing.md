@@ -4,7 +4,7 @@
 
 This doc tells you how to change a panel that already exists: its dialogue, its fields, or its image. It applies in two places:
 
-- **The panel side chat.** The user selected one panel and is talking to you about it. This doc and the Hard Rules are your instructions there.
+- **The panel side chat.** The user opened one panel in editing mode and is talking to you about it. This doc and the Hard Rules are your instructions there.
 - **The main chat**, when the user asks to change an existing panel there. The Scope table gives the main-chat tool for each side-chat tool, and Example 7 is a main-chat edit.
 
 In the side chat, every user message starts with a `<panel_context>` block. The app writes it; the user does not see it. Example:
@@ -18,7 +18,7 @@ aspect: 3:4
 setting: Inside the night bus, back section, midnight
 description: Jin sits up in the back row, half awake, looking at Mina, who stands in the aisle a few steps away.
 cast: Jin (Base), Mina (Outfit: School uniform)
-dialogue: Jin: "You can see this bus?" / Mina: "Seriously? It's a bus."
+dialogue: Jin: "You can see this bus?" @0.62,0.18 / Mina: "Seriously? It's a bus."
 continuity_notes: Same bus interior and cold blue night light as the previous panel.
 previous: pnl_1c7e5a20f4 [wide] cast: Mina (Outfit: School uniform) | Mina steps onto the empty night bus. | dialogue: none
 next: none
@@ -32,7 +32,7 @@ What the lines mean:
 - `shot`, `aspect`, `setting`, `description`: the panel's fields.
 - `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`, `gutter black`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw.
 - `cast`: each visible character with the name of the variation (look) they wear. Ids are not shown here: `get_panel_context` gives them.
-- `dialogue`: the lines in reading order, as `Speaker: "text"`; narration and sound effects show their kind instead of a speaker.
+- `dialogue`: the lines in reading order, as `Speaker: "text"`; narration and sound effects show their kind instead of a speaker. A line the user has placed on the panel ends with `@` and its spot, as fractions of the panel (across, then down); a line without it is placed automatically.
 - `continuity_notes` and `off_panel_mentions`: shown only when the panel has them.
 - `previous` and `next`: one-line summaries of the neighboring panels, `none`, or `(unreadable)`.
 
@@ -137,11 +137,18 @@ Only a `ready` version can be made current. In the main chat there is no revert 
 Dialogue is drawn over the image by the app, so changing it needs no image call (R6).
 
 - `update_panel_fields` with `dialogue` replaces the **whole** list. Include every line you keep, in reading order.
-- Each line is `speakerId`, `kind` and `text`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
+- Each line is `speakerId`, `kind` and `text`, and optionally `placement`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
 - `speakerId` is a character id (copy it from `get_panel_context`), or null for `narration` and `sfx`.
 - At most 2 bubbles per panel and 25 words per bubble.
 - `"dialogue": []` removes all lines.
 - Main chat only (this tool does not exist in the side chat): `update_panel` with `panelId` and `patch: {"dialogue": [...]}`, without `regenerate`.
+
+Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself.
+
+- **Keep the user's placements.** A line you send without `placement` keeps the placement of the line at the same position in the list, so changing words never moves a bubble. Only if you reorder, add or remove lines can a line end up with another line's spot: then send `placement` on each line you keep.
+- **Set one only when the user asks for a spot**, for example "put Mina's bubble top right". Pick the centre of that region, such as `{"x": 0.8, "y": 0.2}`, and leave every other line without `placement`.
+- **`placement: null` clears a spot** and hands the bubble back to the app. Use it when the user asks to reset a bubble, not otherwise.
+- A placement is layout, like `frame` or `gutter`: it needs no redraw.
 
 ## Reporting Changes
 

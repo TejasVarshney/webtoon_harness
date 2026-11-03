@@ -88,8 +88,11 @@ function panelSummary(p: Panel, names: Map<string, string>, items: Item[], detai
   return `${p.id} [${layoutTag(p)}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}`
 }
 
-const dialogueLine = (p: Panel, names: Map<string, string>): string =>
-  p.dialogue.map((d) => `${d.speakerId ? (names.get(d.speakerId) ?? d.speakerId) : d.kind}: "${oneLine(d.text)}"`).join(' / ')
+/** The dialogue on one line. With `withPlacement`, a placed line ends ` @x,y` (two decimals); neighbor summaries leave it off. */
+const dialogueLine = (p: Panel, names: Map<string, string>, withPlacement = false): string =>
+  p.dialogue
+    .map((d) => `${d.speakerId ? (names.get(d.speakerId) ?? d.speakerId) : d.kind}: "${oneLine(d.text)}"${withPlacement && d.placement ? ` @${d.placement.x.toFixed(2)},${d.placement.y.toFixed(2)}` : ''}`)
+    .join(' / ')
 
 /** The names a panel's cast entry shows under: the character's, and the name of the variation it wears. Ids when the roster lacks them. */
 export function castNames(entry: PanelCharacter, roster: Character[]): { name: string; variationName: string } {
@@ -135,7 +138,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
     `setting: ${oneLine(panel.setting)}`,
     `description: ${oneLine(panel.description)}`,
     `cast: ${cast || 'none'}`,
-    `dialogue: ${dialogueLine(panel, names) || 'none'}`
+    `dialogue: ${dialogueLine(panel, names, true) || 'none'}`
   ]
   if (panel.items.length > 0) {
     const shown = panel.items.map((entry) => {

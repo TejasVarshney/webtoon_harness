@@ -134,6 +134,14 @@ describe('panel tools: the tool set', () => {
     expect(schema('create_episode').required).toEqual(['title'])
     for (const spec of Object.values(specs)) expect(spec.description.length).toBeGreaterThan(20)
   })
+
+  it('explains the placement of a dialogue line where the model writes dialogue', () => {
+    const specs = Object.fromEntries(buildAgentTools({ vision: true }).specs().map((t) => [t.name, t]))
+    const sentence = "placement is the bubble's centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line's current placement."
+    const props = (name: string) => (specs[name].inputSchema as { properties: Record<string, any> }).properties
+    expect(props('create_panel').dialogue.description).toContain(sentence)
+    expect(props('update_panel').patch.description).toContain(sentence)
+  })
 })
 
 describe('create_panel', () => {

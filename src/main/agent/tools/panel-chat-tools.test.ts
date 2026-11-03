@@ -19,6 +19,7 @@ const call = (name: string, input: unknown) => ({ id: `call_${++n}`, name, input
 const json = (r: ToolResult): Record<string, any> => JSON.parse(r.content)
 const GHOST_VERSION = 'ver_ffffffffff'
 const IMAGE_MODEL = 'mdl_000000000b'
+const PLACEMENT_DOC = "placement is the bubble's centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line's current placement."
 
 /** An image call that never answers on its own and rejects the way a provider does when its signal fires. */
 function hangOnAbort(): (_ctx: ProjectContext, req: { signal?: AbortSignal }) => Promise<never> {
@@ -90,6 +91,7 @@ describe('panel chat tools: the tool set', () => {
     }
     for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
+    expect(schema('update_panel_fields').properties.dialogue.description).toContain(PLACEMENT_DOC)
     expect(schema('get_panel_context').properties ?? {}).toEqual({})
   })
 })
@@ -306,6 +308,23 @@ describe('update_panel_fields', () => {
     expect(stored.versions).toHaveLength(1)
   })
 
+  it('keeps a line\'s placement when the patch leaves it out, and shows it back', async () => {
+    const { run, s, ctx, mina, p2 } = await setup()
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Old text', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true })
+    const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'New text' }] })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r).fields.dialogue[0]).toMatchObject({ text: 'New text', placement: { x: 0.62, y: 0.18 } })
+  })
+
+  it('clears a placement with an explicit null and sets one when given', async () => {
+    const { run, s, ctx, mina, p2 } = await setup()
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true })
+    const cleared = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: null }] })
+    expect(json(cleared).fields.dialogue[0].placement).toBeNull()
+    const set = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.3, y: 0.7 } }] })
+    expect(json(set).fields.dialogue[0].placement).toEqual({ x: 0.3, y: 0.7 })
+  })
+
   it('joins every validation issue with newlines and writes nothing', async () => {
     const { run, p2, panel } = await setup()
     const r = await run('update_panel_fields', {
@@ -453,6 +472,18 @@ describe('get_panel_context', () => {
       { speakerId: null, speaker: null, kind: 'sfx', text: 'Click' }
     ])
     expect(out.cast[0]).toMatchObject({ name: 'Mina' })
+  })
+
+  it('lists the placement of every line, null for an automatic one', async () => {
+    const { run, s, ctx, mina, p2 } = await setup()
+    await s.panels.update(
+      ctx,
+      p2.id,
+      { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hi', placement: { x: 0.62, y: 0.18 } }, { speakerId: null, kind: 'sfx', text: 'Click' }] },
+      { strictMentions: true }
+    )
+    const out = json(await run('get_panel_context'))
+    expect(out.dialogue.map((line: { placement: unknown }) => line.placement)).toEqual([{ x: 0.62, y: 0.18 }, null])
   })
 })
 
