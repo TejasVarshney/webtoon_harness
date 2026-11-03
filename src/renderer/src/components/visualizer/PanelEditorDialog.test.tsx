@@ -113,7 +113,7 @@ describe('PanelEditorDialog', () => {
     for (const label of ['Description', 'Setting', 'Shot', 'Aspect']) expect(editor.getByLabelText(label)).toBeInTheDocument()
     expect(editor.getByLabelText('Shot')).toHaveValue('medium')
     expect(editor.getByLabelText('Aspect')).toHaveValue('2:3')
-    expect(optionLabels(editor.getByLabelText('Aspect'))).toEqual(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+    expect(optionLabels(editor.getByLabelText('Aspect'))).toEqual(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
     expect(optionLabels(editor.getByLabelText('Shot'))).toContain('over-the-shoulder')
   })
 

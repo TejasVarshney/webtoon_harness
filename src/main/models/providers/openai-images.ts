@@ -1,5 +1,5 @@
 import OpenAI, { toFile } from 'openai'
-import type { PanelAspect } from '@shared/types'
+import type { DrawAspect } from '@shared/types'
 import type { ResolvedModel } from '../registry'
 import { ProviderError } from './types'
 import type { ImageEditRequest, ImageProvider, ImageRef, ImageRequest, ImageResult } from './types'
@@ -8,7 +8,7 @@ const MAX_REFERENCES = 16
 
 export type OpenAISize = '1024x1024' | '1024x1536' | '1536x1024'
 
-export function aspectToOpenAISize(aspect: PanelAspect): OpenAISize {
+export function aspectToOpenAISize(aspect: DrawAspect): OpenAISize {
   switch (aspect) {
     case '1:1':
       return '1024x1024'

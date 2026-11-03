@@ -1,4 +1,4 @@
-import type { ChatMessage, PanelAspect, ToolCall } from '@shared/types'
+import type { ChatMessage, DrawAspect, ToolCall } from '@shared/types'
 
 export interface ToolSpec {
   name: string
@@ -52,7 +52,7 @@ export interface ImageRef {
 export interface ImageRequest {
   prompt: string
   references: ImageRef[]
-  aspect: PanelAspect
+  aspect: DrawAspect
   signal: AbortSignal
 }
 

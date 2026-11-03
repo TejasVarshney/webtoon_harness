@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import type { PanelAspect } from '@shared/types'
+import type { DrawAspect } from '@shared/types'
 import { createImageProvider as defaultCreateImageProvider } from '../models/providers/factory'
 import { ProviderError } from '../models/providers/types'
 import type { ImageProvider, ImageRef } from '../models/providers/types'
@@ -17,7 +17,7 @@ export interface ImageReferenceInput {
 export interface ImageGenRequest {
   prompt: string
   references: ImageReferenceInput[]
-  aspect: PanelAspect
+  aspect: DrawAspect
   signal?: AbortSignal
 }
 
