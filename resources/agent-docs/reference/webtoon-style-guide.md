@@ -5,7 +5,7 @@ This is a reference for the visual choices of a panel: format, aspect, shot, pac
 ## Format
 
 - A webtoon is one long vertical strip, read on a phone by scrolling down. One panel at a time fills most of the screen.
-- Panels sit in a single column, top to bottom, in episode order. There are no side-by-side panels and no page layout.
+- Panels run top to bottom in episode order. By default each panel is a full-width row; a panel can sit beside the previous one (2 or 3 to a row), and its frame, the gap after it and its gutter colour can change. See Panel Layout.
 - Every image is drawn **without text** (R6). The app draws the dialogue over the image as HTML: speech and thought bubbles on the left, narration as a full-width caption box, sound effects as large centered lettering.
 - The bubbles stack from the **top** of the panel downward. When a panel has dialogue, keep faces and the key action out of the top quarter of the frame: put sky, ceiling, wall or empty background there. Say it in the description when it matters: "Mina in the lower half of the frame, the night sky above her".
 - The project's `style` (from `<project_state>`) is added to every prompt. Never add style words of your own (anime, realistic, watercolor) to a description.
@@ -22,6 +22,7 @@ This is a reference for the visual choices of a panel: format, aspect, shot, pac
 | `9:16` | Tall | Drama in height: a reveal at the bottom, a fall, a tall building, a figure under a huge sky, a slow emotional pause. | Conversations (too much empty space). |
 | `4:3` | Wide | A room with several people, a street, a car interior. | Single faces. |
 | `16:9` | Very wide | Landscapes, panoramas, a big crowd, an establishing shot of a town. | Close-ups. |
+| `1:2`, `1:3` | Very tall | Descents, falls, tall structures, reveals from above or below. The image is drawn at 9:16 and its top and bottom fade out, so keep them plain. | Anything that needs a frame or a face-to-face scene. |
 
 Rules of thumb:
 
@@ -29,6 +30,20 @@ Rules of thumb:
 - A `9:16` panel slows the reader down: save it for 1 or 2 key moments per episode.
 - A run of `1:1` panels speeds the reader up: use it for action, comedy and panic.
 - Wide panels (`4:3`, `16:9`) are rare in a vertical strip; use them for places and groups.
+
+## Panel Layout
+
+Four optional fields on `create_panel` and `update_panel` set how a panel sits in the strip. Leave them out for the defaults: a full-width, bordered panel with a normal gap and a white gutter. Changing them never needs a redraw.
+
+- **Quick exchanges:** shot, reverse shot and reaction go **beside each other by default** (`beside: true`), 2 to 3 to a row, as close-ups or medium shots at `2:3` or `9:16`. A row is one exchange, and a new speaker topic starts a new row.
+- **Clashes and wide establishing shots:** `frame: borderless`.
+- **Action runs (blows, dodges, chases):** `frame: slanted`.
+- **Descents, falls, tall structures, reveals from above or below:** aspect `1:2` or `1:3`. These panels fade instead of a frame, so `frame` is ignored on them.
+- **Time passing, scene changes:** `gapAfter: long` on the last panel before the change.
+- **Dark places (dungeon, night, a void):** `gutter: black` on every panel of the scene; consecutive black panels form one dark band.
+- **Rapid fire within one moment:** `gapAfter: tight`.
+
+A row takes its gap and gutter from its last panel. The first panel of the strip always starts a row, and a fourth `beside` panel starts a new one.
 
 ## Shot Vocabulary
 
@@ -56,12 +71,12 @@ Avoid the same shot three panels in a row; vary the distance to keep the strip a
 
 ## Pacing and Gutters
 
-The space between panels (the gutter) is fixed in this app: you cannot make it bigger or smaller. Control pacing with what each panel shows:
+The space between panels (the gutter) is set per panel with `gapAfter` and `gutter` (see Panel Layout). Control pacing with that and with what each panel shows:
 
 - **One beat per panel** (R5). The reader gets one new thing per scroll.
 - **To slow down:** a silent panel (`"dialogue": []`), a tall `9:16` panel, a wide establishing panel, or a close-up of a face holding a feeling.
 - **To speed up:** several square `1:1` panels in a row, short lines, close and medium shots, sound effects.
-- **To show time passing:** an establishing shot of the place at a new time of day, or a narration line ("Three days later.").
+- **To show time passing:** `gapAfter: long` before the change, an establishing shot of the place at a new time of day, or a narration line ("Three days later.").
 - **For a reveal:** build up in one panel (a reaction, a hand on a door handle), then put the reveal alone in the next panel, often tall.
 - **For a cliffhanger:** end the episode on a face, a figure, or a line that raises a question. Do not explain it in the same panel.
 - **Rhythm:** after 2 or 3 talking panels, add one panel without words (a reaction, the place, an object).

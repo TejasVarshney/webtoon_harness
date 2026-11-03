@@ -22,7 +22,7 @@ Where each part comes from:
 | Placeholder | Source |
 |---|---|
 | {stylePreset} | The project's style (the `style` line of `<project_state>`). |
-| {aspect} | The panel's `aspect`, e.g. 2:3. |
+| {aspect} | The panel's draw aspect, e.g. 2:3 (1:2 and 1:3 are drawn at 9:16). |
 | {shot} | The panel's `shot`, written exactly as stored: "close-up shot", "extreme-close-up shot", "birds-eye shot". |
 | {setting} | The panel's `setting`. |
 | {description} | The panel's `description`. |
@@ -37,6 +37,11 @@ Where each part comes from:
 | {k} | The number of that item's reference image. |
 | {usage.name}, {usage.delta} | The name and delta of the usage the panel picks for the item. |
 | {item.action} | The `action` of the panel's `items` entry: what the item itself does in this frame. |
+
+Two optional sentences end the `[STYLE]` line, each after a space. A panel gets at most one:
+
+- Tall panel (`aspect` 1:2 or 1:3, always faded, even when borderless): `Tall panel: keep the top fifth and bottom fifth plain background (sky, floor, darkness), so they can fade out.`
+- Borderless panel (`frame` borderless, not tall): `Art runs to the edges, no frame.`
 
 How the template bends:
 

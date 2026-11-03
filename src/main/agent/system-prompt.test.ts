@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveMockRefs } from '../models/providers/mock'
 import { makeCharacter, makeEpisode, makeItem, makeItemUsage, makeMeta, makePanel, makeVariation } from '../test/factories'
 import type { PanelVersion } from '@shared/types'
-import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection } from './system-prompt'
+import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection, layoutTag } from './system-prompt'
 
 describe('system prompt', () => {
   it('builds a stable system prompt', () => {
@@ -45,8 +45,18 @@ describe('system prompt', () => {
     expect(s).toContain('current_episode: epi_0000000001 "Episode 1" (1 panels)')
     expect(s).toContain('- chr_0000000001 Mina [protagonist] variations: var_0000000001 Base (ready), var_0000000002 Outfit: School uniform (pending)')
     expect(s).not.toContain('Ghost')
-    expect(s).toContain(`- pnl_0000000001 [medium] cast: Mina (var_0000000001) | ${'x'.repeat(160)} | dialogue: Mina: "Hi"`)
+    expect(s).toContain(`- pnl_0000000001 [medium, 2:3] cast: Mina (var_0000000001) | ${'x'.repeat(160)} | dialogue: Mina: "Hi"`)
     expect(s).not.toContain('x'.repeat(161))
+  })
+
+  it('shows the layout after the shot and aspect, only where it differs from the defaults', () => {
+    const plain = makePanel({ id: 'pnl_0000000001' })
+    const laidOut = makePanel({ id: 'pnl_0000000002', shot: 'wide', aspect: '16:9', beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], episode: null, recentPanels: [plain, laidOut] })
+    expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast:')
+    expect(s).toContain('- pnl_0000000002 [wide, 16:9, beside, slanted, gap long, gutter black] cast:')
+    expect(layoutTag(makePanel({ shot: 'close-up', beside: true }))).toBe('close-up, 2:3, beside')
+    expect(layoutTag(makePanel({ frame: 'borderless', gapAfter: 'tight' }))).toBe('medium, 2:3, borderless, gap tight')
   })
 
   it('lists items and their usages in project_state, leaving archived items out', () => {
@@ -75,8 +85,8 @@ describe('system prompt', () => {
     const plain = makePanel({ id: 'pnl_0000000002' })
     const armed = makePanel({ items: [{ itemId: blaster.id, usageId: 'use_0000000002', heldBy: null, action: '' }] })
     const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [blaster], episode: null, recentPanels: [plain, armed] })
-    expect(s).toContain('- pnl_0000000002 [medium] cast: none | Mina opens the apartment door. | dialogue: none\n')
-    expect(s).toContain('- pnl_0000000001 [medium] cast: none | Mina opens the apartment door. | dialogue: none | items: Kestrel blaster (Firing)\n')
+    expect(s).toContain('- pnl_0000000002 [medium, 2:3] cast: none | Mina opens the apartment door. | dialogue: none\n')
+    expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast: none | Mina opens the apartment door. | dialogue: none | items: Kestrel blaster (Firing)\n')
   })
 
   it('extracts a section body', () => {
@@ -180,6 +190,14 @@ describe('buildPanelContext', () => {
     expect(lines).toContain('next: none')
   })
 
+  it('shows the layout only where it differs from the defaults', () => {
+    expect(buildPanelContext(panel, [mina, jin], [], null, null)).not.toContain('layout:')
+    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const lines = buildPanelContext(laidOut, [], [], null, null).split('\n')
+    expect(lines).toContain('layout: beside, slanted, gap long, gutter black')
+    expect(lines.indexOf('layout: beside, slanted, gap long, gutter black')).toBe(lines.indexOf('aspect: 2:3') + 1)
+  })
+
   it('counts ready versions only, and says none when the current version is not ready', () => {
     expect(buildPanelContext({ ...panel, currentVersionId: 'ver_0000000001' }, [mina, jin], [], null, null)).toContain('version: v1 of 2')
     const pendingOnly = makePanel({ versions: [version('ver_0000000001', 'pending')], currentVersionId: null })
@@ -208,9 +226,9 @@ describe('buildPanelContext', () => {
     })
     const next = makePanel({ id: 'pnl_00000000a2', shot: 'establishing', description: 'City skyline.' })
     const s = buildPanelContext(panel, [mina, jin], [], prev, next)
-    expect(s).toContain(`\nprevious: pnl_00000000a1 [wide] cast: Mina (Base) | ${'x'.repeat(160)} | dialogue: Mina: "Ready?"\n`)
+    expect(s).toContain(`\nprevious: pnl_00000000a1 [wide, 2:3] cast: Mina (Base) | ${'x'.repeat(160)} | dialogue: Mina: "Ready?"\n`)
     expect(s).not.toContain('x'.repeat(161))
-    expect(s).toContain('\nnext: pnl_00000000a2 [establishing] cast: none | City skyline. | dialogue: none\n')
+    expect(s).toContain('\nnext: pnl_00000000a2 [establishing, 2:3] cast: none | City skyline. | dialogue: none\n')
   })
 
   it('falls back to ids for a character or variation that is not in the roster', () => {

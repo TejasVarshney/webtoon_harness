@@ -13,6 +13,7 @@ import type {
   CheckResultSchema,
   ChatMessageSchema,
   DialogueLineSchema,
+  DrawAspectSchema,
   EndpointConfigSchema,
   EndpointKindSchema,
   EpisodeSchema,
@@ -26,6 +27,9 @@ import type {
   PanelAspectSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
+  PanelFrameSchema,
+  PanelGapSchema,
+  PanelGutterSchema,
   PanelItemSchema,
   PanelPatchSchema,
   PanelSchema,
@@ -82,6 +86,10 @@ export type ItemPatch = z.infer<typeof ItemPatchSchema>
 export type ItemUsageInput = z.infer<typeof ItemUsageInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
+export type DrawAspect = z.infer<typeof DrawAspectSchema>
+export type PanelFrame = z.infer<typeof PanelFrameSchema>
+export type PanelGap = z.infer<typeof PanelGapSchema>
+export type PanelGutter = z.infer<typeof PanelGutterSchema>
 export type ShotType = z.infer<typeof ShotTypeSchema>
 export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>

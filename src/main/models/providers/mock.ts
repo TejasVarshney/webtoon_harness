@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
-import type { PanelAspect } from '@shared/types'
+import type { DrawAspect } from '@shared/types'
 import { encodeSolidPng } from './png'
 import type {
   ImageEditRequest,
@@ -175,7 +175,7 @@ export class MockTextProvider implements TextProvider {
   }
 }
 
-function dimensions(aspect: PanelAspect): { width: number; height: number } {
+function dimensions(aspect: DrawAspect): { width: number; height: number } {
   const [w, h] = aspect.split(':').map(Number)
   return { width: w * 128, height: h * 128 }
 }
