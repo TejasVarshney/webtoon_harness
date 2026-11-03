@@ -1572,7 +1572,7 @@ kbd {
   border: 0;
 }
 
-.panel-card:not([data-frame='bordered']) .panel-media:has(> img) {
+.panel-card:is([data-frame='borderless'], [data-frame='fade']) .panel-media:has(> img) {
   background: transparent;
 }
 
