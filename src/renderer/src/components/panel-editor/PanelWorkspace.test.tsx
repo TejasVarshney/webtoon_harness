@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { visualFields } from '@shared/visual-fields'
@@ -268,6 +268,38 @@ describe('PanelWorkspace', () => {
       }
     })
     expect(await within(workspace()).findByRole('alert')).toHaveTextContent('disk is gone')
+  })
+
+  it('lays the stage out at its share of the strip row, leaning as the strip has it', () => {
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, beside: true, frame: 'slanted' }, third] } })
+    mount()
+    const shape = within(workspace()).getByTestId('panel-stage').querySelector<HTMLElement>('.panel-shape')!
+    expect(shape.style.getPropertyValue('--share')).toBe('0.5')
+    expect(shape).toHaveAttribute('data-frame', 'slanted')
+    expect(shape).toHaveAttribute('data-slant', 'left')
+  })
+
+  it('cancels the text of a bubble on Escape and stays open, and clears a selected bubble before going back (Review Focus 4)', async () => {
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
+    const { calls } = mount()
+    const stage = within(workspace()).getByTestId('panel-stage')
+    const bubble = (): HTMLElement => within(stage).getByLabelText('Line 1')
+    fireEvent.doubleClick(bubble())
+    expect(within(stage).getByRole('textbox', { name: 'Line text' })).toHaveFocus()
+    await userEvent.keyboard(' Later.{Escape}')
+    expect(within(stage).queryByRole('textbox')).toBeNull()
+    expect(bubble()).toHaveTextContent('Night fell.')
+    expect(useAppStore.getState().selectedPanelId).toBe(B)
+
+    // The bubble keeps the selection and the focus: the first Escape clears it, and only the next one goes back.
+    expect(bubble()).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(bubble()).toHaveAttribute('data-selected', 'false')
+    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    await userEvent.keyboard('{Escape}')
+    expect(useAppStore.getState().selectedPanelId).toBeNull()
+    expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
   })
 
   it('follows the panel when its list reloads', () => {

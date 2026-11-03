@@ -7,7 +7,8 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { PanelThread } from '../panel-chat/PanelThread'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
-import { PanelArt } from '../visualizer/PanelArt'
+import { layoutStrip, rowShares } from '../visualizer/strip-layout'
+import { PanelStage } from './PanelStage'
 import { staleNotice } from './stale-notice'
 
 export interface PanelWorkspaceProps {
@@ -39,6 +40,9 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const panels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
   // Upload and Regenerate belong to the panel they ran for: stepping to the next panel leaves their failure behind.
   const [action, setAction] = useState<{ panelId: string; busy: boolean; error: string | null } | null>(null)
+  // The stage's selected bubble, by line index, for the inspector to follow. It belongs to the panel it was chosen on,
+  // so stepping to another panel starts with none.
+  const [lineSelection, setLineSelection] = useState<{ panelId: string; index: number | null } | null>(null)
 
   // Panels of another project must never show here, whatever the store still holds.
   const loaded = storeProjectId === projectId && episodesLoaded && (activeEpisodeId === null || panels !== undefined)
@@ -50,6 +54,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const notice = panel === undefined ? null : staleNotice(staleVisualFields(panel))
   const busy = action?.panelId === panelId && action.busy
   const error = action?.panelId === panelId ? action.error : null
+  const selectedLine = lineSelection?.panelId === panelId ? lineSelection.index : null
+  // Laid out as in the strip: its share of its row, and the way it leans there.
+  const row = panel === undefined ? undefined : layoutStrip(panels ?? []).find((r) => r.panels.some((p) => p.id === panel.id))
+  const share = panel === undefined || row === undefined ? 1 : rowShares(row.panels)[panel.id]
+  const slant = panel === undefined ? undefined : row?.slants[panel.id]
 
   // A panel opened from a chat thumbnail can arrive before the Webtoon tab ever loaded the strip.
   useEffect(() => {
@@ -133,10 +142,14 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
               {panel !== undefined ? (
                 <>
                   {/* The stage. Each panel gets its own, so nothing of one panel's editing carries to the next. */}
-                  <div className="panel-stage" key={panel.id}>
-                    <PanelArt panel={panel} />
-                  </div>
-                  {/* The inspector (Lines, Cast, Items, Scene) goes here, under the stage. */}
+                  <PanelStage
+                    key={panel.id}
+                    panel={panel}
+                    share={share}
+                    slant={slant}
+                    onSelectLine={(index) => setLineSelection({ panelId: panel.id, index })}
+                  />
+                  {/* The inspector (Lines, Cast, Items, Scene) goes here, under the stage, following `selectedLine`. */}
                 </>
               ) : loaded ? (
                 <p className="placeholder">Panel not in the current episode</p>

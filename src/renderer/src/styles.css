@@ -1375,14 +1375,40 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* A scrollbar that comes and goes would change the stage's width, and so its scale, and so the height again. */
+  scrollbar-gutter: stable;
   padding: var(--pad);
 }
 
-/* The panel at the strip's reference row width, lettered as on the strip (the stage is the lettering's container). */
+/* The stage: the open panel on a field of its gutter colour, centred, as big as the column allows and at most 62vh
+   tall. The panel is laid out in a row of the strip's reference width (`.stage-row`, whose width comes from
+   STAGE_ROW_PX, and which is the lettering's container), then scaled to fit from its top left corner. `.stage-fit` is
+   the room the scaled panel takes, since a transform takes none. */
 .panel-stage {
+  display: flex;
+  justify-content: center;
+  max-height: 62vh;
+  padding: var(--pad);
+  overflow: hidden;
+  background: var(--raised);
+  border-radius: var(--radius-card);
+}
+
+.panel-stage:focus {
+  outline: none;
+}
+
+.stage-fit {
+  flex: none;
+}
+
+.stage-row {
   container-type: inline-size;
-  width: min(100%, 560px);
-  margin: 0 auto;
+  transform-origin: 0 0;
+}
+
+.stage-error {
+  margin: 8px 0 0;
 }
 
 .editing-chat .thread {
@@ -1545,7 +1571,8 @@ kbd {
   background: var(--raised);
 }
 
-.strip-band[data-gutter='black'] {
+.strip-band[data-gutter='black'],
+.panel-stage[data-gutter='black'] {
   background: #000;
 }
 
@@ -1924,10 +1951,17 @@ kbd {
   translate: -50% -50%;
 }
 
-/* Editing: the bubbles take the pointer, and a dragged one lifts off the art. */
+/* Editing: the bubbles take the pointer, and a dragged one lifts off the art. The selection is the only mark: a
+   focused bubble is the selected one, so it shows no focus ring of its own. */
 .dialogue-overlay[data-editing='true'] .bubble {
   pointer-events: auto;
   cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.dialogue-overlay[data-editing='true'] .bubble:focus {
+  outline: none;
 }
 
 .dialogue-overlay[data-editing='true'] .bubble[data-selected='true'] {
@@ -1938,6 +1972,33 @@ kbd {
 .dialogue-overlay[data-editing='true'] .bubble[data-dragging='true'] {
   cursor: grabbing;
   box-shadow: var(--float-shadow);
+}
+
+/* A bubble's text open for typing, in the bubble's own lettering. It grows with what is typed. */
+.bubble-editor,
+.bubble-editor:hover,
+.bubble-editor:focus-visible {
+  display: block;
+  min-width: 2ch;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: center;
+  text-transform: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  user-select: text;
+  cursor: text;
 }
 
 .bubble-side-left {
