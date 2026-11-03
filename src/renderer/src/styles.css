@@ -361,6 +361,7 @@ kbd {
 }
 
 .sheet {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -371,6 +372,15 @@ kbd {
 
 .sheet-panes {
   height: 100%;
+}
+
+/* Editing mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
+   its episode bar, below menus and dialogs. */
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--surface);
 }
 
 .pane-chat {
@@ -414,15 +424,6 @@ kbd {
 .pane-separator-frame[data-separator='active'] {
   background: transparent;
   box-shadow: inset -2px 0 0 var(--accent);
-}
-
-.pane-separator-row {
-  width: auto;
-  height: 1px;
-}
-
-.pane-separator-row::after {
-  inset: -4px 0;
 }
 
 .placeholder {
@@ -839,16 +840,10 @@ kbd {
   cursor: not-allowed;
 }
 
-.chat-split {
-  flex: 1;
-  min-height: 0;
-}
-
-.main-chat,
-.panel-side-chat {
+.main-chat {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
 }
 
@@ -1282,51 +1277,119 @@ kbd {
   height: 22px;
 }
 
-/* The panel's own chat, below the main one. */
-.panel-side-chat {
-  background: var(--surface);
+/* Editing mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
+   the panel's own chat on the right. */
+.panel-workspace,
+.editing-columns {
+  height: 100%;
 }
 
-.side-chat-header {
+.editing-main,
+.editing-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editing-header,
+.editing-chat-header {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px 10px;
+  gap: 8px;
+  min-height: 53px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--rule);
 }
 
-.side-chat-header h2 {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
+.editing-header {
+  flex-wrap: wrap;
+}
+
+.editing-header h1 {
+  font-size: var(--fs-section);
+}
+
+.editing-chat-header h2 {
   font-size: var(--fs-body);
 }
 
-.side-chat-sub {
-  overflow: hidden;
-  font-size: var(--fs-small);
-  font-weight: 400;
+.editing-back {
+  padding: 0 10px 0 6px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.editing-back svg {
   color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.side-chat-thumb {
+.editing-steps {
+  display: flex;
+  gap: 2px;
+}
+
+.editing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.editing-error {
+  margin: 8px 16px 0;
+}
+
+.stale-notice {
+  display: flex;
   flex: none;
-  width: 34px;
-  height: 46px;
-  object-fit: cover;
-  border: 1.5px solid var(--ink);
-  border-radius: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 12px 16px 0;
+  padding: 4px 4px 4px 12px;
+  font-size: var(--fs-small);
+  color: var(--pill-warning-ink);
+  background: var(--pill-warning-bg);
+  border-radius: var(--radius-control);
 }
 
-.panel-side-chat .thread {
+/* A text button: the header's Regenerate is the only filled one. */
+.stale-notice button {
+  height: 26px;
+  padding: 0 8px;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
+}
+
+.stale-notice button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.editing-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--pad);
+}
+
+/* The panel at the strip's reference row width, lettered as on the strip (the stage is the lettering's container). */
+.panel-stage {
+  container-type: inline-size;
+  width: min(100%, 560px);
+  margin: 0 auto;
+}
+
+.editing-chat .thread {
   padding-top: 16px;
 }
 
-.panel-side-chat .thread-empty {
+.editing-chat .thread-empty {
   margin-top: 4vh;
 }
 

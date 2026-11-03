@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
 import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
@@ -10,7 +9,6 @@ import { Composer } from './Composer'
 import { MessageList } from './MessageList'
 import { ModelPicker } from './ModelPicker'
 import { sendUserMessage } from './send-message'
-import { PanelSideChat } from '../panel-chat/PanelSideChat'
 
 /** Shown above a session that Claude Code drives. */
 export const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
@@ -26,7 +24,6 @@ export function ChatPane() {
   const projectId = useAppStore((s) => s.projectId)
   const sessionId = useAppStore((s) => s.sessionId)
   const runId = useAppStore((s) => (s.sessionId === null ? undefined : s.runningThreads[s.sessionId]))
-  const selectedPanelId = useAppStore((s) => s.selectedPanelId)
   // Claude Code writes this session's steps through the MCP link, so the app's own agent has nothing to say in it.
   const driven = useAppStore((s) => s.sessions.find((x) => x.id === s.sessionId)?.driver === 'claude-code')
   const draft = useChatStore((s) => s.draft)
@@ -67,46 +64,32 @@ export function ChatPane() {
           {MOCK_BANNER_TEXT}
         </p>
       )}
-      {/* The main chat's panel is always there, so opening the side chat below it never remounts the main chat. */}
-      <Group orientation="vertical" className="chat-split">
-        <Panel id="chat-main" defaultSize="55%" minSize="25%">
-          <div className="main-chat">
-            {sessionId === null ? (
-              <div className="chat-empty">
-                <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
-              </div>
-            ) : (
-              <>
-                {driven && (
-                  <p className="driver-banner" data-testid="driver-banner">
-                    {DRIVER_BANNER_TEXT}
-                  </p>
-                )}
-                <MessageList threadKey={sessionId} />
-                <Composer
-                  onSend={sendUserMessage}
-                  running={runId !== undefined}
-                  onStop={stop}
-                  value={draft}
-                  onValueChange={setDraft}
-                  {...(claudeCodeAgent ? { attachOffReason: NO_IMAGES_TEXT } : {})}
-                  tools={driven ? undefined : <ModelPicker />}
-                  disabled={driven}
-                />
-              </>
-            )}
+      <div className="main-chat">
+        {sessionId === null ? (
+          <div className="chat-empty">
+            <p className="placeholder">{projectId === null ? 'Create a project to start.' : 'Select or create a session to chat.'}</p>
           </div>
-        </Panel>
-        {selectedPanelId !== null && (
+        ) : (
           <>
-            <Separator className="pane-separator pane-separator-row" />
-            <Panel id="chat-side" defaultSize="45%" minSize="20%">
-              {/* Keyed so each panel starts with its own composer text and thread. */}
-              <PanelSideChat key={selectedPanelId} panelId={selectedPanelId} />
-            </Panel>
+            {driven && (
+              <p className="driver-banner" data-testid="driver-banner">
+                {DRIVER_BANNER_TEXT}
+              </p>
+            )}
+            <MessageList threadKey={sessionId} />
+            <Composer
+              onSend={sendUserMessage}
+              running={runId !== undefined}
+              onStop={stop}
+              value={draft}
+              onValueChange={setDraft}
+              {...(claudeCodeAgent ? { attachOffReason: NO_IMAGES_TEXT } : {})}
+              tools={driven ? undefined : <ModelPicker />}
+              disabled={driven}
+            />
           </>
         )}
-      </Group>
+      </div>
     </div>
   )
 }

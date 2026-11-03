@@ -149,6 +149,15 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('composer-attach')).toBeDisabled()
   })
 
+  it('stays the main chat alone when a panel is selected: the panel chat lives in the editing mode', async () => {
+    installFakeApi({ 'sessions:load': () => [] })
+    render(<ChatPane />)
+    const input = await screen.findByTestId('composer-input')
+    act(() => useAppStore.getState().selectPanel('pnl_00000000aa'))
+    expect(screen.getAllByTestId('composer-input')).toEqual([input])
+    expect(screen.queryByRole('region', { name: 'Panel chat' })).toBeNull()
+  })
+
   it('shows neither for a normal session', async () => {
     installFakeApi({ 'sessions:load': () => [] })
     useAppStore.setState({ sessions: [summary(null)] })
