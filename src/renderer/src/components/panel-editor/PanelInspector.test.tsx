@@ -12,6 +12,7 @@ import { installFakeApi } from '../../test/fake-api'
 import { item, usage } from '../../test/item-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
+import { AFTER_PRESS_MS } from './LinesTab'
 import { PanelInspector } from './PanelInspector'
 import { PanelStage } from './PanelStage'
 
@@ -287,6 +288,21 @@ describe('PanelInspector', () => {
       await act(async () => undefined)
       expect(updates(calls)).toHaveLength(1)
     })
+
+    it('drops a refused line once a later save clears its message, so no unsaved text is left unsaid', async () => {
+      refusal = 'Dialogue is too long'
+      const { calls } = mount()
+      act(() => text(0).focus())
+      fireEvent.change(text(0), { target: { value: 'Hi.' } })
+      act(() => text(0).blur())
+      await within(tabPanel()).findByRole('alert')
+      expect(text(0)).toHaveValue('Hi.')
+      refusal = null
+      fireEvent.click(within(rows()[1]).getByRole('button', { name: 'Reset to auto' }))
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      await waitFor(() => expect(within(tabPanel()).queryByRole('alert')).toBeNull())
+      expect(text(0)).toHaveValue('Hello.')
+    })
   })
 
   describe('Cast and Items', () => {
@@ -476,6 +492,30 @@ describe('PanelInspector', () => {
       expect(bubble(1)).toHaveAttribute('data-selected', 'false')
       expect(rows()[0]).toHaveAttribute('aria-current', 'true')
       expect(rows()[1]).not.toHaveAttribute('aria-current')
+    })
+
+    it('waits to scroll to the row of a pressed bubble until the press, and a double-click, are over', async () => {
+      const scrolled: Element[] = []
+      Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+        scrolled.push(this)
+      })
+      fakeTimers()
+      installApi()
+      render(<Editor />)
+      fireEvent.pointerDown(bubble(1), { clientX: 50, clientY: 25, buttons: 1 })
+      expect(rows()[1]).toHaveAttribute('aria-current', 'true')
+      // Held: a drag may follow, and scrolling would move the panel under the pointer.
+      await wait(1000)
+      expect(scrolled).toEqual([])
+      fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
+      await wait(100)
+      // The second click of a double-click.
+      fireEvent.pointerDown(bubble(1), { clientX: 50, clientY: 25, buttons: 1 })
+      fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
+      await wait(AFTER_PRESS_MS - 1)
+      expect(scrolled).toEqual([])
+      await wait(1)
+      expect(scrolled).toEqual([rows()[1]])
     })
 
     it('shows a conflict on the stage once, in Lines, and opens Lines for it', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react'
 import { DialogueKindSchema } from '@shared/schemas'
 import type { Character, DialogueLine, Panel } from '@shared/types'
 import { Field } from '../characters/controls'
@@ -8,8 +8,78 @@ import { useAutosave } from './use-field-autosave'
 
 const KINDS = DialogueKindSchema.options
 
+/** How long a row waits after a press is released before it is scrolled to: the second click of a double-click may be coming. */
+export const AFTER_PRESS_MS = 400
+
 /** Focus moved somewhere outside the element the event is on. */
 const leaves = (e: FocusEvent<HTMLElement>): boolean => !(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))
+
+/** The pointer's last press anywhere in the window, kept up to date by `usePresses`. */
+export interface Presses {
+  down: boolean
+  /** `performance.now()` when it was last released. */
+  releasedAt: number
+}
+
+/** Tracks the pointer's presses from the capture phase, so a handler further in sees the press that is going. */
+export function usePresses(): Presses {
+  const presses = useRef<Presses>({ down: false, releasedAt: Number.NEGATIVE_INFINITY }).current
+  useEffect(() => {
+    const press = (): void => {
+      presses.down = true
+    }
+    const release = (): void => {
+      presses.down = false
+      presses.releasedAt = performance.now()
+    }
+    document.addEventListener('pointerdown', press, true)
+    document.addEventListener('pointerup', release, true)
+    document.addEventListener('pointercancel', release, true)
+    return () => {
+      document.removeEventListener('pointerdown', press, true)
+      document.removeEventListener('pointerup', release, true)
+      document.removeEventListener('pointercancel', release, true)
+    }
+  }, [presses])
+  return presses
+}
+
+/**
+ * Scrolls the row of the selected line into view. The stage sits above the rows in the same column, so scrolling moves
+ * it: while the pointer is pressed (a bubble being dragged), or a double-click may still come, the row waits, and is
+ * scrolled to `AFTER_PRESS_MS` after the last release.
+ */
+function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | null, presses: Presses): void {
+  useEffect(() => {
+    if (line === null) return
+    const scroll = (): void => row(line)?.scrollIntoView?.({ block: 'nearest' })
+    if (!presses.down && performance.now() - presses.releasedAt >= AFTER_PRESS_MS) {
+      scroll()
+      return
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const stop = (): void => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+      document.removeEventListener('pointerdown', wait, true)
+      document.removeEventListener('pointerup', wait, true)
+    }
+    // Registered after `usePresses`' listeners, so `presses` already has the press or the release.
+    function wait(): void {
+      if (timer !== null) clearTimeout(timer)
+      timer = presses.down
+        ? null
+        : setTimeout(() => {
+            stop()
+            scroll()
+          }, AFTER_PRESS_MS)
+    }
+    wait()
+    document.addEventListener('pointerdown', wait, true)
+    document.addEventListener('pointerup', wait, true)
+    return stop
+  }, [line, row, presses])
+}
 
 export interface LinesTabProps {
   panel: Panel
@@ -18,6 +88,8 @@ export interface LinesTabProps {
   /** The line selected on the stage, or by a row here. */
   selectedLine: number | null
   onSelectLine(i: number | null): void
+  /** The pointer's presses, from the inspector, which outlives this tab: a press on the stage can open it. */
+  presses: Presses
 }
 
 /** Who says a line: Narration, or a non-archived character, plus the line's own speaker if they were archived since. */
@@ -67,8 +139,8 @@ interface LineRowProps {
   characters: Character[]
   selected: boolean
   save: DialogueSaver['save']
-  /** Counts "Undo my change": a refused draft gives way to the stored line. */
-  undone: number
+  /** The refusal the Lines tab shows. A refused draft lasts as long as it: Undo, or a later save, clears both. */
+  error: string | null
   onSelect(): void
   rowRef(el: HTMLLIElement | null): void
 }
@@ -79,7 +151,7 @@ interface LineRowProps {
  * the edit found it, or as this row's last save left it: an agent's change in between makes it a conflict, not an
  * overwrite. A text left empty keeps the old text (Remove deletes).
  */
-function LineRow({ index, line, characters, selected, save, undone, onSelect, rowRef }: LineRowProps) {
+function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef }: LineRowProps) {
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
@@ -99,11 +171,12 @@ function LineRow({ index, line, characters, selected, save, undone, onSelect, ro
     }
   })
 
-  // A new Undo drops a refused draft; a refusal after it waits for the next one.
-  const { refused, undo } = draft
+  // A refused draft with no message left would be unsaved text nobody is told about: it gives way to the stored line.
+  const orphaned = draft.refused && error === null
+  const { undo } = draft
   useEffect(() => {
-    if (undone > 0 && refused) undo()
-  }, [undone]) // only `undone` starts it
+    if (orphaned) undo()
+  }, [orphaned, undo])
 
   /** The line as a change made now must find it. */
   const expectNow = (): LineIdentity => (inFlight.current > 0 && base.current !== null ? base.current : identityOf(line))
@@ -161,8 +234,9 @@ interface NewLineRowProps {
   initial: LineIdentity
   characters: Character[]
   save: DialogueSaver['save']
-  undone: number
-  /** The new line is saved, or was left empty, or its refusal undone: the row goes. */
+  /** The refusal the Lines tab shows: a refused new line goes with it. */
+  error: string | null
+  /** The new line is saved, or was left empty, or its refusal cleared: the row goes. */
   onDone(): void
 }
 
@@ -170,7 +244,7 @@ interface NewLineRowProps {
  * A line added from Lines, with the automatic layout. As on the stage, it is saved only once it has text: when the row
  * is left, or on unmount. Left empty, it goes.
  */
-function NewLineRow({ initial, characters, save, undone, onDone }: NewLineRowProps) {
+function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProps) {
   const [value, setValue] = useState(initial)
   const [state, setState] = useState<'typing' | 'saving' | 'refused'>('typing')
   const latest = useRef({ value, state })
@@ -210,13 +284,17 @@ function NewLineRow({ initial, characters, save, undone, onDone }: NewLineRowPro
   })
   useEffect(() => () => commitRef.current(true), [])
 
-  // A new Undo drops the line if it was refused.
+  // A refused line whose message is gone (Undo, or a later save) goes too.
+  const orphaned = state === 'refused' && error === null
+  const done = useRef(onDone)
+  useLayoutEffect(() => {
+    done.current = onDone
+  })
   useEffect(() => {
-    if (undone > 0 && latest.current.state === 'refused') {
-      settled.current = true
-      onDone()
-    }
-  }, [undone]) // only `undone` starts it
+    if (!orphaned) return
+    settled.current = true
+    done.current()
+  }, [orphaned])
 
   return (
     <li
@@ -256,40 +334,31 @@ function NewLineRow({ initial, characters, save, undone, onDone }: NewLineRowPro
  * going into a row selects its bubble. A line that changed under an edit, here or on the stage, and a dialogue save the
  * service refused, are said here, once.
  */
-export function LinesTab({ panel, characters, selectedLine, onSelectLine }: LinesTabProps) {
+export function LinesTab({ panel, characters, selectedLine, onSelectLine, presses }: LinesTabProps) {
   const { save, conflict, error, clear } = useDialogueSaver(panel.id)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
-  const [undone, setUndone] = useState(0)
   const rows = useRef<(HTMLLIElement | null)[]>([])
-
-  useEffect(() => {
-    if (selectedLine !== null) rows.current[selectedLine]?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedLine])
+  const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
+  useScrollToRow(selectedLine, rowAt, presses)
 
   function addLine(): void {
     const speakerId = panel.characters[0]?.characterId ?? null
     setAdding({ speakerId, kind: speakerId === null ? 'narration' : 'speech', text: '' })
   }
 
-  function undo(): void {
-    clear()
-    setUndone((n) => n + 1)
-  }
-
   return (
     <div className="lines-tab">
-      {(conflict || error !== null) && (
+      {conflict && (
+        <p role="alert" className="error inspector-alert">
+          This line changed while you were editing it.
+        </p>
+      )}
+      {error !== null && (
         <div role="alert" className="error inspector-alert">
-          {conflict ? (
-            <p>This line changed while you were editing it.</p>
-          ) : (
-            <>
-              <p>{error}</p>
-              <button type="button" onClick={undo}>
-                Undo my change
-              </button>
-            </>
-          )}
+          <p>{error}</p>
+          <button type="button" onClick={clear}>
+            Undo my change
+          </button>
         </div>
       )}
       {panel.dialogue.length === 0 && adding === null ? (
@@ -305,14 +374,14 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine }: Line
               characters={characters}
               selected={selectedLine === i}
               save={save}
-              undone={undone}
+              error={error}
               onSelect={() => onSelectLine(i)}
               rowRef={(el) => {
                 rows.current[i] = el
               }}
             />
           ))}
-          {adding !== null && <NewLineRow key="new" initial={adding} characters={characters} save={save} undone={undone} onDone={() => setAdding(null)} />}
+          {adding !== null && <NewLineRow key="new" initial={adding} characters={characters} save={save} error={error} onDone={() => setAdding(null)} />}
         </ol>
       )}
       <div className="form-actions">
