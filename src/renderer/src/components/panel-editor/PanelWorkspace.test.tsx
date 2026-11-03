@@ -144,6 +144,37 @@ describe('PanelWorkspace', () => {
     await act(async () => finish())
   })
 
+  it('leaves a panel its own failed or pending revert when stepping to the next one', async () => {
+    // Two ready versions each, the newest current, so each panel can step back on its own.
+    const twoVersions = (id: string): Panel => {
+      const older = panelVersion({ id: `ver_000000${id.slice(-2)}01`, imagePath: `panels/${id}/1.png` })
+      const newer = panelVersion({ id: `ver_000000${id.slice(-2)}02`, imagePath: `panels/${id}/2.png` })
+      return panel({ id, versions: [older, newer], currentVersionId: newer.id })
+    }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, twoVersions(B), twoVersions(C)] } })
+    let release: () => void = () => undefined
+    mount({
+      'panels:revert': (req: { panelId: string }) => {
+        if (req.panelId === B) throw new Error('Version is not ready')
+        return new Promise<never>((_, reject) => (release = () => reject(new Error('gone'))))
+      }
+    })
+    await userEvent.click(within(header()).getByTestId('version-prev'))
+    expect(await within(workspace()).findByRole('alert')).toHaveTextContent('Version is not ready')
+    await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+    expect(within(workspace()).queryByRole('alert')).toBeNull()
+    expect(within(header()).getByTestId('panel-version-label')).toHaveTextContent('v2 / 2')
+
+    // A revert still going on panel 3 does not hold panel 2's version buttons.
+    await userEvent.click(within(header()).getByTestId('version-prev'))
+    expect(within(header()).getByTestId('version-prev')).toBeDisabled()
+    await userEvent.click(within(header()).getByRole('button', { name: 'Previous panel' }))
+    expect(within(header()).getByTestId('version-prev')).toBeEnabled()
+    expect(within(header()).getByTestId('version-next')).toBeDisabled()
+    await act(async () => release())
+    expect(within(workspace()).queryByRole('alert')).toBeNull()
+  })
+
   it('says which fields changed since the image was drawn, and regenerates from the notice', async () => {
     const cast = [{ characterId: 'chr_0000000001', variationId: 'var_0000000001', action: '', expression: '', position: 'center' as const }]
     const drawn = panel({ id: B, characters: cast })

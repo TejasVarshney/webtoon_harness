@@ -104,7 +104,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                     </button>
                   </div>
                   <div className="editing-actions">
-                    <VersionSwitcher panel={panel} />
+                    {/* Keyed, so a revert that failed or is still running stays with the panel it ran for. */}
+                    <VersionSwitcher key={panel.id} panel={panel} />
                     <button type="button" disabled={busy} onClick={() => run(panel.id, usePanelsStore.getState().uploadPanelImage(panel.id))}>
                       Upload image…
                     </button>
