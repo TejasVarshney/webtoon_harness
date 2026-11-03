@@ -1,0 +1,11 @@
+{
+  "name": "webtoon-harness-local",
+  "owner": { "name": "Webtoon AI Harness" },
+  "plugins": [
+    {
+      "name": "webtoon-harness",
+      "source": "./claude-code-plugin",
+      "description": "Drive the Webtoon AI Harness from Claude Code: the agent rules as a skill, plus commands to continue the story, draw a panel and create a character."
+    }
+  ]
+}
