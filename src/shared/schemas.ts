@@ -44,7 +44,7 @@ export const ShotTypeSchema = z.enum([
 ])
 /** What an image model can be asked to draw. */
 export const DrawAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
-/** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and cropped. */
+/** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and faded at the top and bottom. */
 export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
 export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
 export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])

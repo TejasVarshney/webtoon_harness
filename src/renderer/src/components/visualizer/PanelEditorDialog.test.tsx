@@ -614,6 +614,13 @@ describe('PanelEditorDialog', () => {
       expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { beside: true } }])
     })
 
+    it('groups the layout fields under a Layout heading', () => {
+      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      const group = editor.getByRole('group', { name: 'Layout' })
+      for (const name of ['Frame', 'Gap after', 'Gutter', 'Beside the previous panel']) expect(within(group).getByLabelText(name)).toBeInTheDocument()
+      expect(within(group).queryByLabelText('Shot')).toBeNull()
+    })
+
     it('replaces the frame with a note for a tall aspect', async () => {
       const { editor } = mount({}, { mode: 'edit', panel: existing })
       expect(editor.getByLabelText('Frame')).toBeEnabled()
@@ -621,6 +628,10 @@ describe('PanelEditorDialog', () => {
       await userEvent.selectOptions(editor.getByLabelText('Aspect'), '1:3')
       expect(editor.getByLabelText('Frame')).toBeDisabled()
       expect(editor.getByText('Tall panels fade instead of a frame')).toBeInTheDocument()
+      // The disabled Frame is explained by the note.
+      expect(editor.getByLabelText('Frame')).toHaveAccessibleDescription('Tall panels fade instead of a frame')
+      await userEvent.selectOptions(editor.getByLabelText('Aspect'), '2:3')
+      expect(editor.getByLabelText('Frame')).not.toHaveAttribute('aria-describedby')
     })
 
     it('saves then regenerates', async () => {

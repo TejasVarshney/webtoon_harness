@@ -17,7 +17,7 @@ export interface PanelCardProps {
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
   /** Asks the strip to open the editor on this panel. The strip owns the dialog, so it survives the card moving to another row. */
-  onEdit?(): void
+  onEdit(): void
 }
 
 /**
@@ -138,7 +138,7 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
         )}
         <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
           <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={() => onEdit?.()}>
+          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={onEdit}>
             <Pencil size={15} aria-hidden="true" />
           </button>
           <button

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
 import { PanelAspectSchema, PanelFrameSchema, PanelGapSchema, PanelGutterSchema, ShotTypeSchema } from '@shared/schemas'
 import type { Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch } from '@shared/types'
@@ -131,6 +131,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
   const inFlight = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
+  const tallNoteId = useId()
 
   if (!open) return null
 
@@ -250,46 +251,49 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
                 )}
               </Field>
             </div>
-            <div className="field-row">
-              <Field label="Frame">
-                {(id) => (
-                  <select id={id} value={values.frame} disabled={tall} onChange={(e) => set('frame', e.target.value as Values['frame'])}>
-                    {FRAMES.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              <Field label="Gap after">
-                {(id) => (
-                  <select id={id} value={values.gapAfter} onChange={(e) => set('gapAfter', e.target.value as Values['gapAfter'])}>
-                    {GAPS.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              <Field label="Gutter">
-                {(id) => (
-                  <select id={id} value={values.gutter} onChange={(e) => set('gutter', e.target.value as Values['gutter'])}>
-                    {GUTTERS.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-            </div>
-            {tall && <p className="hint">Tall panels fade instead of a frame</p>}
-            <label className="inline-label">
-              <input type="checkbox" checked={values.beside} onChange={(e) => set('beside', e.target.checked)} />
-              Beside the previous panel
-            </label>
+            <fieldset className="layout-group">
+              <legend>Layout</legend>
+              <div className="field-row">
+                <Field label="Frame">
+                  {(id) => (
+                    <select id={id} value={values.frame} disabled={tall} aria-describedby={tall ? tallNoteId : undefined} onChange={(e) => set('frame', e.target.value as Values['frame'])}>
+                      {FRAMES.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+                <Field label="Gap after">
+                  {(id) => (
+                    <select id={id} value={values.gapAfter} onChange={(e) => set('gapAfter', e.target.value as Values['gapAfter'])}>
+                      {GAPS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+                <Field label="Gutter">
+                  {(id) => (
+                    <select id={id} value={values.gutter} onChange={(e) => set('gutter', e.target.value as Values['gutter'])}>
+                      {GUTTERS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              </div>
+              {tall && <p id={tallNoteId} className="hint">Tall panels fade instead of a frame</p>}
+              <label className="inline-label">
+                <input type="checkbox" checked={values.beside} onChange={(e) => set('beside', e.target.checked)} />
+                Beside the previous panel
+              </label>
+            </fieldset>
             <CastPicker characters={roster} value={values.characters} onChange={(next) => set('characters', next)} />
             <ItemPicker items={itemRoster} cast={values.characters} characters={roster} value={values.items} onChange={(next) => set('items', next)} />
             <DialogueEditor characters={roster} cast={values.characters} value={values.dialogue} onChange={(next) => set('dialogue', next)} />

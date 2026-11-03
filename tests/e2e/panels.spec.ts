@@ -112,7 +112,7 @@ test('the toolbar of a narrow first card in a row stays inside the strip', async
   for (const name of ['Edit', 'Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
     const button = toolbar.getByRole('button', { name })
     const box = (await button.boundingBox())!
-    const hit = await button.evaluate((el, [x, y]) => el.contains(document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
+    const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
     expect(hit, `${name} is reachable`).toBe(true)
   }
   await toolbar.getByRole('button', { name: 'Edit' }).click()

@@ -2506,10 +2506,16 @@ kbd {
 }
 
 .endpoint-form .inline-label,
-.model-form .inline-label {
+.model-form .inline-label,
+.panel-editor-form .inline-label {
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+
+/* A lone checkbox in the editor's column sits at the start of its line, not centred. */
+.panel-editor-form .inline-label {
+  align-self: flex-start;
 }
 
 .notice-info {
@@ -2619,6 +2625,7 @@ kbd {
   border: 0;
 }
 
+.panel-editor-form .layout-group,
 .panel-editor-form .cast-picker,
 .panel-editor-form .item-picker,
 .panel-editor-form .dialogue-editor {

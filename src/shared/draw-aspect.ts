@@ -3,7 +3,7 @@
 
 import type { DrawAspect, PanelAspect } from './types'
 
-/** The very tall panels: no image model draws them, so they are drawn at 9:16 and cropped later. */
+/** The very tall panels: no image model draws them, so they are drawn at 9:16, and the strip fades its top and bottom into the gutter. */
 export function isTallAspect(aspect: PanelAspect): boolean {
   return aspect === '1:2' || aspect === '1:3'
 }

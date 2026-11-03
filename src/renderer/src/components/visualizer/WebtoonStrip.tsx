@@ -28,6 +28,9 @@ export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
   const [editingId, setEditingId] = useState<string | null>(null)
   const editing = panels.find((p) => p.id === editingId)
+  // Gone with its panel: an editor for a deleted panel has nothing to save to, and the panel coming back (restored from
+  // the trash) is not the user asking to edit it.
+  if (editingId !== null && editing === undefined) setEditingId(null)
   const rows = layoutStrip(panels)
   return (
     <div className="webtoon-strip">
@@ -48,9 +51,9 @@ export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
           </div>
         )
       })}
+      {/* Before the end "+", which the stylesheet finds as the strip's last child. */}
+      {editing !== undefined && <PanelEditorDialog key={editing.id} mode="edit" episodeId={episodeId} panel={editing} onClose={() => setEditingId(null)} />}
       <InsertPanelButton key="append" episodeId={episodeId} />
-      {/* Gone with its panel: an editor for a deleted panel has nothing to save to. */}
-      {editing !== undefined && <PanelEditorDialog mode="edit" episodeId={episodeId} panel={editing} onClose={() => setEditingId(null)} />}
     </div>
   )
 }

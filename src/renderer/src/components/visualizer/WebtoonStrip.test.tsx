@@ -70,6 +70,29 @@ describe('WebtoonStrip', () => {
     expect(useAppStore.getState().selectedPanelId).toBeNull()
   })
 
+  it('keeps the end "+" the last child of the strip while an editor is open', async () => {
+    installFakeApi({})
+    render(<Harness />)
+    const endPlus = (): Element | null => document.querySelector('.webtoon-strip > .insert-panel:last-child')
+    expect(endPlus()).not.toBeNull()
+    await userEvent.click(within(screen.getAllByTestId('panel-card')[0]).getByRole('button', { name: 'Edit' }))
+    await screen.findByTestId('panel-editor')
+    expect(endPlus()).not.toBeNull()
+  })
+
+  it('does not open the editor again for a panel that comes back', async () => {
+    installFakeApi({})
+    render(<Harness />)
+    await userEvent.click(within(screen.getAllByTestId('panel-card')[1]).getByRole('button', { name: 'Edit' }))
+    await screen.findByTestId('panel-editor')
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [a] } })
+    await waitFor(() => expect(screen.queryByTestId('panel-editor')).toBeNull())
+    // Restored from the trash, say: the user is not editing it now.
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [a, b] } })
+    await waitFor(() => expect(screen.getAllByTestId('panel-card')).toHaveLength(2))
+    expect(screen.queryByTestId('panel-editor')).toBeNull()
+  })
+
   it('drops the editor when its panel is gone', async () => {
     installFakeApi({})
     render(<Harness />)
