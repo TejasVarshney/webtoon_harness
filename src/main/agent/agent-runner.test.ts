@@ -344,6 +344,21 @@ describe('AgentRunner', () => {
       expect(backend.stop).toHaveBeenCalledWith(sessionId)
     })
 
+    it('hands two quick starts of one session to the backend in call order', async () => {
+      const { s, runner, projectId, sessionId } = await setup([])
+      const seen: string[] = []
+      const backend: AgentBackend = {
+        ...fakeBackend(),
+        start: async (req) => {
+          seen.push(req.text)
+          return { runId: 'run_backend000' }
+        }
+      }
+      vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+      await Promise.all([runner.start(input(projectId, sessionId, 'one')), runner.start(input(projectId, sessionId, 'two')), runner.start(input(projectId, sessionId, 'three'))])
+      expect(seen).toEqual(['one', 'two', 'three'])
+    })
+
     it('runs the model loop when no plugin is set to be the agent', async () => {
       const { s, runner, projectId, sessionId, events } = await setup([{ text: 'Hello from mock' }])
       expect(s.plugins.agentBackend()).toBeNull()

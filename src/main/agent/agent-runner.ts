@@ -34,6 +34,8 @@ export interface StartRunInput {
 export class AgentRunner {
   private readonly services: Services
   private readonly host: RunHost
+  /** Per session, settles once the latest start has passed the driver check and registered its run. */
+  private readonly startGates = new Map<string, Promise<void>>()
 
   constructor(opts: AgentRunnerOptions) {
     this.services = opts.services
@@ -60,7 +62,27 @@ export class AgentRunner {
   }
 
   async start(input: StartRunInput): Promise<{ runId: string }> {
-    await this.refuseDriven(input)
+    const { sessionId } = input
+    // The driver check awaits, so the starts of one session pass it in call order: each registers its run (the
+    // synchronous start of `startChecked`) before the next is let through, and an earlier message is never refused
+    // as busy in favour of a later one.
+    const before = this.startGates.get(sessionId) ?? Promise.resolve()
+    let open = (): void => {}
+    const mine = new Promise<void>((resolve) => (open = resolve))
+    const gate = before.then(() => mine)
+    this.startGates.set(sessionId, gate)
+    try {
+      await before
+      await this.refuseDriven(input)
+      return this.startChecked(input)
+    } finally {
+      open()
+      if (this.startGates.get(sessionId) === gate) this.startGates.delete(sessionId)
+    }
+  }
+
+  /** Registers the run before its first await (the backend's and RunHost's busy check work that way too). */
+  private startChecked(input: StartRunInput): Promise<{ runId: string }> {
     const backend = this.backend()
     if (backend) {
       // A model-loop run from before the switch still holds the session.
