@@ -192,7 +192,7 @@
 - [ ] **Step 4: Implement the CSS**, in the existing strip/card block, keeping its comment style.
   - **Band and row:**
     - The band spans the strip's full width. The strip's side padding moves onto the band.
-    - The band background is white (`#fff`), or `#000` for black. The insert button stays visible on black.
+    - The band background is the strip's page colour (`var(--raised)`, spec §11 R2) for white, or `#000` for black. The insert button stays visible on black.
     - `.strip-row`: `display: flex; gap: 6px; width: min(100%, 440px); container-type: inline-size`.
     - Each card has `flex: <w/h> 1 0` from an inline `--ar` custom property set by `PanelCard`, so heights match.
   - **Gaps:** `.strip-gap` heights are 8 / 28 / 120px. The old card `margin`/gutter rules go.

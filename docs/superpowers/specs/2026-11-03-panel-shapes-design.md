@@ -157,3 +157,15 @@ Bubble sizes use `cqw` on `.panel-media` today, so in a row of three the text wo
 - Panels that break their frame (a character leaping out of the border).
 - Moving bubbles off faces (still open from the bubbles work).
 - The autopilot's beat planner (gap 5) and "must show" details (gap 6).
+
+## 11. Amendments (rulings during implementation)
+
+Where the sections above and these differ, these win.
+
+- **R0, the "+" (§4.2).** The insert "+" sits only in the gaps between rows, never between the panels of one row, and once at the end of the strip.
+- **R2, the white gutter (§4.2).** White is the strip's page colour, `var(--raised)`, not `#fff`. Black stays `#000`.
+- **R3, the normal gap (§4.2).** Normal is 48px, today's gap, not 28px. Tight (8px) and long (120px) are as written.
+- **R4, lettering in a row (§4.3).** Lettering is sized by the row, scaled by `max(share, 0.65)`, where a panel's share is its aspect ratio divided by the sum of the ratios in its row. A row of one has share 1, so a full-width panel is lettered as before.
+- **R5, the tall fade (§4.2).** The 9:16 image is masked to fade over 10% of its own height at the top and at the bottom; the box's extra height around the centred image is plain gutter.
+- **R6, the editor (§7).** The edit dialog lives in the strip (`WebtoonStrip`), not in the card: saving `beside` moves a card to another row and rebuilds it, and a dialog inside it would vanish with its warnings. The card only asks the strip to open it (`onEdit`).
+- **R7, the slant offset (§4.2).** The offset is 4% of the panel's own width (`4cqw` of the row, times the panel's share), not of the row's.
