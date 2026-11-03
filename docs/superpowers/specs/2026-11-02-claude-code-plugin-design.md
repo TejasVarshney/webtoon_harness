@@ -120,7 +120,7 @@ The main process does not know which project and episode the window shows today.
 
 - The tool list is `buildAgentTools({ vision: true })` exactly: same names, descriptions and JSON input schemas (`ToolRegistry.specs()`), so the workflow docs apply unchanged.
 - One extra tool, `get_project_state` (no input): returns the `<project_state>` snapshot the in-app agent gets with each message (`buildStateSnapshot`). The gathering code moves out of `AgentRunner` into `src/main/agent/project-state.ts` so both use it.
-- A call runs `ToolRegistry.execute` with a `ToolContext` for the active project: `project` from `services.projects.open(activeContext.projectId)`, `signal` from the MCP request (a client cancel aborts the generation), `threadKey` = the log session id (§5.4).
+- A call runs `ToolRegistry.execute` with a `ToolContext` for the request's project (§5.1: the one `X-Webtoon-Project` names, else the window's): `project` from `services.projects.open(<that id>)`, `signal` from the MCP request (a client cancel aborts the generation), `threadKey` = the log session id (§5.4).
 - No open project: every tool returns an error result, "Open a project in the Webtoon AI Harness window first."
 - Results: `ok: true` → text content (the tool's content string); `ok: false` → `isError: true` with the message. `images` (project-relative paths) become MCP image content via `loadImageForTextModel` (downscaled JPEG), after the text.
 - Long calls: when the request has a progress token, a progress notification goes out every 15 s until the call ends ("Generating…, 45 s").
@@ -128,11 +128,11 @@ The main process does not know which project and episode the window shows today.
 
 ### 5.3 Instructions
 
-The server's `instructions` (sent at initialize) are `buildAgentSystemPrompt(AGENTS.md, docIndex)` for the active project at connect time, plus one paragraph: "You are connected to the Webtoon AI Harness through MCP. Call `get_project_state` before you plan or draw, and again after the user may have changed things. Read workflow docs with `read_workflow_doc`."
+The server's `instructions` (sent at initialize) are `buildAgentSystemPrompt(AGENTS.md, docIndex)` for the initialize request's project (§5.1) at connect time, plus one paragraph: "You are connected to the Webtoon AI Harness through MCP. Call `get_project_state` before you plan or draw, and again after the user may have changed things. Read workflow docs with `read_workflow_doc`."
 
 ### 5.4 Driver session (live log)
 
-- Each MCP session logs into one chat session of the active project:
+- Each MCP session logs into one chat session of the request's project (§5.1):
   - if the request carries `X-Webtoon-Session: <ses_id>` naming a session of that project (phase 2), that session;
   - otherwise a new session titled "Claude Code", created on the first tool call and reused for the rest of that MCP session (a new one if the active project changes).
 - New field on the session meta: `driver: 'claude-code' | null` (default null). Sessions created by §5.4's second rule get `'claude-code'`.
