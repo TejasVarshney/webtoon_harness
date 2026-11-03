@@ -114,11 +114,14 @@ describe('PanelCard', () => {
     })
     render(<PanelCard panel={p} selected={false} />)
     const card = screen.getByTestId('panel-card')
-    // The speaker's name comes from the characters store; it labels speech only.
-    expect(within(card).getAllByText('Mina')).toHaveLength(1)
+    // No name labels on the strip, as in a printed manhwa: the bubble's side and tail say who speaks, and the
+    // speaker's name (from the characters store) is only a tooltip.
+    expect(within(card).queryByText('Mina')).toBeNull()
     const lines = card.querySelectorAll('[data-kind]')
     expect([...lines].map((l) => l.getAttribute('data-kind'))).toEqual(['speech', 'thought', 'narration', 'sfx'])
-    expect([...lines].map((l) => l.textContent)).toEqual(['MinaWe should go.', 'Is he lying?', 'The city never slept.', 'BOOM'])
+    expect([...lines].map((l) => l.getAttribute('data-shape'))).toEqual(['speech', 'thought', 'caption', 'sfx'])
+    expect([...lines].map((l) => l.textContent)).toEqual(['We should go.', 'Is he lying?', 'The city never slept.', 'BOOM'])
+    expect(card.querySelector('[data-kind="speech"]')).toHaveAttribute('title', 'Mina')
     // The lines are real DOM text in an overlay beside the image, never part of it: an <img> has no children,
     // and its alt text describes the panel, not what is said in it.
     const image = within(card).getByRole('img')

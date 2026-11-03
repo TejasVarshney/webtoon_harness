@@ -90,7 +90,7 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
         <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
           {imagePath !== null && projectId !== null && <img src={assetUrl(projectId, imagePath)} alt={panel.description} draggable={false} />}
           {panel.versions.length === 0 && <div className="panel-empty">No image yet</div>}
-          <DialogueOverlay dialogue={panel.dialogue} />
+          <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} />
           {generating && (
             <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">
               <LoaderCircle size={14} className="spin" aria-hidden="true" />

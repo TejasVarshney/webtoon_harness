@@ -1647,80 +1647,255 @@ kbd {
 
 /* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
 
+/* Lettered like a manhwa page: sizes follow the panel's width (`cqw`), so a bubble looks the same in the strip and in
+   the editor. Shapes and sides come from bubble-layout.ts. */
+.panel-media {
+  container-type: inline-size;
+}
+
 .dialogue-overlay {
   position: absolute;
-  inset: 10px 10px auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  inset: 0;
   pointer-events: none;
 }
 
-.bubble {
-  max-width: 78%;
-  padding: 6px 12px;
-  font-size: 13px;
-  line-height: 1.3;
-  color: #111;
-  overflow-wrap: anywhere;
-  background: #fff;
-}
-
-.bubble-speaker {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: #555;
-}
-
-.bubble-speech {
-  align-self: flex-start;
-  border: 2px solid #111;
-  border-radius: 18px;
-}
-
-.bubble-thought {
-  position: relative;
-  align-self: flex-start;
-  margin-bottom: 10px;
-  padding: 10px 18px;
-  font-style: italic;
-  border: 2px solid #666;
-  border-radius: 45% 55% 50% 50% / 55% 50% 50% 45%;
-}
-
-.bubble-thought::after {
+.dialogue-flow {
   position: absolute;
-  bottom: -11px;
-  left: 20px;
-  width: 8px;
-  height: 8px;
-  content: '';
+  inset: 4cqw 4cqw auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3.2cqw;
+}
+
+.dialogue-sfx {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4cqw;
+  align-items: center;
+  justify-content: center;
+}
+
+.bubble {
+  --tail: 1.1em;
+  position: relative;
+  box-sizing: border-box;
+  max-width: 62%;
+  font-family: 'Comic Neue', var(--font);
+  font-size: clamp(9px, 3.4cqw, 20px);
+  font-weight: 700;
+  line-height: 1.15;
+  color: #111;
+  text-align: center;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.bubble-side-left {
+  align-self: flex-start;
+}
+
+.bubble-side-center {
+  align-self: center;
+}
+
+.bubble-side-right {
+  align-self: flex-end;
+}
+
+/* An oval balloon with a pointed tail: a black wedge with a white wedge inside it, toward the speaker. */
+.bubble-speech,
+.bubble-whisper,
+.bubble-shout {
+  padding: 1em 1.35em;
+  margin-bottom: calc(var(--tail) * 0.6);
+}
+
+.bubble-speech,
+.bubble-whisper {
   background: #fff;
-  border: 2px solid #666;
+  border: 2px solid #111;
   border-radius: 50%;
 }
 
-.bubble-narration {
-  align-self: stretch;
-  max-width: 100%;
-  background: #fff;
-  border: 2px solid #111;
-  border-radius: 0;
+.bubble-whisper {
+  font-weight: 400;
+  border-style: dashed;
 }
 
+.bubble-shout {
+  padding: 1.7em 1.9em;
+  font-size: clamp(10px, 4cqw, 24px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -8 104 116' preserveAspectRatio='none'%3E%3Cpolygon points='100.0,50.0 92.7,54.7 98.5,60.8 89.3,63.4 94.3,70.9 83.7,71.0 87.4,79.8 79.8,80.3 78.4,87.0 70.4,85.1 67.7,92.1 60.3,87.6 56.0,94.7 50.0,87.8 44.0,94.7 40.2,85.8 32.3,92.1 29.1,85.9 21.6,87.0 20.8,79.6 12.6,79.8 14.6,72.0 5.7,70.9 10.7,63.4 1.5,60.8 9.3,54.4 0.0,50.0 5.3,45.1 1.5,39.2 8.9,36.0 5.7,29.1 14.6,28.0 12.6,20.2 22.1,21.7 21.6,13.0 30.9,17.3 32.3,7.9 39.2,10.7 44.0,5.3 50.0,10.4 56.0,5.3 60.3,12.4 67.7,7.9 69.5,16.5 78.4,13.0 77.2,22.4 87.4,20.2 87.0,27.0 94.3,29.1 91.1,36.0 98.5,39.2 92.7,45.3' fill='white' stroke='black' stroke-width='3' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+
+.bubble-tail-down.bubble-speech::before,
+.bubble-tail-down.bubble-whisper::before,
+.bubble-tail-down.bubble-shout::before,
+.bubble-tail-edge.bubble-speech::before,
+.bubble-tail-edge.bubble-whisper::before,
+.bubble-tail-edge.bubble-shout::before {
+  position: absolute;
+  top: calc(100% - 3px);
+  left: 24%;
+  width: calc(var(--tail) * 1.1);
+  height: var(--tail);
+  content: '';
+  background: #111;
+  clip-path: polygon(0 0, 100% 0, 15% 100%);
+}
+
+.bubble-tail-down.bubble-speech::after,
+.bubble-tail-down.bubble-whisper::after,
+.bubble-tail-down.bubble-shout::after,
+.bubble-tail-edge.bubble-speech::after,
+.bubble-tail-edge.bubble-whisper::after,
+.bubble-tail-edge.bubble-shout::after {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: calc(24% + 3px);
+  width: calc(var(--tail) * 1.1 - 6px);
+  height: calc(var(--tail) - 5px);
+  content: '';
+  background: #fff;
+  clip-path: polygon(0 0, 100% 0, 15% 100%);
+}
+
+.bubble-side-right.bubble-tail-down::before,
+.bubble-side-right.bubble-tail-edge::before {
+  right: 24%;
+  left: auto;
+  clip-path: polygon(0 0, 100% 0, 85% 100%);
+}
+
+.bubble-side-right.bubble-tail-down::after,
+.bubble-side-right.bubble-tail-edge::after {
+  right: calc(24% + 3px);
+  left: auto;
+  clip-path: polygon(0 0, 100% 0, 85% 100%);
+}
+
+.bubble-side-center.bubble-tail-down::before,
+.bubble-side-center.bubble-tail-edge::before {
+  left: calc(50% - var(--tail) * 0.55);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.bubble-side-center.bubble-tail-down::after,
+.bubble-side-center.bubble-tail-edge::after {
+  left: calc(50% - var(--tail) * 0.55 + 3px);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* A voice from outside the panel: the tail leaves through the top of the frame. */
+.bubble-tail-edge {
+  margin-top: calc(var(--tail) * 0.6);
+  margin-bottom: 0;
+}
+
+.bubble-tail-edge.bubble-speech::before,
+.bubble-tail-edge.bubble-whisper::before,
+.bubble-tail-edge.bubble-shout::before {
+  top: auto;
+  bottom: calc(100% - 3px);
+  transform: scaleY(-1);
+}
+
+.bubble-tail-edge.bubble-speech::after,
+.bubble-tail-edge.bubble-whisper::after,
+.bubble-tail-edge.bubble-shout::after {
+  top: auto;
+  bottom: calc(100% - 4px);
+  transform: scaleY(-1);
+}
+
+/* A thought cloud, with two small puffs trailing toward the thinker. */
+/* The cloud's bumps eat into its box, so its text keeps well inside. */
+.bubble-thought {
+  min-width: 7em;
+  padding: 1.9em 2.4em;
+  margin-bottom: 1.4em;
+  font-size: clamp(9px, 3.1cqw, 18px);
+  font-weight: 400;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-7 -4 114 108' preserveAspectRatio='none'%3E%3Ccircle cx='50' cy='50' r='32' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='24' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='76' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='8' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='92' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='16' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='84' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='32' fill='white'/%3E%3Ccircle cx='24' cy='48' r='22' fill='white'/%3E%3Ccircle cx='76' cy='48' r='22' fill='white'/%3E%3Ccircle cx='36' cy='28' r='20' fill='white'/%3E%3Ccircle cx='64' cy='28' r='20' fill='white'/%3E%3Ccircle cx='36' cy='72' r='20' fill='white'/%3E%3Ccircle cx='64' cy='72' r='20' fill='white'/%3E%3Ccircle cx='16' cy='30' r='14' fill='white'/%3E%3Ccircle cx='84' cy='30' r='14' fill='white'/%3E%3Ccircle cx='16' cy='70' r='14' fill='white'/%3E%3Ccircle cx='84' cy='70' r='14' fill='white'/%3E%3Ccircle cx='8' cy='50' r='12' fill='white'/%3E%3Ccircle cx='92' cy='50' r='12' fill='white'/%3E%3Ccircle cx='50' cy='16' r='15' fill='white'/%3E%3Ccircle cx='50' cy='84' r='15' fill='white'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+
+.bubble-thought::before,
+.bubble-thought::after {
+  position: absolute;
+  left: 22%;
+  content: '';
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 50%;
+}
+
+.bubble-thought::before {
+  top: 100%;
+  width: 0.7em;
+  height: 0.55em;
+}
+
+.bubble-thought::after {
+  top: calc(100% + 0.75em);
+  left: calc(22% - 0.45em);
+  width: 0.42em;
+  height: 0.34em;
+}
+
+.bubble-thought.bubble-side-right::before {
+  right: 22%;
+  left: auto;
+}
+
+.bubble-thought.bubble-side-right::after {
+  right: calc(22% - 0.45em);
+  left: auto;
+}
+
+.bubble-thought.bubble-side-center::before {
+  left: calc(50% - 0.35em);
+}
+
+.bubble-thought.bubble-side-center::after {
+  left: calc(50% - 0.8em);
+}
+
+/* A caption box: square corners and a hard offset shadow, in the top corner. */
+.bubble-caption {
+  max-width: 72%;
+  padding: 0.5em 0.75em;
+  font-size: clamp(9px, 3.1cqw, 18px);
+  text-align: left;
+  background: #fff;
+  border: 2px solid #111;
+  box-shadow: 0.25em 0.25em 0 #111;
+}
+
+/* Sound effects: big outlined lettering over the middle of the art, tilted. */
 .bubble-sfx {
-  align-self: center;
-  max-width: 100%;
-  padding: 0;
-  font-size: 28px;
-  font-style: italic;
-  font-weight: 600;
+  max-width: 92%;
+  font-family: 'Bangers', 'Comic Neue', var(--font);
+  font-size: clamp(18px, 9cqw, 64px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.05em;
   color: #fff;
-  background: none;
-  transform: rotate(-6deg) skewX(-10deg);
-  -webkit-text-stroke: 1.5px #111;
+  text-shadow: 0.06em 0.07em 0 #111;
+  transform: rotate(-8deg) skewX(-8deg);
+  -webkit-text-stroke: 0.09em #111;
   paint-order: stroke fill;
+}
+
+.bubble-sfx.bubble-loud {
+  font-size: clamp(24px, 14cqw, 96px);
+}
+
+.bubble-sfx.bubble-tilt-right {
+  transform: rotate(7deg) skewX(6deg);
 }
 
 /* --- Characters tab ---------------------------------------------------------------------------------- */
