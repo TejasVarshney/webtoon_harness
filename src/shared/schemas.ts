@@ -42,7 +42,13 @@ export const ShotTypeSchema = z.enum([
   'birds-eye',
   'worms-eye'
 ])
-export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+/** What an image model can be asked to draw. */
+export const DrawAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+/** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and faded at the top and bottom. */
+export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
+export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
+export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])
+export const PanelGutterSchema = z.enum(['white', 'black'])
 export const PanelPositionSchema = z.enum(['left', 'center', 'right', 'background'])
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
 export const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
@@ -258,6 +264,10 @@ export const PanelSchema = z.object({
   setting: z.string(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
+  frame: PanelFrameSchema.default('bordered'),
+  beside: z.boolean().default(false),
+  gapAfter: PanelGapSchema.default('normal'),
+  gutter: PanelGutterSchema.default('white'),
   characters: z.array(PanelCharacterSchema).default([]),
   items: z.array(PanelItemSchema).default([]),
   dialogue: z.array(DialogueLineSchema),
@@ -280,6 +290,10 @@ export const PanelDraftSchema = z.object({
   setting: z.string(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema.optional(),
+  frame: PanelFrameSchema.optional(),
+  beside: z.boolean().optional(),
+  gapAfter: PanelGapSchema.optional(),
+  gutter: PanelGutterSchema.optional(),
   characters: z.array(PanelCharacterSchema),
   items: z.array(PanelItemSchema).optional(),
   dialogue: z.array(DialogueDraftSchema),

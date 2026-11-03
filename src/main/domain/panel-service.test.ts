@@ -301,6 +301,13 @@ describe('PanelService create and list', () => {
     expect(explicit.aspect).toBe('1:1')
   })
 
+  it('stores the layout fields it is given and defaults the rest', async () => {
+    const { svc, epi, ctx } = await setup()
+    const { panel } = await svc.create(ctx, draft(epi.id, { frame: 'slanted', beside: true }), USER)
+    expect(panel).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'normal', gutter: 'white' })
+    expect(await svc.get(ctx, panel.id)).toEqual(panel)
+  })
+
   it('rejects invalid drafts with all issues and writes nothing', async () => {
     const { svc, epi, episodes, ctx } = await setup()
     const err = await svc
@@ -397,6 +404,16 @@ describe('PanelService update', () => {
     await expect(svc.update(ctx, 'pnl_ffffffffff', { shot: 'wide' }, USER)).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
+  it('changes the layout alone without touching the image history', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    const { panel } = await svc.update(ctx, p.id, { gapAfter: 'long', gutter: 'black' }, USER)
+    expect(panel).toMatchObject({ gapAfter: 'long', gutter: 'black', frame: 'bordered', beside: false })
+    expect(panel.currentVersionId).toBe(v.id)
+    expect(panel.versions).toHaveLength(1)
+  })
+
   it('validates the merged panel and leaves the file untouched on error', async () => {
     const { svc, epi, ctx } = await setup()
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
@@ -491,6 +508,14 @@ describe('PanelService generate', () => {
     expect(calls[1].req.references.map((r) => r.label)).toEqual(['Mina', 'previous panel'])
     expect(calls[1].req.prompt).toBe(v2.prompt)
     expect(calls[1].req.aspect).toBe('2:3')
+  })
+
+  it('draws a tall panel at 9:16', async () => {
+    const { svc, epi, ctx, calls } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { aspect: '1:3' }), USER)).panel
+    await svc.generate(ctx, p.id)
+    expect(calls[0].req.aspect).toBe('9:16')
+    expect((await svc.get(ctx, p.id)).aspect).toBe('1:3')
   })
 
   it('records a complete version: every field set, image saved under the panel folder', async () => {

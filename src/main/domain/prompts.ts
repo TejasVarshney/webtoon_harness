@@ -1,4 +1,5 @@
 import type { Character, Item, ItemUsage, Panel, Variation } from '@shared/types'
+import { drawAspect, isTallAspect } from '@shared/draw-aspect'
 import { hasReadyReference, hasReadyUsage } from './panel-validation'
 
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
@@ -40,7 +41,7 @@ export interface PanelPromptReference {
 
 export interface PanelPromptInput {
   stylePreset: string
-  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'characters' | 'items' | 'continuityNotes'>
+  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items' | 'continuityNotes'>
   /** Characters; resolves cast entries and the holders of items. */
   roster: Map<string, Character>
   itemRoster: Map<string, Item>
@@ -55,7 +56,16 @@ export interface PanelPromptResult {
   references: PanelPromptReference[]
 }
 
+const TALL_NOTE = 'Tall panel: keep the top fifth and bottom fifth plain background (sky, floor, darkness), so they can fade out.'
+const BORDERLESS_NOTE = 'Art runs to the edges, no frame.'
+
 const NO_REFERENCE = '(no reference image)'
+
+/** Tall panels always fade out, so they never get the borderless line. */
+function shapeNote(panel: Pick<Panel, 'aspect' | 'frame'>): string {
+  if (isTallAspect(panel.aspect)) return ` ${TALL_NOTE}`
+  return panel.frame === 'borderless' ? ` ${BORDERLESS_NOTE}` : ''
+}
 
 const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
@@ -113,7 +123,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   })
 
   const lines = [
-    `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${panel.aspect} aspect ratio, ${panel.shot} shot. No text, no speech bubbles, no captions, no watermark.`,
+    `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${drawAspect(panel.aspect)} aspect ratio, ${panel.shot} shot. No text, no speech bubbles, no captions, no watermark.${shapeNote(panel)}`,
     `[SETTING] ${panel.setting}`,
     `[ACTION] ${panel.description}`,
     '[CHARACTERS]',
