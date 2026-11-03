@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { PanelAspectSchema, ShotTypeSchema } from '@shared/schemas'
+import { isTallAspect } from '@shared/draw-aspect'
+import { PanelAspectSchema, PanelFrameSchema, PanelGapSchema, PanelGutterSchema, ShotTypeSchema } from '@shared/schemas'
 import type { Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
@@ -12,6 +13,9 @@ import { useRoster } from './use-roster'
 
 const SHOTS = ShotTypeSchema.options
 const ASPECTS = PanelAspectSchema.options
+const FRAMES = PanelFrameSchema.options
+const GAPS = PanelGapSchema.options
+const GUTTERS = PanelGutterSchema.options
 
 export interface PanelEditorDialogProps {
   mode: 'create' | 'edit'
@@ -30,6 +34,10 @@ interface Values {
   setting: string
   shot: Panel['shot']
   aspect: Panel['aspect']
+  frame: Panel['frame']
+  beside: boolean
+  gapAfter: Panel['gapAfter']
+  gutter: Panel['gutter']
   characters: PanelCharacter[]
   items: PanelItem[]
   dialogue: DialogueDraftLine[]
@@ -41,6 +49,10 @@ function fromPanel(panel: Panel): Values {
     setting: panel.setting,
     shot: panel.shot,
     aspect: panel.aspect,
+    frame: panel.frame,
+    beside: panel.beside,
+    gapAfter: panel.gapAfter,
+    gutter: panel.gutter,
     characters: panel.characters,
     items: panel.items,
     dialogue: panel.dialogue.map(({ speakerId, kind, text }) => ({ speakerId, kind, text }))
@@ -54,6 +66,10 @@ function normalize(v: Values): Values {
     setting: v.setting.trim(),
     shot: v.shot,
     aspect: v.aspect,
+    frame: v.frame,
+    beside: v.beside,
+    gapAfter: v.gapAfter,
+    gutter: v.gutter,
     characters: v.characters.map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position })),
     items: v.items.map((i) => ({ itemId: i.itemId, usageId: i.usageId, heldBy: i.heldBy, action: i.action.trim() })),
     dialogue: v.dialogue.filter((l) => l.text.trim() !== '').map((l) => ({ speakerId: l.speakerId, kind: l.kind, text: l.text.trim() }))
@@ -62,6 +78,9 @@ function normalize(v: Values): Values {
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
+/** What a new panel looks like until the user changes it; a draft carries only the layout fields that differ. */
+const LAYOUT_DEFAULTS = { frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' } as const satisfies Pick<Values, 'frame' | 'beside' | 'gapAfter' | 'gutter'>
+
 /** Only the fields that differ from `before`: the AI may change the rest while the dialog is open, and a save must not undo it. */
 function changes(before: Values, after: Values): PanelPatch {
   const patch: PanelPatch = {}
@@ -69,6 +88,10 @@ function changes(before: Values, after: Values): PanelPatch {
   if (before.setting !== after.setting) patch.setting = after.setting
   if (before.shot !== after.shot) patch.shot = after.shot
   if (before.aspect !== after.aspect) patch.aspect = after.aspect
+  if (before.frame !== after.frame) patch.frame = after.frame
+  if (before.beside !== after.beside) patch.beside = after.beside
+  if (before.gapAfter !== after.gapAfter) patch.gapAfter = after.gapAfter
+  if (before.gutter !== after.gutter) patch.gutter = after.gutter
   if (!same(before.characters, after.characters)) patch.characters = after.characters
   if (!same(before.items, after.items)) patch.items = after.items
   if (!same(before.dialogue, after.dialogue)) patch.dialogue = after.dialogue
@@ -100,7 +123,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
   const roster = useRoster()
   const itemRoster = useItemRoster()
   const [initial] = useState<Values>(() =>
-    editing ? fromPanel(panel) : { description: '', setting: '', shot: 'medium', aspect: defaultAspect ?? '2:3', characters: [], items: [], dialogue: [] }
+    editing ? fromPanel(panel) : { description: '', setting: '', shot: 'medium', aspect: defaultAspect ?? '2:3', ...LAYOUT_DEFAULTS, characters: [], items: [], dialogue: [] }
   )
   const [values, setValues] = useState<Values>(initial)
   const [open, setOpen] = useState(true)
@@ -123,6 +146,8 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
     })
   const patch = editing ? changes(normalize(initial), normalize(values)) : {}
   const dirty = Object.keys(patch).length > 0
+  // A tall panel fades at its edges instead of having a frame, whatever its frame says.
+  const tall = isTallAspect(values.aspect)
   // A cast row with no ready variation could only come back as a server error; say so before it is sent.
   const castReady = values.characters.every((c) => c.variationId !== '')
   // Likewise an item row with no ready usage.
@@ -148,6 +173,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
         if (dirty) warnings = (await updatePanel(panel.id, patch)).warnings
       } else {
         const v = normalize(values)
+        const { frame, beside, gapAfter, gutter } = changes(normalize(initial), v)
         const draft: PanelDraft = {
           episodeId,
           ...(afterPanelId !== undefined ? { afterPanelId } : {}),
@@ -155,6 +181,10 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
           setting: v.setting,
           shot: v.shot,
           aspect: v.aspect,
+          ...(frame !== undefined ? { frame } : {}),
+          ...(beside !== undefined ? { beside } : {}),
+          ...(gapAfter !== undefined ? { gapAfter } : {}),
+          ...(gutter !== undefined ? { gutter } : {}),
           characters: v.characters,
           items: v.items,
           dialogue: v.dialogue
@@ -220,6 +250,46 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
                 )}
               </Field>
             </div>
+            <div className="field-row">
+              <Field label="Frame">
+                {(id) => (
+                  <select id={id} value={values.frame} disabled={tall} onChange={(e) => set('frame', e.target.value as Values['frame'])}>
+                    {FRAMES.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Gap after">
+                {(id) => (
+                  <select id={id} value={values.gapAfter} onChange={(e) => set('gapAfter', e.target.value as Values['gapAfter'])}>
+                    {GAPS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Gutter">
+                {(id) => (
+                  <select id={id} value={values.gutter} onChange={(e) => set('gutter', e.target.value as Values['gutter'])}>
+                    {GUTTERS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            </div>
+            {tall && <p className="hint">Tall panels fade instead of a frame</p>}
+            <label className="inline-label">
+              <input type="checkbox" checked={values.beside} onChange={(e) => set('beside', e.target.checked)} />
+              Beside the previous panel
+            </label>
             <CastPicker characters={roster} value={values.characters} onChange={(next) => set('characters', next)} />
             <ItemPicker items={itemRoster} cast={values.characters} characters={roster} value={values.items} onChange={(next) => set('items', next)} />
             <DialogueEditor characters={roster} cast={values.characters} value={values.dialogue} onChange={(next) => set('dialogue', next)} />

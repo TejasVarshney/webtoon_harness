@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Columns2, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
@@ -7,7 +7,6 @@ import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { DialogueOverlay } from './DialogueOverlay'
-import { PanelEditorDialog } from './PanelEditorDialog'
 import { aspectRatio } from './strip-layout'
 
 export interface PanelCardProps {
@@ -17,20 +16,21 @@ export interface PanelCardProps {
   slant?: 'left' | 'right'
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
+  /** Asks the strip to open the editor on this panel. The strip owns the dialog, so it survives the card moving to another row. */
+  onEdit?(): void
 }
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
  * toolbar on hover.
- * Clicking the card selects the panel; the toolbar's buttons and the dialogs it opens do not.
+ * Clicking the card selects the panel; the toolbar's buttons and the delete confirmation it opens do not.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCardProps) {
   const projectId = useAppStore((s) => s.projectId)
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
-  const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +75,7 @@ export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps)
     )
   }
 
-  const { generatePanel, movePanel, deletePanel } = usePanelsStore.getState()
+  const { generatePanel, movePanel, deletePanel, updatePanel } = usePanelsStore.getState()
   const select = (): void => useAppStore.getState().selectPanel(panel.id)
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): void {
@@ -138,8 +138,19 @@ export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps)
         )}
         <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
           <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={() => setEditing(true)}>
+          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={() => onEdit?.()}>
             <Pencil size={15} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Beside previous"
+            title="Beside previous"
+            aria-pressed={panel.beside}
+            disabled={busy || index <= 0}
+            onClick={() => run(updatePanel(panel.id, { beside: !panel.beside }))}
+          >
+            <Columns2 size={15} aria-hidden="true" />
           </button>
           <button type="button" className="icon-button" aria-label="Regenerate" title="Regenerate" disabled={busy || generating} onClick={() => run(generatePanel(panel.id))}>
             <RefreshCw size={15} aria-hidden="true" />
@@ -163,9 +174,7 @@ export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps)
         </div>
       </article>
 
-      {/* Siblings of the card, not children: a click in a dialog must not bubble up and select the panel. */}
-      {editing && <PanelEditorDialog mode="edit" episodeId={panel.episodeId} panel={panel} onClose={() => setEditing(false)} />}
-
+      {/* A sibling of the card, not a child: a click in the dialog must not bubble up and select the panel. */}
       {confirming && (
         <div className="modal-backdrop">
           <div className="modal" role="dialog" aria-label="Delete panel">

@@ -195,6 +195,30 @@ describe('PanelEditorDialog', () => {
     expect('afterPanelId' in req.draft).toBe(false)
   })
 
+  it('sends no layout fields unless they were changed', async () => {
+    const { editor, calls } = mount()
+    expect(editor.getByLabelText('Frame')).toHaveValue('bordered')
+    expect(editor.getByLabelText('Beside the previous panel')).not.toBeChecked()
+    expect(editor.getByLabelText('Gap after')).toHaveValue('normal')
+    expect(editor.getByLabelText('Gutter')).toHaveValue('white')
+    await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
+    await waitFor(() => expect(sent(calls, 'panels:create')).toHaveLength(1))
+    const [plain] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
+    for (const key of ['frame', 'beside', 'gapAfter', 'gutter']) expect(key in plain.draft).toBe(false)
+  })
+
+  it('sends the layout fields that were changed from their defaults, and only those', async () => {
+    const { editor, calls } = mount()
+    await userEvent.selectOptions(editor.getByLabelText('Gutter'), 'black')
+    await userEvent.click(editor.getByLabelText('Beside the previous panel'))
+    await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
+    await waitFor(() => expect(sent(calls, 'panels:create')).toHaveLength(1))
+    const [req] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
+    expect(req.draft).toMatchObject({ gutter: 'black', beside: true })
+    expect('frame' in req.draft).toBe(false)
+    expect('gapAfter' in req.draft).toBe(false)
+  })
+
   it('creates without an image', async () => {
     const { editor, calls, onClose } = mount()
     await userEvent.type(editor.getByLabelText('Description'), 'A quiet street.')
@@ -561,6 +585,42 @@ describe('PanelEditorDialog', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Character Jin is archived')
       expect(editor.getByLabelText('Setting')).toHaveValue('Hallway roof')
       expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('sends only the layout field that changed, and never redraws', async () => {
+      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
+      await userEvent.selectOptions(editor.getByLabelText('Gap after'), 'long')
+      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { gapAfter: 'long' } }])
+      expect(sent(calls, 'panels:generate')).toEqual([])
+    })
+
+    it("shows the panel's stored layout in each control", () => {
+      const laid = panel({ ...existing, frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
+      const { editor } = mount({}, { mode: 'edit', panel: laid })
+      expect(editor.getByLabelText('Frame')).toHaveValue('slanted')
+      expect(editor.getByLabelText('Beside the previous panel')).toBeChecked()
+      expect(editor.getByLabelText('Gap after')).toHaveValue('tight')
+      expect(editor.getByLabelText('Gutter')).toHaveValue('black')
+      expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
+    it('sends beside when the box is ticked', async () => {
+      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
+      await userEvent.click(editor.getByLabelText('Beside the previous panel'))
+      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { beside: true } }])
+    })
+
+    it('replaces the frame with a note for a tall aspect', async () => {
+      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      expect(editor.getByLabelText('Frame')).toBeEnabled()
+      expect(editor.queryByText('Tall panels fade instead of a frame')).toBeNull()
+      await userEvent.selectOptions(editor.getByLabelText('Aspect'), '1:3')
+      expect(editor.getByLabelText('Frame')).toBeDisabled()
+      expect(editor.getByText('Tall panels fade instead of a frame')).toBeInTheDocument()
     })
 
     it('saves then regenerates', async () => {
