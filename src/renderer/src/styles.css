@@ -1498,7 +1498,7 @@ kbd {
 .strip-gap {
   position: relative;
   width: min(100%, 440px);
-  height: 28px;
+  height: 48px;
 }
 
 .strip-gap[data-gap='tight'] {
@@ -1758,6 +1758,11 @@ kbd {
   margin-top: 20px;
 }
 
+/* After the last row, its own gap is the space. */
+.strip-band + .insert-panel:last-child {
+  margin-top: 0;
+}
+
 .webtoon-strip > .insert-panel:last-child .insert-panel-button {
   width: 44px;
   height: 44px;
@@ -1766,10 +1771,12 @@ kbd {
 
 /* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
 
-/* Lettered like a manhwa page: sizes follow the row's width (`cqw`, the row is the container), so text stays readable
-   in a row of three, and a full-width panel (a row of one) looks as it always has. Widths are shares of the panel, so a
-   bubble is never wider than a narrow one. Shapes and sides come from bubble-layout.ts. */
+/* Lettered like a manhwa page: sizes follow the row's width (`cqw`, the row is the container), scaled by the panel's
+   share of the row (`--share`, set by the card) but never below 0.65 of it, so text stays readable in a row of three
+   and still fits a narrow panel. A full-width panel (a row of one, share 1) looks as it always has. Widths are shares of
+   the panel, so a bubble is never wider than a narrow one. Shapes and sides come from bubble-layout.ts. */
 .dialogue-overlay {
+  --lettering: max(var(--share, 1), 0.65);
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -1777,10 +1784,10 @@ kbd {
 
 .dialogue-flow {
   position: absolute;
-  inset: 4cqw 4cqw auto;
+  inset: calc(4cqw * var(--lettering)) calc(4cqw * var(--lettering)) auto;
   display: flex;
   flex-direction: column;
-  gap: 3.2cqw;
+  gap: calc(3.2cqw * var(--lettering));
 }
 
 .dialogue-sfx {
@@ -1788,7 +1795,7 @@ kbd {
   inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 4cqw;
+  gap: calc(4cqw * var(--lettering));
   align-items: center;
   justify-content: center;
 }
@@ -1799,7 +1806,7 @@ kbd {
   box-sizing: border-box;
   max-width: 62%;
   font-family: 'Comic Neue', var(--font);
-  font-size: clamp(9px, 3.4cqw, 20px);
+  font-size: calc(clamp(9px, 3.4cqw, 20px) * var(--lettering));
   font-weight: 700;
   line-height: 1.15;
   color: #111;
@@ -1842,7 +1849,7 @@ kbd {
 
 .bubble-shout {
   padding: 1.7em 1.9em;
-  font-size: clamp(10px, 4cqw, 24px);
+  font-size: calc(clamp(10px, 4cqw, 24px) * var(--lettering));
   font-weight: 700;
   letter-spacing: 0.02em;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -8 104 116' preserveAspectRatio='none'%3E%3Cpolygon points='100.0,50.0 92.7,54.7 98.5,60.8 89.3,63.4 94.3,70.9 83.7,71.0 87.4,79.8 79.8,80.3 78.4,87.0 70.4,85.1 67.7,92.1 60.3,87.6 56.0,94.7 50.0,87.8 44.0,94.7 40.2,85.8 32.3,92.1 29.1,85.9 21.6,87.0 20.8,79.6 12.6,79.8 14.6,72.0 5.7,70.9 10.7,63.4 1.5,60.8 9.3,54.4 0.0,50.0 5.3,45.1 1.5,39.2 8.9,36.0 5.7,29.1 14.6,28.0 12.6,20.2 22.1,21.7 21.6,13.0 30.9,17.3 32.3,7.9 39.2,10.7 44.0,5.3 50.0,10.4 56.0,5.3 60.3,12.4 67.7,7.9 69.5,16.5 78.4,13.0 77.2,22.4 87.4,20.2 87.0,27.0 94.3,29.1 91.1,36.0 98.5,39.2 92.7,45.3' fill='white' stroke='black' stroke-width='3' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
@@ -1934,7 +1941,7 @@ kbd {
   min-width: 7em;
   padding: 1.9em 2.4em;
   margin-bottom: 1.4em;
-  font-size: clamp(9px, 3.1cqw, 18px);
+  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering));
   font-weight: 400;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-7 -4 114 108' preserveAspectRatio='none'%3E%3Ccircle cx='50' cy='50' r='32' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='24' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='76' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='8' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='92' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='16' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='84' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='32' fill='white'/%3E%3Ccircle cx='24' cy='48' r='22' fill='white'/%3E%3Ccircle cx='76' cy='48' r='22' fill='white'/%3E%3Ccircle cx='36' cy='28' r='20' fill='white'/%3E%3Ccircle cx='64' cy='28' r='20' fill='white'/%3E%3Ccircle cx='36' cy='72' r='20' fill='white'/%3E%3Ccircle cx='64' cy='72' r='20' fill='white'/%3E%3Ccircle cx='16' cy='30' r='14' fill='white'/%3E%3Ccircle cx='84' cy='30' r='14' fill='white'/%3E%3Ccircle cx='16' cy='70' r='14' fill='white'/%3E%3Ccircle cx='84' cy='70' r='14' fill='white'/%3E%3Ccircle cx='8' cy='50' r='12' fill='white'/%3E%3Ccircle cx='92' cy='50' r='12' fill='white'/%3E%3Ccircle cx='50' cy='16' r='15' fill='white'/%3E%3Ccircle cx='50' cy='84' r='15' fill='white'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
@@ -1984,7 +1991,7 @@ kbd {
 .bubble-caption {
   max-width: 72%;
   padding: 0.5em 0.75em;
-  font-size: clamp(9px, 3.1cqw, 18px);
+  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering));
   text-align: left;
   background: #fff;
   border: 2px solid #111;
@@ -1995,7 +2002,7 @@ kbd {
 .bubble-sfx {
   max-width: 92%;
   font-family: 'Bangers', 'Comic Neue', var(--font);
-  font-size: clamp(18px, 9cqw, 64px);
+  font-size: calc(clamp(18px, 9cqw, 64px) * var(--lettering));
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0.05em;
@@ -2007,7 +2014,7 @@ kbd {
 }
 
 .bubble-sfx.bubble-loud {
-  font-size: clamp(24px, 14cqw, 96px);
+  font-size: calc(clamp(24px, 14cqw, 96px) * var(--lettering));
 }
 
 .bubble-sfx.bubble-tilt-right {

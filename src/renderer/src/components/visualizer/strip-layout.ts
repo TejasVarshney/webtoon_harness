@@ -1,6 +1,6 @@
 // How an episode's panels sit in the vertical strip. Pure: no React, so the rules are easy to test.
 
-import type { Panel, PanelGap, PanelGutter } from '@shared/types'
+import type { Panel, PanelAspect, PanelGap, PanelGutter } from '@shared/types'
 import { isTallAspect } from '@shared/draw-aspect'
 
 /** The most panels that share one row. */
@@ -35,4 +35,19 @@ export function layoutStrip(panels: Panel[]): StripRow[] {
     }
   }
   return rows
+}
+
+/** A panel's width over its height. */
+export function aspectRatio(aspect: PanelAspect): number {
+  const [w, h] = aspect.split(':').map(Number)
+  return w / h
+}
+
+/**
+ * How much of its row's width each panel of the row takes, by panel id: its aspect ratio over the row's sum, since the
+ * panels of a row share one height. A lone panel has the whole row (1).
+ */
+export function rowShares(panels: Panel[]): Record<string, number> {
+  const total = panels.reduce((sum, panel) => sum + aspectRatio(panel.aspect), 0)
+  return Object.fromEntries(panels.map((panel) => [panel.id, aspectRatio(panel.aspect) / total]))
 }

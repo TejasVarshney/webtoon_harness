@@ -8,12 +8,15 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { DialogueOverlay } from './DialogueOverlay'
 import { PanelEditorDialog } from './PanelEditorDialog'
+import { aspectRatio } from './strip-layout'
 
 export interface PanelCardProps {
   panel: Panel
   selected: boolean
   /** Which way a slanted panel leans, from the strip's layout. */
   slant?: 'left' | 'right'
+  /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
+  share?: number
 }
 
 /**
@@ -24,7 +27,7 @@ export interface PanelCardProps {
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps) {
   const projectId = useAppStore((s) => s.projectId)
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [editing, setEditing] = useState(false)
@@ -57,9 +60,8 @@ export function PanelCard({ panel, selected, slant }: PanelCardProps) {
   }
   const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
 
-  const [w, h] = panel.aspect.split(':').map(Number)
-  // Its share of the row's width (flex-grow), so the panels of a row are one height.
-  const shape = { '--ar': String(w / h) } as CSSProperties
+  // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height.
+  const shape = { '--ar': String(aspectRatio(panel.aspect)), '--share': String(share) } as CSSProperties
 
   function run(task: Promise<unknown>): void {
     setBusy(true)

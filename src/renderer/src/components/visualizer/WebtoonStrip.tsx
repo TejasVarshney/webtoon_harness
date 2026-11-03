@@ -2,7 +2,7 @@ import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { InsertPanelButton } from './InsertPanelButton'
 import { PanelCard } from './PanelCard'
-import { layoutStrip } from './strip-layout'
+import { layoutStrip, rowShares } from './strip-layout'
 
 export interface WebtoonStripProps {
   episodeId: string
@@ -25,19 +25,22 @@ export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
   return (
     <div className="webtoon-strip">
       {panels.length === 0 && <p className="placeholder">No panels yet. Add one, or ask the agent to draw it.</p>}
-      {rows.map((row, i) => (
-        <div key={row.panels[0].id} className="strip-band" data-gutter={row.gutter}>
-          <div className="strip-row" data-row-size={row.panels.length}>
-            {row.panels.map((panel) => (
-              <PanelCard key={panel.id} panel={panel} selected={panel.id === selectedPanelId} slant={row.slants[panel.id]} />
-            ))}
+      {rows.map((row, i) => {
+        const shares = rowShares(row.panels)
+        return (
+          <div key={row.panels[0].id} className="strip-band" data-gutter={row.gutter}>
+            <div className="strip-row" data-row-size={row.panels.length}>
+              {row.panels.map((panel) => (
+                <PanelCard key={panel.id} panel={panel} selected={panel.id === selectedPanelId} slant={row.slants[panel.id]} share={shares[panel.id]} />
+              ))}
+            </div>
+            {/* The last row's "+" is the end one, below. */}
+            <div className="strip-gap" data-gap={row.gapAfter}>
+              {i < rows.length - 1 && <InsertPanelButton episodeId={episodeId} afterPanelId={row.panels[row.panels.length - 1].id} />}
+            </div>
           </div>
-          {/* The last row's "+" is the end one, below. */}
-          <div className="strip-gap" data-gap={row.gapAfter}>
-            {i < rows.length - 1 && <InsertPanelButton episodeId={episodeId} afterPanelId={row.panels[row.panels.length - 1].id} />}
-          </div>
-        </div>
-      ))}
+        )
+      })}
       <InsertPanelButton key="append" episodeId={episodeId} />
     </div>
   )

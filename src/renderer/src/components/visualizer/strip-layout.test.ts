@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Panel } from '@shared/types'
 import { panel } from '../../test/panel-fixtures'
-import { layoutStrip } from './strip-layout'
+import { aspectRatio, layoutStrip, rowShares } from './strip-layout'
 
 const p = (id: string, o: Partial<Panel> = {}): Panel => panel({ id, ...o })
 const ids = (rows: ReturnType<typeof layoutStrip>): string[][] => rows.map((r) => r.panels.map((x) => x.id))
@@ -52,5 +52,30 @@ describe('layoutStrip', () => {
     expect(rows[0].slants).toEqual({})
     expect(rows[1].slants).toEqual({ b: 'left' })
     expect(rows[2].slants).toEqual({ c: 'right' })
+  })
+})
+
+describe('aspectRatio', () => {
+  it('is width over height', () => {
+    expect(aspectRatio('2:3')).toBeCloseTo(2 / 3)
+    expect(aspectRatio('16:9')).toBeCloseTo(16 / 9)
+    expect(aspectRatio('1:3')).toBeCloseTo(1 / 3)
+  })
+})
+
+describe('rowShares', () => {
+  it('gives a lone panel the whole row', () => {
+    expect(rowShares([p('a')])).toEqual({ a: 1 })
+  })
+
+  it('splits the row by aspect ratio', () => {
+    const shares = rowShares([p('a', { aspect: '2:3' }), p('b', { aspect: '16:9' })])
+    expect(shares.a).toBeCloseTo(2 / 3 / (2 / 3 + 16 / 9))
+    expect(shares.b).toBeCloseTo(16 / 9 / (2 / 3 + 16 / 9))
+  })
+
+  it('gives three equal panels a third each', () => {
+    const shares = rowShares([p('a'), p('b'), p('c')])
+    for (const id of ['a', 'b', 'c']) expect(shares[id]).toBeCloseTo(1 / 3)
   })
 })

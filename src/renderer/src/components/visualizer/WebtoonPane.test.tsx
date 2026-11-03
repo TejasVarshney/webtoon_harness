@@ -79,6 +79,8 @@ describe('WebtoonPane', () => {
       const rows = document.querySelectorAll('.strip-row')
       expect([...rows].map((r) => r.getAttribute('data-row-size'))).toEqual(['2', '1'])
       expect(within(rows[0] as HTMLElement).getAllByTestId('panel-card')).toHaveLength(2)
+      // Two 2:3 panels split their row; the lone one has it all.
+      expect(screen.getAllByTestId('panel-card').map((card) => card.style.getPropertyValue('--share'))).toEqual(['0.5', '0.5', '1'])
     })
 
     it('puts the insert button only between rows, after the row`s last panel', async () => {

@@ -132,6 +132,14 @@ describe('PanelCard', () => {
       // The card's share of its row's width, so the panels of a row are one height.
       expect(card.style.getPropertyValue('--ar')).toBe(String(1 / 3))
     })
+
+    it('passes its share of the row to the lettering, the whole row when alone', () => {
+      installFakeApi({})
+      const { rerender } = render(<PanelCard panel={panel()} selected={false} />)
+      expect(screen.getByTestId('panel-card').style.getPropertyValue('--share')).toBe('1')
+      rerender(<PanelCard panel={panel()} selected={false} share={0.25} />)
+      expect(screen.getByTestId('panel-card').style.getPropertyValue('--share')).toBe('0.25')
+    })
   })
 
   it('renders dialogue as overlay, not image text', () => {
