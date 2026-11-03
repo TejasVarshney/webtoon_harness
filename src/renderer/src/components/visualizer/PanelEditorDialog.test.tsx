@@ -184,7 +184,7 @@ describe('PanelEditorDialog', () => {
       aspect: '2:3',
       characters: [{ characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'left' }],
       items: [],
-      dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Who?' }]
+      dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Who?', placement: null }]
     })
   })
 
@@ -314,7 +314,7 @@ describe('PanelEditorDialog', () => {
       await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
       await waitFor(() => expect(sent(calls, 'panels:create')).toHaveLength(1))
       const [req] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
-      expect(req.draft.dialogue).toEqual([{ speakerId: null, kind: 'narration', text: 'Night fell.' }])
+      expect(req.draft.dialogue).toEqual([{ speakerId: null, kind: 'narration', text: 'Night fell.', placement: null }])
     })
 
     it('removes a line', async () => {
@@ -491,7 +491,7 @@ describe('PanelEditorDialog', () => {
         { characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'right' },
         { characterId: jin.id, variationId: 'var_00000000j1', action: '', expression: '', position: 'left' }
       ],
-      dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hello.' }]
+      dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hello.', placement: null }]
     })
 
     it('starts from the panel and offers Save instead of the create buttons', () => {
@@ -547,8 +547,23 @@ describe('PanelEditorDialog', () => {
           { characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'center' },
           { characterId: jin.id, variationId: 'var_00000000j1', action: '', expression: '', position: 'left' }
         ],
-        dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Goodbye.' }]
+        dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Goodbye.', placement: null }]
       })
+    })
+
+    it('carries a bubble placement through an edit of its text, and gives a new line none', async () => {
+      const placed = panel({ ...existing, dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hello.', placement: { x: 0.25, y: 0.75 } }] })
+      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: placed })
+      await userEvent.type(editor.getByLabelText('Text'), '!')
+      await userEvent.click(editor.getByRole('button', { name: 'Add dialogue line' }))
+      await userEvent.type(editor.getAllByLabelText('Text')[1], 'Hm.')
+      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      const [req] = sent(calls, 'panels:update') as { patch: PanelPatch }[]
+      expect(req.patch.dialogue).toEqual([
+        { speakerId: mina.id, kind: 'speech', text: 'Hello.!', placement: { x: 0.25, y: 0.75 } },
+        { speakerId: mina.id, kind: 'speech', text: 'Hm.', placement: null }
+      ])
     })
 
     it('does not send a field that was changed and changed back', async () => {

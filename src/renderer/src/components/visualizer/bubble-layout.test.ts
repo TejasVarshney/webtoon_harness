@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DialogueLine, PanelCharacter } from '@shared/types'
 import { bubbleShape, layoutBubbles } from './bubble-layout'
 
-const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId })
+const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId, placement: null })
 const cast = (characterId: string, position: PanelCharacter['position']): Pick<PanelCharacter, 'characterId' | 'position'> => ({ characterId, position })
 
 describe('bubbleShape', () => {

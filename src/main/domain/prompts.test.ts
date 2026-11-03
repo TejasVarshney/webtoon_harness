@@ -251,7 +251,7 @@ describe('composePanelPrompt', () => {
       stylePreset: 'STYLE',
       panel: panel({
         characters: [cast(mina, 'var_m0')],
-        dialogue: [{ id: 'dlg_1', speakerId: 'chr_mina', kind: 'speech', text: 'SECRET LINE' }]
+        dialogue: [{ id: 'dlg_1', speakerId: 'chr_mina', kind: 'speech', text: 'SECRET LINE', placement: null }]
       }),
       roster,
       itemRoster,

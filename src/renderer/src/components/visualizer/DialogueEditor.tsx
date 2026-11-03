@@ -67,7 +67,7 @@ export function DialogueEditor({ characters, cast, value, onChange }: DialogueEd
           type="button"
           onClick={() => {
             const first = cast[0]?.characterId ?? null
-            onChange([...value, { speakerId: first, kind: first === null ? 'narration' : 'speech', text: '' }])
+            onChange([...value, { speakerId: first, kind: first === null ? 'narration' : 'speech', text: '', placement: null }])
           }}
         >
           Add dialogue line

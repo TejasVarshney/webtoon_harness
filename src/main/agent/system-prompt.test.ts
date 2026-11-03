@@ -116,6 +116,7 @@ const version = (id: string, status: PanelVersion['status']): PanelVersion => ({
   referenceImagePaths: [],
   instruction: null,
   parentVersionId: null,
+  drawnFrom: null,
   check: null,
   createdAt: '2026-01-01T00:00:00.000Z'
 })

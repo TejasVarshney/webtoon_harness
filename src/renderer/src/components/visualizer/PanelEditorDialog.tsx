@@ -55,7 +55,7 @@ function fromPanel(panel: Panel): Values {
     gutter: panel.gutter,
     characters: panel.characters,
     items: panel.items,
-    dialogue: panel.dialogue.map(({ speakerId, kind, text }) => ({ speakerId, kind, text }))
+    dialogue: panel.dialogue.map(({ speakerId, kind, text, placement }) => ({ speakerId, kind, text, placement }))
   }
 }
 
@@ -72,7 +72,7 @@ function normalize(v: Values): Values {
     gutter: v.gutter,
     characters: v.characters.map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position })),
     items: v.items.map((i) => ({ itemId: i.itemId, usageId: i.usageId, heldBy: i.heldBy, action: i.action.trim() })),
-    dialogue: v.dialogue.filter((l) => l.text.trim() !== '').map((l) => ({ speakerId: l.speakerId, kind: l.kind, text: l.text.trim() }))
+    dialogue: v.dialogue.filter((l) => l.text.trim() !== '').map((l) => ({ speakerId: l.speakerId, kind: l.kind, text: l.text.trim(), placement: l.placement }))
   }
 }
 

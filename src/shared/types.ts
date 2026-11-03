@@ -6,6 +6,7 @@ import type {
   AssistantMessageSchema,
   BeatPatchSchema,
   BeatSchema,
+  BubblePlacementSchema,
   CapabilitySchema,
   CharacterInputSchema,
   CharacterPatchSchema,
@@ -45,7 +46,8 @@ import type {
   UserMessageSchema,
   VariationInputSchema,
   VariationKindSchema,
-  VariationSchema
+  VariationSchema,
+  VisualFieldsSchema
 } from './schemas'
 
 // --- derived from the schemas -----------------------------------------------------------------
@@ -60,7 +62,10 @@ export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
+export type BubblePlacement = z.infer<typeof BubblePlacementSchema>
 export type PanelVersion = z.infer<typeof PanelVersionSchema>
+export type VisualFields = z.infer<typeof VisualFieldsSchema>
+export type VisualField = keyof VisualFields
 export type CheckResult = z.infer<typeof CheckResultSchema>
 export type Beat = z.infer<typeof BeatSchema>
 export type BeatPatch = z.infer<typeof BeatPatchSchema>

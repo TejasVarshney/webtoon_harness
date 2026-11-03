@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   BeatSchema,
+  BubblePlacementSchema,
   CharacterInputSchema,
   CharacterPatchSchema,
   CharacterSchema,
@@ -147,9 +148,22 @@ describe('Panel', () => {
 
   it('validates dialogue lines', () => {
     const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Night fell.' }
-    expect(DialogueLineSchema.parse(line)).toEqual(line)
+    expect(DialogueLineSchema.parse(line)).toEqual({ ...line, placement: null })
     expect(() => DialogueLineSchema.parse({ ...line, kind: 'yell' })).toThrow()
     expect(() => DialogueLineSchema.parse({ ...line, speakerId: undefined })).toThrow()
+  })
+
+  it('reads a line stored before placement existed as automatic', () => {
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Night fell.' }
+    expect(DialogueLineSchema.parse(line).placement).toBeNull()
+    expect(DialogueLineSchema.parse({ ...line, placement: { x: 0.25, y: 0.75 } }).placement).toEqual({ x: 0.25, y: 0.75 })
+  })
+
+  it('keeps a bubble centre inside the panel', () => {
+    expect(BubblePlacementSchema.parse({ x: 0, y: 1 })).toEqual({ x: 0, y: 1 })
+    expect(() => BubblePlacementSchema.parse({ x: 1.2, y: 0 })).toThrow()
+    expect(() => BubblePlacementSchema.parse({ x: 0.5, y: -0.1 })).toThrow()
+    expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: 1.2, y: 0 } })).toThrow()
   })
 })
 
@@ -159,6 +173,12 @@ describe('PanelVersion and CheckResult', () => {
     expect(v.referenceImagePaths).toEqual([])
     expect(v.instruction).toBeNull()
     expect(v.parentVersionId).toBeNull()
+  })
+
+  it('reads a version stored before drawnFrom existed as drawn from nothing known', () => {
+    expect(PanelVersionSchema.parse(minimalVersion).drawnFrom).toBeNull()
+    const drawnFrom = { description: 'd', setting: 's', shot: 'medium', aspect: '2:3', characters: [], items: [] }
+    expect(PanelVersionSchema.parse({ ...minimalVersion, drawnFrom }).drawnFrom).toEqual(drawnFrom)
   })
 
   it('requires the fields the spec gives no default', () => {
@@ -410,6 +430,15 @@ describe('input schemas', () => {
     expect(PanelPatchSchema.parse({ description: 'x' })).toEqual({ description: 'x' })
     expect(PanelPatchSchema.parse({ shot: 'close-up', continuityNotes: 'n' })).toEqual({ shot: 'close-up', continuityNotes: 'n' })
     expect(() => PanelPatchSchema.parse({ shot: 'dutch' })).toThrow()
+  })
+
+  it('leaves a patched line without placement undefined, apart from an explicit null', () => {
+    const [bare] = PanelPatchSchema.parse({ dialogue: [{ speakerId: null, kind: 'narration', text: 'A' }] }).dialogue ?? []
+    expect('placement' in bare).toBe(false)
+    const [cleared] = PanelPatchSchema.parse({ dialogue: [{ speakerId: null, kind: 'narration', text: 'A', placement: null }] }).dialogue ?? []
+    expect(cleared.placement).toBeNull()
+    const [placed] = PanelDraftSchema.parse({ ...draft, dialogue: [{ speakerId: null, kind: 'narration', text: 'A', placement: { x: 0.5, y: 0.5 } }] }).dialogue
+    expect(placed.placement).toEqual({ x: 0.5, y: 0.5 })
   })
 
   it('panel patches drop episodeId and afterPanelId', () => {

@@ -323,7 +323,7 @@ describe('list_panels and get_panel', () => {
       gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
-      dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.' }],
+      dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.', placement: null }],
       currentVersion: { id: made.versionId, status: 'ready', imagePath: made.imagePath }
     })
   })
