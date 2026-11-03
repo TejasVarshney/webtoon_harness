@@ -11,6 +11,8 @@ import { buildAgentTools } from './tools'
 
 export { SessionBusyError } from './run-host'
 
+export const DRIVEN_READ_ONLY = 'This session is driven by Claude Code and is read-only.'
+
 export interface AgentRunnerOptions {
   services: Services
   createTextProvider?: (r: ResolvedModel) => TextProvider
@@ -58,6 +60,7 @@ export class AgentRunner {
   }
 
   async start(input: StartRunInput): Promise<{ runId: string }> {
+    await this.refuseDriven(input)
     const backend = this.backend()
     if (backend) {
       // A model-loop run from before the switch still holds the session.
@@ -93,6 +96,13 @@ export class AgentRunner {
         }
       }
     })
+  }
+
+  /** A session Claude Code drives over MCP is its log; nothing else may write to it (the renderer hides the controls too). */
+  private async refuseDriven(input: StartRunInput): Promise<void> {
+    const ctx = await this.services.projects.open(input.projectId)
+    const session = (await this.services.sessions.list(ctx)).find((x) => x.id === input.sessionId)
+    if (session !== undefined && session.driver !== null) throw new Error(DRIVEN_READ_ONLY)
   }
 
   /** Read at call time: plugins are created after the runner, and the switch can change at any moment. */

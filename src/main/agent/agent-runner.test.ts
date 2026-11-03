@@ -294,6 +294,21 @@ describe('AgentRunner', () => {
     expect(requests[1].messages[0].content).toContainEqual({ type: 'text', text: '[image no longer available: uploads/pic.png]' })
   })
 
+  it('refuses a session Claude Code drives, on the model loop and on a plugin backend, and persists nothing', async () => {
+    const { s, runner, projectId, events } = await setup([{ text: 'should not run' }])
+    const ctx = await s.projects.open(projectId)
+    const driven = await s.sessions.create(ctx, { title: 'Claude Code', driver: 'claude-code' })
+    const READ_ONLY = 'This session is driven by Claude Code and is read-only.'
+    await expect(runner.start(input(projectId, driven.id))).rejects.toThrow(READ_ONLY)
+    const backend = { start: vi.fn(async () => ({ runId: 'run_backend000' })), stop: vi.fn(async () => {}), cancel: vi.fn(), isRunning: () => false }
+    vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+    await expect(runner.start(input(projectId, driven.id))).rejects.toThrow(READ_ONLY)
+    expect(backend.start).not.toHaveBeenCalled()
+    expect(await s.sessions.load(ctx, driven.id)).toEqual([])
+    expect(events).toEqual([])
+    expect(runner.isRunning(driven.id)).toBe(false)
+  })
+
   it('rejects an unknown session without leaving the slot busy', async () => {
     const { runner, projectId } = await setup([])
     await expect(runner.start(input(projectId, 'ses_doesnotexist'))).rejects.toThrow(/Unknown session/)
