@@ -1456,23 +1456,78 @@ kbd {
   padding: 16px;
 }
 
-/* The strip: panels in an inked frame, a white gutter between them, the "+" waiting in each gutter. */
+/* The strip: panels in rows, each row on its gutter band, the "+" waiting in each gap between rows. */
 .webtoon-strip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 28px 20px 40px;
+  padding: 28px 0 40px;
 }
 
 .webtoon-strip > .placeholder {
   max-width: 300px;
-  margin-bottom: 12px;
+  margin: 0 20px 12px;
   text-align: center;
+}
+
+/* A row and the gap after it, on the row's gutter colour from edge to edge: the page, or black. Bands sit flush, so
+   black rows in a run read as one dark band. */
+.strip-band {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--raised);
+}
+
+.strip-band[data-gutter='black'] {
+  background: #000;
+}
+
+/* The panels of a row share one height: each takes the row's width in proportion to its aspect (`--ar`, set by the
+   card). The row is also the size container the lettering is measured against. */
+.strip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(100%, 440px);
+  container-type: inline-size;
+}
+
+.strip-gap {
+  position: relative;
+  width: min(100%, 440px);
+  height: 28px;
+}
+
+.strip-gap[data-gap='tight'] {
+  height: 8px;
+}
+
+.strip-gap[data-gap='long'] {
+  height: 120px;
+}
+
+/* Centred on the gap, and over the panels when the gap is narrower than the button. The button is raised, not its
+   wrapper: the wrapper also holds the editor the button opens, which must not be shut inside a stacking context. */
+.strip-gap .insert-panel {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+
+.strip-gap .insert-panel-button {
+  position: relative;
+  z-index: 1;
 }
 
 .panel-card {
   position: relative;
-  width: min(100%, 440px);
+  /* Scaled up, since a lone portrait panel's ratio is under 1, and flex-grow under 1 leaves part of the row empty. */
+  flex: calc(var(--ar) * 100) 1 0;
+  min-width: 0;
   background: var(--surface);
   border: 2.5px solid var(--ink);
   border-radius: 2px;
@@ -1509,6 +1564,70 @@ kbd {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Without ink, the art meets the gutter: no frame, and nothing behind the image once there is one. */
+.panel-card:not([data-frame='bordered']) {
+  background: transparent;
+  border: 0;
+}
+
+.panel-card:not([data-frame='bordered']) .panel-media:has(> img) {
+  background: transparent;
+}
+
+/* Borderless: the image's edges fade into the gutter. */
+.panel-card[data-frame='borderless'] .panel-media img {
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent), linear-gradient(transparent, #000 6%, #000 94%, transparent);
+  mask-composite: intersect;
+}
+
+/*
+ * Slanted: the top and bottom edges cut on a slope (4% of the row's width), leaning the way the layout says. The
+ * media is ink cut to the slope; the image and the lettering sit in it cut 2.5px smaller, so the ink shows as the
+ * frame. Only the media is cut: the card's outline and toolbar stay whole.
+ */
+.panel-card[data-frame='slanted'] {
+  --cut: polygon(0 0, 100% 4cqw, 100% calc(100% - 4cqw), 0 100%);
+  --cut-inner: polygon(2.5px 2.5px, calc(100% - 2.5px) calc(4cqw + 2.5px), calc(100% - 2.5px) calc(100% - 4cqw - 2.5px), 2.5px calc(100% - 2.5px));
+}
+
+.panel-card[data-frame='slanted'][data-slant='right'] {
+  --cut: polygon(0 4cqw, 100% 0, 100% 100%, 0 calc(100% - 4cqw));
+  --cut-inner: polygon(2.5px calc(4cqw + 2.5px), calc(100% - 2.5px) 2.5px, calc(100% - 2.5px) calc(100% - 2.5px), 2.5px calc(100% - 4cqw - 2.5px));
+}
+
+.panel-card[data-frame='slanted'] .panel-media {
+  background: var(--ink);
+  clip-path: var(--cut);
+}
+
+/* The paper inside the ink, for a panel still waiting for its image. */
+.panel-card[data-frame='slanted'] .panel-media::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: var(--raised);
+  clip-path: var(--cut-inner);
+}
+
+.panel-card[data-frame='slanted'] .panel-media img {
+  position: relative;
+}
+
+.panel-card[data-frame='slanted'] .panel-media img,
+.panel-card[data-frame='slanted'] .dialogue-overlay {
+  clip-path: var(--cut-inner);
+}
+
+/* Tall (1:2, 1:3): drawn at 9:16, so the image fills the width, centred, and fades out at the top and bottom. */
+.panel-card[data-frame='fade'] .panel-media img {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: auto;
+  translate: 0 -50%;
+  mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent);
 }
 
 .panel-empty {
@@ -1647,12 +1766,9 @@ kbd {
 
 /* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
 
-/* Lettered like a manhwa page: sizes follow the panel's width (`cqw`), so a bubble looks the same in the strip and in
-   the editor. Shapes and sides come from bubble-layout.ts. */
-.panel-media {
-  container-type: inline-size;
-}
-
+/* Lettered like a manhwa page: sizes follow the row's width (`cqw`, the row is the container), so text stays readable
+   in a row of three, and a full-width panel (a row of one) looks as it always has. Widths are shares of the panel, so a
+   bubble is never wider than a narrow one. Shapes and sides come from bubble-layout.ts. */
 .dialogue-overlay {
   position: absolute;
   inset: 0;

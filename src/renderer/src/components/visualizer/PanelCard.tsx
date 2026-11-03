@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { ArrowDown, ArrowUp, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
+import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
@@ -11,6 +12,8 @@ import { PanelEditorDialog } from './PanelEditorDialog'
 export interface PanelCardProps {
   panel: Panel
   selected: boolean
+  /** Which way a slanted panel leans, from the strip's layout. */
+  slant?: 'left' | 'right'
 }
 
 /**
@@ -18,8 +21,10 @@ export interface PanelCardProps {
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
  * toolbar on hover.
  * Clicking the card selects the panel; the toolbar's buttons and the dialogs it opens do not.
+ * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
+ * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant }: PanelCardProps) {
   const projectId = useAppStore((s) => s.projectId)
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [editing, setEditing] = useState(false)
@@ -52,6 +57,10 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
   }
   const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
 
+  const [w, h] = panel.aspect.split(':').map(Number)
+  // Its share of the row's width (flex-grow), so the panels of a row are one height.
+  const shape = { '--ar': String(w / h) } as CSSProperties
+
   function run(task: Promise<unknown>): void {
     setBusy(true)
     setError(null)
@@ -82,6 +91,12 @@ export function PanelCard({ panel, selected }: PanelCardProps) {
         className="panel-card"
         data-testid="panel-card"
         data-selected={String(selected)}
+        data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
+        data-beside={String(panel.beside)}
+        data-gutter={panel.gutter}
+        data-gap={panel.gapAfter}
+        data-slant={slant}
+        style={shape}
         aria-current={selected ? 'true' : undefined}
         tabIndex={0}
         onClick={select}

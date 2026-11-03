@@ -69,6 +69,38 @@ describe('WebtoonPane', () => {
     expect(drafts.every((d) => d.episodeId === EPISODE_ID)).toBe(true)
   })
 
+  describe('rows', () => {
+    const c = panel({ id: 'pnl_00000000cc' })
+    const beside = { ...b, beside: true }
+
+    it('puts a beside panel in the row before it', async () => {
+      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, beside, c] })
+      await screen.findAllByTestId('panel-card')
+      const rows = document.querySelectorAll('.strip-row')
+      expect([...rows].map((r) => r.getAttribute('data-row-size'))).toEqual(['2', '1'])
+      expect(within(rows[0] as HTMLElement).getAllByTestId('panel-card')).toHaveLength(2)
+    })
+
+    it('puts the insert button only between rows, after the row`s last panel', async () => {
+      const created = panel({ id: 'pnl_00000000dd' })
+      const { calls } = mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, beside, c], 'panels:create': () => ({ panel: created, warnings: [] }) })
+      await screen.findAllByTestId('panel-card')
+      const buttons = screen.getAllByTestId('add-panel')
+      expect(buttons).toHaveLength(2)
+      await userEvent.click(buttons[0])
+      await userEvent.click(within(screen.getByTestId('panel-editor')).getByRole('button', { name: 'Create without image' }))
+      await waitFor(() => expect(calls.some((x) => x.channel === 'panels:create')).toBe(true))
+      expect((calls.find((x) => x.channel === 'panels:create')?.req as { draft: Record<string, unknown> }).draft.afterPanelId).toBe(beside.id)
+    })
+
+    it('draws a black-gutter row on a black band', async () => {
+      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, { ...c, gutter: 'black' }] })
+      const cards = await screen.findAllByTestId('panel-card')
+      expect(cards[0].closest('.strip-band')).toHaveAttribute('data-gutter', 'white')
+      expect(cards[1].closest('.strip-band')).toHaveAttribute('data-gutter', 'black')
+    })
+  })
+
   it('shows one insert button and a hint for an empty episode', async () => {
     mount({ 'episodes:list': () => [episode()], 'panels:list': () => [] })
     expect(await screen.findAllByTestId('add-panel')).toHaveLength(1)

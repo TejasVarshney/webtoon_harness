@@ -102,6 +102,38 @@ describe('PanelCard', () => {
     expect(screen.getByText('No image yet')).toBeInTheDocument()
   })
 
+  describe('shape', () => {
+    it('marks the frame, slant and layout on the card', () => {
+      installFakeApi({})
+      render(<PanelCard panel={panel({ frame: 'slanted', beside: true, gapAfter: 'long', gutter: 'black' })} selected={false} slant="right" />)
+      const card = screen.getByTestId('panel-card')
+      expect(card).toHaveAttribute('data-frame', 'slanted')
+      expect(card).toHaveAttribute('data-slant', 'right')
+      expect(card).toHaveAttribute('data-beside', 'true')
+      expect(card).toHaveAttribute('data-gap', 'long')
+      expect(card).toHaveAttribute('data-gutter', 'black')
+    })
+
+    it('has no slant unless given one', () => {
+      installFakeApi({})
+      render(<PanelCard panel={panel()} selected={false} />)
+      const card = screen.getByTestId('panel-card')
+      expect(card).toHaveAttribute('data-frame', 'bordered')
+      expect(card).not.toHaveAttribute('data-slant')
+    })
+
+    it('fades a tall panel whatever its frame, at its own aspect', () => {
+      installFakeApi({})
+      render(<PanelCard panel={panel({ aspect: '1:3', frame: 'bordered' })} selected={false} />)
+      const card = screen.getByTestId('panel-card')
+      expect(card).toHaveAttribute('data-frame', 'fade')
+      const media = card.querySelector<HTMLElement>('.panel-media')
+      expect(media?.style.aspectRatio).toBe('1 / 3')
+      // The card's share of its row's width, so the panels of a row are one height.
+      expect(card.style.getPropertyValue('--ar')).toBe(String(1 / 3))
+    })
+  })
+
   it('renders dialogue as overlay, not image text', () => {
     installFakeApi({})
     const p = panel({
