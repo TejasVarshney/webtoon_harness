@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { defineTool, ToolRegistry } from '../../agent/tools/registry'
 import { EntityNotFoundError } from '../../domain/errors'
 import type { ProjectContext } from '../../storage/project-store'
+import { listenOnFetchablePort } from '../../test/free-port'
 import { testServices, type TestServices } from '../../test/test-services'
 import { McpLinkServer, PortInUseError } from './mcp-server'
 import { McpToolAdapter, NO_PROJECT } from './mcp-tools'
@@ -55,7 +56,7 @@ async function setup(opts: { registry?: ToolRegistry; progressIntervalMs?: numbe
     ...(opts.progressIntervalMs ? { progressIntervalMs: opts.progressIntervalMs } : {})
   })
   servers.push(server)
-  await server.listen(0)
+  await listenOnFetchablePort(server)
   return { s, ctx, adapter, log, server, port: server.port! }
 }
 
@@ -428,7 +429,7 @@ describe('McpLinkServer', () => {
     it('can listen again after close', async () => {
       const { server } = await setup()
       await server.close()
-      await server.listen(0)
+      await listenOnFetchablePort(server)
       const client = await connect(server.port!)
       expect((await client.listTools()).tools.length).toBeGreaterThan(0)
     })

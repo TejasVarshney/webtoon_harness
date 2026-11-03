@@ -1,20 +1,9 @@
-import { createServer } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { expect, test } from '@playwright/test'
+// A free port that the SDK client's fetch connects to (port 0 can hand out one of fetch's "bad ports").
+import { freePort } from '../../src/main/test/free-port'
 import { createProjectAndSession, launchApp, openTab } from './helpers'
-
-/** A port nothing listens on right now: bind port 0, read it, release it. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as { port: number }
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 // Phase-1 acceptance: an outside MCP client drives the open project through the plugin's link.
 test('an MCP client creates a character through the Claude Code link and the app shows it', async () => {

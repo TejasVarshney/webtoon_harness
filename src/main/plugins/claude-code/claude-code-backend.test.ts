@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, AppEvent, AssistantMessage, UserMessage } from '@shared/types'
 import { SessionBusyError } from '../../agent/run-host'
+import { listenOnFetchablePort } from '../../test/free-port'
 import { testServices, type TestServices } from '../../test/test-services'
 import type { PluginStatus } from '../types'
 import { ClaudeCodeBackend, findOnPath, type ClaudeCodeLink } from './claude-code-backend'
@@ -413,7 +414,7 @@ describe('ClaudeCodeBackend with the real MCP link', () => {
       token: () => TOKEN
     })
     linkServer = server
-    await server.listen(0)
+    await listenOnFetchablePort(server)
     return {
       linkUrl: () => `http://127.0.0.1:${server.port}/mcp`,
       token: () => TOKEN,
