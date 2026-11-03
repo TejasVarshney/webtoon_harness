@@ -33,6 +33,21 @@ claude
 
 Restart Claude Code after setting them, and check `/mcp` shows `webtoon` as connected. If you regenerate the token in Settings, set the new one and restart.
 
+Image tools wait for the image, so one call can take minutes. If Claude Code gives up on a call too early, raise its MCP tool timeout before starting it (the app's own Claude Code runs use 15 minutes):
+
+```
+$env:MCP_TOOL_TIMEOUT = "900000"
+```
+
+## Tool names
+
+Claude Code names the tools after the server they come from:
+
+- installed with this plugin, the server is the plugin's, so the tools are `mcp__plugin_webtoon-harness_webtoon__<name>`;
+- added with the app's **Copy command** (`claude mcp add ... webtoon ...`), they are `mcp__webtoon__<name>`.
+
+Use one or the other, not both: with both, Claude Code connects twice and lists every tool twice. If you added the link with `claude mcp add` before, remove it with `claude mcp remove webtoon`. The skill and the commands name the tools by their plain names, so they work either way.
+
 ## Commands
 
 Plugin commands are namespaced by the plugin name:

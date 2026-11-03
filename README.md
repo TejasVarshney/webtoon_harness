@@ -182,6 +182,10 @@ claude mcp add --transport http webtoon http://127.0.0.1:<port>/mcp --header "Au
 
 3. Claude Code now sees the harness tools as `mcp__webtoon__*`. Each call is logged in a session titled "Claude Code" (marked "Driven by Claude Code"), so you can follow what it did.
 
+Image tools wait for the image, so one call can take minutes. Claude Code's default MCP tool timeout can cut such a call off; set `MCP_TOOL_TIMEOUT` (milliseconds) in the environment that starts `claude`, for example `$env:MCP_TOOL_TIMEOUT = "900000"` for 15 minutes, the value the app uses for its own Claude Code runs.
+
+The [Claude Code plugin](integrations/claude-code-plugin/README.md) in `integrations/` adds the same server together with a skill and commands; its tools are named `mcp__plugin_webtoon-harness_webtoon__*`. Use either `claude mcp add` or the plugin, not both: with both, Claude Code connects twice and every tool appears twice.
+
 The link only acts on the project that is open in the app window; with no project open, calls fail with "Open a project in the Webtoon AI Harness window first." It listens on `127.0.0.1` only and every request needs the token (stored in the app's secret store). **Regenerate token** in Settings → Plugins disconnects every client that has the old one.
 
 ## Story modes

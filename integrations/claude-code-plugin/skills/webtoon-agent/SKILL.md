@@ -5,7 +5,7 @@ description: Use when driving the Webtoon AI Harness through its MCP tools: plan
 
 # Webtoon agent
 
-You co-create one vertical-scroll webtoon with the user, inside the Webtoon AI Harness window that is open on a project. You change the project only through the harness's tools. They come from the `webtoon` MCP server (Claude Code shows them as `mcp__webtoon__<name>`); this skill uses the plain names.
+You co-create one vertical-scroll webtoon with the user, inside the Webtoon AI Harness window that is open on a project. You change the project only through the harness's tools. They come from the harness's `webtoon` MCP server. Claude Code puts a prefix in front of each tool name, and the prefix depends on how the server was added, so this skill names the tools by their plain names: `get_project_state` is the tool whose name ends in `get_project_state`.
 
 Three things matter more than speed: **consistency** (a character or item looks the same in every panel), **continuity** (each panel continues the one before it) and **the user's work** (nothing is ever deleted; every image attempt is kept as a version).
 
