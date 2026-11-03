@@ -1420,10 +1420,11 @@ kbd {
   background: var(--raised);
 }
 
+/* Above the cards, which are raised while hovered, focused or selected (see .panel-card), but below menus and dialogs. */
 .episode-bar {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1785,8 +1786,8 @@ kbd {
   margin-top: 20px;
 }
 
-/* After the last row, its own gap is the space. */
-.strip-band + .insert-panel:last-child {
+/* After the last row, its own gap is the space. Not adjacent: an open editor sits between them. */
+.strip-band ~ .insert-panel:last-child {
   margin-top: 0;
 }
 
