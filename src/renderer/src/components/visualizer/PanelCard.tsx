@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, Columns2, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
-import { assetUrl } from '@shared/asset-url'
+import { ArrowDown, ArrowUp, Columns2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
-import { DialogueOverlay } from './DialogueOverlay'
+import { PanelArt } from './PanelArt'
 import { aspectRatio } from './strip-layout'
 
 export interface PanelCardProps {
@@ -29,7 +28,6 @@ export interface PanelCardProps {
  * frame, whatever its own frame says.
  */
 export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCardProps) {
-  const projectId = useAppStore((s) => s.projectId)
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -43,22 +41,8 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
 
   const index = siblings?.findIndex((p) => p.id === panel.id) ?? -1
   const count = siblings?.length ?? 0
-  // The image is the version the panel points at; the status is the newest attempt, which may not be ready yet.
-  const current = panel.versions.find((v) => v.id === panel.currentVersionId)
-  const imagePath = current?.status === 'ready' ? current.imagePath : null
-  const latest = panel.versions.at(-1)
-  const generating = latest?.status === 'pending'
-
-  // A revert (from the version switcher, or by the agent) moves the current version while the newest attempt stays
-  // the same failed one: the user chose an image, so that old failure is no longer shown. A later attempt that fails
-  // is new, and shows again. Kept per card, from the data alone: nothing is stored.
-  const [seen, setSeen] = useState({ current: panel.currentVersionId, latest: latest?.id ?? null })
-  const [dismissedFailure, setDismissedFailure] = useState<string | null>(null)
-  if (seen.current !== panel.currentVersionId || seen.latest !== (latest?.id ?? null)) {
-    if (seen.current !== panel.currentVersionId && seen.latest === latest?.id && latest?.status === 'failed') setDismissedFailure(latest.id)
-    setSeen({ current: panel.currentVersionId, latest: latest?.id ?? null })
-  }
-  const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
+  // The newest attempt, which may not be ready yet (see PanelArt, which shows its status).
+  const generating = panel.versions.at(-1)?.status === 'pending'
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height.
   const shape = { '--ar': String(aspectRatio(panel.aspect)), '--share': String(share) } as CSSProperties
@@ -90,8 +74,9 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
     <>
       <article
         ref={cardRef}
-        className="panel-card"
+        className="panel-card panel-shape"
         data-testid="panel-card"
+        data-panel-id={panel.id}
         data-selected={String(selected)}
         data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
         data-beside={String(panel.beside)}
@@ -104,33 +89,7 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
         onClick={select}
         onKeyDown={onKeyDown}
       >
-        <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
-          {imagePath !== null && projectId !== null && <img src={assetUrl(projectId, imagePath)} alt={panel.description} draggable={false} />}
-          {panel.versions.length === 0 && <div className="panel-empty">No image yet</div>}
-          <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} />
-          {generating && (
-            <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">
-              <LoaderCircle size={14} className="spin" aria-hidden="true" />
-              Generating…
-            </div>
-          )}
-          {failed !== null && (
-            <div className="panel-status panel-status-failed" data-testid="panel-status" data-status="failed" role="status">
-              <span>{`Failed: ${failed.error ?? 'Unknown error'}`}</span>
-              {/* Retry is part of the status, but is its own control: a click on it must not select the panel. */}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  run(generatePanel(panel.id))
-                }}
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
+        <PanelArt panel={panel} />
         {error !== null && (
           <p role="alert" className="error panel-error">
             {error}
