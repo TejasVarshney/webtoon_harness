@@ -37,8 +37,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const episodesLoaded = usePanelsStore((s) => s.episodesLoaded)
   const loadError = usePanelsStore((s) => s.error)
   const panels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Upload and Regenerate belong to the panel they ran for: stepping to the next panel leaves their failure behind.
+  const [action, setAction] = useState<{ panelId: string; busy: boolean; error: string | null } | null>(null)
 
   // Panels of another project must never show here, whatever the store still holds.
   const loaded = storeProjectId === projectId && episodesLoaded && (activeEpisodeId === null || panels !== undefined)
@@ -48,6 +48,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const next = index === -1 ? undefined : panels?.[index + 1]
   const generating = panel?.versions.at(-1)?.status === 'pending'
   const notice = panel === undefined ? null : staleNotice(staleVisualFields(panel))
+  const busy = action?.panelId === panelId && action.busy
+  const error = action?.panelId === panelId ? action.error : null
 
   // A panel opened from a chat thumbnail can arrive before the Webtoon tab ever loaded the strip.
   useEffect(() => {
@@ -68,19 +70,16 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  function run(task: Promise<unknown>): void {
-    setBusy(true)
-    setError(null)
+  function run(id: string, task: Promise<unknown>): void {
+    setAction({ panelId: id, busy: true, error: null })
+    const settle = (error: string | null): void => setAction((a) => (a?.panelId === id ? { panelId: id, busy: false, error } : a))
     task.then(
-      () => setBusy(false),
-      (e: unknown) => {
-        setError(errorText(e))
-        setBusy(false)
-      }
+      () => settle(null),
+      (e: unknown) => settle(errorText(e))
     )
   }
 
-  const regenerate = (id: string): void => run(usePanelsStore.getState().generatePanel(id))
+  const regenerate = (id: string): void => run(id, usePanelsStore.getState().generatePanel(id))
   const select = (id: string): void => useAppStore.getState().selectPanel(id)
 
   return (
@@ -106,7 +105,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                   </div>
                   <div className="editing-actions">
                     <VersionSwitcher panel={panel} />
-                    <button type="button" disabled={busy} onClick={() => run(usePanelsStore.getState().uploadPanelImage(panel.id))}>
+                    <button type="button" disabled={busy} onClick={() => run(panel.id, usePanelsStore.getState().uploadPanelImage(panel.id))}>
                       Upload image…
                     </button>
                     <button type="button" className="btn-primary" disabled={busy || generating} onClick={() => regenerate(panel.id)}>

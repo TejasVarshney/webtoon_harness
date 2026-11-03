@@ -123,6 +123,27 @@ describe('PanelWorkspace', () => {
     expect(await within(workspace()).findByRole('alert')).toHaveTextContent('No image model is set')
   })
 
+  it('leaves a panel its own failure and its own busy state when stepping to the next one', async () => {
+    let finish: () => void = () => undefined
+    mount({
+      'panels:generate': (req: { panelId: string }) => {
+        if (req.panelId === B) throw new Error('No image model is set')
+        return new Promise<void>((resolve) => (finish = resolve))
+      }
+    })
+    await userEvent.click(within(header()).getByRole('button', { name: 'Regenerate' }))
+    expect(await within(workspace()).findByRole('alert')).toHaveTextContent('No image model is set')
+    await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+    expect(within(workspace()).queryByRole('alert')).toBeNull()
+
+    // A run still going on panel 3 does not hold panel 2's buttons.
+    await userEvent.click(within(header()).getByRole('button', { name: 'Regenerate' }))
+    expect(within(header()).getByRole('button', { name: 'Upload image…' })).toBeDisabled()
+    await userEvent.click(within(header()).getByRole('button', { name: 'Previous panel' }))
+    expect(within(header()).getByRole('button', { name: 'Upload image…' })).toBeEnabled()
+    await act(async () => finish())
+  })
+
   it('says which fields changed since the image was drawn, and regenerates from the notice', async () => {
     const cast = [{ characterId: 'chr_0000000001', variationId: 'var_0000000001', action: '', expression: '', position: 'center' as const }]
     const drawn = panel({ id: B, characters: cast })
