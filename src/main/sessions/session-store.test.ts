@@ -40,6 +40,46 @@ describe('SessionStore', () => {
     expect(list[1].title).toBe('New session')
   })
 
+  it('creates a session with a title and driver, and defaults to none', async () => {
+    const { ctx } = t
+    const plain = await sessions.create(ctx)
+    expect(plain).toMatchObject({ title: 'New session', driver: null })
+    const driven = await sessions.create(ctx, { title: 'Claude Code', driver: 'claude-code' })
+    expect(driven).toMatchObject({ title: 'Claude Code', driver: 'claude-code' })
+    const list = await sessions.list(ctx)
+    expect(list.find((x) => x.id === driven.id)).toMatchObject({ title: 'Claude Code', driver: 'claude-code' })
+    expect(list.find((x) => x.id === plain.id)).toMatchObject({ title: 'New session', driver: null })
+  })
+
+  it('lists a session written before the driver field existed with driver null', async () => {
+    const { ctx } = t
+    const id = 'ses_0ld0000000'
+    await fs.promises.mkdir(ctx.paths.sessionsDir(), { recursive: true })
+    await fs.promises.writeFile(ctx.paths.sessionFile(id), `${JSON.stringify({ type: 'meta', id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z' })}\n`)
+    expect(await sessions.list(ctx)).toEqual([
+      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null, claudeSessionId: null }
+    ])
+  })
+
+  it('saves the Claude Code session id for the next run, the newest one winning', async () => {
+    const { ctx } = t
+    const a = await sessions.create(ctx)
+    expect(a.claudeSessionId).toBeNull()
+    const seen: string[] = []
+    t.bus.subscribe((e) => {
+      if (e.type === 'session.changed') seen.push(e.sessionId)
+    })
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-1')
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-2')
+    const [summary] = await sessions.list(ctx)
+    expect(summary).toMatchObject({ id: a.id, claudeSessionId: 'cc-2', messageCount: 0, updatedAt: a.createdAt })
+    expect(seen).toEqual([a.id, a.id])
+    await sessions.setClaudeSessionId(ctx, a.id, '')
+    expect((await sessions.list(ctx))[0].claudeSessionId).toBeNull()
+    await sessions.setClaudeSessionId(ctx, a.id, 'cc-2')
+    await expect(sessions.setClaudeSessionId(ctx, 'ses_missing000', 'cc-3')).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
   it('does not retitle once titled', async () => {
     const { ctx } = t
     const a = await sessions.create(ctx)

@@ -12,9 +12,13 @@ export interface ComposerProps {
   onValueChange?(text: string): void
   /** Show the Attach button. Default true; a thread whose send has no room for images turns it off. */
   allowAttach?: boolean
+  /** Why Attach is shown but off (Claude Code runs the chat and cannot see images); its tooltip. */
+  attachOffReason?: string
   /** Controls set in the composer's footer, between Attach and Send (the main chat's model picker). */
   tools?: ReactNode
   placeholder?: string
+  /** Nothing can be typed, attached or sent (a session Claude Code drives). */
+  disabled?: boolean
 }
 
 /** The textarea grows with its text up to this height, then scrolls. */
@@ -27,8 +31,10 @@ export function Composer({
   value,
   onValueChange,
   allowAttach = true,
+  attachOffReason,
   tools,
-  placeholder = 'Ask for the next scene, a character, a change…'
+  placeholder = 'Ask for the next scene, a character, a change…',
+  disabled = false
 }: ComposerProps) {
   const projectId = useAppStore((s) => s.projectId)
   const [ownText, setOwnText] = useState('')
@@ -49,7 +55,7 @@ export function Composer({
     el.style.overflowY = el.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
   }, [text])
 
-  const canSend = !running && (text.trim() !== '' || images.length > 0)
+  const canSend = !disabled && !running && (text.trim() !== '' || images.length > 0)
 
   function send(): void {
     if (!canSend) return
@@ -78,7 +84,7 @@ export function Composer({
   }
 
   return (
-    <div className="composer" data-running={running ? 'true' : undefined}>
+    <div className="composer" data-disabled={disabled ? 'true' : undefined} data-running={running ? 'true' : undefined}>
       {error !== null && (
         <p role="alert" className="error">
           {error}
@@ -112,6 +118,7 @@ export function Composer({
           rows={1}
           placeholder={placeholder}
           value={text}
+          disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />
@@ -122,8 +129,8 @@ export function Composer({
               className="icon-button"
               data-testid="composer-attach"
               aria-label="Attach images"
-              title="Attach images"
-              disabled={projectId === null}
+              title={attachOffReason ?? 'Attach images'}
+              disabled={disabled || projectId === null || attachOffReason !== undefined}
               onClick={() => void attach()}
             >
               <Paperclip size={16} aria-hidden="true" />

@@ -13,10 +13,18 @@ import { isNotFound } from '../storage/fs-errors'
 const DEFAULT_TITLE = 'New session'
 const TITLE_MAX = 60
 
-const MetaRecord = z.object({ type: z.literal('meta'), id: z.string(), title: z.string(), createdAt: z.string() })
+const MetaRecord = z.object({
+  type: z.literal('meta'),
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  driver: z.enum(['claude-code']).nullable().optional()
+})
 const TitleRecord = z.object({ type: z.literal('title'), title: z.string(), at: z.string() })
 const MessageRecord = z.object({ type: z.literal('message'), message: ChatMessageSchema })
-const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord])
+/** The Claude Code session this chat continues (`--resume`); the last one wins, and '' clears it. */
+const LinkRecord = z.object({ type: z.literal('link'), claudeSessionId: z.string(), at: z.string() })
+const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord, LinkRecord])
 type SessionRecord = z.infer<typeof RecordSchema>
 
 function summarize(records: SessionRecord[]): SessionSummary | null {
@@ -25,6 +33,7 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
   let title = meta.title
   let updatedAt = meta.createdAt
   let messageCount = 0
+  let claudeSessionId: string | null = null
   for (const record of records) {
     if (record.type === 'title') {
       title = record.title
@@ -32,9 +41,11 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
     } else if (record.type === 'message') {
       messageCount++
       updatedAt = record.message.createdAt
+    } else if (record.type === 'link') {
+      claudeSessionId = record.claudeSessionId === '' ? null : record.claudeSessionId
     }
   }
-  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount }
+  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null, claudeSessionId }
 }
 
 /** Chat transcripts, one JSONL file per session under `sessions/` (spec §5). */
@@ -71,13 +82,16 @@ export class SessionStore {
     return summaries.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
   }
 
-  async create(ctx: ProjectContext): Promise<SessionSummary> {
+  /** `driver` marks a session written by something other than the in-app chat (e.g. Claude Code over MCP). */
+  async create(ctx: ProjectContext, opts: { title?: string; driver?: 'claude-code' | null } = {}): Promise<SessionSummary> {
     const id = newId('ses')
     const createdAt = new Date().toISOString()
+    const title = opts.title ?? DEFAULT_TITLE
+    const driver = opts.driver ?? null
     const file = ctx.paths.sessionFile(id)
-    await ctx.mutex.run(file, () => appendJsonl(file, [{ type: 'meta', id, title: DEFAULT_TITLE, createdAt }]))
+    await ctx.mutex.run(file, () => appendJsonl(file, [{ type: 'meta', id, title, createdAt, driver }]))
     this.emit(ctx, id)
-    return { id, title: DEFAULT_TITLE, createdAt, updatedAt: createdAt, messageCount: 0 }
+    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0, driver, claudeSessionId: null }
   }
 
   async load(ctx: ProjectContext, sessionId: string): Promise<ChatMessage[]> {
@@ -107,6 +121,16 @@ export class SessionStore {
     await ctx.mutex.run(file, async () => {
       await this.read(ctx, sessionId)
       await appendJsonl(file, [{ type: 'title', title, at: new Date().toISOString() }])
+    })
+    this.emit(ctx, sessionId)
+  }
+
+  /** Records the Claude Code session id the next run resumes ('' forgets it). Does not change `updatedAt`. */
+  async setClaudeSessionId(ctx: ProjectContext, sessionId: string, claudeSessionId: string): Promise<void> {
+    const file = ctx.paths.sessionFile(sessionId)
+    await ctx.mutex.run(file, async () => {
+      await this.read(ctx, sessionId)
+      await appendJsonl(file, [{ type: 'link', claudeSessionId, at: new Date().toISOString() }])
     })
     this.emit(ctx, sessionId)
   }

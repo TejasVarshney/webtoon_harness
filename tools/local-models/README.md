@@ -59,6 +59,22 @@ npm run build && WEBTOON_LIVE_LOCAL=1 npx playwright test tests/e2e/local-live.s
 
 (In PowerShell set the variable with `$env:WEBTOON_LIVE_LOCAL=1` first.)
 
+## ChatGPT bridge (item flow with real images)
+
+An opt-in end-to-end test draws the item flow through the ChatGPT bridge (`E:\claude\chatgpt-bridge`, an OpenAI-compatible
+server on `http://127.0.0.1:7870/v1`; set `BRIDGE_URL` to move it): Mina, a Kestrel blaster at rest, the blaster being fired
+(gray hands) and a panel of Mina firing it, with the vision role checking the panel. It uses your ChatGPT account and takes about
+15 minutes (one image takes 1-3 minutes, drawn one at a time), so it is skipped unless `WEBTOON_LIVE_BRIDGE=1`.
+
+```bash
+npm run build && WEBTOON_LIVE_BRIDGE=1 npx playwright test tests/e2e/bridge-live.spec.ts
+```
+
+(In PowerShell set the variable with `$env:WEBTOON_LIVE_BRIDGE=1` first.) Start the bridge with its browser extension connected (a ChatGPT tab opens on the first request): the test checks `GET /health` and stops at once if nothing answers. The test seeds a sandbox
+`models.json` with `node tools/local-models/seed-bridge-models.mjs --user-data <dir>` (agent on the mock, images on
+`chatgpt-image`, vision on `chatgpt`; no API key). The four images are copied into the test's output folder
+(`test-results/`) and attached to the Playwright report, so you can judge them; the consistency verdict is logged, not asserted.
+
 ## What to expect on an 8 GB laptop GPU (RTX 5050)
 
 Measured on this machine, with desktop apps already holding ~4 GB of VRAM:

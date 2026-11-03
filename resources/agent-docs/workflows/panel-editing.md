@@ -30,6 +30,7 @@ What the lines mean:
 - `panel`: the id of the panel this chat is bound to.
 - `version`: the current image as `vN of M`, counting ready images only. `none` means the panel has no ready image yet.
 - `shot`, `aspect`, `setting`, `description`: the panel's fields.
+- `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`, `gutter black`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw.
 - `cast`: each visible character with the name of the variation (look) they wear. Ids are not shown here: `get_panel_context` gives them.
 - `dialogue`: the lines in reading order, as `Speaker: "text"`; narration and sound effects show their kind instead of a speaker.
 - `continuity_notes` and `off_panel_mentions`: shown only when the panel has them.
@@ -71,7 +72,8 @@ Pick the smallest change that does the job:
 | Different words in a bubble, caption or sound effect | `update_panel_fields` with `dialogue` | no |
 | The fields corrected, the picture is fine | `update_panel_fields` | no |
 | A small local change: an expression, a color, a small object added or removed, stray text removed, a detail fixed to match the reference | `edit_image` | yes: an edit |
-| A different composition: another shot, angle, pose, layout or background; a character added, removed or moved | `update_panel_fields`, then `regenerate_image` | yes: a new drawing |
+| How the panel sits in the strip: `frame`, `beside`, `gapAfter` or `gutter`, or an aspect change between 9:16, 1:2 and 1:3 (they are drawn alike) | `update_panel_fields` | no |
+| A different composition: another shot, angle, pose, arrangement in the frame or background; a character added, removed or moved; any other aspect change | `update_panel_fields`, then `regenerate_image` | yes: a new drawing |
 | The same panel drawn again because the image came out badly | `regenerate_image` | yes: a new drawing |
 | An earlier image back | `revert_to_version` | no |
 

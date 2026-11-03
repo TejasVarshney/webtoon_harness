@@ -1,0 +1,6 @@
+{
+  "name": "webtoon-harness",
+  "version": "0.1.0",
+  "description": "Connects Claude Code to the Webtoon AI Harness over MCP and carries the harness's agent rules as a skill and commands.",
+  "author": { "name": "Webtoon AI Harness" }
+}

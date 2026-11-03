@@ -10,11 +10,16 @@ import {
   DialogueLineSchema,
   EndpointConfigSchema,
   EpisodeSchema,
+  ItemInputSchema,
+  ItemPatchSchema,
+  ItemSchema,
+  ItemUsageInputSchema,
   ModelConfigSchema,
   ModelsFileSchema,
   OutlineSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
+  PanelItemSchema,
   PanelPatchSchema,
   PanelSchema,
   PanelVersionSchema,
@@ -116,8 +121,22 @@ describe('Panel', () => {
   it('accepts every shot type and aspect from the spec', () => {
     for (const shot of ['establishing', 'wide', 'medium', 'close-up', 'extreme-close-up', 'over-the-shoulder', 'birds-eye', 'worms-eye'])
       expect(PanelSchema.parse({ ...minimalPanel, shot }).shot).toBe(shot)
-    for (const aspect of ['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+    for (const aspect of ['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
       expect(PanelSchema.parse({ ...minimalPanel, aspect }).aspect).toBe(aspect)
+  })
+
+  it('defaults the layout fields of a panel stored without them', () => {
+    expect(PanelSchema.parse(minimalPanel)).toMatchObject({ frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' })
+  })
+
+  it('refuses a frame or gap it does not know', () => {
+    expect(() => PanelSchema.parse({ ...minimalPanel, frame: 'tilted' })).toThrow()
+    expect(() => PanelSchema.parse({ ...minimalPanel, gapAfter: 'huge' })).toThrow()
+    expect(() => PanelSchema.parse({ ...minimalPanel, gutter: 'red' })).toThrow()
+  })
+
+  it('patches the layout fields alone', () => {
+    expect(PanelPatchSchema.parse({ beside: true })).toEqual({ beside: true })
   })
 
   it('defaults panel character fields', () => {
@@ -214,6 +233,39 @@ describe('Character and Variation', () => {
   it('embeds variations in a character', () => {
     const c = CharacterSchema.parse({ ...minimalCharacter, variations: [minimalVariation] })
     expect(c.variations[0].id).toBe('var_0000000001')
+  })
+})
+
+describe('Item and usage', () => {
+  it('parses an item with defaults and a base usage', () => {
+    const item = ItemSchema.parse({
+      id: 'itm_0000000001',
+      name: 'Kestrel blaster',
+      appearanceLock: 'L',
+      createdBy: 'ai',
+      createdAt: 't',
+      updatedAt: 't',
+      usages: [{ id: 'use_0000000001', itemId: 'itm_0000000001', name: 'At rest', kind: 'base', status: 'pending', createdBy: 'ai', createdAt: 't' }]
+    })
+    expect(item).toMatchObject({ aliases: [], ownerId: null, notes: '', archived: false })
+    expect(item.usages[0]).toMatchObject({ delta: '', imagePath: null, error: null })
+  })
+
+  it('reads a panel file written before items existed', () => {
+    expect(PanelSchema.parse(minimalPanel).items).toEqual([])
+  })
+
+  it('defaults a panel item', () => {
+    expect(PanelItemSchema.parse({ itemId: 'itm_1', usageId: 'use_1' })).toEqual({ itemId: 'itm_1', usageId: 'use_1', heldBy: null, action: '' })
+  })
+
+  it('keeps panel items optional on a draft and fills their defaults', () => {
+    const draft = { episodeId: 'epi_0000000001', description: 'd', setting: 's', shot: 'wide', characters: [], dialogue: [] }
+    expect(PanelDraftSchema.parse(draft).items).toBeUndefined()
+    expect(PanelDraftSchema.parse({ ...draft, items: [{ itemId: 'itm_1', usageId: 'use_1' }] }).items).toEqual([
+      { itemId: 'itm_1', usageId: 'use_1', heldBy: null, action: '' }
+    ])
+    expect(PanelPatchSchema.parse({ description: 'x' })).toEqual({ description: 'x' })
   })
 })
 
@@ -390,8 +442,26 @@ describe('input schemas', () => {
     expect(() => VariationInputSchema.parse({ name: 'B', kind: 'outfit' })).toThrow()
   })
 
+  it('item patch fills no defaults', () => {
+    expect(ItemPatchSchema.parse({ name: 'X' })).toEqual({ name: 'X' })
+    expect(ItemPatchSchema.parse({})).toEqual({})
+  })
+
+  it('item inputs carry no defaults and need a name and a lock', () => {
+    const input = { name: 'Kestrel blaster', appearanceLock: 'L' }
+    expect(ItemInputSchema.parse(input)).toEqual(input)
+    expect(() => ItemInputSchema.parse({ name: 'x' })).toThrow()
+    expect(ItemInputSchema.parse({ ...input, aliases: ['gun'], ownerId: null, notes: 'n' })).toEqual({ ...input, aliases: ['gun'], ownerId: null, notes: 'n' })
+  })
+
+  it('refuses a second base usage on input', () => {
+    expect(ItemUsageInputSchema.safeParse({ name: 'x', kind: 'base', delta: '' }).success).toBe(false)
+    const input = { name: 'Drawn', kind: 'action', delta: 'aimed forward' }
+    expect(ItemUsageInputSchema.parse(input)).toEqual(input)
+  })
+
   it('tool inputs can be converted to JSON Schema', () => {
-    for (const schema of [PanelDraftSchema, PanelPatchSchema, CharacterInputSchema, CharacterPatchSchema, VariationInputSchema])
+    for (const schema of [PanelDraftSchema, PanelPatchSchema, CharacterInputSchema, CharacterPatchSchema, VariationInputSchema, ItemInputSchema, ItemPatchSchema, ItemUsageInputSchema])
       expect(z.toJSONSchema(schema, { io: 'input' })).toMatchObject({ type: 'object' })
   })
 })

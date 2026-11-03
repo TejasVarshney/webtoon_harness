@@ -10,12 +10,18 @@ import type {
   EndpointConfig,
   EndpointKind,
   Episode,
+  Item,
+  ItemInput,
+  ItemPatch,
+  ItemUsage,
+  ItemUsageInput,
   ModelConfig,
   ModelRegistryView,
   Panel,
   PanelDraft,
   PanelPatch,
   PanelVersion,
+  PluginView,
   ProjectMeta,
   ProjectProblem,
   Role,
@@ -89,6 +95,23 @@ export interface IpcContract {
   'characters:deleteVariation': { req: { projectId: string; characterId: string; variationId: string }; res: void }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as the variation's image. `null` when the dialog is cancelled. */
   'characters:uploadVariationImage': { req: { projectId: string; characterId: string; variationId: string }; res: Variation | null }
+  'items:list': { req: { projectId: string; includeArchived?: boolean }; res: Item[] }
+  'items:get': { req: { projectId: string; itemId: string }; res: Item }
+  /** Returns the new item at once with a pending base usage; the base image follows through `item.changed`. */
+  'items:create': { req: { projectId: string; input: ItemInput; generateBase: boolean }; res: Item }
+  'items:update': { req: { projectId: string; itemId: string; patch: ItemPatch }; res: Item }
+  'items:archive': { req: { projectId: string; itemId: string }; res: void }
+  'items:unarchive': { req: { projectId: string; itemId: string }; res: void }
+  /** Refused with an "archive it instead" error while any panel uses the item. */
+  'items:delete': { req: { projectId: string; itemId: string }; res: void }
+  /** Returns the new usage at once (pending); its image follows through `item.changed` when `generate` is set. */
+  'items:addUsage': { req: { projectId: string; itemId: string; input: ItemUsageInput; generate: boolean }; res: ItemUsage }
+  /** Starts generation without waiting for it; the outcome follows through `item.changed`. */
+  'items:generateUsage': { req: { projectId: string; itemId: string; usageId: string }; res: ItemUsage }
+  /** Refused for the base usage and while any panel uses the usage. */
+  'items:deleteUsage': { req: { projectId: string; itemId: string; usageId: string }; res: void }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the usage's image. `null` when the dialog is cancelled. */
+  'items:uploadUsageImage': { req: { projectId: string; itemId: string; usageId: string }; res: ItemUsage | null }
   /** A project with no episode yet gets `Episode 1` on the first call. */
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
@@ -130,6 +153,21 @@ export interface IpcContract {
   'docs:open': { req: { projectId: string; name: string }; res: void }
   /** Overwrites every doc of the project with its shipped default. */
   'docs:reset': { req: { projectId: string }; res: void }
+  /** The built-in plugins with their on/off state, status line and config. */
+  'plugins:list': { req: Record<string, never>; res: PluginView[] }
+  /** Why `plugins.json` could not be read (every plugin is then off until it is fixed), or null. */
+  'plugins:loadError': { req: Record<string, never>; res: string | null }
+  'plugins:setEnabled': { req: { id: string; enabled: boolean }; res: PluginView }
+  /** Merges `patch` into the plugin's config; a running plugin is restarted. */
+  'plugins:setConfig': { req: { id: string; patch: Record<string, unknown> }; res: PluginView }
+  /** The `claude mcp add` line (with the token) for the Claude Code link. Fails while the plugin is off. */
+  'claudeCode:connectCommand': { req: Record<string, never>; res: { command: string } }
+  /** Replaces the Claude Code link's token and disconnects its clients. Fails while the plugin is off. */
+  'claudeCode:regenerateToken': { req: Record<string, never>; res: void }
+  /** Where a run would find the Claude Code executable (the saved path, then PATH, then the desktop app's install), or null. Works while the plugin is off. */
+  'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
+  /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
+  'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -169,6 +207,17 @@ const channelSet: Record<IpcChannel, true> = {
   'characters:generateVariation': true,
   'characters:deleteVariation': true,
   'characters:uploadVariationImage': true,
+  'items:list': true,
+  'items:get': true,
+  'items:create': true,
+  'items:update': true,
+  'items:archive': true,
+  'items:unarchive': true,
+  'items:delete': true,
+  'items:addUsage': true,
+  'items:generateUsage': true,
+  'items:deleteUsage': true,
+  'items:uploadUsageImage': true,
   'episodes:list': true,
   'episodes:create': true,
   'episodes:update': true,
@@ -190,7 +239,15 @@ const channelSet: Record<IpcChannel, true> = {
   'story:updateBeat': true,
   'docs:list': true,
   'docs:open': true,
-  'docs:reset': true
+  'docs:reset': true,
+  'plugins:list': true,
+  'plugins:loadError': true,
+  'plugins:setEnabled': true,
+  'plugins:setConfig': true,
+  'claudeCode:connectCommand': true,
+  'claudeCode:regenerateToken': true,
+  'claudeCode:detect': true,
+  'app:setActiveContext': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { ModelsTab } from './ModelsTab'
+import { PluginsTab } from './PluginsTab'
 import { WorkflowDocsTab } from './WorkflowDocsTab'
 
 export interface SettingsDialogProps {
   onClose(): void
 }
 
-type SettingsTab = 'models' | 'docs'
+type SettingsTab = 'models' | 'docs' | 'plugins'
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'models', label: 'Models' },
-  { id: 'docs', label: 'Workflow docs' }
+  { id: 'docs', label: 'Workflow docs' },
+  { id: 'plugins', label: 'Plugins' }
 ]
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
@@ -41,7 +43,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           ))}
         </div>
         {/* Only the active tab is mounted: each loads its own data when shown. */}
-        {tab === 'models' ? <ModelsTab /> : <WorkflowDocsTab />}
+        {tab === 'models' ? <ModelsTab /> : tab === 'docs' ? <WorkflowDocsTab /> : <PluginsTab />}
       </div>
     </div>
   )

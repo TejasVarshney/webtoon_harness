@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "webtoon": {
+      "type": "http",
+      "url": "http://127.0.0.1:${WEBTOON_MCP_PORT:-7880}/mcp",
+      "headers": { "Authorization": "Bearer ${WEBTOON_MCP_TOKEN}" }
+    }
+  }
+}

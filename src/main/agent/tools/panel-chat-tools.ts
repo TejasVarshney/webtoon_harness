@@ -1,12 +1,13 @@
 import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
 import { PanelPatchSchema } from '@shared/schemas'
-import type { Character, Episode, Panel, PanelVersion } from '@shared/types'
+import type { Character, Episode, Item, Panel, PanelVersion } from '@shared/types'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
-import { castNames, speakerName, type PanelNeighbor } from '../system-prompt'
+import { castNames, itemNames, speakerName, type PanelNeighbor } from '../system-prompt'
+import { layoutFields } from './panel-tools'
 import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 /*
@@ -16,11 +17,15 @@ import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinit
  * not ready has no label (its status says why).
  */
 
-/** What the model sees of a panel's own fields. `roster` includes archived characters, which still name the cast of existing panels. */
-function fieldsView(panel: Panel, roster: Character[]) {
+/** What the model sees of a panel's own fields. `roster` and `itemRoster` include archived ones, which still name the cast and items of existing panels. */
+function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
   return {
     shot: panel.shot,
     aspect: panel.aspect,
+    frame: panel.frame,
+    beside: panel.beside,
+    gapAfter: panel.gapAfter,
+    gutter: panel.gutter,
     setting: panel.setting,
     description: panel.description,
     continuityNotes: panel.continuityNotes,
@@ -33,6 +38,13 @@ function fieldsView(panel: Panel, roster: Character[]) {
       expression: entry.expression,
       position: entry.position
     })),
+    items: panel.items.map((entry) => ({
+      itemId: entry.itemId,
+      ...itemNames(entry, itemRoster),
+      usageId: entry.usageId,
+      heldBy: entry.heldBy,
+      action: entry.action
+    })),
     dialogue: panel.dialogue.map((line) => ({
       id: line.id,
       speakerId: line.speakerId,
@@ -44,7 +56,7 @@ function fieldsView(panel: Panel, roster: Character[]) {
 }
 
 /** A neighboring panel in a few lines; `{ unreadable: true }` when its file could not be read. */
-function neighborView(panel: PanelNeighbor, roster: Character[]) {
+function neighborView(panel: PanelNeighbor, roster: Character[], itemRoster: Item[]) {
   if (panel === null) return null
   if (panel === 'unreadable') return { unreadable: true }
   return {
@@ -57,6 +69,7 @@ function neighborView(panel: PanelNeighbor, roster: Character[]) {
       const { name, variationName } = castNames(entry, roster)
       return { name, variationName }
     }),
+    items: panel.items.map((entry) => itemNames(entry, itemRoster)),
     dialogue: panel.dialogue.map((line) => ({ speaker: speakerName(line, roster), kind: line.kind, text: line.text }))
   }
 }
@@ -65,6 +78,8 @@ export interface PanelBundle {
   panel: Panel
   /** Every character, archived ones included. */
   roster: Character[]
+  /** Every item, archived ones included. */
+  itemRoster: Item[]
   previous: PanelNeighbor
   next: PanelNeighbor
 }
@@ -88,6 +103,7 @@ function reportUnreadable(project: ProjectContext, error: CorruptFileError): voi
 export async function loadPanelBundle(services: Services, project: ProjectContext, panelId: string): Promise<PanelBundle> {
   const panel = await services.panels.get(project, panelId)
   const roster = await services.characters.list(project, { includeArchived: true })
+  const itemRoster = await services.items.list(project, { includeArchived: true })
   let episode: Episode | null = null
   try {
     episode = await services.episodes.get(project, panel.episodeId)
@@ -109,7 +125,7 @@ export async function loadPanelBundle(services: Services, project: ProjectContex
     }
   }
   const [previous, next] = at === -1 ? [null, null] : await Promise.all([neighbor(episode?.panelIds[at - 1]), neighbor(episode?.panelIds[at + 1])])
-  return { panel, roster, previous, next }
+  return { panel, roster, itemRoster, previous, next }
 }
 
 /** What the service rejected becomes a message for the model: validation issues one per line. */
@@ -141,21 +157,21 @@ const getPanelContext = (panelId: string): ToolDefinition =>
   defineTool({
     name: 'get_panel_context',
     description:
-      'Read this panel as it is now: shot, aspect, setting, description, the cast with variation names, the dialogue, the version list ' +
+      'Read this panel as it is now: shot, aspect, setting, description, the cast with variation names, the items with their usages, the dialogue, the version list ' +
       '(label vN counts ready images only; a version that is not ready has no label and its status says why) and a summary of the previous and next panels. ' +
       "Use it when the panel_context in the user's message may be out of date, for example after a change you made.",
     input: z.object({}),
     handler: async (_input, ctx) => {
-      const { panel, roster, previous, next } = await loadPanelBundle(ctx.services, ctx.project, panelId)
+      const { panel, roster, itemRoster, previous, next } = await loadPanelBundle(ctx.services, ctx.project, panelId)
       return {
         content: {
           panelId: panel.id,
           episodeId: panel.episodeId,
-          ...fieldsView(panel, roster),
+          ...fieldsView(panel, roster, itemRoster),
           currentVersionId: panel.currentVersionId,
           versions: panel.versions.map((v) => ({ id: v.id, label: versionLabel(panel, v.id), status: v.status, source: v.source })),
-          previous: neighborView(previous, roster),
-          next: neighborView(next, roster)
+          previous: neighborView(previous, roster, itemRoster),
+          next: neighborView(next, roster, itemRoster)
         }
       }
     }
@@ -177,7 +193,12 @@ const viewCurrentImage = (panelId: string): ToolDefinition =>
 const patchInput = PanelPatchSchema.extend({
   description: PanelPatchSchema.shape.description.describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
   setting: PanelPatchSchema.shape.setting.describe('Where and when, e.g. "Apartment hallway, evening"'),
+  aspect: PanelPatchSchema.shape.aspect.describe('1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
+  ...layoutFields,
   characters: PanelPatchSchema.shape.characters.describe('Who is in the panel (characterId and variationId from the roster), replacing the whole cast. Empty for a scene without characters.'),
+  items: PanelPatchSchema.shape.items.describe(
+    'Items in the panel (itemId, a ready usageId, heldBy a cast member or null, action), replacing the whole list. Removing a cast member who holds an item is rejected: change heldBy too.'
+  ),
   dialogue: PanelPatchSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx.'),
   continuityNotes: PanelPatchSchema.shape.continuityNotes.describe('What must match the previous panel: lighting, time of day, props, outfits.'),
   offPanelMentions: PanelPatchSchema.shape.offPanelMentions.describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
@@ -201,8 +222,9 @@ const updatePanelFields = (panelId: string): ToolDefinition =>
         throw asToolError(error)
       }
       const roster = await ctx.services.characters.list(ctx.project, { includeArchived: true })
+      const itemRoster = await ctx.services.items.list(ctx.project, { includeArchived: true })
       const named = Object.entries(patch).flatMap(([field, value]) => (value === undefined ? [] : [field]))
-      return { content: { updated: named, warnings: updated.warnings, fields: fieldsView(updated.panel, roster) } }
+      return { content: { updated: named, warnings: updated.warnings, fields: fieldsView(updated.panel, roster, itemRoster) } }
     }
   })
 

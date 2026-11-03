@@ -2,16 +2,16 @@ import { newId } from '@shared/ids'
 import type { UserMessage } from '@shared/types'
 import type { ResolvedModel } from '../models/registry'
 import type { TextProvider } from '../models/providers/types'
+import type { AgentBackend } from '../plugins/types'
 import type { Services } from '../services'
-import type { ProjectContext } from '../storage/project-store'
-import { RunHost } from './run-host'
-import { buildAgentSystemPrompt, buildStateSnapshot } from './system-prompt'
+import { projectStateText } from './project-state'
+import { RunHost, SessionBusyError } from './run-host'
+import { buildAgentSystemPrompt } from './system-prompt'
 import { buildAgentTools } from './tools'
 
 export { SessionBusyError } from './run-host'
 
-/** How many of the current episode's final panels the state snapshot summarizes. */
-const RECENT_PANELS = 3
+export const DRIVEN_READ_ONLY = 'This session is driven by Claude Code and is read-only.'
 
 export interface AgentRunnerOptions {
   services: Services
@@ -26,10 +26,16 @@ export interface StartRunInput {
   activeEpisodeId: string | null
 }
 
-/** Connects chat sessions to the agent loop: builds the prompt and state snapshot, persists, and relays events. */
+/**
+ * Connects chat sessions to the agent loop: builds the prompt and state snapshot, persists, and relays events.
+ * When a plugin is set to be the agent (`PluginManager.agentBackend()`), new runs go to it instead (spec §6.1);
+ * stopping and status cover both, so a run started before the switch changed can still be stopped.
+ */
 export class AgentRunner {
   private readonly services: Services
   private readonly host: RunHost
+  /** Per session, settles once the latest start has passed the driver check and registered its run. */
+  private readonly startGates = new Map<string, Promise<void>>()
 
   constructor(opts: AgentRunnerOptions) {
     this.services = opts.services
@@ -37,16 +43,17 @@ export class AgentRunner {
   }
 
   isRunning(threadKey: string): boolean {
-    return this.host.isRunning(threadKey)
+    return this.host.isRunning(threadKey) || this.services.plugins.agentBackends().some((b) => b.isRunning(threadKey))
   }
 
   cancel(runId: string): void {
     this.host.cancel(runId)
+    for (const b of this.services.plugins.agentBackends()) b.cancel(runId)
   }
 
   /** Aborts the session's run, if any, and resolves once it has ended. */
-  stop(sessionId: string): Promise<void> {
-    return this.host.stop(sessionId)
+  async stop(sessionId: string): Promise<void> {
+    await Promise.all([this.host.stop(sessionId), ...this.services.plugins.agentBackends().map((b) => b.stop(sessionId))])
   }
 
   /** Aborts every run (app quit). Each loop still persists a result for its pending tool calls. */
@@ -54,7 +61,36 @@ export class AgentRunner {
     this.host.cancelAll()
   }
 
-  start(input: StartRunInput): Promise<{ runId: string }> {
+  async start(input: StartRunInput): Promise<{ runId: string }> {
+    const { sessionId } = input
+    // The driver check awaits, so the starts of one session pass it in call order: each registers its run (the
+    // synchronous start of `startChecked`) before the next is let through, and an earlier message is never refused
+    // as busy in favour of a later one.
+    const before = this.startGates.get(sessionId) ?? Promise.resolve()
+    let open = (): void => {}
+    const mine = new Promise<void>((resolve) => (open = resolve))
+    const gate = before.then(() => mine)
+    this.startGates.set(sessionId, gate)
+    try {
+      await before
+      await this.refuseDriven(input)
+      return this.startChecked(input)
+    } finally {
+      open()
+      if (this.startGates.get(sessionId) === gate) this.startGates.delete(sessionId)
+    }
+  }
+
+  /** Registers the run before its first await (the backend's and RunHost's busy check work that way too). */
+  private startChecked(input: StartRunInput): Promise<{ runId: string }> {
+    const backend = this.backend()
+    if (backend) {
+      // A model-loop run from before the switch still holds the session.
+      if (this.host.isRunning(input.sessionId)) throw new SessionBusyError(`session ${input.sessionId}`)
+      return backend.start(input)
+    }
+    // A plugin run from before the switch was turned off still holds the session.
+    if (this.services.plugins.agentBackends().some((b) => b.isRunning(input.sessionId))) throw new SessionBusyError(`session ${input.sessionId}`)
     return this.host.start({
       threadKey: input.sessionId,
       subject: `session ${input.sessionId}`,
@@ -63,7 +99,7 @@ export class AgentRunner {
         const { sessions, projects } = this.services
         const ctx = await projects.open(input.projectId)
         const history = await sessions.load(ctx, input.sessionId)
-        const snapshot = buildStateSnapshot(await this.gatherState(ctx, input.activeEpisodeId))
+        const snapshot = await projectStateText(this.services, ctx, input.activeEpisodeId)
         const userMessage: UserMessage = {
           id: newId('msg'),
           role: 'user',
@@ -86,16 +122,15 @@ export class AgentRunner {
     })
   }
 
-  /**
-   * What the state snapshot is built from. The current episode is the one the app has open (`activeEpisodeId`),
-   * or the first episode when that id is absent or no longer exists: a stale id from the renderer must not fail a run.
-   */
-  protected async gatherState(ctx: ProjectContext, activeEpisodeId: string | null): Promise<Parameters<typeof buildStateSnapshot>[0]> {
-    // Archived characters are included on purpose: the snapshot drops them from the roster but still uses them to name panel speakers.
-    const characters = await this.services.characters.list(ctx, { includeArchived: true })
-    const episodes = await this.services.episodes.list(ctx)
-    const episode = episodes.find((e) => e.id === activeEpisodeId) ?? episodes[0] ?? null
-    const recentPanels = episode ? (await this.services.panels.list(ctx, episode.id)).slice(-RECENT_PANELS) : []
-    return { meta: await this.services.projects.getMeta(ctx), characters, episode, recentPanels }
+  /** A session Claude Code drives over MCP is its log; nothing else may write to it (the renderer hides the controls too). */
+  private async refuseDriven(input: StartRunInput): Promise<void> {
+    const ctx = await this.services.projects.open(input.projectId)
+    const session = (await this.services.sessions.list(ctx)).find((x) => x.id === input.sessionId)
+    if (session !== undefined && session.driver !== null) throw new Error(DRIVEN_READ_ONLY)
+  }
+
+  /** Read at call time: plugins are created after the runner, and the switch can change at any moment. */
+  private backend(): AgentBackend | null {
+    return this.services.plugins.agentBackend()
   }
 }

@@ -8,11 +8,15 @@ import { ConsistencyChecker } from './domain/consistency-checker'
 import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
+import { ItemService, type ItemUsageLookup } from './domain/item-service'
 import { PanelService } from './domain/panel-service'
 import { StoryService } from './domain/story-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
+import { ActiveContext } from './plugins/active-context'
+import { builtinPlugins } from './plugins'
+import { PluginManager } from './plugins/plugin-manager'
 import { SessionStore } from './sessions/session-store'
 import { ProjectStore } from './storage/project-store'
 
@@ -33,17 +37,21 @@ export interface Services {
   bus: EventBus
   projects: ProjectStore
   sessions: SessionStore
+  secrets: SecretStore
   registry: ModelRegistry
   docs: WorkflowDocs
   imageOps: ImageOps
   images: ImageService
   checker: ConsistencyChecker
   characters: CharacterService
+  items: ItemService
   episodes: EpisodeService
   panels: PanelService
   story: StoryService
   agent: AgentRunner
   panelChat: PanelChatRunner
+  activeContext: ActiveContext
+  plugins: PluginManager
 }
 
 /** The one place main-process services are constructed and wired together. */
@@ -66,16 +74,32 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
   }
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash })
+  // Lazy for the same reason as `usage`: PanelService does not exist yet when ItemService is built.
+  const itemUsage: ItemUsageLookup = {
+    panelsUsingItem: (ctx, itemId) => services.panels.panelsUsingItem(ctx, itemId),
+    panelsUsingItemUsage: (ctx, usageId) => services.panels.panelsUsingItemUsage(ctx, usageId)
+  }
+  const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash })
   const episodes = new EpisodeService({ bus })
   // The vision check is optional at run time: with no model on the `vision` role it returns null and panels are not checked.
   const checker = new ConsistencyChecker({ registry, docs, imageOps: opts.imageOps })
-  const panels = new PanelService({ bus, projects, episodes, characters, images, checker, trash: opts.trash })
+  const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash })
   const story = new StoryService({ bus, projects })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
+  projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, registry, docs, imageOps: opts.imageOps, images, checker, characters, episodes, panels, story } as Services
+  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
+  services.activeContext = new ActiveContext()
+  services.plugins = new PluginManager({
+    file: join(opts.userDataDir, 'plugins.json'),
+    plugins: builtinPlugins(),
+    services,
+    activeContext: services.activeContext
+  })
+  // A corrupt plugins.json is reported by `plugins.loadError()` and leaves every plugin off; it does not stop the app.
+  await services.plugins.load()
   return services
 }

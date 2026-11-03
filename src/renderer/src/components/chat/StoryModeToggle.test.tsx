@@ -112,6 +112,18 @@ describe('story mode toggle and continue button', () => {
     expect(calls.filter((c) => c.channel === 'agent:send')).toEqual([])
   })
 
+  it('is disabled in a session Claude Code drives', async () => {
+    useAppStore.setState({
+      projects: [meta({ storyMode: 'ai' })],
+      sessions: [{ id: S, title: 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver: 'claude-code', claudeSessionId: null }]
+    })
+    const { calls } = installFakeApi({ 'sessions:load': () => [] })
+    renderChat()
+    expect(screen.getByTestId('continue-story')).toBeDisabled()
+    await userEvent.click(screen.getByTestId('continue-story'))
+    expect(calls.filter((c) => c.channel === 'agent:send')).toEqual([])
+  })
+
   it('takes a rejected send back out of the thread and says why', async () => {
     useAppStore.setState({ projects: [meta({ storyMode: 'ai' })] })
     installFakeApi({

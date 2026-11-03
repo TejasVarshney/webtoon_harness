@@ -169,6 +169,25 @@ To change how the agent works in one project, edit the files in that project's `
 
 Two files are more than prose. `reference/consistency-checklist.md` is the consistency checker's system prompt, and it must keep ending with its JSON output contract (`{"passed": true|false, "issues": [...]}`). `reference/prompt-templates.md` mirrors the prompts the app builds. When you change the shipped docs in `resources/agent-docs`, the lint tests in `src/main/agent/workflow-docs.lint.test.ts` check every example tool call against the real tool schemas and compare the prompt templates with the code.
 
+## Claude Code link
+
+The built-in Claude Code plugin lets Claude Code (or any MCP client) work on your project through the same tools the in-app agent uses. It is off by default.
+
+1. Open **Settings → Plugins** and switch on **Claude Code**. The status line reads `Listening on 127.0.0.1:<port>`; the default port is `7880`, and you can change it (1024-65535) and press **Save port**, which restarts the link.
+2. Press **Copy command** and paste it into a terminal. It has this shape:
+
+```bash
+claude mcp add --transport http webtoon http://127.0.0.1:<port>/mcp --header "Authorization: Bearer <token>"
+```
+
+3. Claude Code now sees the harness tools as `mcp__webtoon__*`. Each call is logged in a session titled "Claude Code" (marked "Driven by Claude Code"), so you can follow what it did.
+
+Image tools wait for the image, so one call can take minutes. Claude Code's default MCP tool timeout can cut such a call off; set `MCP_TOOL_TIMEOUT` (milliseconds) in the environment that starts `claude`, for example `$env:MCP_TOOL_TIMEOUT = "900000"` for 15 minutes, the value the app uses for its own Claude Code runs.
+
+The [Claude Code plugin](integrations/claude-code-plugin/README.md) in `integrations/` adds the same server together with a skill and commands; its tools are named `mcp__plugin_webtoon-harness_webtoon__*`. Use either `claude mcp add` or the plugin, not both: with both, Claude Code connects twice and every tool appears twice.
+
+The link only acts on the project that is open in the app window; with no project open, calls fail with "Open a project in the Webtoon AI Harness window first." It listens on `127.0.0.1` only and every request needs the token (stored in the app's secret store). **Regenerate token** in Settings → Plugins disconnects every client that has the old one.
+
 ## Story modes
 
 The chat header has a story-mode switch. In **User-led** mode the agent follows your story. In **AI-led** mode it decides what happens next, and a **Continue story** button appears: it asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).

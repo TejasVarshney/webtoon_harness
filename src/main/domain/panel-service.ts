@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Panel, PanelCharacter, PanelDraft, PanelPatch, PanelVersion, Variation } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Item, ItemUsage, Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch, PanelVersion, Variation } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
@@ -11,7 +12,8 @@ import type { ConsistencyChecker } from './consistency-checker'
 import type { EpisodeService } from './episode-service'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
-import { hasReadyReference, validatePanelDraft } from './panel-validation'
+import type { ItemService, ItemUsageLookup } from './item-service'
+import { hasReadyReference, hasReadyUsage, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { isNotFound } from '../storage/fs-errors'
 
@@ -28,6 +30,7 @@ export interface PanelServiceOptions {
   projects: ProjectStore
   episodes: EpisodeService
   characters: CharacterService
+  items: ItemService
   images: ImageService
   /** Moves a path to the OS trash. */
   trash: (absPath: string) => Promise<void>
@@ -59,6 +62,8 @@ type Preparation = { call: () => Promise<ImageGenResult> } | { error: string }
 interface DrawContext {
   panel: Panel
   roster: Character[]
+  /** Every item, archived ones included. */
+  itemRoster: Item[]
   /** The references the image model got, in prompt order, with their labels. */
   references: PanelPromptReference[]
   /** The project's `consistencyRetries` when the draw started. */
@@ -76,7 +81,7 @@ interface Draw {
  * Lock discipline (Ruling T18c): a panel's file lock is never held together with an episode lock, and
  * no lock is ever held across an image call.
  */
-export class PanelService implements PanelUsageLookup {
+export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   constructor(private readonly opts: PanelServiceOptions) {}
 
   /** The episode's panels in episode order. Unreadable panel files are reported in `ctx.problems` and skipped. */
@@ -109,7 +114,8 @@ export class PanelService implements PanelUsageLookup {
     if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
 
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
-    const check = validatePanelDraft(draft, roster, { strictMentions: opts.strictMentions })
+    const itemRoster = await this.itemRoster(ctx)
+    const check = validatePanelDraft(draft, roster, itemRoster, { strictMentions: opts.strictMentions })
     if (check.errors.length > 0) throw new PanelValidationError(check.errors)
 
     const meta = await this.opts.projects.getMeta(ctx)
@@ -122,7 +128,12 @@ export class PanelService implements PanelUsageLookup {
       setting: draft.setting,
       shot: draft.shot,
       aspect: draft.aspect ?? meta.defaultAspect,
+      frame: draft.frame,
+      beside: draft.beside,
+      gapAfter: draft.gapAfter,
+      gutter: draft.gutter,
       characters: draft.characters,
+      items: draft.items ?? [],
       dialogue: draft.dialogue.map(withId),
       continuityNotes: draft.continuityNotes ?? '',
       offPanelMentions: draft.offPanelMentions ?? [],
@@ -152,10 +163,13 @@ export class PanelService implements PanelUsageLookup {
    * and "no ready reference image" checks apply only to cast entries that are new or whose variation
    * changed, so a panel that casts a since-archived character, or a variation whose regeneration
    * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
+   * Items work the same way: an unchanged item and usage pair is grandfathered, and the unknown-item,
+   * foreign-usage and holder errors apply to every entry.
    */
   async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
+    const itemRoster = await this.itemRoster(ctx)
     const out = await ctx.mutex.run(file, async () => {
       const current = await this.get(ctx, id)
       const merged = {
@@ -163,12 +177,19 @@ export class PanelService implements PanelUsageLookup {
         setting: patch.setting ?? current.setting,
         shot: patch.shot ?? current.shot,
         aspect: patch.aspect ?? current.aspect,
+        frame: patch.frame ?? current.frame,
+        beside: patch.beside ?? current.beside,
+        gapAfter: patch.gapAfter ?? current.gapAfter,
+        gutter: patch.gutter ?? current.gutter,
         characters: patch.characters ?? current.characters,
+        items: patch.items ?? current.items,
         dialogue: patch.dialogue ? patch.dialogue.map(withId) : current.dialogue,
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), { strictMentions: opts.strictMentions })
+      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), grandfatherUnchangedItems(itemRoster, current.items, merged.items), {
+        strictMentions: opts.strictMentions
+      })
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
@@ -199,8 +220,8 @@ export class PanelService implements PanelUsageLookup {
     let landed = draw.version
     let retriesLeft = draw.context?.retries ?? 0
     while (draw.context && landed.status === 'ready' && landed.imagePath !== null && !opts.signal?.aborted) {
-      const { panel, roster, references } = draw.context
-      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, signal: opts.signal })
+      const { panel, roster, itemRoster, references } = draw.context
+      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, itemRoster, signal: opts.signal })
       if (check === null) return landed
       const stored = await this.recordCheck(ctx, id, landed.id, check)
       landed = { ...landed, check }
@@ -231,14 +252,15 @@ export class PanelService implements PanelUsageLookup {
     try {
       const meta = await this.opts.projects.getMeta(ctx)
       const roster = await this.roster(ctx)
+      const itemRoster = await this.itemRoster(ctx)
       const previous = readyImage(await this.previousOf(ctx, panel))
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, previous, maxReferences })
+      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, maxReferences })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
-      request = { prompt: attempt.prompt, references: composed.references, aspect: panel.aspect, signal: opts.signal }
-      context = { panel, roster: [...roster.values()], references: composed.references, retries: meta.consistencyRetries }
+      request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
+      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references, retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await this.record(ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -255,17 +277,22 @@ export class PanelService implements PanelUsageLookup {
       if (!source || source.status !== 'ready' || !source.imagePath) throw new Error('No ready image to edit')
       const meta = await this.opts.projects.getMeta(ctx)
       const roster = await this.roster(ctx)
+      const itemRoster = new Map((await this.itemRoster(ctx)).map((i) => [i.id, i]))
       const maxReferences = this.opts.images.maxReferences('imageEdit')
-      // The cast references (and the unknown-cast errors) come from composePanelPrompt so an edit
+      // The cast and item references (and the unknown-cast and unknown-item errors) come from composePanelPrompt so an edit
       // sees exactly the images a generation would; the edit has no previous panel and its own prompt.
-      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, previous: null, maxReferences })
+      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster, previous: null, maxReferences })
       const cast = panel.characters.flatMap((entry) => {
         const character = roster.get(entry.characterId)
         return character ? [{ name: character.name, appearanceLock: character.appearanceLock }] : []
       })
-      attempt.prompt = editPanelPrompt(instruction, cast)
+      const attached = panel.items.flatMap((entry) => {
+        const item = itemRoster.get(entry.itemId)
+        return item ? [{ name: item.name, appearanceLock: item.appearanceLock }] : []
+      })
+      attempt.prompt = editPanelPrompt(instruction, cast, attached)
       attempt.referenceImagePaths = references.map((r) => r.relPath)
-      request = { prompt: attempt.prompt, references, aspect: panel.aspect, signal: opts.signal, sourceRelPath: source.imagePath }
+      request = { prompt: attempt.prompt, references, aspect: drawAspect(panel.aspect), signal: opts.signal, sourceRelPath: source.imagePath }
     } catch (error) {
       return this.record(ctx, id, attempt, { error: failureMessage(error) })
     }
@@ -352,6 +379,17 @@ export class PanelService implements PanelUsageLookup {
   async panelsUsingVariation(ctx: ProjectContext, variationId: string): Promise<string[]> {
     const panels = await this.scan(ctx)
     return panels.filter((p) => p.characters.some((c) => c.variationId === variationId)).map((p) => p.id)
+  }
+
+  /** Panels that attach the item, whether or not an episode lists them. */
+  async panelsUsingItem(ctx: ProjectContext, itemId: string): Promise<string[]> {
+    const panels = await this.scan(ctx)
+    return panels.filter((p) => p.items.some((i) => i.itemId === itemId)).map((p) => p.id)
+  }
+
+  async panelsUsingItemUsage(ctx: ProjectContext, usageId: string): Promise<string[]> {
+    const panels = await this.scan(ctx)
+    return panels.filter((p) => p.items.some((i) => i.usageId === usageId)).map((p) => p.id)
   }
 
   /**
@@ -537,6 +575,11 @@ export class PanelService implements PanelUsageLookup {
     return new Map((await this.opts.characters.list(ctx, { includeArchived: true })).map((c) => [c.id, c]))
   }
 
+  /** Every item, archived ones included: existing panels keep regenerating after an item is archived. */
+  private itemRoster(ctx: ProjectContext): Promise<Item[]> {
+    return this.opts.items.list(ctx, { includeArchived: true })
+  }
+
   /** The panel, or null if it is missing or unreadable (an unreadable file is reported in `ctx.problems`). */
   private async tryRead(ctx: ProjectContext, id: string): Promise<Panel | null> {
     let file: string
@@ -624,6 +667,27 @@ function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[],
     const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && !hasReadyReference(v)
     if (archived === c.archived && !c.variations.some(unusable)) return c
     return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged' } : v)) }
+  })
+}
+
+/**
+ * The item twin of `grandfatherUnchangedCast`: an item and usage pair that is unchanged from the stored
+ * panel reads as active and ready, so "is archived" and "has no ready reference image" are reported only
+ * for entries that are new or changed. An item that also has a changed entry stays archived. Ids and the
+ * holder are untouched, so unknown-item, foreign-usage and holder errors still apply to every entry.
+ */
+function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next: PanelItem[]): Item[] {
+  const pair = (entry: PanelItem): string => `${entry.itemId}/${entry.usageId}`
+  const storedPairs = new Set(stored.map(pair))
+  const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
+  const keptPairs = new Set(unchanged.map(pair))
+  const changedItems = new Set(next.filter((entry) => !storedPairs.has(pair(entry))).map((entry) => entry.itemId))
+  const keptItems = new Set(unchanged.map((entry) => entry.itemId).filter((id) => !changedItems.has(id)))
+  return itemRoster.map((i) => {
+    const archived = i.archived && !keptItems.has(i.id)
+    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && !hasReadyUsage(u)
+    if (archived === i.archived && !i.usages.some(unusable)) return i
+    return { ...i, archived, usages: i.usages.map((u) => (unusable(u) ? { ...u, status: 'ready' as const, imagePath: u.imagePath || 'unchanged' } : u)) }
   })
 }
 

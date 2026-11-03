@@ -5,7 +5,7 @@
 //  - A field the spec lists with a default is optional on input and filled on parse.
 //    Everything else is required (nullable where the spec says so).
 //  - Input/patch schemas (`PanelDraft`, `PanelPatch`, `CharacterInput`, `CharacterPatch`,
-//    `VariationInput`) carry NO defaults. In zod 4 `.partial()` / `.optional()` do not stop a
+//    `VariationInput`, `ItemInput`, `ItemPatch`, `ItemUsageInput`) carry NO defaults. In zod 4 `.partial()` / `.optional()` do not stop a
 //    default from firing, so a patch built from a defaulted schema would silently reset fields
 //    the caller never named. Services apply defaults when they build the full entity.
 //  - IDs and timestamps are plain strings (`<prefix>_<10 hex>` / ISO-8601). Format checks live in
@@ -30,6 +30,7 @@ export const StoryModeSchema = z.enum(['user', 'ai'])
 export const CreatedBySchema = z.enum(['user', 'ai'])
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
+export const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
 export const ImageStatusSchema = z.enum(['pending', 'ready', 'failed'])
 export const ShotTypeSchema = z.enum([
   'establishing',
@@ -41,7 +42,13 @@ export const ShotTypeSchema = z.enum([
   'birds-eye',
   'worms-eye'
 ])
-export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+/** What an image model can be asked to draw. */
+export const DrawAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+/** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and faded at the top and bottom. */
+export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
+export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
+export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])
+export const PanelGutterSchema = z.enum(['white', 'black'])
 export const PanelPositionSchema = z.enum(['left', 'center', 'right', 'background'])
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
 export const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
@@ -148,6 +155,53 @@ export const VariationInputSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------------------------
+// Items
+// ---------------------------------------------------------------------------------------------
+
+export const ItemUsageSchema = z.object({
+  id: Id,
+  itemId: Id,
+  name: z.string(),
+  kind: ItemUsageKindSchema,
+  delta: text(),
+  imagePath: z.string().nullable().default(null),
+  status: ImageStatusSchema,
+  error: z.string().nullable().default(null),
+  createdBy: CreatedBySchema,
+  createdAt: IsoTimestamp
+})
+
+export const ItemSchema = z.object({
+  id: Id,
+  name: z.string(),
+  aliases: z.array(z.string()).default([]),
+  ownerId: Id.nullable().default(null),
+  notes: text(),
+  appearanceLock: z.string(),
+  usages: z.array(ItemUsageSchema),
+  archived: z.boolean().default(false),
+  createdBy: CreatedBySchema,
+  createdAt: IsoTimestamp,
+  updatedAt: IsoTimestamp
+})
+
+export const ItemInputSchema = z.object({
+  name: z.string(),
+  aliases: z.array(z.string()).optional(),
+  ownerId: Id.nullable().optional(),
+  notes: z.string().optional(),
+  appearanceLock: z.string()
+})
+
+export const ItemPatchSchema = ItemInputSchema.partial()
+
+export const ItemUsageInputSchema = z.object({
+  name: z.string(),
+  kind: ItemUsageKindSchema.exclude(['base']),
+  delta: z.string()
+})
+
+// ---------------------------------------------------------------------------------------------
 // Episodes, panels, story
 // ---------------------------------------------------------------------------------------------
 
@@ -167,6 +221,13 @@ export const PanelCharacterSchema = z.object({
   action: z.string().default(''),
   expression: z.string().default(''),
   position: PanelPositionSchema.default('center')
+})
+
+export const PanelItemSchema = z.object({
+  itemId: Id,
+  usageId: Id,
+  heldBy: Id.nullable().default(null),
+  action: z.string().default('')
 })
 
 export const DialogueLineSchema = z.object({
@@ -203,7 +264,12 @@ export const PanelSchema = z.object({
   setting: z.string(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
+  frame: PanelFrameSchema.default('bordered'),
+  beside: z.boolean().default(false),
+  gapAfter: PanelGapSchema.default('normal'),
+  gutter: PanelGutterSchema.default('white'),
   characters: z.array(PanelCharacterSchema).default([]),
+  items: z.array(PanelItemSchema).default([]),
   dialogue: z.array(DialogueLineSchema),
   continuityNotes: z.string().default(''),
   offPanelMentions: z.array(z.string()).default([]),
@@ -224,7 +290,12 @@ export const PanelDraftSchema = z.object({
   setting: z.string(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema.optional(),
+  frame: PanelFrameSchema.optional(),
+  beside: z.boolean().optional(),
+  gapAfter: PanelGapSchema.optional(),
+  gutter: PanelGutterSchema.optional(),
   characters: z.array(PanelCharacterSchema),
+  items: z.array(PanelItemSchema).optional(),
   dialogue: z.array(DialogueDraftSchema),
   continuityNotes: z.string().optional(),
   offPanelMentions: z.array(z.string()).optional()

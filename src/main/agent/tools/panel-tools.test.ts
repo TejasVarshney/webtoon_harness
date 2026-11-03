@@ -71,6 +71,12 @@ describe('panel tools: the tool set', () => {
         'update_character',
         'create_variation',
         'regenerate_variation',
+        'list_items',
+        'get_item',
+        'create_item',
+        'update_item',
+        'create_item_usage',
+        'regenerate_item_usage',
         'list_episodes',
         'create_episode',
         'list_panels',
@@ -85,8 +91,8 @@ describe('panel tools: the tool set', () => {
   })
 
   it('offers exactly the panel tools, view_panel_image only with vision', () => {
-    // The six character tools come first (character-tools.test.ts), then the panel tools, then the four story tools (story-tools.test.ts) and read_workflow_doc (doc-tools.test.ts).
-    expect(buildAgentTools({ vision: true }).names().slice(6, -5)).toEqual([
+    // The six character tools and the six item tools come first (character-tools.test.ts, item-tools.test.ts), then the panel tools, then the four story tools (story-tools.test.ts) and read_workflow_doc (doc-tools.test.ts).
+    expect(buildAgentTools({ vision: true }).names().slice(12, -5)).toEqual([
       'list_episodes',
       'create_episode',
       'list_panels',
@@ -97,7 +103,7 @@ describe('panel tools: the tool set', () => {
       'regenerate_panel',
       'edit_panel_image'
     ])
-    expect(buildAgentTools({ vision: false }).names().slice(6, -5)).toEqual([
+    expect(buildAgentTools({ vision: false }).names().slice(12, -5)).toEqual([
       'list_episodes',
       'create_episode',
       'list_panels',
@@ -115,7 +121,12 @@ describe('panel tools: the tool set', () => {
     expect(schema('create_panel').required).toEqual(expect.arrayContaining(['episodeId', 'description', 'setting', 'shot', 'characters', 'dialogue']))
     for (const optional of ['afterPanelId', 'aspect', 'continuityNotes', 'offPanelMentions']) expect(schema('create_panel').required).not.toContain(optional)
     expect(schema('create_panel').properties.shot.enum).toContain('close-up')
-    expect(schema('create_panel').properties.aspect.enum).toContain('2:3')
+    expect(schema('create_panel').properties.aspect.enum).toEqual(expect.arrayContaining(['2:3', '1:2', '1:3']))
+    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) {
+      expect(schema('create_panel').required).not.toContain(field)
+      expect(schema('create_panel').properties[field].description, field).toEqual(expect.any(String))
+      expect(schema('create_panel').properties[field].description, field).toContain('No redraw needed.')
+    }
     expect(schema('list_panels').required).toEqual(['episodeId'])
     expect(schema('update_panel').required).toEqual(['panelId', 'patch'])
     expect(schema('edit_panel_image').required).toEqual(['panelId', 'instruction'])
@@ -306,11 +317,22 @@ describe('list_panels and get_panel', () => {
       index: 0,
       shot: 'close-up',
       aspect: '1:1',
+      frame: 'bordered',
+      beside: false,
+      gapAfter: 'normal',
+      gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
       dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.' }],
       currentVersion: { id: made.versionId, status: 'ready', imagePath: made.imagePath }
     })
+  })
+
+  it('list_panels shows the layout fields a panel was made with', async () => {
+    const { run, created, episode } = await setup()
+    await created([], { beside: true, gapAfter: 'tight', frame: 'slanted', gutter: 'black' })
+    const { panels } = json(await run('list_panels', { episodeId: episode.id }))
+    expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
   })
 
   it('reports no current version for a panel with no ready image, and keeps naming an archived cast member (Review Focus 4)', async () => {
@@ -361,6 +383,25 @@ describe('view_panel_image', () => {
 })
 
 describe('update_panel', () => {
+  it('create_panel takes the layout fields and stores them', async () => {
+    const { created, panel } = await setup()
+    const made = await created([], { beside: true, gapAfter: 'tight' })
+    expect(await panel(made.panelId)).toMatchObject({ beside: true, gapAfter: 'tight', frame: 'bordered', gutter: 'white' })
+  })
+
+  it('a layout-only patch returns the updated panel and records no new version', async () => {
+    const { run, s, created, panel } = await setup()
+    const made = await created([])
+    const generate = vi.spyOn(s.images, 'generate')
+    const r = await run('update_panel', { panelId: made.panelId, patch: { frame: 'borderless' } })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r)).toMatchObject({ panel: { id: made.panelId, frame: 'borderless' }, warnings: [] })
+    expect(generate).not.toHaveBeenCalled()
+    const stored = await panel(made.panelId)
+    expect(stored.versions).toHaveLength(1)
+    expect(stored.currentVersionId).toBe(made.versionId)
+  })
+
   it('changes only the named fields and does not touch the image', async () => {
     const { run, s, created, panel } = await setup()
     const made = await created([], { description: 'Original', setting: 'Hall', continuityNotes: 'Keep it dim.' })

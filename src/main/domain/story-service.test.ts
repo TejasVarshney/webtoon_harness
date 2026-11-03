@@ -94,7 +94,7 @@ describe('StoryService', () => {
     expect((await svc.get(ctx)).mode).toBe('ai')
     expect(storyEvents()).toEqual([{ type: 'story.changed', projectId: ctx.id }])
     expect(events).toContainEqual({ type: 'project.changed', projectId: ctx.id })
-    const snapshot = buildStateSnapshot({ meta: await t.store.getMeta(ctx), characters: [], episode: null, recentPanels: [] })
+    const snapshot = buildStateSnapshot({ meta: await t.store.getMeta(ctx), characters: [], items: [], episode: null, recentPanels: [] })
     expect(snapshot).toContain('story_mode: ai')
     await svc.setMode(ctx, 'user')
     expect((await svc.get(ctx)).mode).toBe('user')

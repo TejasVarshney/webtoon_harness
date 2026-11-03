@@ -1,11 +1,12 @@
 import { newId } from '@shared/ids'
-import type { Character, ChatMessage, CheckResult, Panel } from '@shared/types'
+import type { Character, ChatMessage, CheckResult, Item, Panel } from '@shared/types'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { createTextProvider as defaultCreateTextProvider } from '../models/providers/factory'
 import type { TextProvider } from '../models/providers/types'
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import type { ProjectContext } from '../storage/project-store'
 import { loadImageForTextModel, type ImageOps } from './image-ops'
+import type { PanelPromptReference } from './prompts'
 
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
 export const CHECKLIST_DOC = 'reference/consistency-checklist'
@@ -19,11 +20,13 @@ export const CHECK_TIMEOUT_MS = 180_000
 export interface ConsistencyCheckInput {
   /** The generated image to judge (project-relative). */
   imageRelPath: string
-  /** The reference images the panel was drawn from, in prompt order (cast variations, then the previous panel). */
-  references: { relPath: string; label: string }[]
+  /** The reference images the panel was drawn from, in prompt order (cast variations, then items, then the previous panel). */
+  references: PanelPromptReference[]
   panel: Panel
   /** Every character, archived ones included. */
   roster: Character[]
+  /** Every item, archived ones included. */
+  itemRoster: Item[]
   /** The run's signal: aborting it ends the vision call. */
   signal?: AbortSignal
 }
@@ -90,23 +93,33 @@ export function parseCheckResponse(text: string): CheckResult {
 /**
  * The text half of the checker's user message: the images in the order they are attached, the cast
  * (`Name — appearanceLock — Look: variation`, plus "(no reference image)" for a cast member whose
- * reference was not sent), the panel description and the shot. `reference/prompt-templates` documents it.
+ * reference was not sent), the items when the panel has any (`Name — appearanceLock — Use: usage —
+ * Held by: holder`, with the same marker), the panel description and the shot.
+ * `reference/prompt-templates` documents it. A reference belongs to a cast member or item by its
+ * `subject`, never by label (a character and an item may share a name).
  */
-export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster'>): string {
-  const { references, panel, roster } = input
+export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster'>): string {
+  const { references, panel, roster, itemRoster } = input
   const images = [...references.map((r, i) => `${i + 1}. Reference: ${r.label}`), `${references.length + 1}. Generated panel (the image to check)`]
 
-  // References are the ready cast variations in cast order, then the previous panel: a cast member
-  // has one exactly when the next unused reference carries their name.
-  let next = 0
+  const sent = (kind: 'character' | 'item', id: string): boolean => references.some((r) => r.subject.kind === kind && r.subject.id === id)
+
   const cast = panel.characters.map((entry) => {
     const character = roster.find((c) => c.id === entry.characterId)
     const variation = character?.variations.find((v) => v.id === entry.variationId)
     if (!character || !variation) throw new Error(`Unknown cast entry: ${entry.characterId}/${entry.variationId}`)
-    const hasReference = references[next]?.label === character.name
-    if (hasReference) next++
+    const hasReference = sent('character', character.id)
     const look = variation.delta ? `${variation.name} — ${variation.delta}` : variation.name
     return `- ${character.name} — ${character.appearanceLock} — Look: ${look}${hasReference ? '' : ' (no reference image)'}`
+  })
+
+  const items = panel.items.map((entry) => {
+    const item = itemRoster.find((i) => i.id === entry.itemId)
+    const usage = item?.usages.find((u) => u.id === entry.usageId)
+    if (!item || !usage) throw new Error(`Unknown item entry: ${entry.itemId}/${entry.usageId}`)
+    const look = usage.delta ? `${usage.name} — ${usage.delta}` : usage.name
+    const holder = entry.heldBy === null ? 'nobody' : (roster.find((c) => c.id === entry.heldBy)?.name ?? entry.heldBy)
+    return `- ${item.name} — ${item.appearanceLock} — Use: ${look} — Held by: ${holder}${sent('item', item.id) ? '' : ' (no reference image)'}`
   })
 
   return [
@@ -115,6 +128,7 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     '',
     'Cast:',
     ...(cast.length > 0 ? cast : ['(none)']),
+    ...(items.length > 0 ? ['', 'Items:', ...items] : []),
     '',
     `Panel description: ${panel.description}`,
     `Shot: ${panel.shot}`

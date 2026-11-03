@@ -50,6 +50,14 @@ function versionBrief(panel: Panel): { id: string; status: PanelVersion['status'
   return v ? { id: v.id, status: v.status, imagePath: v.imagePath } : null
 }
 
+/** The layout inputs with their describe texts, shared by create_panel and the panel chat's update_panel_fields. */
+export const layoutFields = {
+  frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade. No redraw needed.'),
+  beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false. No redraw needed."),
+  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.'),
+  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band. No redraw needed.')
+}
+
 const episodeSummary = (e: Episode) => ({ id: e.id, number: e.number, title: e.title, synopsis: e.synopsis, panelCount: e.panelIds.length })
 
 const listEpisodes = defineTool({
@@ -72,7 +80,7 @@ const createEpisode = defineTool({
 const listPanels = defineTool({
   name: 'list_panels',
   description:
-    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), shot, aspect, cast, description, dialogue and ' +
+    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), shot, aspect, frame, beside, gapAfter, gutter, cast, description, dialogue and ' +
     'the current version (id, status, imagePath), which is null while the panel has no ready image. Read recent panels before drawing the next one.',
   input: z.object({
     episodeId,
@@ -90,6 +98,10 @@ const listPanels = defineTool({
           index: episode.panelIds.indexOf(p.id),
           shot: p.shot,
           aspect: p.aspect,
+          frame: p.frame,
+          beside: p.beside,
+          gapAfter: p.gapAfter,
+          gutter: p.gutter,
           cast: p.characters.map((c) => ({ name: names.get(c.characterId) ?? c.characterId, characterId: c.characterId, variationId: c.variationId })),
           description: p.description,
           dialogue: p.dialogue,
@@ -124,6 +136,7 @@ const createPanel = defineTool({
     'Add a panel to an episode (at the end, or after afterPanelId; null puts it first) and generate its image, waiting for it. ' +
     'Cast every character who appears with characterId and variationId from list_characters; the variation must have a ready image. ' +
     'A roster character named in the description must be cast or listed in offPanelMentions, otherwise the call is rejected. ' +
+    'An item that is shown goes in items with a usageId that has a ready image; an item named in the description must be attached or listed in offPanelMentions. ' +
     "Describe the action and composition, not the characters' looks: each cast member's appearanceLock is added to the image prompt for you. " +
     'Dialogue is stored as data and drawn over the image, so the picture contains no text. ' +
     'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran.',
@@ -132,11 +145,15 @@ const createPanel = defineTool({
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),
     description: z.string().describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
     setting: z.string().describe('Where and when, e.g. "Apartment hallway, evening"'),
-    aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect'),
+    aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect. 1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
+    ...layoutFields,
     characters: z.array(PanelCharacterSchema).describe('Who is in the panel, at most three in the foreground. Empty for a scene without characters.'),
+    items: PanelDraftSchema.shape.items.describe(
+      "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
+    ),
     dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx.'),
     continuityNotes: z.string().optional().describe('What must match the previous panel: lighting, time of day, props, outfits. Default empty.'),
-    offPanelMentions: z.array(z.string()).optional().describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
+    offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
   handler: async (draft, ctx) => {
     await loadEpisode(ctx, draft.episodeId)
@@ -157,12 +174,12 @@ const updatePanel = defineTool({
   name: 'update_panel',
   description:
     'Change fields of a panel. Only the fields named in patch change, and the merged panel is validated like create_panel; ' +
-    'when the description changes, a roster character it names must be cast or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
+    'when the description changes, a roster character or item it names must be cast, attached or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
     'This does not redraw the image: pass regenerate true to generate a new one now and wait for it (the result is then the new version, like create_panel), ' +
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters or dialogue list replaces the whole list.'),
+    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

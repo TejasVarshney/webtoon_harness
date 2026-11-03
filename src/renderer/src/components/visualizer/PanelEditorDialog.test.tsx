@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, PanelPatch, ProjectMeta } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialItemsState, useItemsStore } from '../../stores/items-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character, variation, withVariation } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
+import { item, usage, withUsage } from '../../test/item-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { PanelEditorDialog, type PanelEditorDialogProps } from './PanelEditorDialog'
 
@@ -20,12 +22,19 @@ const jin = character({ id: 'chr_0000000002', name: 'Jin', role: 'supporting', a
 const sora = character({ id: 'chr_0000000003', name: 'Sora', role: 'supporting', variations: [variation({ id: 'var_00000000s1', characterId: 'chr_0000000003', name: 'Base' })] })
 const ghost = character({ id: 'chr_0000000004', name: 'Ghost', variations: [variation({ id: 'var_00000000g1', characterId: 'chr_0000000004', status: 'pending', imagePath: null })] })
 
+// Ray Pistol has a ready base and a ready action usage plus a pending one; Kestrel blaster is archived; Grip has no ready usage.
+const rayPistol = withUsage(withUsage(item(), 'Aimed', { id: 'use_0000000002' }), 'Firing', { id: 'use_0000000003', status: 'pending', imagePath: null })
+const kestrel = item({ id: 'itm_0000000002', name: 'Kestrel blaster', archived: true, usages: [usage({ id: 'use_00000000k1', itemId: 'itm_0000000002' })] })
+const lantern = item({ id: 'itm_0000000003', name: 'Lantern', ownerId: mina.id, usages: [usage({ id: 'use_00000000l1', itemId: 'itm_0000000003', name: 'Lit' })] })
+const grip = item({ id: 'itm_0000000004', name: 'Grip', usages: [usage({ id: 'use_00000000g1', itemId: 'itm_0000000004', status: 'pending', imagePath: null })] })
+
 const created = panel({ id: 'pnl_0000000009', versions: [], currentVersionId: null })
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId, activeEpisodeId: EPISODE_ID })
   usePanelsStore.setState({ ...initialPanelsState, projectId })
   useCharactersStore.setState({ ...initialCharactersState, projectId, characters: [mina, jin, sora, ghost], loaded: true })
+  useItemsStore.setState({ ...initialItemsState, projectId, items: [rayPistol, kestrel, lantern, grip], loaded: true })
 })
 
 type Handlers = Parameters<typeof installFakeApi>[0]
@@ -104,7 +113,7 @@ describe('PanelEditorDialog', () => {
     for (const label of ['Description', 'Setting', 'Shot', 'Aspect']) expect(editor.getByLabelText(label)).toBeInTheDocument()
     expect(editor.getByLabelText('Shot')).toHaveValue('medium')
     expect(editor.getByLabelText('Aspect')).toHaveValue('2:3')
-    expect(optionLabels(editor.getByLabelText('Aspect'))).toEqual(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+    expect(optionLabels(editor.getByLabelText('Aspect'))).toEqual(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
     expect(optionLabels(editor.getByLabelText('Shot'))).toContain('over-the-shoulder')
   })
 
@@ -144,7 +153,7 @@ describe('PanelEditorDialog', () => {
       {
         projectId,
         generate: true,
-        draft: { episodeId: EPISODE_ID, description: 'Mina meets Jin.', setting: 'Rooftop', shot: 'medium', aspect: '2:3', characters: [], dialogue: [] }
+        draft: { episodeId: EPISODE_ID, description: 'Mina meets Jin.', setting: 'Rooftop', shot: 'medium', aspect: '2:3', characters: [], items: [], dialogue: [] }
       }
     ])
     await userEvent.click(editor.getByRole('button', { name: 'Close' }))
@@ -174,6 +183,7 @@ describe('PanelEditorDialog', () => {
       shot: 'medium',
       aspect: '2:3',
       characters: [{ characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'left' }],
+      items: [],
       dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Who?' }]
     })
   })
@@ -183,6 +193,30 @@ describe('PanelEditorDialog', () => {
     await userEvent.click(editor.getByRole('button', { name: 'Create & generate' }))
     const [req] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
     expect('afterPanelId' in req.draft).toBe(false)
+  })
+
+  it('sends no layout fields unless they were changed', async () => {
+    const { editor, calls } = mount()
+    expect(editor.getByLabelText('Frame')).toHaveValue('bordered')
+    expect(editor.getByLabelText('Beside the previous panel')).not.toBeChecked()
+    expect(editor.getByLabelText('Gap after')).toHaveValue('normal')
+    expect(editor.getByLabelText('Gutter')).toHaveValue('white')
+    await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
+    await waitFor(() => expect(sent(calls, 'panels:create')).toHaveLength(1))
+    const [plain] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
+    for (const key of ['frame', 'beside', 'gapAfter', 'gutter']) expect(key in plain.draft).toBe(false)
+  })
+
+  it('sends the layout fields that were changed from their defaults, and only those', async () => {
+    const { editor, calls } = mount()
+    await userEvent.selectOptions(editor.getByLabelText('Gutter'), 'black')
+    await userEvent.click(editor.getByLabelText('Beside the previous panel'))
+    await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
+    await waitFor(() => expect(sent(calls, 'panels:create')).toHaveLength(1))
+    const [req] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
+    expect(req.draft).toMatchObject({ gutter: 'black', beside: true })
+    expect('frame' in req.draft).toBe(false)
+    expect('gapAfter' in req.draft).toBe(false)
   })
 
   it('creates without an image', async () => {
@@ -291,6 +325,161 @@ describe('PanelEditorDialog', () => {
     })
   })
 
+  describe('items', () => {
+    const castMina = async (editor: ReturnType<typeof mount>['editor']): Promise<void> => {
+      await userEvent.click(editor.getByRole('button', { name: 'Add character' }))
+    }
+
+    it('attaches an item held by a cast member, and sends it in the draft', async () => {
+      const { editor, calls, onClose } = mount()
+      await castMina(editor)
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      // The first item with a ready usage, on its base usage.
+      expect(editor.getByLabelText('Item')).toHaveValue(rayPistol.id)
+      expect(editor.getByLabelText('Usage')).toHaveValue('use_0000000001')
+      expect(editor.getByLabelText('Held by')).toHaveValue('')
+      await userEvent.selectOptions(editor.getByLabelText('Held by'), 'Mina')
+      await userEvent.type(editor.getByLabelText('Item action'), 'aims')
+      await userEvent.click(editor.getByRole('button', { name: 'Create without image' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      const [req] = sent(calls, 'panels:create') as { draft: PanelDraft }[]
+      expect(req.draft.items).toEqual([{ itemId: rayPistol.id, usageId: 'use_0000000001', heldBy: mina.id, action: 'aims' }])
+    })
+
+    it('lists the active items and the ready usages, and starts a new row on the next item', async () => {
+      const { editor } = mount()
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      expect(optionLabels(editor.getByLabelText('Item'))).toEqual(['Ray Pistol', 'Lantern', 'Grip'])
+      expect(optionLabels(editor.getByLabelText('Usage'))).toEqual(['At rest', 'Aimed'])
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      expect(editor.getAllByLabelText('Item')[1]).toHaveValue(lantern.id)
+      // Both items that can be drawn are attached; Grip has no ready usage, so there is nothing left to add.
+      expect(editor.getByRole('button', { name: 'Add item' })).toBeDisabled()
+    })
+
+    it('hands a new item to its owner when the owner is in the cast, and to nobody otherwise', async () => {
+      const { editor } = mount()
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      expect(editor.getAllByLabelText('Held by')[1]).toHaveValue('')
+      await userEvent.click(editor.getAllByRole('button', { name: 'Remove item' })[1])
+      await castMina(editor)
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      expect(editor.getAllByLabelText('Item')[1]).toHaveValue(lantern.id)
+      expect(editor.getAllByLabelText('Held by')[1]).toHaveValue(mina.id)
+    })
+
+    it('offers the cast and Nobody as holders', async () => {
+      const { editor } = mount()
+      await castMina(editor)
+      await userEvent.click(editor.getByRole('button', { name: 'Add character' }))
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      expect(optionLabels(editor.getByLabelText('Held by'))).toEqual(['Nobody', 'Mina', 'Sora'])
+    })
+
+    it('has no add button when no item has a ready usage', () => {
+      useItemsStore.setState({ items: [grip, kestrel] })
+      const { editor } = mount()
+      expect(editor.getByRole('button', { name: 'Add item' })).toBeDisabled()
+      expect(editor.queryByLabelText('Item')).toBeNull()
+    })
+
+    it('loads the items itself when nothing has', async () => {
+      useItemsStore.setState({ ...initialItemsState })
+      const { editor } = mount({ 'items:list': () => [rayPistol] })
+      await waitFor(() => expect(editor.getByRole('button', { name: 'Add item' })).toBeEnabled())
+    })
+
+    it('holds nobody once the holder leaves the cast', async () => {
+      const { editor } = mount()
+      await castMina(editor)
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      await userEvent.selectOptions(editor.getByLabelText('Held by'), 'Mina')
+      expect(editor.getByLabelText('Held by')).toHaveValue(mina.id)
+      await userEvent.click(editor.getByRole('button', { name: 'Remove cast member' }))
+      expect(editor.getByLabelText('Held by')).toHaveValue('')
+    })
+
+    it('holds nobody once the cast member is swapped for another character', async () => {
+      const { editor } = mount()
+      await castMina(editor)
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      await userEvent.selectOptions(editor.getByLabelText('Held by'), 'Mina')
+      await userEvent.selectOptions(editor.getByLabelText('Character'), 'Sora')
+      expect(editor.getByLabelText('Held by')).toHaveValue('')
+    })
+
+    it('blocks saving while a row has no ready usage', async () => {
+      const { editor, calls } = mount()
+      await userEvent.click(editor.getByRole('button', { name: 'Add item' }))
+      await userEvent.selectOptions(editor.getByLabelText('Item'), 'Grip')
+      expect(editor.getByText(/no ready usage/i)).toBeInTheDocument()
+      expect(editor.getByLabelText('Usage')).toBeDisabled()
+      expect(editor.getByRole('button', { name: 'Create without image' })).toBeDisabled()
+      expect(editor.getByRole('button', { name: 'Create & generate' })).toBeDisabled()
+      expect(sent(calls, 'panels:create')).toEqual([])
+    })
+
+    describe('on an existing panel', () => {
+      const withItems: Panel = panel({
+        id: 'pnl_00000000it',
+        characters: [{ characterId: mina.id, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }],
+        items: [
+          { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: mina.id, action: 'drawn' },
+          { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
+        ]
+      })
+
+      it('labels an archived item and a usage that is no longer ready on their own rows', () => {
+        const { editor } = mount({}, { mode: 'edit', panel: withItems })
+        const [archivedRow, staleRow] = editor.getAllByLabelText('Item')
+        expect(archivedRow).toHaveValue(kestrel.id)
+        expect(optionLabels(archivedRow)).toContain('Kestrel blaster (archived)')
+        // The archived item is not offered to any other row.
+        expect(optionLabels(staleRow)).not.toContain('Kestrel blaster (archived)')
+        expect(optionLabels(staleRow)).not.toContain('Kestrel blaster')
+        expect(optionLabels(editor.getAllByLabelText('Usage')[1])).toEqual(['At rest', 'Aimed', 'Firing (not ready)'])
+        expect(editor.getAllByLabelText('Held by')[0]).toHaveValue(mina.id)
+      })
+
+      it('sends only the items when only an item action changed', async () => {
+        const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: withItems })
+        expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
+        await userEvent.clear(editor.getAllByLabelText('Item action')[0])
+        await userEvent.type(editor.getAllByLabelText('Item action')[0], 'aims')
+        await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+        await waitFor(() => expect(onClose).toHaveBeenCalled())
+        expect(sent(calls, 'panels:update')).toEqual([
+          {
+            projectId,
+            panelId: 'pnl_00000000it',
+            patch: {
+              items: [
+                { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: mina.id, action: 'aims' },
+                { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
+              ]
+            }
+          }
+        ])
+      })
+
+      it('sends the items with the cast when the holder leaves it', async () => {
+        const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: withItems })
+        await userEvent.click(editor.getByRole('button', { name: 'Remove cast member' }))
+        await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+        await waitFor(() => expect(onClose).toHaveBeenCalled())
+        const [req] = sent(calls, 'panels:update') as { patch: PanelPatch }[]
+        expect(req.patch).toEqual({
+          characters: [],
+          items: [
+            { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: null, action: 'drawn' },
+            { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
+          ]
+        })
+      })
+    })
+  })
+
   describe('edit mode', () => {
     const existing: Panel = panel({
       id: 'pnl_00000000ed',
@@ -396,6 +585,53 @@ describe('PanelEditorDialog', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Character Jin is archived')
       expect(editor.getByLabelText('Setting')).toHaveValue('Hallway roof')
       expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('sends only the layout field that changed, and never redraws', async () => {
+      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
+      await userEvent.selectOptions(editor.getByLabelText('Gap after'), 'long')
+      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { gapAfter: 'long' } }])
+      expect(sent(calls, 'panels:generate')).toEqual([])
+    })
+
+    it("shows the panel's stored layout in each control", () => {
+      const laid = panel({ ...existing, frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
+      const { editor } = mount({}, { mode: 'edit', panel: laid })
+      expect(editor.getByLabelText('Frame')).toHaveValue('slanted')
+      expect(editor.getByLabelText('Beside the previous panel')).toBeChecked()
+      expect(editor.getByLabelText('Gap after')).toHaveValue('tight')
+      expect(editor.getByLabelText('Gutter')).toHaveValue('black')
+      expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
+    it('sends beside when the box is ticked', async () => {
+      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
+      await userEvent.click(editor.getByLabelText('Beside the previous panel'))
+      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { beside: true } }])
+    })
+
+    it('groups the layout fields under a Layout heading', () => {
+      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      const group = editor.getByRole('group', { name: 'Layout' })
+      for (const name of ['Frame', 'Gap after', 'Gutter', 'Beside the previous panel']) expect(within(group).getByLabelText(name)).toBeInTheDocument()
+      expect(within(group).queryByLabelText('Shot')).toBeNull()
+    })
+
+    it('replaces the frame with a note for a tall aspect', async () => {
+      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      expect(editor.getByLabelText('Frame')).toBeEnabled()
+      expect(editor.queryByText('Tall panels fade instead of a frame')).toBeNull()
+      await userEvent.selectOptions(editor.getByLabelText('Aspect'), '1:3')
+      expect(editor.getByLabelText('Frame')).toBeDisabled()
+      expect(editor.getByText('Tall panels fade instead of a frame')).toBeInTheDocument()
+      // The disabled Frame is explained by the note.
+      expect(editor.getByLabelText('Frame')).toHaveAccessibleDescription('Tall panels fade instead of a frame')
+      await userEvent.selectOptions(editor.getByLabelText('Aspect'), '2:3')
+      expect(editor.getByLabelText('Frame')).not.toHaveAttribute('aria-describedby')
     })
 
     it('saves then regenerates', async () => {

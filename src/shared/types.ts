@@ -13,13 +13,24 @@ import type {
   CheckResultSchema,
   ChatMessageSchema,
   DialogueLineSchema,
+  DrawAspectSchema,
   EndpointConfigSchema,
   EndpointKindSchema,
   EpisodeSchema,
+  ItemInputSchema,
+  ItemPatchSchema,
+  ItemSchema,
+  ItemUsageInputSchema,
+  ItemUsageKindSchema,
+  ItemUsageSchema,
   ModelConfigSchema,
   PanelAspectSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
+  PanelFrameSchema,
+  PanelGapSchema,
+  PanelGutterSchema,
+  PanelItemSchema,
   PanelPatchSchema,
   PanelSchema,
   PanelVersionSchema,
@@ -42,9 +53,12 @@ import type {
 export type ProjectMeta = z.infer<typeof ProjectMetaSchema>
 export type Character = z.infer<typeof CharacterSchema>
 export type Variation = z.infer<typeof VariationSchema>
+export type Item = z.infer<typeof ItemSchema>
+export type ItemUsage = z.infer<typeof ItemUsageSchema>
 export type Episode = z.infer<typeof EpisodeSchema>
 export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
+export type PanelItem = z.infer<typeof PanelItemSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type PanelVersion = z.infer<typeof PanelVersionSchema>
 export type CheckResult = z.infer<typeof CheckResultSchema>
@@ -67,11 +81,19 @@ export type PanelPatch = z.infer<typeof PanelPatchSchema>
 export type CharacterInput = z.infer<typeof CharacterInputSchema>
 export type CharacterPatch = z.infer<typeof CharacterPatchSchema>
 export type VariationInput = z.infer<typeof VariationInputSchema>
+export type ItemInput = z.infer<typeof ItemInputSchema>
+export type ItemPatch = z.infer<typeof ItemPatchSchema>
+export type ItemUsageInput = z.infer<typeof ItemUsageInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
+export type DrawAspect = z.infer<typeof DrawAspectSchema>
+export type PanelFrame = z.infer<typeof PanelFrameSchema>
+export type PanelGap = z.infer<typeof PanelGapSchema>
+export type PanelGutter = z.infer<typeof PanelGutterSchema>
 export type ShotType = z.infer<typeof ShotTypeSchema>
 export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>
+export type ItemUsageKind = z.infer<typeof ItemUsageKindSchema>
 
 export type Role = z.infer<typeof RoleSchema>
 export type Capability = z.infer<typeof CapabilitySchema>
@@ -85,6 +107,9 @@ export interface SessionSummary {
   createdAt: string
   updatedAt: string
   messageCount: number
+  driver: 'claude-code' | null
+  /** The Claude Code session the next run resumes (phase 2 backend); null until its first run. */
+  claudeSessionId: string | null
 }
 
 /** A project file that failed to load (corrupt JSON, schema mismatch); the project still opens. */
@@ -103,6 +128,19 @@ export interface ModelRegistryView {
   effectiveRoles: Record<Role, string | null>
 }
 
+/** A plugin's own report of how it is doing, shown on its Settings card. */
+export type PluginStatus = { state: 'off' | 'running' | 'error'; message: string }
+
+/** What the renderer sees of a built-in plugin. */
+export interface PluginView {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  status: PluginStatus
+  config: Record<string, unknown>
+}
+
 /** How an agent loop run ended. Distinct from an assistant message's `stopReason`. */
 export type LoopOutcome = 'end' | 'max_steps' | 'cancelled' | 'error' | 'refusal' | 'max_tokens'
 
@@ -117,9 +155,11 @@ export type AppEvent =
   | { type: 'project.changed'; projectId: string }
   | { type: 'session.changed'; projectId: string; sessionId: string }
   | { type: 'character.changed'; projectId: string; characterId: string }
+  | { type: 'item.changed'; projectId: string; itemId: string }
   | { type: 'episode.changed'; projectId: string; episodeId: string }
   | { type: 'panel.changed'; projectId: string; panelId: string }
   | { type: 'story.changed'; projectId: string }
   | { type: 'models.changed' }
+  | { type: 'plugins.changed' }
   /** `threadKey` is a session id for the main chat, or `panel:<panelId>` for a panel side chat. */
   | { type: 'agent.event'; projectId: string; threadKey: string; event: AgentEvent }

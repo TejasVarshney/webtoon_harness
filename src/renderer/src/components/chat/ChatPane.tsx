@@ -4,12 +4,18 @@ import { api } from '../../api'
 import { useAppStore } from '../../stores/app-store'
 import { useChatStore } from '../../stores/chat-store'
 import { useModelsStore } from '../../stores/models-store'
+import { claudeCodeIsAgent, usePluginsStore } from '../../stores/plugins-store'
 import { MOCK_BANNER_TEXT } from './ChatHeader'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
 import { ModelPicker } from './ModelPicker'
 import { sendUserMessage } from './send-message'
 import { PanelSideChat } from '../panel-chat/PanelSideChat'
+
+/** Shown above a session that Claude Code drives. */
+export const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
+/** The Attach tooltip while Claude Code runs the chat: its runs refuse images (ruling R16). */
+export const NO_IMAGES_TEXT = "Claude Code can't see attached images yet"
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -21,8 +27,11 @@ export function ChatPane() {
   const sessionId = useAppStore((s) => s.sessionId)
   const runId = useAppStore((s) => (s.sessionId === null ? undefined : s.runningThreads[s.sessionId]))
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
+  // Claude Code writes this session's steps through the MCP link, so the app's own agent has nothing to say in it.
+  const driven = useAppStore((s) => s.sessions.find((x) => x.id === s.sessionId)?.driver === 'claude-code')
   const draft = useChatStore((s) => s.draft)
   const setDraft = useChatStore((s) => s.setDraft)
+  const claudeCodeAgent = usePluginsStore(claudeCodeIsAgent)
   const onMock = useModelsStore((s) => {
     const model = s.view?.models.find((m) => m.id === s.view?.effectiveRoles.agent)
     return s.view?.endpoints.find((e) => e.id === model?.endpointId)?.kind === 'mock'
@@ -53,7 +62,7 @@ export function ChatPane() {
 
   return (
     <div className="chat-pane">
-      {onMock && (
+      {onMock && !claudeCodeAgent && (
         <p className="mock-banner" data-testid="mock-banner">
           {MOCK_BANNER_TEXT}
         </p>
@@ -68,8 +77,22 @@ export function ChatPane() {
               </div>
             ) : (
               <>
+                {driven && (
+                  <p className="driver-banner" data-testid="driver-banner">
+                    {DRIVER_BANNER_TEXT}
+                  </p>
+                )}
                 <MessageList threadKey={sessionId} />
-                <Composer onSend={sendUserMessage} running={runId !== undefined} onStop={stop} value={draft} onValueChange={setDraft} tools={<ModelPicker />} />
+                <Composer
+                  onSend={sendUserMessage}
+                  running={runId !== undefined}
+                  onStop={stop}
+                  value={draft}
+                  onValueChange={setDraft}
+                  {...(claudeCodeAgent ? { attachOffReason: NO_IMAGES_TEXT } : {})}
+                  tools={driven ? undefined : <ModelPicker />}
+                  disabled={driven}
+                />
               </>
             )}
           </div>

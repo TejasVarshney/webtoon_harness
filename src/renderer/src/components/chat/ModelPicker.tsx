@@ -1,11 +1,22 @@
 import { useState } from 'react'
 import { useModelsStore } from '../../stores/models-store'
+import { claudeCodeIsAgent, usePluginsStore } from '../../stores/plugins-store'
 
-/** Chooses the `agent` role's model among the text-capable ones. */
+/** Chooses the `agent` role's model among the text-capable ones; names Claude Code instead while it runs the chat. */
 export function ModelPicker() {
   const view = useModelsStore((s) => s.view)
   const assignRole = useModelsStore((s) => s.assignRole)
+  const claudeCodeAgent = usePluginsStore(claudeCodeIsAgent)
   const [error, setError] = useState<string | null>(null)
+  if (claudeCodeAgent) {
+    return (
+      <span className="model-picker">
+        <select data-testid="model-picker" aria-label="Agent model" value="claude-code" disabled>
+          <option value="claude-code">Claude Code</option>
+        </select>
+      </span>
+    )
+  }
   if (view === null) return null
 
   const textModels = view.models.filter((m) => m.capabilities.includes('text'))

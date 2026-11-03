@@ -5,6 +5,7 @@ import { electronImageOps } from './domain/electron-image-ops'
 import { electronEncryptor } from './models/electron-encryptor'
 import { registerIpc } from './ipc/register'
 import { handleAssetProtocol, registerAssetScheme } from './protocol/asset-protocol'
+import { createQuitGate } from './quit-gate'
 import { createServices } from './services'
 
 // Privileged schemes can only be registered before the app is ready.
@@ -87,12 +88,20 @@ if (primary) void app.whenReady().then(async () => {
     },
     openPath: (absPath) => shell.openPath(absPath)
   })
-  const { agent, panelChat } = services
-  // Quitting mid-run: abort so every loop persists results for its pending tool calls.
-  app.on('before-quit', () => {
-    agent.cancelAll()
-    panelChat.cancelAll()
-  })
+  void services.plugins.startEnabled()
+  const { agent, panelChat, plugins } = services
+  // Quitting mid-run: abort so every loop persists results for its pending tool calls, then stop the plugins.
+  app.on(
+    'before-quit',
+    createQuitGate({
+      cancelRuns: () => {
+        agent.cancelAll()
+        panelChat.cancelAll()
+      },
+      stopPlugins: () => plugins.stopAll(),
+      quit: () => app.quit()
+    })
+  )
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {
     for (const win of BrowserWindow.getAllWindows()) {

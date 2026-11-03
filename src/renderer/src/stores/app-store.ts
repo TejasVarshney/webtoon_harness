@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
 import { api } from '../api'
 
-export type RightTab = 'webtoon' | 'characters' | 'story'
+export type RightTab = 'webtoon' | 'characters' | 'items' | 'story'
 
 const LAST_PROJECT_KEY = 'webtoon.lastProjectId'
 
@@ -169,3 +169,19 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     set({ rightTab: tab })
   }
 }))
+
+/**
+ * Tells main which project and episode the window shows (`app:setActiveContext`): once now, then whenever either
+ * changes, so plugins that act on "the open project" follow the user. Returns the unsubscribe function.
+ */
+export function startActiveContextSync(): () => void {
+  const send = ({ projectId, activeEpisodeId }: AppData): void => {
+    api
+      .invoke('app:setActiveContext', { projectId, episodeId: activeEpisodeId })
+      .catch((e: unknown) => console.error('Failed to tell main the active project', e))
+  }
+  send(useAppStore.getState())
+  return useAppStore.subscribe((s, prev) => {
+    if (s.projectId !== prev.projectId || s.activeEpisodeId !== prev.activeEpisodeId) send(s)
+  })
+}
