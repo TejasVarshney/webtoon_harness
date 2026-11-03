@@ -33,9 +33,6 @@ export interface BubbleEditing {
   select(i: number | null): void
   /** The lines to draw: the stored ones, as the save still going will leave them, and a new line while it is typed. */
   lines: DialogueLine[]
-  /** From the dialogue saver: the line changed under an edit, or the service refused a save. */
-  conflict: boolean
-  error: string | null
   /** For the stage element: a press on the empty stage, the drag that follows a press on a bubble, and Escape. */
   stage: HTMLAttributes<HTMLElement>
 }
@@ -77,12 +74,13 @@ const boxOf = (el: Element): Box => {
 /**
  * Selecting, retyping, dragging, nudging, adding and deleting the bubbles of the panel on the stage (spec §5). Every
  * bubble is known by its line's index, since the ids change on each save, and each change saves the whole dialogue
- * through `useDialogueSaver`, built from the store when it is sent. Nothing here calls a model.
+ * through `useDialogueSaver`, built from the store when it is sent; its conflicts and refusals show in the Lines tab.
+ * Nothing here calls a model.
  * While a save is going, the lines are drawn as it will leave them, so a dropped or retyped bubble does not jump back
  * until the store catches up. The bubbles remount when their ids change, so the selected one gets the focus back.
  */
 export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement | null>): BubbleEditing {
-  const { save, conflict, error } = useDialogueSaver(panel.id)
+  const { save } = useDialogueSaver(panel.id)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [preview, setPreview] = useState<{ index: number; placement: BubblePlacement } | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
@@ -453,8 +451,6 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     selected,
     select,
     lines,
-    conflict,
-    error,
     stage
   }
 }

@@ -2,11 +2,13 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { visualFields } from '@shared/visual-fields'
-import type { Panel } from '@shared/types'
+import type { Panel, PanelPatch } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
+import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
 import { useChatStore } from '../../stores/chat-store'
+import { initialItemsState, useItemsStore } from '../../stores/items-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
-import { PROJECT_ID as P } from '../../test/character-fixtures'
+import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
 import { PanelWorkspace } from './PanelWorkspace'
@@ -29,6 +31,8 @@ beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, selectedPanelId: B })
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [first, second, third] } })
   useChatStore.setState({ messages: {}, streaming: {}, notices: {}, draft: '' })
+  useCharactersStore.setState({ ...initialCharactersState, projectId: P, characters: [character()], loaded: true })
+  useItemsStore.setState({ ...initialItemsState, projectId: P, items: [], loaded: true })
 })
 afterEach(async () => {
   // Back focuses the card a frame later; let that frame pass, so it cannot land in the next test.
@@ -300,6 +304,30 @@ describe('PanelWorkspace', () => {
     await userEvent.keyboard('{Escape}')
     expect(useAppStore.getState().selectedPanelId).toBeNull()
     expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
+  })
+
+  it('puts the tabs under the stage, on Lines, and selects the bubble of the row the user goes into', () => {
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
+    mount()
+    const tabs = within(workspace()).getByRole('tablist')
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Lines', 'Cast', 'Items', 'Scene'])
+    expect(within(tabs).getByRole('tab', { name: 'Lines' })).toHaveAttribute('aria-selected', 'true')
+    const row = within(within(workspace()).getByRole('tabpanel')).getByRole('listitem')
+    focus(within(row).getByLabelText('Text'))
+    expect(within(within(workspace()).getByTestId('panel-stage')).getByLabelText('Line 1')).toHaveAttribute('data-selected', 'true')
+    expect(row).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('saves what was typed in Scene when stepping to the next panel (Review Focus 3)', async () => {
+    const { calls } = mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
+    fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
+    fireEvent.change(within(workspace()).getByLabelText('Setting'), { target: { value: 'Roof ' } })
+    await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:update')).toHaveLength(1))
+    expect(calls.find((c) => c.channel === 'panels:update')?.req).toEqual({ projectId: P, panelId: B, patch: { setting: 'Roof' } satisfies PanelPatch })
+    // The next panel starts on Lines, with nothing of the last one's editing.
+    expect(within(workspace()).getByRole('tab', { name: 'Lines' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('follows the panel when its list reloads', () => {

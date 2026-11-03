@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, Columns2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Columns2, RefreshCw, Trash2 } from 'lucide-react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
@@ -15,19 +15,18 @@ export interface PanelCardProps {
   slant?: 'left' | 'right'
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
-  /** Asks the strip to open the editor on this panel. The strip owns the dialog, so it survives the card moving to another row. */
-  onEdit(): void
 }
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
  * toolbar on hover.
- * Clicking the card selects the panel; the toolbar's buttons and the delete confirmation it opens do not.
+ * Clicking the card selects the panel, which opens it in the editing mode; the toolbar's buttons and the delete
+ * confirmation it opens do not.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps) {
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -97,9 +96,6 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
         )}
         <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
           <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={onEdit}>
-            <Pencil size={15} aria-hidden="true" />
-          </button>
           <button
             type="button"
             className="icon-button"

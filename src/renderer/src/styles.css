@@ -1407,8 +1407,102 @@ kbd {
   transform-origin: 0 0;
 }
 
-.stage-error {
-  margin: 8px 0 0;
+/* The tabs under the stage, in the strip's tab look, then the open tab's controls. */
+.panel-inspector {
+  margin-top: 16px;
+}
+
+.inspector-tabs {
+  padding: 0;
+}
+
+.inspector-panel {
+  padding-top: 16px;
+}
+
+.lines-tab,
+.inspector-fields,
+.scene-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.line-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The row of the selected bubble is one tone step deeper; the accent stays on the bubble. */
+.line-row[aria-current='true'] {
+  background: var(--active);
+}
+
+/* The pickers' and the layout's groups sit in the tab without the dialog's frame. */
+.panel-inspector fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.panel-inspector legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+/* The tab already names the cast and the items: their legends stay for screen readers only. */
+.panel-inspector .cast-picker > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.panel-inspector .inline-label {
+  align-self: flex-start;
+}
+
+.inspector-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.inspector-alert p {
+  margin: 0;
+}
+
+/* A text button: Regenerate in the header is the only filled one. */
+.inspector-alert button {
+  height: 26px;
+  padding: 0 8px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border-color: transparent;
+}
+
+.inspector-alert button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.inspector-warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-small);
+  color: var(--muted);
 }
 
 .editing-chat .thread {
@@ -2794,7 +2888,8 @@ kbd {
 }
 
 .cast-row,
-.dialogue-row {
+.dialogue-row,
+.line-row {
   display: flex;
   flex-direction: column;
   gap: 8px;

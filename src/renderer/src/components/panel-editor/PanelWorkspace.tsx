@@ -8,6 +8,7 @@ import { errorText } from '../characters/controls'
 import { PanelThread } from '../panel-chat/PanelThread'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 import { layoutStrip, rowShares } from '../visualizer/strip-layout'
+import { PanelInspector } from './PanelInspector'
 import { PanelStage } from './PanelStage'
 import { staleNotice } from './stale-notice'
 
@@ -40,8 +41,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const panels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
   // Upload and Regenerate belong to the panel they ran for: stepping to the next panel leaves their failure behind.
   const [action, setAction] = useState<{ panelId: string; busy: boolean; error: string | null } | null>(null)
-  // The stage's selected bubble, by line index, for the inspector to follow. It belongs to the panel it was chosen on,
-  // so stepping to another panel starts with none.
+  // The selected line, by index: a bubble on the stage or a row of Lines, each following the other. It belongs to the
+  // panel it was chosen on, so stepping to another panel starts with none.
   const [lineSelection, setLineSelection] = useState<{ panelId: string; index: number | null } | null>(null)
 
   // Panels of another project must never show here, whatever the store still holds.
@@ -90,6 +91,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
 
   const regenerate = (id: string): void => run(id, usePanelsStore.getState().generatePanel(id))
   const select = (id: string): void => useAppStore.getState().selectPanel(id)
+  const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
 
   return (
     <section className="panel-workspace" data-testid="panel-workspace" aria-label="Panel editor">
@@ -141,15 +143,10 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
             <div className="editing-body">
               {panel !== undefined ? (
                 <>
-                  {/* The stage. Each panel gets its own, so nothing of one panel's editing carries to the next. */}
-                  <PanelStage
-                    key={panel.id}
-                    panel={panel}
-                    share={share}
-                    slant={slant}
-                    onSelectLine={(index) => setLineSelection({ panelId: panel.id, index })}
-                  />
-                  {/* The inspector (Lines, Cast, Items, Scene) goes here, under the stage, following `selectedLine`. */}
+                  {/* Each panel gets its own stage and tabs, so nothing of one panel's editing carries to the next, and
+                      what is still waiting to save is saved when the user steps away or goes back. */}
+                  <PanelStage key={panel.id} panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} />
+                  <PanelInspector key={panel.id} panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} />
                 </>
               ) : loaded ? (
                 <p className="placeholder">Panel not in the current episode</p>

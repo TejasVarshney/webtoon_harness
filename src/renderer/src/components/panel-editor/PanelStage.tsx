@@ -14,6 +14,8 @@ export interface PanelStageProps {
   share: number
   /** Which way a slanted panel leans in the strip. */
   slant?: 'left' | 'right'
+  /** The line selected in the workspace (a row of the Lines tab, or this stage): its bubble shows as selected. */
+  selectedLine?: number | null
   /** The selected bubble's line index, for the Lines tab to follow. */
   onSelectLine(i: number | null): void
 }
@@ -67,40 +69,37 @@ function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObject<HTMLE
  * The open panel on a field of its own gutter colour, drawn by the card's own `PanelArt` and lettered as on the strip:
  * it is laid out at its share of the strip's reference row (`STAGE_ROW_PX`, the lettering's container) and scaled up
  * or down with a transform to fit, so the bubbles' placement fractions are exact at every size. Its bubbles can be
- * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone.
+ * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone,
+ * and a line that changed under an edit, or a refused save, is said in the Lines tab.
  */
-export function PanelStage({ panel, share, slant, onSelectLine }: PanelStageProps) {
+export function PanelStage({ panel, share, slant, selectedLine, onSelectLine }: PanelStageProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const shapeRef = useRef<HTMLDivElement>(null)
-  const { editing, selected, lines, conflict, error, stage } = useBubbleEditing(panel, stageRef)
+  const { editing, selected, select, lines, stage } = useBubbleEditing(panel, stageRef)
   const fit = useStageFit(stageRef, shapeRef)
 
-  // The workspace keeps the selected line, so the Lines tab can follow it.
+  // The workspace keeps the selected line, so the Lines tab can follow it, and a row selected there selects its bubble.
   const report = useRef(onSelectLine)
   useLayoutEffect(() => {
     report.current = onSelectLine
   })
   useEffect(() => report.current(selected), [selected])
+  useEffect(() => {
+    if (selectedLine !== undefined) select(selectedLine)
+  }, [selectedLine, select])
 
   const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
   const drawn = lines === panel.dialogue ? panel : { ...panel, dialogue: lines }
 
   return (
-    <>
-      <div ref={stageRef} className="panel-stage" data-testid="panel-stage" data-gutter={panel.gutter} tabIndex={-1} {...stage}>
-        <div className="stage-fit" style={fit === null ? undefined : { width: fit.width * fit.scale, height: fit.height * fit.scale }}>
-          <div className="stage-row" style={{ width: STAGE_ROW_PX, transform: fit === null ? undefined : `scale(${fit.scale})` }}>
-            <div ref={shapeRef} className="panel-shape" data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame} data-slant={slant} style={shape}>
-              <PanelArt panel={drawn} editing={editing} />
-            </div>
+    <div ref={stageRef} className="panel-stage" data-testid="panel-stage" data-gutter={panel.gutter} tabIndex={-1} {...stage}>
+      <div className="stage-fit" style={fit === null ? undefined : { width: fit.width * fit.scale, height: fit.height * fit.scale }}>
+        <div className="stage-row" style={{ width: STAGE_ROW_PX, transform: fit === null ? undefined : `scale(${fit.scale})` }}>
+          <div ref={shapeRef} className="panel-shape" data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame} data-slant={slant} style={shape}>
+            <PanelArt panel={drawn} editing={editing} />
           </div>
         </div>
       </div>
-      {(conflict || error !== null) && (
-        <p role="alert" className="error stage-error">
-          {conflict ? 'This line changed while you were editing it.' : error}
-        </p>
-      )}
-    </>
+    </div>
   )
 }

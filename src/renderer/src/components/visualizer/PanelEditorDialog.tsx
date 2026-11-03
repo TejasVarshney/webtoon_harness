@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
 import { PanelAspectSchema, PanelFrameSchema, PanelGapSchema, PanelGutterSchema, ShotTypeSchema } from '@shared/schemas'
-import type { Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch } from '@shared/types'
+import type { Panel, PanelCharacter, PanelDraft, PanelItem } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
@@ -18,13 +18,10 @@ const GAPS = PanelGapSchema.options
 const GUTTERS = PanelGutterSchema.options
 
 export interface PanelEditorDialogProps {
-  mode: 'create' | 'edit'
   episodeId: string
-  /** Create mode: the panel the new one goes after. Absent appends; `null` inserts at the start. */
+  /** The panel the new one goes after. Absent appends; `null` inserts at the start. */
   afterPanelId?: string | null
-  /** Edit mode: the panel being edited. */
-  panel?: Panel
-  /** Called when the dialog is done, after a clean save or from Cancel / Close. */
+  /** Called when the dialog is done, after a clean create or from Cancel / Close. */
   onClose?(): void
 }
 
@@ -43,23 +40,7 @@ interface Values {
   dialogue: DialogueDraftLine[]
 }
 
-function fromPanel(panel: Panel): Values {
-  return {
-    description: panel.description,
-    setting: panel.setting,
-    shot: panel.shot,
-    aspect: panel.aspect,
-    frame: panel.frame,
-    beside: panel.beside,
-    gapAfter: panel.gapAfter,
-    gutter: panel.gutter,
-    characters: panel.characters,
-    items: panel.items,
-    dialogue: panel.dialogue.map(({ speakerId, kind, text, placement }) => ({ speakerId, kind, text, placement }))
-  }
-}
-
-/** The values as they are stored: text trimmed, lines without text dropped. Comparing two of these finds what changed. */
+/** The values as they are stored: text trimmed, lines without text dropped. */
 function normalize(v: Values): Values {
   return {
     description: v.description.trim(),
@@ -76,26 +57,17 @@ function normalize(v: Values): Values {
   }
 }
 
-const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
-
 /** What a new panel looks like until the user changes it; a draft carries only the layout fields that differ. */
 const LAYOUT_DEFAULTS = { frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' } as const satisfies Pick<Values, 'frame' | 'beside' | 'gapAfter' | 'gutter'>
 
-/** Only the fields that differ from `before`: the AI may change the rest while the dialog is open, and a save must not undo it. */
-function changes(before: Values, after: Values): PanelPatch {
-  const patch: PanelPatch = {}
-  if (before.description !== after.description) patch.description = after.description
-  if (before.setting !== after.setting) patch.setting = after.setting
-  if (before.shot !== after.shot) patch.shot = after.shot
-  if (before.aspect !== after.aspect) patch.aspect = after.aspect
-  if (before.frame !== after.frame) patch.frame = after.frame
-  if (before.beside !== after.beside) patch.beside = after.beside
-  if (before.gapAfter !== after.gapAfter) patch.gapAfter = after.gapAfter
-  if (before.gutter !== after.gutter) patch.gutter = after.gutter
-  if (!same(before.characters, after.characters)) patch.characters = after.characters
-  if (!same(before.items, after.items)) patch.items = after.items
-  if (!same(before.dialogue, after.dialogue)) patch.dialogue = after.dialogue
-  return patch
+/** The layout fields that differ from a new panel's. */
+function layoutChanges(v: Values): Pick<PanelDraft, 'frame' | 'beside' | 'gapAfter' | 'gutter'> {
+  return {
+    ...(v.frame !== LAYOUT_DEFAULTS.frame ? { frame: v.frame } : {}),
+    ...(v.beside !== LAYOUT_DEFAULTS.beside ? { beside: v.beside } : {}),
+    ...(v.gapAfter !== LAYOUT_DEFAULTS.gapAfter ? { gapAfter: v.gapAfter } : {}),
+    ...(v.gutter !== LAYOUT_DEFAULTS.gutter ? { gutter: v.gutter } : {})
+  }
 }
 
 /** What the primary buttons ask for, besides the save itself. */
@@ -112,20 +84,26 @@ interface Outcome {
 }
 
 /**
- * The manual panel editor: create a panel (here, after `afterPanelId`) or edit one. Create makes the panel through the
- * same service the agent uses, so it gets the same validation. A validation failure is shown and the form stays editable;
- * once the panel exists, the buttons that would make it again are gone and only Close is left, so a second click cannot
- * duplicate it. Warnings (a character named in the description but not attached) are shown, and the dialog waits for Close.
+ * The new-panel dialog: creates a panel (here, after `afterPanelId`) through the same service the agent uses, so it gets
+ * the same validation. An existing panel is edited in the editing mode instead (PanelWorkspace). A validation failure is
+ * shown and the form stays editable; once the panel exists, the buttons that would make it again are gone and only Close
+ * is left, so a second click cannot duplicate it. Warnings (a character named in the description but not attached) are
+ * shown, and the dialog waits for Close.
  */
-export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClose }: PanelEditorDialogProps) {
-  const editing = mode === 'edit' && panel !== undefined
+export function PanelEditorDialog({ episodeId, afterPanelId, onClose }: PanelEditorDialogProps) {
   const defaultAspect = useAppStore((s) => s.projects.find((p) => p.id === s.projectId)?.defaultAspect)
   const roster = useRoster()
   const itemRoster = useItemRoster()
-  const [initial] = useState<Values>(() =>
-    editing ? fromPanel(panel) : { description: '', setting: '', shot: 'medium', aspect: defaultAspect ?? '2:3', ...LAYOUT_DEFAULTS, characters: [], items: [], dialogue: [] }
-  )
-  const [values, setValues] = useState<Values>(initial)
+  const [values, setValues] = useState<Values>(() => ({
+    description: '',
+    setting: '',
+    shot: 'medium',
+    aspect: defaultAspect ?? '2:3',
+    ...LAYOUT_DEFAULTS,
+    characters: [],
+    items: [],
+    dialogue: []
+  }))
   const [open, setOpen] = useState(true)
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
@@ -145,8 +123,6 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
       }
       return next
     })
-  const patch = editing ? changes(normalize(initial), normalize(values)) : {}
-  const dirty = Object.keys(patch).length > 0
   // A tall panel fades at its edges instead of having a frame, whatever its frame says.
   const tall = isTallAspect(values.aspect)
   // A cast row with no ready variation could only come back as a server error; say so before it is sent.
@@ -165,35 +141,26 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
     inFlight.current = true
     setBusy(true)
     setError(null)
-    const { createPanel, updatePanel, generatePanel, uploadPanelImage } = usePanelsStore.getState()
+    const { createPanel, uploadPanelImage } = usePanelsStore.getState()
     let panelId: string
-    let warnings: string[] = []
+    let warnings: string[]
     try {
-      if (editing) {
-        panelId = panel.id
-        if (dirty) warnings = (await updatePanel(panel.id, patch)).warnings
-      } else {
-        const v = normalize(values)
-        const { frame, beside, gapAfter, gutter } = changes(normalize(initial), v)
-        const draft: PanelDraft = {
-          episodeId,
-          ...(afterPanelId !== undefined ? { afterPanelId } : {}),
-          description: v.description,
-          setting: v.setting,
-          shot: v.shot,
-          aspect: v.aspect,
-          ...(frame !== undefined ? { frame } : {}),
-          ...(beside !== undefined ? { beside } : {}),
-          ...(gapAfter !== undefined ? { gapAfter } : {}),
-          ...(gutter !== undefined ? { gutter } : {}),
-          characters: v.characters,
-          items: v.items,
-          dialogue: v.dialogue
-        }
-        const created = await createPanel(draft, intent.generate)
-        panelId = created.panel.id
-        warnings = created.warnings
+      const v = normalize(values)
+      const draft: PanelDraft = {
+        episodeId,
+        ...(afterPanelId !== undefined ? { afterPanelId } : {}),
+        description: v.description,
+        setting: v.setting,
+        shot: v.shot,
+        aspect: v.aspect,
+        ...layoutChanges(v),
+        characters: v.characters,
+        items: v.items,
+        dialogue: v.dialogue
       }
+      const created = await createPanel(draft, intent.generate)
+      panelId = created.panel.id
+      warnings = created.warnings
     } catch (e) {
       // Nothing was saved: the form stays as it is, ready for another try.
       setError(errorText(e))
@@ -204,10 +171,9 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
     // The panel is saved from here on, so a failure below is reported next to it and never re-runs the step above.
     let notice: string | null = null
     try {
-      if (editing && intent.generate) await generatePanel(panelId)
       if (intent.upload) await uploadPanelImage(panelId)
     } catch (e) {
-      notice = `${editing ? 'Saved' : 'Panel created'}, but the image step failed: ${errorText(e)}`
+      notice = `Panel created, but the image step failed: ${errorText(e)}`
     }
     inFlight.current = false
     setBusy(false)
@@ -217,8 +183,8 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
 
   return (
     <div className="modal-backdrop">
-      <div className="modal panel-editor" role="dialog" aria-modal="true" aria-label={editing ? 'Edit panel' : 'New panel'} data-testid="panel-editor">
-        <h2>{editing ? 'Edit panel' : 'New panel'}</h2>
+      <div className="modal panel-editor" role="dialog" aria-modal="true" aria-label="New panel" data-testid="panel-editor">
+        <h2>New panel</h2>
         <form className="panel-editor-form" onSubmit={(e) => e.preventDefault()}>
           <fieldset disabled={busy || outcome !== null}>
             <Field label="Description">
@@ -309,7 +275,7 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
         )}
         {outcome !== null && (
           <div className="panel-editor-outcome" role="status">
-            <p>{editing ? 'Saved.' : 'Panel created.'}</p>
+            <p>Panel created.</p>
             {outcome.warnings.length > 0 && (
               <ul className="panel-editor-warnings">
                 {outcome.warnings.map((w, i) => (
@@ -334,25 +300,12 @@ export function PanelEditorDialog({ mode, episodeId, afterPanelId, panel, onClos
               <button type="button" disabled={locked} onClick={() => void run({ generate: false, upload: true })}>
                 Upload image…
               </button>
-              {editing ? (
-                <>
-                  <button type="button" disabled={locked} onClick={() => void run({ generate: true, upload: false })}>
-                    Save &amp; regenerate
-                  </button>
-                  <button type="button" disabled={locked || !dirty} onClick={() => void run({ generate: false, upload: false })}>
-                    Save
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" disabled={locked} onClick={() => void run({ generate: false, upload: false })}>
-                    Create without image
-                  </button>
-                  <button type="button" disabled={locked} onClick={() => void run({ generate: true, upload: false })}>
-                    Create &amp; generate
-                  </button>
-                </>
-              )}
+              <button type="button" disabled={locked} onClick={() => void run({ generate: false, upload: false })}>
+                Create without image
+              </button>
+              <button type="button" disabled={locked} onClick={() => void run({ generate: true, upload: false })}>
+                Create &amp; generate
+              </button>
             </>
           )}
         </div>

@@ -10,6 +10,7 @@ import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
 import { PanelStage } from './PanelStage'
+import { useDialogueSaver } from './use-dialogue-saver'
 
 const A = 'pnl_00000000aa'
 const MINA = 'chr_0000000001'
@@ -50,10 +51,21 @@ function replaceStored(next: Panel): void {
   act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [next] } }))
 }
 
+/** What the panel's dialogue saver reports, as the Lines tab would show it (the stage shows no message of its own). */
+function Saver() {
+  const { conflict, error } = useDialogueSaver(A)
+  return <output data-testid="saver">{conflict ? 'conflict' : (error ?? '')}</output>
+}
+
 /** The stage as the workspace mounts it: fed from the store, so saves and agent edits reach it. */
-function Host({ onSelectLine, share = 1, slant }: { onSelectLine(i: number | null): void; share?: number; slant?: 'left' | 'right' }) {
+function Host({ onSelectLine, share = 1, slant, selectedLine }: { onSelectLine(i: number | null): void; share?: number; slant?: 'left' | 'right'; selectedLine?: number | null }) {
   const open = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((p) => p.id === A))
-  return open === undefined ? null : <PanelStage panel={open} share={share} slant={slant} onSelectLine={onSelectLine} />
+  return open === undefined ? null : (
+    <>
+      <PanelStage panel={open} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={onSelectLine} />
+      <Saver />
+    </>
+  )
 }
 
 function mount(props: { share?: number; slant?: 'left' | 'right' } = {}) {
@@ -71,13 +83,15 @@ function mount(props: { share?: number; slant?: 'left' | 'right' } = {}) {
     'panels:list': () => [stored]
   })
   const view = render(<Host onSelectLine={onSelectLine} {...props} />)
-  return { ...api, onSelectLine, unmount: view.unmount }
+  const select = (line: number | null): void => view.rerender(<Host onSelectLine={onSelectLine} {...props} selectedLine={line} />)
+  return { ...api, onSelectLine, select, unmount: view.unmount }
 }
 
 const stage = (): HTMLElement => screen.getByTestId('panel-stage')
 const bubble = (i: number): HTMLElement => within(stage()).getByLabelText(`Line ${i + 1}`)
 const textBox = (): HTMLElement => within(stage()).getByRole('textbox', { name: 'Line text' })
 const media = (): HTMLElement => stage().querySelector<HTMLElement>('.panel-media')!
+const saver = (): HTMLElement => screen.getByTestId('saver')
 const updates = (calls: { channel: string; req: unknown }[]): PanelPatch[] =>
   calls.filter((c) => c.channel === 'panels:update').map((c) => (c.req as { patch: PanelPatch }).patch)
 
@@ -155,6 +169,17 @@ describe('PanelStage', () => {
     await userEvent.click(media())
     expect(bubble(1)).toHaveAttribute('data-selected', 'false')
     expect(onSelectLine).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows the line the workspace selects (a row of the Lines tab)', () => {
+    const { onSelectLine, select, calls } = mount()
+    select(1)
+    expect(bubble(1)).toHaveAttribute('data-selected', 'true')
+    expect(bubble(0)).toHaveAttribute('data-selected', 'false')
+    expect(onSelectLine).toHaveBeenLastCalledWith(1)
+    select(null)
+    expect(bubble(1)).toHaveAttribute('data-selected', 'false')
+    expect(updates(calls)).toEqual([])
   })
 
   it('treats a press that moves under 3px as a click, and saves a drag where it was released', async () => {
@@ -367,17 +392,19 @@ describe('PanelStage', () => {
     await waitFor(() => expect(updates(calls)).toHaveLength(2))
     expect(updates(calls)[0].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], text: 'Run!' })
     expect(updates(calls)[1].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], text: 'Run!', placement: { x: 0.75, y: 0.25 } })
-    expect(within(stage().parentElement!).queryByText('This line changed while you were editing it.')).toBeNull()
+    expect(saver()).toBeEmptyDOMElement()
   })
 
-  it('sends nothing when the line changed under a drag, and says so (Review Focus 2)', async () => {
+  it('sends nothing when the line changed under a drag, and reports it (Review Focus 2)', async () => {
     const { calls } = mount()
     fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
     fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
     // The agent rewrites the line while the user holds it.
     replaceStored({ ...stored, dialogue: [{ ...hello, id: 'dlg_0000000009', text: 'Goodbye.' }, night] })
     fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
-    expect(await within(stage().parentElement!).findByText('This line changed while you were editing it.')).toBeInTheDocument()
+    // The Lines tab says so (PanelInspector.test); the stage itself has no message.
+    await waitFor(() => expect(saver()).toHaveTextContent('conflict'))
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(updates(calls)).toEqual([])
     expect(bubble(0)).not.toHaveClass('bubble-placed')
     expect(bubble(0)).toHaveTextContent('Goodbye.')
@@ -389,7 +416,7 @@ describe('PanelStage', () => {
     await userEvent.type(textBox(), ' Again.')
     replaceStored({ ...stored, dialogue: [{ ...hello, id: 'dlg_0000000009', kind: 'thought' }, night] })
     fireEvent.keyDown(textBox(), { key: 'Enter' })
-    expect(await within(stage().parentElement!).findByText('This line changed while you were editing it.')).toBeInTheDocument()
+    await waitFor(() => expect(saver()).toHaveTextContent('conflict'))
     expect(updates(calls)).toEqual([])
   })
 
@@ -403,7 +430,7 @@ describe('PanelStage', () => {
     expect(fireEvent.keyDown(stage(), { key: 'Escape' })).toBe(true)
   })
 
-  it('shows a refused save', async () => {
+  it('reports a refused save, and draws the stored lines again', async () => {
     installFakeApi({
       'panels:update': () => {
         throw new Error('Dialogue is too long')
@@ -412,7 +439,8 @@ describe('PanelStage', () => {
     render(<Host onSelectLine={() => undefined} />)
     act(() => bubble(0).focus())
     fireEvent.keyDown(bubble(0), { key: 'Delete' })
-    expect(await within(stage().parentElement!).findByRole('alert')).toHaveTextContent('Dialogue is too long')
+    await waitFor(() => expect(saver()).toHaveTextContent('Dialogue is too long'))
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(bubble(1)).toBeInTheDocument()
   })
 

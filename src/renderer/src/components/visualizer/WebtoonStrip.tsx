@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { InsertPanelButton } from './InsertPanelButton'
 import { PanelCard } from './PanelCard'
-import { PanelEditorDialog } from './PanelEditorDialog'
 import { layoutStrip, rowShares } from './strip-layout'
 
 export interface WebtoonStripProps {
@@ -21,16 +19,10 @@ export interface WebtoonStripProps {
  * re-render (as it would be if it lived inside the per-row bands, or beside an empty-state paragraph), the dialog
  * that just made the panel would unmount before it could show what came back. It appends, so it never names a panel.
  *
- * The same goes for the editor of an existing panel, so the strip owns that one too: saving `beside` (or anything that
- * moves a card to another row) rebuilds the card, and a dialog living in the card would vanish with it, warnings and all.
+ * An existing panel is edited in the editing mode, which a click on its card opens (PanelWorkspace).
  */
 export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const editing = panels.find((p) => p.id === editingId)
-  // Gone with its panel: an editor for a deleted panel has nothing to save to, and the panel coming back (restored from
-  // the trash) is not the user asking to edit it.
-  if (editingId !== null && editing === undefined) setEditingId(null)
   const rows = layoutStrip(panels)
   return (
     <div className="webtoon-strip">
@@ -41,7 +33,7 @@ export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
           <div key={row.panels[0].id} className="strip-band" data-gutter={row.gutter}>
             <div className="strip-row" data-row-size={row.panels.length}>
               {row.panels.map((panel) => (
-                <PanelCard key={panel.id} panel={panel} selected={panel.id === selectedPanelId} slant={row.slants[panel.id]} share={shares[panel.id]} onEdit={() => setEditingId(panel.id)} />
+                <PanelCard key={panel.id} panel={panel} selected={panel.id === selectedPanelId} slant={row.slants[panel.id]} share={shares[panel.id]} />
               ))}
             </div>
             {/* The last row's "+" is the end one, below. */}
@@ -51,8 +43,7 @@ export function WebtoonStrip({ episodeId, panels }: WebtoonStripProps) {
           </div>
         )
       })}
-      {/* Before the end "+", which the stylesheet finds as the strip's last child. */}
-      {editing !== undefined && <PanelEditorDialog key={editing.id} mode="edit" episodeId={episodeId} panel={editing} onClose={() => setEditingId(null)} />}
+      {/* The strip's last child, where the stylesheet finds it. */}
       <InsertPanelButton key="append" episodeId={episodeId} />
     </div>
   )

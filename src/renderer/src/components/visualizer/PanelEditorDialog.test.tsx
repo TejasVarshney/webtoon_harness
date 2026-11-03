@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Panel, PanelDraft, PanelPatch, ProjectMeta } from '@shared/types'
+import type { PanelDraft, ProjectMeta } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
 import { initialItemsState, useItemsStore } from '../../stores/items-store'
@@ -43,11 +43,10 @@ function mount(handlers: Handlers = {}, props: Partial<PanelEditorDialogProps> =
   const onClose = vi.fn()
   const api = installFakeApi({
     'panels:create': () => ({ panel: created, warnings: [] }),
-    'panels:update': () => ({ panel: panel(), warnings: [] }),
     'panels:list': () => [],
     ...handlers
   })
-  render(<PanelEditorDialog mode="create" episodeId={EPISODE_ID} onClose={onClose} {...props} />)
+  render(<PanelEditorDialog episodeId={EPISODE_ID} onClose={onClose} {...props} />)
   return { ...api, onClose, editor: within(screen.getByTestId('panel-editor')) }
 }
 
@@ -419,225 +418,18 @@ describe('PanelEditorDialog', () => {
       expect(editor.getByRole('button', { name: 'Create & generate' })).toBeDisabled()
       expect(sent(calls, 'panels:create')).toEqual([])
     })
-
-    describe('on an existing panel', () => {
-      const withItems: Panel = panel({
-        id: 'pnl_00000000it',
-        characters: [{ characterId: mina.id, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }],
-        items: [
-          { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: mina.id, action: 'drawn' },
-          { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
-        ]
-      })
-
-      it('labels an archived item and a usage that is no longer ready on their own rows', () => {
-        const { editor } = mount({}, { mode: 'edit', panel: withItems })
-        const [archivedRow, staleRow] = editor.getAllByLabelText('Item')
-        expect(archivedRow).toHaveValue(kestrel.id)
-        expect(optionLabels(archivedRow)).toContain('Kestrel blaster (archived)')
-        // The archived item is not offered to any other row.
-        expect(optionLabels(staleRow)).not.toContain('Kestrel blaster (archived)')
-        expect(optionLabels(staleRow)).not.toContain('Kestrel blaster')
-        expect(optionLabels(editor.getAllByLabelText('Usage')[1])).toEqual(['At rest', 'Aimed', 'Firing (not ready)'])
-        expect(editor.getAllByLabelText('Held by')[0]).toHaveValue(mina.id)
-      })
-
-      it('sends only the items when only an item action changed', async () => {
-        const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: withItems })
-        expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
-        await userEvent.clear(editor.getAllByLabelText('Item action')[0])
-        await userEvent.type(editor.getAllByLabelText('Item action')[0], 'aims')
-        await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-        await waitFor(() => expect(onClose).toHaveBeenCalled())
-        expect(sent(calls, 'panels:update')).toEqual([
-          {
-            projectId,
-            panelId: 'pnl_00000000it',
-            patch: {
-              items: [
-                { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: mina.id, action: 'aims' },
-                { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
-              ]
-            }
-          }
-        ])
-      })
-
-      it('sends the items with the cast when the holder leaves it', async () => {
-        const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: withItems })
-        await userEvent.click(editor.getByRole('button', { name: 'Remove cast member' }))
-        await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-        await waitFor(() => expect(onClose).toHaveBeenCalled())
-        const [req] = sent(calls, 'panels:update') as { patch: PanelPatch }[]
-        expect(req.patch).toEqual({
-          characters: [],
-          items: [
-            { itemId: kestrel.id, usageId: 'use_00000000k1', heldBy: null, action: 'drawn' },
-            { itemId: rayPistol.id, usageId: 'use_0000000003', heldBy: null, action: '' }
-          ]
-        })
-      })
-    })
   })
 
-  describe('edit mode', () => {
-    const existing: Panel = panel({
-      id: 'pnl_00000000ed',
-      description: 'Jin waits by the door.',
-      setting: 'Hallway',
-      shot: 'wide',
-      aspect: '3:4',
-      characters: [
-        { characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'right' },
-        { characterId: jin.id, variationId: 'var_00000000j1', action: '', expression: '', position: 'left' }
-      ],
-      dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hello.', placement: null }]
-    })
-
-    it('starts from the panel and offers Save instead of the create buttons', () => {
-      const { editor } = mount({}, { mode: 'edit', panel: existing })
-      expect(editor.getByLabelText('Description')).toHaveValue('Jin waits by the door.')
-      expect(editor.getByLabelText('Setting')).toHaveValue('Hallway')
-      expect(editor.getByLabelText('Shot')).toHaveValue('wide')
-      expect(editor.getByLabelText('Aspect')).toHaveValue('3:4')
-      expect(editor.getAllByLabelText('Character').map((s) => (s as HTMLSelectElement).value)).toEqual([mina.id, jin.id])
-      expect(editor.getByLabelText('Text')).toHaveValue('Hello.')
-      expect(editor.queryByRole('button', { name: 'Create & generate' })).toBeNull()
-      expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
-    })
-
-    it('keeps a since-archived cast member selectable on its own row only', () => {
-      const { editor } = mount({}, { mode: 'edit', panel: existing })
-      const [minaRow, jinRow] = editor.getAllByLabelText('Character')
-      expect(optionLabels(jinRow)).toContain('Jin (archived)')
-      expect(jinRow).toHaveValue(jin.id)
-      // The archived character is not offered to any other row.
-      expect(optionLabels(minaRow)).not.toContain('Jin (archived)')
-      expect(optionLabels(minaRow)).not.toContain('Jin')
-    })
-
-    it('keeps a cast look that is no longer ready on its own row', () => {
-      const stale = panel({ ...existing, characters: [{ characterId: mina.id, variationId: 'var_0000000003', action: '', expression: '', position: 'center' }] })
-      const { editor } = mount({}, { mode: 'edit', panel: stale })
-      expect(editor.getByLabelText('Variation')).toHaveValue('var_0000000003')
-      expect(optionLabels(editor.getByLabelText('Variation'))).toEqual(['Base', 'Outfit: School', 'Smile (not ready)'])
-    })
-
-    it('sends only the fields that changed', async () => {
-      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
-      await userEvent.clear(editor.getByLabelText('Description'))
-      await userEvent.type(editor.getByLabelText('Description'), 'Jin leaves.')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { description: 'Jin leaves.' } }])
-      expect(sent(calls, 'panels:create')).toEqual([])
-      expect(sent(calls, 'panels:generate')).toEqual([])
-    })
-
-    it('sends the whole cast and dialogue when either changed, archived member included', async () => {
-      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
-      await userEvent.clear(editor.getByLabelText('Text'))
-      await userEvent.type(editor.getByLabelText('Text'), 'Goodbye.')
-      await userEvent.selectOptions(editor.getAllByLabelText('Position')[0], 'center')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      const [req] = sent(calls, 'panels:update') as { patch: PanelPatch }[]
-      expect(req.patch).toEqual({
-        characters: [
-          { characterId: mina.id, variationId: 'var_0000000002', action: 'turning', expression: 'curious', position: 'center' },
-          { characterId: jin.id, variationId: 'var_00000000j1', action: '', expression: '', position: 'left' }
-        ],
-        dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Goodbye.', placement: null }]
-      })
-    })
-
-    it('carries a bubble placement through an edit of its text, and gives a new line none', async () => {
-      const placed = panel({ ...existing, dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hello.', placement: { x: 0.25, y: 0.75 } }] })
-      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: placed })
-      await userEvent.type(editor.getByLabelText('Text'), '!')
-      await userEvent.click(editor.getByRole('button', { name: 'Add dialogue line' }))
-      await userEvent.type(editor.getAllByLabelText('Text')[1], 'Hm.')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      const [req] = sent(calls, 'panels:update') as { patch: PanelPatch }[]
-      expect(req.patch.dialogue).toEqual([
-        { speakerId: mina.id, kind: 'speech', text: 'Hello.!', placement: { x: 0.25, y: 0.75 } },
-        { speakerId: mina.id, kind: 'speech', text: 'Hm.', placement: null }
-      ])
-    })
-
-    it('does not send a field that was changed and changed back', async () => {
-      const { editor } = mount({}, { mode: 'edit', panel: existing })
-      await userEvent.type(editor.getByLabelText('Setting'), 'x')
-      expect(editor.getByRole('button', { name: 'Save' })).toBeEnabled()
-      await userEvent.type(editor.getByLabelText('Setting'), '{Backspace}')
-      expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
-    })
-
-    it('shows warnings from the save and waits for Close', async () => {
-      const warning = 'Mentioned but not attached: Sora. Attach them to characters or list them in offPanelMentions.'
-      const { editor, onClose } = mount({ 'panels:update': () => ({ panel: existing, warnings: [warning] }) }, { mode: 'edit', panel: existing })
-      await userEvent.type(editor.getByLabelText('Description'), ' Sora watches.')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      expect(await screen.findByText(/Mentioned but not attached: Sora/)).toBeInTheDocument()
-      expect(onClose).not.toHaveBeenCalled()
-      expect(editor.queryByRole('button', { name: 'Save' })).toBeNull()
-      await userEvent.click(editor.getByRole('button', { name: 'Close' }))
-      expect(onClose).toHaveBeenCalled()
-    })
-
-    it('shows a rejected save inline and keeps the edits', async () => {
-      const { editor, onClose } = mount(
-        {
-          'panels:update': () => {
-            throw new Error('Character Jin is archived')
-          }
-        },
-        { mode: 'edit', panel: existing }
-      )
-      await userEvent.type(editor.getByLabelText('Setting'), ' roof')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent('Character Jin is archived')
-      expect(editor.getByLabelText('Setting')).toHaveValue('Hallway roof')
-      expect(onClose).not.toHaveBeenCalled()
-    })
-
-    it('sends only the layout field that changed, and never redraws', async () => {
-      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
-      await userEvent.selectOptions(editor.getByLabelText('Gap after'), 'long')
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { gapAfter: 'long' } }])
-      expect(sent(calls, 'panels:generate')).toEqual([])
-    })
-
-    it("shows the panel's stored layout in each control", () => {
-      const laid = panel({ ...existing, frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
-      const { editor } = mount({}, { mode: 'edit', panel: laid })
-      expect(editor.getByLabelText('Frame')).toHaveValue('slanted')
-      expect(editor.getByLabelText('Beside the previous panel')).toBeChecked()
-      expect(editor.getByLabelText('Gap after')).toHaveValue('tight')
-      expect(editor.getByLabelText('Gutter')).toHaveValue('black')
-      expect(editor.getByRole('button', { name: 'Save' })).toBeDisabled()
-    })
-
-    it('sends beside when the box is ticked', async () => {
-      const { editor, calls, onClose } = mount({}, { mode: 'edit', panel: existing })
-      await userEvent.click(editor.getByLabelText('Beside the previous panel'))
-      await userEvent.click(editor.getByRole('button', { name: 'Save' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(sent(calls, 'panels:update')).toEqual([{ projectId, panelId: 'pnl_00000000ed', patch: { beside: true } }])
-    })
-
+  describe('layout', () => {
     it('groups the layout fields under a Layout heading', () => {
-      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      const { editor } = mount()
       const group = editor.getByRole('group', { name: 'Layout' })
       for (const name of ['Frame', 'Gap after', 'Gutter', 'Beside the previous panel']) expect(within(group).getByLabelText(name)).toBeInTheDocument()
       expect(within(group).queryByLabelText('Shot')).toBeNull()
     })
 
     it('replaces the frame with a note for a tall aspect', async () => {
-      const { editor } = mount({}, { mode: 'edit', panel: existing })
+      const { editor } = mount()
       expect(editor.getByLabelText('Frame')).toBeEnabled()
       expect(editor.queryByText('Tall panels fade instead of a frame')).toBeNull()
       await userEvent.selectOptions(editor.getByLabelText('Aspect'), '1:3')
@@ -647,31 +439,6 @@ describe('PanelEditorDialog', () => {
       expect(editor.getByLabelText('Frame')).toHaveAccessibleDescription('Tall panels fade instead of a frame')
       await userEvent.selectOptions(editor.getByLabelText('Aspect'), '2:3')
       expect(editor.getByLabelText('Frame')).not.toHaveAttribute('aria-describedby')
-    })
-
-    it('saves then regenerates', async () => {
-      const { editor, calls, onClose } = mount({ 'panels:generate': () => undefined }, { mode: 'edit', panel: existing })
-      await userEvent.type(editor.getByLabelText('Setting'), ' roof')
-      await userEvent.click(editor.getByRole('button', { name: 'Save & regenerate' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(calls.filter((c) => c.channel === 'panels:update' || c.channel === 'panels:generate').map((c) => c.channel)).toEqual(['panels:update', 'panels:generate'])
-      expect(sent(calls, 'panels:generate')).toEqual([{ projectId, panelId: 'pnl_00000000ed' }])
-    })
-
-    it('regenerates without a save when nothing changed', async () => {
-      const { editor, calls, onClose } = mount({ 'panels:generate': () => undefined }, { mode: 'edit', panel: existing })
-      await userEvent.click(editor.getByRole('button', { name: 'Save & regenerate' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(sent(calls, 'panels:update')).toEqual([])
-      expect(sent(calls, 'panels:generate')).toHaveLength(1)
-    })
-
-    it('uploads an image for the panel it edits', async () => {
-      const { editor, calls, onClose } = mount({ 'panels:uploadImage': () => null }, { mode: 'edit', panel: existing })
-      await userEvent.click(editor.getByRole('button', { name: 'Upload image…' }))
-      await waitFor(() => expect(onClose).toHaveBeenCalled())
-      expect(sent(calls, 'panels:uploadImage')).toEqual([{ projectId, panelId: 'pnl_00000000ed' }])
-      expect(sent(calls, 'panels:create')).toEqual([])
     })
   })
 })
