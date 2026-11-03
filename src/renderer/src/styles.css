@@ -1708,6 +1708,23 @@ kbd {
     transform 0.14s var(--ease);
 }
 
+/* Wider than a narrow card, so it grows towards the row: the first card of a row has nothing to its left (and the pane
+   cannot scroll that way), so its toolbar is anchored on the left and grows over its neighbours instead. */
+.strip-row > .panel-card:first-child:not(:only-child) .panel-toolbar {
+  right: auto;
+  left: 10px;
+}
+
+/* A toolbar that grows over its neighbour must stay above the neighbour's own (hidden, but still hit-testable) one. */
+.panel-card:focus-within,
+.panel-card[data-selected='true'] {
+  z-index: 2;
+}
+
+.panel-card:hover {
+  z-index: 3;
+}
+
 .panel-card:hover .panel-toolbar,
 .panel-card:focus-within .panel-toolbar,
 .panel-card[data-selected='true'] .panel-toolbar {
