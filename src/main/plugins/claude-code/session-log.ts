@@ -1,5 +1,6 @@
 import { newId } from '@shared/ids'
 import type { AgentEvent, ChatMessage, ToolCall, ToolResult } from '@shared/types'
+import { EntityNotFoundError } from '../../domain/errors'
 import type { EventBus } from '../../events/bus'
 import type { SessionStore } from '../../sessions/session-store'
 import type { ProjectContext } from '../../storage/project-store'
@@ -20,6 +21,8 @@ export class DriverSessionLog {
   private readonly bus: EventBus
   /** (MCP session, project) → driver session. The promise is stored so concurrent first calls share one create. */
   private readonly driverSessions = new Map<string, Promise<string>>()
+  /** Driver session id → its key in `driverSessions`, so a session the user deleted can be dropped. */
+  private readonly driverKeys = new Map<string, string>()
   /** Log session → the MCP session that writes to it, and the run id its events share. */
   private readonly runs = new Map<string, { mcpSessionId: string; runId: string }>()
   private readonly runIdByMcpSession = new Map<string, string>()
@@ -81,6 +84,9 @@ export class DriverSessionLog {
     for (const key of [...this.driverSessions.keys()]) {
       if (key.startsWith(`${mcpSessionId}\0`)) this.driverSessions.delete(key)
     }
+    for (const [sessionId, key] of [...this.driverKeys]) {
+      if (key.startsWith(`${mcpSessionId}\0`)) this.driverKeys.delete(sessionId)
+    }
     for (const [sessionId, run] of [...this.runs]) {
       if (run.mcpSessionId === mcpSessionId) this.runs.delete(sessionId)
     }
@@ -97,7 +103,10 @@ export class DriverSessionLog {
     let pending = this.driverSessions.get(key)
     if (!pending) {
       pending = this.sessions.create(ctx, { title: SESSION_TITLE, driver: 'claude-code' }).then(
-        (summary) => summary.id,
+        (summary) => {
+          this.driverKeys.set(summary.id, key)
+          return summary.id
+        },
         (error: unknown) => {
           this.driverSessions.delete(key)
           this.fail(error)
@@ -127,9 +136,18 @@ export class DriverSessionLog {
       await this.sessions.append(ctx, sessionId, [message])
       return true
     } catch (error) {
+      // The user deleted the driver session: the next call makes a fresh one rather than failing into it for good.
+      if (error instanceof EntityNotFoundError) this.dropDriverSession(sessionId)
       this.fail(error)
       return false
     }
+  }
+
+  private dropDriverSession(sessionId: string): void {
+    const key = this.driverKeys.get(sessionId)
+    if (key === undefined) return
+    this.driverKeys.delete(sessionId)
+    this.driverSessions.delete(key)
   }
 
   private emit(ctx: ProjectContext, threadKey: string, event: AgentEvent): void {

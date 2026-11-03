@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppEvent, ToolCall, ToolResult } from '@shared/types'
 import { SessionStore } from '../../sessions/session-store'
@@ -141,6 +142,25 @@ describe('DriverSessionLog', () => {
     // The failure is not cached: the next resolve retries and succeeds.
     const retry = await log.resolve(t.ctx, 'mcp-1', null)
     expect((await sessions.list(t.ctx)).map((s) => s.id)).toEqual([retry])
+  })
+
+  it('makes a fresh driver session once the cached one turns out to be deleted', async () => {
+    const first = await log.resolve(t.ctx, 'mcp-1', null)
+    // What the trash does when the user deletes the session in the app.
+    await fs.promises.rm(t.ctx.paths.sessionFile(first))
+    await log.recordCall(t.ctx, first, call('call_1'))
+    const second = await log.resolve(t.ctx, 'mcp-1', null)
+    expect(second).not.toBe(first)
+    expect((await sessions.list(t.ctx)).map((s) => s.id)).toEqual([second])
+    await log.recordCall(t.ctx, second, call('call_2'))
+    expect(await sessions.load(t.ctx, second)).toHaveLength(1)
+  })
+
+  it('keeps the cached driver session when a write fails for another reason', async () => {
+    const first = await log.resolve(t.ctx, 'mcp-1', null)
+    vi.spyOn(sessions, 'append').mockRejectedValueOnce(new Error('disk full'))
+    await log.recordCall(t.ctx, first, call('call_1'))
+    expect(await log.resolve(t.ctx, 'mcp-1', null)).toBe(first)
   })
 
   it('forget drops the reuse mapping', async () => {
