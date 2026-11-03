@@ -2,12 +2,16 @@ import child_process from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, AppEvent, AssistantMessage, UserMessage } from '@shared/types'
 import { SessionBusyError } from '../../agent/run-host'
 import { testServices, type TestServices } from '../../test/test-services'
-import { ClaudeCodeBackend, findOnPath } from './claude-code-backend'
+import type { PluginStatus } from '../types'
+import { ClaudeCodeBackend, findOnPath, type ClaudeCodeLink } from './claude-code-backend'
 import { locateClaude } from './locate-claude'
+import { McpLinkServer } from './mcp-server'
+import { McpToolAdapter } from './mcp-tools'
+import { DriverSessionLog } from './session-log'
 
 const FAKE = path.resolve(__dirname, 'fixtures', 'fake-claude.mjs')
 const fixture = (name: string): string => path.resolve(__dirname, 'fixtures', name)
@@ -16,15 +20,20 @@ const LINK = 'http://127.0.0.1:7880/mcp'
 const TOKEN = 'test-token-abc'
 const LINK_OFF = "Turn on the Claude Code plugin's link first."
 const NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
+const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
+const RUNNING: PluginStatus = { state: 'running', message: 'Listening on 127.0.0.1:7880' }
 
 let s: TestServices | undefined
 let backend: ClaudeCodeBackend | undefined
+let linkServer: McpLinkServer | undefined
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-backend-test-'))
 let n = 0
 
 afterEach(async () => {
   await backend?.stopAll()
   backend = undefined
+  await linkServer?.close()
+  linkServer = undefined
   await s?.cleanup()
   s = undefined
 })
@@ -34,16 +43,20 @@ interface FakeRecord {
   pid: number
   cwd: string
   config: { mcpServers: { webtoon: { type: string; url: string; headers: Record<string, string> } } }
-  /** What the backend wrote to the fake's stdin: the prompt. */
+  /** What the backend wrote to the fake's stdin: the snapshot, a blank line, the prompt. */
   stdin: string
-  /** The contents of the `--append-system-prompt-file` file while the run was going. */
-  systemPrompt: string | null
+  env: { MCP_TOOL_TIMEOUT: string | null }
+  /** With FAKE_CLAUDE_MCP_CALLS: the initialize instructions and each tools/call result. */
+  mcp: { instructions: string | null; results: { content: { type: string; text?: string }[]; isError?: boolean }[]; error?: string } | null
 }
 
 interface Setup {
   env?: Record<string, string>
   linkUrl?: string | null
+  status?: PluginStatus
   locate?: () => string | null
+  /** The real link instead of a stub: the fake then talks MCP to it. */
+  link?: (s: TestServices) => Promise<ClaudeCodeLink>
 }
 
 /** A backend whose `claude` is fake-claude.mjs run by this Node; each spawn gets the env in `fake.env`. */
@@ -60,20 +73,30 @@ async function setup(opts: Setup = {}) {
   const spawn = ((cmd: string, args: string[], options: child_process.SpawnOptions) => {
     fake.spawned++
     expect(cmd).toBe('claude')
-    return child_process.spawn(process.execPath, [FAKE, ...args], { ...options, env: { ...process.env, ...fake.env } })
+    return child_process.spawn(process.execPath, [FAKE, ...args], { ...options, env: { ...options.env, ...fake.env } })
   }) as unknown as typeof child_process.spawn
   const linkUrl = opts.linkUrl === undefined ? LINK : opts.linkUrl
-  backend = new ClaudeCodeBackend({
-    services: s,
-    plugin: { linkUrl: () => linkUrl, token: () => TOKEN, config: () => ({}) },
-    spawn,
-    locate: opts.locate ?? (() => 'claude')
-  })
+  const link: ClaudeCodeLink = opts.link
+    ? await opts.link(s)
+    : { linkUrl: () => linkUrl, token: () => TOKEN, config: () => ({}), status: () => opts.status ?? RUNNING, abortCalls: vi.fn() }
+  backend = new ClaudeCodeBackend({ services: s, plugin: link, spawn, locate: opts.locate ?? (() => 'claude') })
   const record = (): FakeRecord => JSON.parse(fs.readFileSync(fake.env.FAKE_CLAUDE_ARGV, 'utf8'))
-  return { s, backend, ctx, projectId: ctx.id, sessionId: ses.id, events, fake, record }
+  return { s, backend, ctx, projectId: ctx.id, sessionId: ses.id, events, fake, record, link }
 }
 
-const input = (projectId: string, sessionId: string, text = 'Say hi') => ({ projectId, sessionId, text, imagePaths: [], activeEpisodeId: null })
+const input = (projectId: string, sessionId: string, text = 'Say hi') => ({
+  projectId,
+  sessionId,
+  text,
+  imagePaths: [] as string[],
+  activeEpisodeId: null as string | null
+})
+
+/** The prompt written to stdin ends with the user's text, after the snapshot and a blank line. */
+function expectPrompt(stdin: string, text: string): void {
+  expect(stdin.startsWith('<project_state>')).toBe(true)
+  expect(stdin.endsWith(`</project_state>\n\n${text}`)).toBe(true)
+}
 
 async function waitFor(check: () => boolean, what: string): Promise<void> {
   const t0 = Date.now()
@@ -129,21 +152,26 @@ describe('ClaudeCodeBackend', () => {
     expect(events.at(-1)).toEqual({ kind: 'run-finished', runId, outcome: 'end', error: null })
 
     const rec = record()
-    expect(rec.stdin).toBe('Say hi')
+    // The snapshot goes with the user turn, not into a system prompt that --resume would replay frozen (R17).
+    expect(rec.stdin).toBe(`${user.stateSnapshot}\n\nSay hi`)
     expect(rec.argv).not.toContain('Say hi')
     expect(rec.argv.slice(0, 2)).toEqual(['-p', '--output-format'])
     expect(rec.argv).toEqual(expect.arrayContaining(['--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--strict-mcp-config']))
     expect(rec.argv[rec.argv.indexOf('--tools') + 1]).toBe('')
     expect(rec.argv[rec.argv.indexOf('--allowedTools') + 1]).toBe('mcp__webtoon__*')
     expect(rec.argv[rec.argv.indexOf('--setting-sources') + 1]).toBe('user')
-    expect(rec.argv).not.toContain('--append-system-prompt')
-    const promptFile = rec.argv[rec.argv.indexOf('--append-system-prompt-file') + 1]
-    expect(path.dirname(promptFile)).toBe(tempDirOf(rec))
-    expect(rec.systemPrompt).toBe(user.stateSnapshot)
+    expect(rec.argv.filter((a) => a.startsWith('--append-system-prompt'))).toEqual([])
     expect(rec.argv).not.toContain('--resume')
+    expect(rec.env.MCP_TOOL_TIMEOUT).toBe('900000')
     expect(rec.argv.join(' ')).not.toContain(TOKEN)
     expect(rec.config).toEqual({
-      mcpServers: { webtoon: { type: 'http', url: LINK, headers: { Authorization: `Bearer ${TOKEN}`, 'X-Webtoon-Session': sessionId } } }
+      mcpServers: {
+        webtoon: {
+          type: 'http',
+          url: LINK,
+          headers: { Authorization: `Bearer ${TOKEN}`, 'X-Webtoon-Session': sessionId, 'X-Webtoon-Project': projectId, 'X-Webtoon-Episode': '' }
+        }
+      }
     })
     expect(fs.realpathSync(rec.cwd)).toBe(fs.realpathSync(ctx.paths.root))
     expect(fs.existsSync(tempDirOf(rec))).toBe(false)
@@ -160,9 +188,25 @@ describe('ClaudeCodeBackend', () => {
     await backend.start(input(projectId, sessionId, 'Again'))
     await finished(events)
     const rec = record()
-    expect(rec.stdin).toBe('Again')
+    expectPrompt(rec.stdin, 'Again')
     expect(rec.argv.slice(-2)).toEqual(['--resume', SESSION_ID])
     expect(fs.existsSync(tempDirOf(rec))).toBe(false)
+  })
+
+  it('sends a fresh snapshot with every message of a resumed chat', async () => {
+    const { s, backend, ctx, projectId, sessionId, events, record } = await setup({ env: { FAKE_CLAUDE_FIXTURE: fixture('hello.jsonl') } })
+    await backend.start(input(projectId, sessionId))
+    await finished(events)
+    expect(record().stdin).not.toContain('Mina')
+    await s.characters.create(ctx, { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK' }, 'user')
+
+    events.length = 0
+    await backend.start(input(projectId, sessionId, 'Again'))
+    await finished(events)
+    const rec = record()
+    expect(rec.argv).toContain('--resume')
+    expectPrompt(rec.stdin, 'Again')
+    expect(rec.stdin).toContain('Mina')
   })
 
   it('passes a prompt that looks like an option or a subcommand on stdin, untouched', async () => {
@@ -170,14 +214,14 @@ describe('ClaudeCodeBackend', () => {
     const text = '- make it darker\n- and "moodier" → ok'
     await backend.start(input(projectId, sessionId, text))
     await finished(events)
-    expect(record().stdin).toBe(text)
+    expectPrompt(record().stdin, text)
     expect(record().argv).not.toContain(text)
     expect(record().argv.some((a) => a.includes('make it darker'))).toBe(false)
 
     events.length = 0
     await backend.start(input(projectId, sessionId, 'update'))
     await finished(events)
-    expect(record().stdin).toBe('update')
+    expectPrompt(record().stdin, 'update')
     expect(record().argv).not.toContain('update')
     expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
   })
@@ -284,6 +328,24 @@ describe('ClaudeCodeBackend', () => {
     expect(fs.existsSync(tempDirOf(rec))).toBe(false)
   })
 
+  it('stop() also aborts the tool calls the run still has in flight on the link', async () => {
+    const { backend, projectId, sessionId, events, fake, link } = await setup({ env: { FAKE_CLAUDE_HANG: '1' } })
+    await backend.start(input(projectId, sessionId))
+    await waitFor(() => fs.existsSync(fake.env.FAKE_CLAUDE_ARGV), 'the fake to start')
+    await backend.stop(sessionId)
+    expect(link.abortCalls).toHaveBeenCalledExactlyOnceWith(sessionId)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'cancelled' })
+  })
+
+  it('refuses a message with attached images, persisting nothing', async () => {
+    const { s, backend, ctx, projectId, sessionId, events, fake } = await setup({ env: { FAKE_CLAUDE_FIXTURE: fixture('hello.jsonl') } })
+    await expect(backend.start({ ...input(projectId, sessionId), imagePaths: ['uploads/a.png'] })).rejects.toThrow(NO_IMAGES)
+    expect(await s.sessions.load(ctx, sessionId)).toEqual([])
+    expect(events).toEqual([])
+    expect(fake.spawned).toBe(0)
+    expect(backend.isRunning(sessionId)).toBe(false)
+  })
+
   it('cancel(runId) stops the run with that id', async () => {
     const { backend, projectId, sessionId, events, fake } = await setup({ env: { FAKE_CLAUDE_HANG: '1' } })
     const { runId } = await backend.start(input(projectId, sessionId))
@@ -295,7 +357,7 @@ describe('ClaudeCodeBackend', () => {
   })
 
   it('ends `error` without spawning when the link is off', async () => {
-    const { s, backend, ctx, projectId, sessionId, events, fake } = await setup({ linkUrl: null })
+    const { s, backend, ctx, projectId, sessionId, events, fake } = await setup({ linkUrl: null, status: { state: 'off', message: 'Off' } })
     await backend.start(input(projectId, sessionId))
     await finished(events)
     expect(events.map((e) => e.kind)).toEqual(['run-started', 'run-finished'])
@@ -303,6 +365,14 @@ describe('ClaudeCodeBackend', () => {
     expect(fake.spawned).toBe(0)
     expect(await s.sessions.load(ctx, sessionId)).toHaveLength(1)
     expect(backend.isRunning(sessionId)).toBe(false)
+  })
+
+  it('says why when the plugin is on but its link is not listening', async () => {
+    const { backend, projectId, sessionId, events, fake } = await setup({ linkUrl: null, status: { state: 'error', message: 'Port 7880 is in use' } })
+    await backend.start(input(projectId, sessionId))
+    await finished(events)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error', error: 'The Claude Code link is not running: Port 7880 is in use' })
+    expect(fake.spawned).toBe(0)
   })
 
   it('ends `error` without spawning when Claude Code is not found', async () => {
@@ -323,7 +393,7 @@ describe('ClaudeCodeBackend', () => {
     })
     backend = new ClaudeCodeBackend({
       services: s,
-      plugin: { linkUrl: () => LINK, token: () => TOKEN, config: () => ({}) },
+      plugin: { linkUrl: () => LINK, token: () => TOKEN, config: () => ({}), status: () => RUNNING, abortCalls: () => {} },
       locate: () => path.join(scratch, 'no such claude.exe')
     })
     await backend.start(input(ctx.id, ses.id))
@@ -331,6 +401,55 @@ describe('ClaudeCodeBackend', () => {
     expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'error' })
     expect((events.at(-1) as { error: string }).error).toContain('ENOENT')
     expect(backend.isRunning(ses.id)).toBe(false)
+  })
+})
+
+describe('ClaudeCodeBackend with the real MCP link', () => {
+  /** A link server on a free port, serving `s` for whatever project the request names or the window shows. */
+  async function realLink(services: TestServices): Promise<ClaudeCodeLink> {
+    const server = new McpLinkServer({
+      adapter: new McpToolAdapter({ services, activeContext: services.activeContext }),
+      log: new DriverSessionLog({ sessions: services.sessions, bus: services.bus }),
+      token: () => TOKEN
+    })
+    linkServer = server
+    await server.listen(0)
+    return {
+      linkUrl: () => `http://127.0.0.1:${server.port}/mcp`,
+      token: () => TOKEN,
+      config: () => ({}),
+      status: () => RUNNING,
+      abortCalls: (id) => server.abortCalls(id)
+    }
+  }
+
+  it("runs its tool calls in the run's project and session while the window shows another project", async () => {
+    const calls = [
+      { name: 'create_character', arguments: { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK', generateBaseImage: false } },
+      { name: 'get_project_state', arguments: {} }
+    ]
+    const { s, backend, ctx, projectId, sessionId, events, record } = await setup({
+      env: { FAKE_CLAUDE_FIXTURE: fixture('hello.jsonl'), FAKE_CLAUDE_MCP_CALLS: JSON.stringify(calls) },
+      link: realLink
+    })
+    const other = await s.projects.create({ title: 'Window Project' })
+    s.activeContext.set({ projectId: other.id, episodeId: null })
+
+    await backend.start(input(projectId, sessionId, 'Make Mina'))
+    await finished(events)
+    expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
+
+    const { mcp } = record()
+    expect(mcp?.error).toBeUndefined()
+    expect(mcp?.results.map((r) => r.isError ?? false)).toEqual([false, false])
+    expect(mcp?.results[1].content[0].text).toContain('Moon Diary')
+    expect((await s.characters.list(ctx)).map((c) => c.name)).toEqual(['Mina'])
+    expect(await s.characters.list(other)).toEqual([])
+    // Logged into the run's own session, after its user message; no stray "Claude Code" session anywhere.
+    const msgs = await s.sessions.load(ctx, sessionId)
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'])
+    expect((await s.sessions.list(ctx)).map((x) => x.id)).toEqual([sessionId])
+    expect(await s.sessions.list(other)).toEqual([])
   })
 })
 

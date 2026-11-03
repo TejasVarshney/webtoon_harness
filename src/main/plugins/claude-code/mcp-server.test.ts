@@ -285,6 +285,65 @@ describe('McpLinkServer', () => {
       expect(await s.sessions.list(ctx)).toEqual([])
     })
 
+    describe('a run that names its project (X-Webtoon-Project)', () => {
+      it('acts on and logs into that project, not the one the window shows', async () => {
+        const { port, s, ctx } = await setup()
+        const run = await s.projects.create({ title: 'Run Project' })
+        const own = await s.sessions.create(run, { title: 'Mine' })
+        const client = await connect(port, { 'X-Webtoon-Session': own.id, 'X-Webtoon-Project': run.id, 'X-Webtoon-Episode': '' })
+        const result = await client.callTool({
+          name: 'create_character',
+          arguments: { name: 'Mina', role: 'protagonist', appearanceLock: 'LOCK', generateBaseImage: false }
+        })
+        expect(result.isError).toBeFalsy()
+        expect(await s.characters.list(run)).toHaveLength(1)
+        expect(await s.characters.list(ctx)).toEqual([])
+        expect(await s.sessions.load(run, own.id)).toHaveLength(2)
+        expect(await s.sessions.list(ctx)).toEqual([])
+        const state = await client.callTool({ name: 'get_project_state', arguments: {} })
+        expect(textOf(state)).toContain('Run Project')
+        expect(textOf(state)).not.toContain('Moon Diary')
+      })
+
+      it('names the episode from X-Webtoon-Episode in get_project_state', async () => {
+        const { port, s } = await setup()
+        const run = await s.projects.create({ title: 'Run Project' })
+        await s.episodes.create(run, { title: 'First Light' })
+        const second = await s.episodes.create(run, { title: 'Second Moon' })
+        const client = await connect(port, { 'X-Webtoon-Project': run.id, 'X-Webtoon-Episode': second.id })
+        const state = textOf(await client.callTool({ name: 'get_project_state', arguments: {} }))
+        expect(state).toContain('Second Moon')
+        expect(state).not.toContain('First Light')
+      })
+
+      it('answers isError, and does not fall back to the window, when that project cannot be opened', async () => {
+        const { port, s, ctx } = await setup()
+        const client = await connect(port, { 'X-Webtoon-Project': 'prj_0000000000', 'X-Webtoon-Episode': '' })
+        const result = await client.callTool({ name: 'list_characters', arguments: {} })
+        expect(result.isError).toBe(true)
+        expect(textOf(result)).toMatch(/^The project this run belongs to \(prj_0000000000\) could not be opened: /)
+        expect(await s.sessions.list(ctx)).toEqual([])
+      })
+    })
+
+    it('abortCalls aborts the calls logged into a session and ends the MCP sessions that logged there', async () => {
+      const slow = slowTool()
+      const { port, s, ctx, server, log } = await setup({ registry: slow.registry })
+      const own = await s.sessions.create(ctx, { title: 'Mine' })
+      const forget = vi.spyOn(log, 'forget')
+      const client = await connect(port, { 'X-Webtoon-Session': own.id })
+      const mcpSessionId = (client.transport as StreamableHTTPClientTransport).sessionId
+      client.callTool({ name: 'slow', arguments: {} }).catch(() => {})
+      const signal = await slow.started
+      server.abortCalls('ses_0000000000')
+      expect(signal.aborted).toBe(false)
+      server.abortCalls(own.id)
+      expect(signal.aborted).toBe(true)
+      expect((signal.reason as Error).message).toBe('The run was stopped')
+      await vi.waitFor(() => expect(forget).toHaveBeenCalledWith(mcpSessionId))
+      await expect(client.listTools()).rejects.toThrow()
+    })
+
     it('aborts the tool when the client cancels the call', async () => {
       const slow = slowTool()
       const { port } = await setup({ registry: slow.registry })

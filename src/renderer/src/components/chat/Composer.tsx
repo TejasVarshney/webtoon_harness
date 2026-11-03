@@ -12,6 +12,8 @@ export interface ComposerProps {
   onValueChange?(text: string): void
   /** Show the Attach button. Default true; a thread whose send has no room for images turns it off. */
   allowAttach?: boolean
+  /** Why Attach is shown but off (Claude Code runs the chat and cannot see images); its tooltip. */
+  attachOffReason?: string
   /** Controls set in the composer's footer, between Attach and Send (the main chat's model picker). */
   tools?: ReactNode
   placeholder?: string
@@ -29,6 +31,7 @@ export function Composer({
   value,
   onValueChange,
   allowAttach = true,
+  attachOffReason,
   tools,
   placeholder = 'Ask for the next scene, a character, a change…',
   disabled = false
@@ -126,8 +129,8 @@ export function Composer({
               className="icon-button"
               data-testid="composer-attach"
               aria-label="Attach images"
-              title="Attach images"
-              disabled={disabled || projectId === null}
+              title={attachOffReason ?? 'Attach images'}
+              disabled={disabled || projectId === null || attachOffReason !== undefined}
               onClick={() => void attach()}
             >
               <Paperclip size={16} aria-hidden="true" />

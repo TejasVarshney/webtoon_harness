@@ -27,6 +27,12 @@ const CONNECTION_INSTRUCTIONS =
 
 export type McpContent = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 
+/** A project to act on and the episode `get_project_state` names (null: the project's first). */
+export interface McpTarget {
+  ctx: ProjectContext
+  episodeId: string | null
+}
+
 export interface McpCallResult {
   content: McpContent[]
   isError?: boolean
@@ -49,12 +55,23 @@ export class McpToolAdapter {
     return [...this.registry.specs(), PROJECT_STATE_SPEC]
   }
 
-  /** The project the window shows, or null when none is open (or the one it names no longer opens). */
-  async activeProject(): Promise<ProjectContext | null> {
-    const { projectId } = this.activeContext.get()
+  /**
+   * The project and episode a request acts on. A named project (the backend's `X-Webtoon-Project`, ruling R18) is
+   * opened and used with the named episode; if it does not open this throws, and never falls back to the window.
+   * With none named, the project and episode the window shows: null when none is open (or it no longer opens).
+   */
+  async target(named: { projectId: string | null; episodeId: string | null }): Promise<McpTarget | null> {
+    if (named.projectId !== null) {
+      try {
+        return { ctx: await this.services.projects.open(named.projectId), episodeId: named.episodeId }
+      } catch (error) {
+        throw new Error(`The project this run belongs to (${named.projectId}) could not be opened: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    const { projectId, episodeId } = this.activeContext.get()
     if (!projectId) return null
     try {
-      return await this.services.projects.open(projectId)
+      return { ctx: await this.services.projects.open(projectId), episodeId }
     } catch {
       return null
     }
@@ -64,15 +81,15 @@ export class McpToolAdapter {
     return { id: newId('call'), name, input: args }
   }
 
-  /** Runs `toolCall` for `ctx`. Always resolves: a tool failure, or an image that cannot be loaded, comes back inside the result (`isError` for a failed tool). */
+  /** Runs `toolCall` for `ctx`; `episodeId` is the one `get_project_state` names (left out: the window's). Always resolves: a tool failure, or an image that cannot be loaded, comes back inside the result (`isError` for a failed tool). */
   async call(
     ctx: ProjectContext,
     toolCall: ToolCall,
-    opts: { signal: AbortSignal; threadKey: string }
+    opts: { signal: AbortSignal; threadKey: string; episodeId?: string | null }
   ): Promise<{ result: McpCallResult; toolResult: ToolResult }> {
     const toolResult =
       toolCall.name === PROJECT_STATE_TOOL
-        ? await this.projectState(ctx, toolCall)
+        ? await this.projectState(ctx, toolCall, opts.episodeId === undefined ? this.activeContext.get().episodeId : opts.episodeId)
         : await this.registry.execute(toolCall, { project: ctx, services: this.services, signal: opts.signal, threadKey: opts.threadKey })
     const content: McpContent[] = [{ type: 'text', text: toolResult.content }]
     for (const relPath of toolResult.images) content.push(await this.imageContent(ctx, relPath))
@@ -80,9 +97,9 @@ export class McpToolAdapter {
   }
 
   /** The snapshot as a ToolResult; a failure to gather it is an `ok: false` result, as `execute` makes of a handler's. */
-  private async projectState(ctx: ProjectContext, toolCall: ToolCall): Promise<ToolResult> {
+  private async projectState(ctx: ProjectContext, toolCall: ToolCall, episodeId: string | null): Promise<ToolResult> {
     try {
-      const content = await projectStateText(this.services, ctx, this.activeContext.get().episodeId)
+      const content = await projectStateText(this.services, ctx, episodeId)
       return { toolCallId: toolCall.id, name: toolCall.name, ok: true, content, images: [] }
     } catch (error) {
       return { toolCallId: toolCall.id, name: toolCall.name, ok: false, content: error instanceof Error ? error.message : String(error), images: [] }

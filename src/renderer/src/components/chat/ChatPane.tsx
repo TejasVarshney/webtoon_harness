@@ -14,6 +14,8 @@ import { PanelSideChat } from '../panel-chat/PanelSideChat'
 
 /** Shown above a session that Claude Code drives. */
 export const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
+/** The Attach tooltip while Claude Code runs the chat: its runs refuse images (ruling R16). */
+export const NO_IMAGES_TEXT = "Claude Code can't see attached images yet"
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -87,6 +89,7 @@ export function ChatPane() {
                   onStop={stop}
                   value={draft}
                   onValueChange={setDraft}
+                  {...(claudeCodeAgent ? { attachOffReason: NO_IMAGES_TEXT } : {})}
                   tools={driven ? undefined : <ModelPicker />}
                   disabled={driven}
                 />

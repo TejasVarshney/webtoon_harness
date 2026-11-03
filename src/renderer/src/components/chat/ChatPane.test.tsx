@@ -77,6 +77,9 @@ describe('ChatPane', () => {
     expect(screen.queryByTestId('mock-banner')).toBeNull()
     expect(screen.getByTestId('model-picker')).toBeDisabled()
     expect(screen.getByTestId('model-picker')).toHaveDisplayValue('Claude Code')
+    // Claude Code cannot see attached images yet (ruling R16).
+    expect(screen.getByTestId('composer-attach')).toBeDisabled()
+    expect(screen.getByTestId('composer-attach')).toHaveAttribute('title', "Claude Code can't see attached images yet")
   })
 
   it('cancels the running run on Stop', async () => {

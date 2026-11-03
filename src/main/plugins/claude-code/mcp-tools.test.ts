@@ -152,22 +152,54 @@ describe('McpToolAdapter', () => {
     expect(seen).toEqual([{ aborted: true, threadKey: 'ses_000000abcd' }])
   })
 
-  describe('activeProject', () => {
-    it('is null with no project id set', async () => {
+  it("get_project_state names the episode it is given over the window's", async () => {
+    const { adapter, ctx, opts, s } = await setup()
+    const first = await s.episodes.create(ctx, { title: 'First Light' })
+    const second = await s.episodes.create(ctx, { title: 'Second Moon' })
+    s.activeContext.set({ projectId: ctx.id, episodeId: second.id })
+    const { toolResult } = await adapter.call(ctx, adapter.makeCall('get_project_state', {}), { ...opts, episodeId: first.id })
+    expect(toolResult.content).toContain('First Light')
+    expect(toolResult.content).not.toContain('Second Moon')
+  })
+
+  describe('target', () => {
+    const none = { projectId: null, episodeId: null }
+
+    it('is null with no project named and none in the window', async () => {
       const { adapter } = await setup()
-      expect(await adapter.activeProject()).toBeNull()
+      expect(await adapter.target(none)).toBeNull()
     })
 
-    it('opens the project the window shows', async () => {
+    it('is the project and episode the window shows when none is named', async () => {
       const { adapter, ctx, s } = await setup()
-      s.activeContext.set({ projectId: ctx.id, episodeId: null })
-      expect((await adapter.activeProject())?.id).toBe(ctx.id)
+      s.activeContext.set({ projectId: ctx.id, episodeId: 'epi_0000000001' })
+      const target = await adapter.target(none)
+      expect(target?.ctx.id).toBe(ctx.id)
+      expect(target?.episodeId).toBe('epi_0000000001')
     })
 
-    it('is null when that project no longer opens', async () => {
+    it("is null when the window's project no longer opens", async () => {
       const { adapter, s } = await setup()
       s.activeContext.set({ projectId: 'prj_0000000000', episodeId: null })
-      expect(await adapter.activeProject()).toBeNull()
+      expect(await adapter.target(none)).toBeNull()
+    })
+
+    it('is the named project and episode, whatever the window shows', async () => {
+      const { adapter, ctx, s } = await setup()
+      const other = await s.projects.create({ title: 'Other' })
+      s.activeContext.set({ projectId: other.id, episodeId: 'epi_0000000009' })
+      const target = await adapter.target({ projectId: ctx.id, episodeId: 'epi_0000000001' })
+      expect(target?.ctx.id).toBe(ctx.id)
+      expect(target?.episodeId).toBe('epi_0000000001')
+      expect((await adapter.target({ projectId: ctx.id, episodeId: null }))?.episodeId).toBeNull()
+    })
+
+    it('throws when the named project does not open, rather than falling back to the window', async () => {
+      const { adapter, ctx, s } = await setup()
+      s.activeContext.set({ projectId: ctx.id, episodeId: null })
+      await expect(adapter.target({ projectId: 'prj_0000000000', episodeId: null })).rejects.toThrow(
+        /^The project this run belongs to \(prj_0000000000\) could not be opened: /
+      )
     })
   })
 

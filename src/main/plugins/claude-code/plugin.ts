@@ -54,10 +54,20 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
   /** Created on the first start (it needs the services) and kept, so the plugin manager always sees the same one. */
   let backend: ClaudeCodeBackend | undefined
 
+  const status = (): PluginStatus => {
+    if (!started) return { state: 'off', message: 'Off' }
+    const logError = log?.lastError()
+    const suffix = logError ? ` · session log: ${logError}` : ''
+    if (failure !== null) return { state: 'error', message: failure + suffix }
+    return { state: 'running', message: `Listening on ${HOST}:${port}${suffix}` }
+  }
+
   const link: ClaudeCodeLink = {
     linkUrl: () => (server?.port != null ? `http://${HOST}:${server.port}/mcp` : null),
     token: () => token,
-    config: () => host?.config() ?? {}
+    config: () => host?.config() ?? {},
+    status,
+    abortCalls: (sessionId) => server?.abortCalls(sessionId)
   }
 
   const requireStarted = (): PluginHost => {
@@ -81,7 +91,7 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
       failure = null
       backend ??= new ClaudeCodeBackend({ services: h.services, plugin: link })
       try {
-        port = readPort(h.config())
+        // The token first: a bad stored port must not leave the connect command without one.
         const stored = h.secrets.get(SECRET_KEY)
         if (stored !== null) {
           token = stored
@@ -90,6 +100,7 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
           await h.secrets.set(SECRET_KEY, created)
           token = created
         }
+        port = readPort(h.config())
         log = new DriverSessionLog({ sessions: h.services.sessions, bus: h.bus })
         const adapter = new McpToolAdapter({ services: h.services, activeContext: h.activeContext() })
         const link = serverFactory({ adapter, log, token: () => token })
@@ -109,22 +120,18 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
       await Promise.all([backend?.stopAll(), closing?.close()])
     },
 
-    status(): PluginStatus {
-      if (!started) return { state: 'off', message: 'Off' }
-      const logError = log?.lastError()
-      const suffix = logError ? ` · session log: ${logError}` : ''
-      if (failure !== null) return { state: 'error', message: failure + suffix }
-      return { state: 'running', message: `Listening on ${HOST}:${port}${suffix}` }
-    },
-
     validateConfig(patch) {
       if ('port' in patch) checkPort(patch.port)
       if ('useAsAgent' in patch && typeof patch.useAsAgent !== 'boolean') throw new Error('useAsAgent must be true or false')
       if ('claudePath' in patch && typeof patch.claudePath !== 'string') throw new Error('claudePath must be text')
     },
 
+    /** Only the port needs the server rebound; the agent settings are read at run time (ruling R19). */
+    restartOnConfig: (patch) => 'port' in patch,
+
     connectCommand() {
       requireStarted()
+      if (token === '') throw new Error(`The Claude Code link failed to start: ${status().message}`)
       return `claude mcp add --transport http webtoon http://${HOST}:${port}/mcp --header "Authorization: Bearer ${token}"`
     },
 

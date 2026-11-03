@@ -11,7 +11,7 @@ import {
   type ServerNotification,
   type ServerRequest
 } from '@modelcontextprotocol/sdk/types.js'
-import { NO_PROJECT, type McpToolAdapter } from './mcp-tools'
+import { NO_PROJECT, type McpTarget, type McpToolAdapter } from './mcp-tools'
 import type { DriverSessionLog } from './session-log'
 
 const HOST = '127.0.0.1'
@@ -34,6 +34,17 @@ interface McpSession {
 
 type Body = { ok: true; value: unknown } | { ok: false; status: 400 | 413 }
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>
+type Headers = http.IncomingHttpHeaders
+
+/** A header's value, or null when it is absent or empty. */
+function header(headers: Headers, name: string): string | null {
+  const value = headers[name]
+  const first = Array.isArray(value) ? value[0] : value
+  return first === undefined || first === '' ? null : first
+}
+
+/** The project and episode a backend run names (ruling R18); external clients name none. */
+const namedTarget = (headers: Headers) => ({ projectId: header(headers, 'x-webtoon-project'), episodeId: header(headers, 'x-webtoon-episode') })
 
 /** The Host values this server answers to; Origin, when sent, is one of these with `http://`. */
 const localHosts = (port: number): string[] => [`127.0.0.1:${port}`, `localhost:${port}`]
@@ -54,6 +65,9 @@ export class McpLinkServer {
   /** Aborted by close(), so in-flight tool calls stop with the server. */
   private closing = new AbortController()
   private readonly sessions = new Map<string, McpSession>()
+  /** Log session id → the controllers of its calls in flight, and the MCP sessions that logged into it (for abortCalls). */
+  private readonly inFlight = new Map<string, Set<AbortController>>()
+  private readonly loggers = new Map<string, Set<string>>()
 
   constructor(opts: { adapter: McpToolAdapter; log: DriverSessionLog; token: () => string; progressIntervalMs?: number }) {
     this.adapter = opts.adapter
@@ -91,6 +105,22 @@ export class McpLinkServer {
   async closeSessions(): Promise<void> {
     // Each session's `onclose` removes it from the map and forgets its log session.
     await Promise.all([...this.sessions.values()].map((session) => session.server.close()))
+  }
+
+  /**
+   * Aborts the calls in flight that log into `sessionId` and ends the MCP sessions that logged there. The backend
+   * calls it when it stops a run: killing `claude` does not end the handlers, as the SDK does not abort them when
+   * the client goes away.
+   */
+  abortCalls(sessionId: string): void {
+    for (const controller of this.inFlight.get(sessionId) ?? []) controller.abort(new Error('The run was stopped'))
+    for (const mcpSessionId of this.loggers.get(sessionId) ?? []) {
+      this.sessions
+        .get(mcpSessionId)
+        ?.server.close()
+        .catch((error: unknown) => console.error('MCP link: a session could not be closed', error))
+    }
+    this.loggers.delete(sessionId)
   }
 
   /** Aborts in-flight calls, ends the sessions and closes the socket. */
@@ -133,7 +163,7 @@ export class McpLinkServer {
     if (req.method !== 'POST' || !isInitializeRequest(body)) {
       return void this.reply(res, 400, jsonRpcError(-32000, 'Bad Request: No valid session ID provided'))
     }
-    const session = await this.openSession(port, closing)
+    const session = await this.openSession(port, closing, req.headers)
     if (closing.aborted) {
       // close() ran while the session was being set up: it never reaches the map.
       await session.server.close()
@@ -160,8 +190,8 @@ export class McpLinkServer {
   }
 
   /** A Server and transport for one MCP session; `closing` is the close signal of the listen() it belongs to. */
-  private async openSession(port: number, closing: AbortSignal): Promise<McpSession> {
-    const instructions = await this.instructions()
+  private async openSession(port: number, closing: AbortSignal, headers: Headers): Promise<McpSession> {
+    const instructions = await this.instructions(headers)
     const server = new Server(SERVER_INFO, { capabilities: { tools: {} }, instructions })
     const hosts = localHosts(port)
     const transport = new StreamableHTTPServerTransport({
@@ -184,41 +214,61 @@ export class McpLinkServer {
       if (id === undefined) return
       this.sessions.delete(id)
       this.log.forget(id)
+      for (const [sessionId, ids] of this.loggers) {
+        ids.delete(id)
+        if (ids.size === 0) this.loggers.delete(sessionId)
+      }
     }
     await server.connect(transport)
     return session
   }
 
   /**
-   * The adapter's instructions for the active project. When the project prompt cannot be built (AGENTS.md
-   * missing, a read error) the connection paragraph alone is sent, so the link still connects.
+   * The adapter's instructions for the project the initialize request acts on. When the project prompt cannot be
+   * built (the named project does not open, AGENTS.md missing, a read error) the connection paragraph alone is sent,
+   * so the link still connects.
    */
-  private async instructions(): Promise<string> {
-    const ctx = await this.adapter.activeProject()
+  private async instructions(headers: Headers): Promise<string> {
     try {
-      return await this.adapter.instructions(ctx)
+      return await this.adapter.instructions((await this.adapter.target(namedTarget(headers)))?.ctx ?? null)
     } catch (error) {
       console.error('MCP link: the project instructions could not be built', error)
       return this.adapter.instructions(null)
     }
   }
 
-  /** Spec §5.4 order: project, log session, call message, run, result message. With no project nothing is logged. */
+  /**
+   * Spec §5.4 order: project, log session, call message, run, result message. The project is the one the request
+   * names (a backend run), else the window's; with none, or one that does not open, nothing is logged.
+   */
   private async callTool(name: string, args: unknown, extra: Extra, closing: AbortSignal): Promise<CallToolResult> {
-    const ctx = await this.adapter.activeProject()
-    if (!ctx) return { content: [{ type: 'text', text: NO_PROJECT }], isError: true }
-    const requested = extra.requestInfo?.headers['x-webtoon-session']
+    const headers = extra.requestInfo?.headers ?? {}
+    let target: McpTarget | null
+    try {
+      target = await this.adapter.target(namedTarget(headers))
+    } catch (error) {
+      return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true }
+    }
+    if (!target) return { content: [{ type: 'text', text: NO_PROJECT }], isError: true }
+    const { ctx, episodeId } = target
     const call = this.adapter.makeCall(name, args)
-    const sessionId = await this.log.resolve(ctx, extra.sessionId ?? '', (Array.isArray(requested) ? requested[0] : requested) ?? null)
-    await this.log.recordCall(ctx, sessionId, call)
+    const mcpSessionId = extra.sessionId ?? ''
+    const sessionId = await this.log.resolve(ctx, mcpSessionId, header(headers, 'x-webtoon-session'))
+    const stop = new AbortController()
+    const calls = getOrAdd(this.inFlight, sessionId, () => new Set())
+    calls.add(stop)
+    getOrAdd(this.loggers, sessionId, () => new Set()).add(mcpSessionId)
     const stopProgress = this.startProgress(extra)
     try {
-      const signal = AbortSignal.any([extra.signal, closing])
-      const { result, toolResult } = await this.adapter.call(ctx, call, { signal, threadKey: sessionId })
+      await this.log.recordCall(ctx, sessionId, call)
+      const signal = AbortSignal.any([extra.signal, closing, stop.signal])
+      const { result, toolResult } = await this.adapter.call(ctx, call, { signal, threadKey: sessionId, episodeId })
       await this.log.recordResult(ctx, sessionId, toolResult)
       return { ...result } // a fresh object: the SDK result type has an index signature
     } finally {
       stopProgress()
+      calls.delete(stop)
+      if (calls.size === 0 && this.inFlight.get(sessionId) === calls) this.inFlight.delete(sessionId)
     }
   }
 
@@ -240,6 +290,16 @@ export class McpLinkServer {
   private reply(res: http.ServerResponse, status: number, body: string): void {
     res.writeHead(status, { 'content-type': 'application/json' }).end(body)
   }
+}
+
+/** `map`'s value for `key`, created with `make` when missing. */
+function getOrAdd<K, V>(map: Map<K, V>, key: K, make: () => V): V {
+  let value = map.get(key)
+  if (value === undefined) {
+    value = make()
+    map.set(key, value)
+  }
+  return value
 }
 
 /** The JSON body, up to MAX_BODY_BYTES. */

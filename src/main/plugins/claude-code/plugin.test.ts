@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -94,6 +95,28 @@ describe('claude-code plugin', () => {
     )
   })
 
+  it('still has the token for the connect command when a stored port is corrupt', async () => {
+    s = await testServices()
+    const file = path.join(s.userDataDir, 'plugins.json')
+    fs.writeFileSync(file, JSON.stringify({ plugins: { 'claude-code': { enabled: true, config: { port: 'x' } } } }))
+    const plugin = createClaudeCodePlugin()
+    const manager = new PluginManager({ file, plugins: [plugin], services: s, activeContext: new ActiveContext() })
+    managers.push(manager)
+    await manager.load()
+    await manager.startEnabled()
+    expect(view(manager).status).toEqual({ state: 'error', message: 'Port must be between 1024 and 65535' })
+    expect(plugin.token()).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(plugin.connectCommand()).toContain(`--header "Authorization: Bearer ${plugin.token()}"`)
+  })
+
+  it('refuses the connect command, saying why, when no token could be made', async () => {
+    const { plugin, manager, secrets } = await setup()
+    vi.spyOn(secrets, 'set').mockRejectedValue(new Error('keychain locked'))
+    await manager.setEnabled('claude-code', true)
+    expect(plugin.token()).toBe('')
+    expect(() => plugin.connectCommand()).toThrow('The Claude Code link failed to start: keychain locked')
+  })
+
   it('refuses the connect command and a token change while off', async () => {
     const { plugin, manager } = await setup()
     expect(() => plugin.connectCommand()).toThrow(OFF_FIRST)
@@ -164,6 +187,42 @@ describe('claude-code plugin', () => {
     expect(view(manager).status.message).toBe(`Listening on 127.0.0.1:${next}`)
     await expect(probe(port)).rejects.toThrow()
     expect((await probe(next)).status).toBe(401)
+  })
+
+  it('restarts the link for a new port only: the agent settings apply without cutting off runs and clients', async () => {
+    let created = 0
+    const plugin = createClaudeCodePlugin({
+      serverFactory: (opts) => {
+        created++
+        return new McpLinkServer(opts)
+      }
+    })
+    const { manager, port } = await setup(plugin)
+    await manager.setEnabled('claude-code', true)
+    expect(created).toBe(1)
+    await manager.setConfig('claude-code', { useAsAgent: true })
+    await manager.setConfig('claude-code', { claudePath: 'C:/claude.exe' })
+    expect(created).toBe(1)
+    expect(plugin.config()).toMatchObject({ useAsAgent: true, claudePath: 'C:/claude.exe' })
+    expect((await probe(port)).status).toBe(401)
+    await manager.setConfig('claude-code', { port: await freePort() })
+    expect(created).toBe(2)
+  })
+
+  it('hands abortCalls to the running server, and is a no-op while off', async () => {
+    let server: McpLinkServer | undefined
+    const plugin = createClaudeCodePlugin({
+      serverFactory: (opts) => {
+        server = new McpLinkServer(opts)
+        return server
+      }
+    })
+    const { manager } = await setup(plugin)
+    expect(() => plugin.abortCalls('ses_0000000001')).not.toThrow()
+    await manager.setEnabled('claude-code', true)
+    const abortCalls = vi.spyOn(server!, 'abortCalls')
+    plugin.abortCalls('ses_0000000001')
+    expect(abortCalls).toHaveBeenCalledExactlyOnceWith('ses_0000000001')
   })
 
   it('closes the server when disabled', async () => {

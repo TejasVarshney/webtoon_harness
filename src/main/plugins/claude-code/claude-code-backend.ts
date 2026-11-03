@@ -10,15 +10,18 @@ import { projectStateText } from '../../agent/project-state'
 import { SessionBusyError } from '../../agent/run-host'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
-import type { AgentBackend } from '../types'
+import type { AgentBackend, PluginStatus } from '../types'
 import { locateClaude } from './locate-claude'
 import { StreamJsonParser, type ClaudeStreamEvent } from './stream-json'
 
 export const LINK_OFF = "Turn on the Claude Code plugin's link first."
 export const CLAUDE_NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
+export const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
 
 /** What assistant messages written by this backend name as their model. */
 const MODEL = { endpointId: 'plugin:claude-code', modelId: 'claude-code' }
+/** Claude Code's MCP tool timeout for its runs (ms): an image call waits for the image. */
+const MCP_TOOL_TIMEOUT_MS = '900000'
 /** How many stderr lines a run that ends without a result reports. */
 const STDERR_LINES = 5
 /** Enough stderr to hold those lines; older output is dropped. */
@@ -30,6 +33,10 @@ export interface ClaudeCodeLink {
   linkUrl(): string | null
   token(): string
   config(): Record<string, unknown>
+  /** The plugin's status: 'off' while it is off, else why the link is or is not listening. */
+  status(): PluginStatus
+  /** Aborts the link's calls in flight for this log session and ends the MCP sessions behind them. */
+  abortCalls(sessionId: string): void
 }
 
 export interface ClaudeCodeBackendOptions {
@@ -158,6 +165,9 @@ export class ClaudeCodeBackend implements AgentBackend {
     if (!run) return
     run.cancelled = true
     if (run.child) killTree(run.child)
+    // The link's handlers outlive the killed process (the SDK does not abort them on a disconnect): a generation
+    // would run on, spend credits and log its result into the stopped run.
+    this.plugin.abortCalls(sessionId)
     await run.done
   }
 
@@ -168,6 +178,8 @@ export class ClaudeCodeBackend implements AgentBackend {
 
   async start(input: StartRunInput): Promise<{ runId: string }> {
     const { sessionId } = input
+    // Ruling R16: the images cannot be handed to Claude Code yet, and dropping them silently would mislead.
+    if (input.imagePaths.length > 0) throw new Error(NO_IMAGES)
     // Check and register with no await in between, so two quick calls cannot both pass.
     if (this.running.has(sessionId)) throw new SessionBusyError(`session ${sessionId}`)
     const runId = newId('run')
@@ -212,26 +224,33 @@ export class ClaudeCodeBackend implements AgentBackend {
 
   private async execute(run: ActiveRun, ctx: ProjectContext, input: StartRunInput, snapshot: string, emit: (event: AgentEvent) => void): Promise<RunEnd> {
     const url = this.plugin.linkUrl()
-    if (url === null) return { outcome: 'error', error: LINK_OFF }
+    if (url === null) {
+      const status = this.plugin.status()
+      return { outcome: 'error', error: status.state === 'off' ? LINK_OFF : `The Claude Code link is not running: ${status.message}` }
+    }
     const exe = this.locate()
     if (exe === null) return { outcome: 'error', error: CLAUDE_NOT_FOUND }
     const resume = (await this.services.sessions.list(ctx)).find((x) => x.id === input.sessionId)?.claudeSessionId ?? null
 
-    // The token only ever sits in this owner-only file, never on the command line.
+    // The token only ever sits in this file, never on the command line. `mode: 0o600` makes it owner-only on POSIX;
+    // Windows ignores the mode, and it is the per-user %TEMP% folder's ACL that keeps the file private.
     const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'webtoon-claude-'))
     try {
       const configFile = path.join(dir, 'mcp.json')
-      const config = {
-        mcpServers: {
-          webtoon: { type: 'http', url, headers: { Authorization: `Bearer ${this.plugin.token()}`, 'X-Webtoon-Session': input.sessionId } }
-        }
+      const headers = {
+        Authorization: `Bearer ${this.plugin.token()}`,
+        'X-Webtoon-Session': input.sessionId,
+        // The run's own project and episode: the window may switch to another project while it runs (ruling R18).
+        'X-Webtoon-Project': ctx.id,
+        'X-Webtoon-Episode': input.activeEpisodeId ?? ''
       }
-      await fs.promises.writeFile(configFile, JSON.stringify(config), { mode: 0o600 })
-      const stateFile = path.join(dir, 'state.md')
-      await fs.promises.writeFile(stateFile, snapshot, { mode: 0o600 })
+      await fs.promises.writeFile(configFile, JSON.stringify({ mcpServers: { webtoon: { type: 'http', url, headers } } }), { mode: 0o600 })
       if (run.cancelled) return { outcome: 'cancelled', error: null }
       // The prompt goes on stdin (ruling R12): as an argument, a message starting with `-` or naming a subcommand
       // ("update") would be read by the CLI, and Windows caps the command line at about 32K characters.
+      // The snapshot leads it, as the model loop attaches it to the user turn (ruling R17): in a system prompt
+      // Claude Code would record it with the session and replay it, frozen, on every --resume.
+      const prompt = `${snapshot}\n\n${input.text}`
       const args = [
         '-p',
         '--output-format',
@@ -248,11 +267,9 @@ export class ClaudeCodeBackend implements AgentBackend {
         '',
         '--allowedTools',
         'mcp__webtoon__*',
-        '--append-system-prompt-file',
-        stateFile,
         ...(resume ? ['--resume', resume] : [])
       ]
-      return await this.runProcess(run, { exe, args, prompt: input.text, resumed: resume !== null }, ctx, input.sessionId, emit)
+      return await this.runProcess(run, { exe, args, prompt, resumed: resume !== null }, ctx, input.sessionId, emit)
     } finally {
       // A leftover temp dir is not worth replacing the run's real outcome.
       await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5 }).catch((error: unknown) => {
@@ -268,7 +285,13 @@ export class ClaudeCodeBackend implements AgentBackend {
     return new Promise<RunEnd>((resolve) => {
       let child: ChildProcess
       try {
-        child = this.spawn(exe, args, { cwd: ctx.paths.root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+        child = this.spawn(exe, args, {
+          cwd: ctx.paths.root,
+          // Claude Code's default MCP timeout can cut off a call that waits for an image.
+          env: { ...process.env, MCP_TOOL_TIMEOUT: MCP_TOOL_TIMEOUT_MS },
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
       } catch (error) {
         resolve({ outcome: 'error', error: `Could not start Claude Code (${exe}): ${messageOf(error)}` })
         return
