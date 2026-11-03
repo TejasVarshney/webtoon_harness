@@ -1583,18 +1583,19 @@ kbd {
 }
 
 /*
- * Slanted: the top and bottom edges cut on a slope (4% of the row's width), leaning the way the layout says. The
- * media is ink cut to the slope; the image and the lettering sit in it cut 2.5px smaller, so the ink shows as the
- * frame. Only the media is cut: the card's outline and toolbar stay whole.
+ * Slanted: the top and bottom edges cut on a slope (4% of the panel's width: the row's `cqw` times the panel's share),
+ * leaning the way the layout says. The media is ink cut to the slope; the image and the lettering sit in it cut 2.5px
+ * smaller, so the ink shows as the frame. Only the media is cut: the card's outline and toolbar stay whole.
  */
 .panel-card[data-frame='slanted'] {
-  --cut: polygon(0 0, 100% 4cqw, 100% calc(100% - 4cqw), 0 100%);
-  --cut-inner: polygon(2.5px 2.5px, calc(100% - 2.5px) calc(4cqw + 2.5px), calc(100% - 2.5px) calc(100% - 4cqw - 2.5px), 2.5px calc(100% - 2.5px));
+  --slant: calc(4cqw * var(--share, 1));
+  --cut: polygon(0 0, 100% var(--slant), 100% calc(100% - var(--slant)), 0 100%);
+  --cut-inner: polygon(2.5px 2.5px, calc(100% - 2.5px) calc(var(--slant) + 2.5px), calc(100% - 2.5px) calc(100% - var(--slant) - 2.5px), 2.5px calc(100% - 2.5px));
 }
 
 .panel-card[data-frame='slanted'][data-slant='right'] {
-  --cut: polygon(0 4cqw, 100% 0, 100% 100%, 0 calc(100% - 4cqw));
-  --cut-inner: polygon(2.5px calc(4cqw + 2.5px), calc(100% - 2.5px) 2.5px, calc(100% - 2.5px) calc(100% - 2.5px), 2.5px calc(100% - 4cqw - 2.5px));
+  --cut: polygon(0 var(--slant), 100% 0, 100% 100%, 0 calc(100% - var(--slant)));
+  --cut-inner: polygon(2.5px calc(var(--slant) + 2.5px), calc(100% - 2.5px) 2.5px, calc(100% - 2.5px) calc(100% - 2.5px), 2.5px calc(100% - var(--slant) - 2.5px));
 }
 
 .panel-card[data-frame='slanted'] .panel-media {
@@ -1618,6 +1619,15 @@ kbd {
 .panel-card[data-frame='slanted'] .panel-media img,
 .panel-card[data-frame='slanted'] .dialogue-overlay {
   clip-path: var(--cut-inner);
+}
+
+/* The lettering keeps clear of the cut, on the side where it drops furthest into the panel. */
+.panel-card[data-frame='slanted'] .dialogue-flow {
+  top: calc(var(--slant) + 2.5px + 4cqw * var(--lettering));
+}
+
+.panel-card[data-frame='slanted'] .dialogue-sfx {
+  inset: calc(var(--slant) + 2.5px) 0;
 }
 
 /* Tall (1:2, 1:3): drawn at 9:16, so the image fills the width, centred, and fades out at the top and bottom. */
