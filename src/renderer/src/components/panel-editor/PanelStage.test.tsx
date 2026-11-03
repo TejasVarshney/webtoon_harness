@@ -159,16 +159,16 @@ describe('PanelStage', () => {
 
   it('treats a press that moves under 3px as a click, and saves a drag where it was released', async () => {
     const { calls } = mount()
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 52, clientY: 25 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 52, clientY: 25, buttons: 1 })
     fireEvent.pointerUp(stage(), { clientX: 52, clientY: 25 })
     await act(async () => undefined)
     expect(updates(calls)).toEqual([])
     expect(bubble(0)).toHaveAttribute('data-selected', 'true')
 
     // Pressed at the bubble's centre, so it follows the pointer exactly.
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
     expect(bubble(0)).toHaveAttribute('data-dragging', 'true')
     expect(bubble(0)).toHaveStyle({ left: '75%', top: '25%' })
     fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
@@ -183,8 +183,8 @@ describe('PanelStage', () => {
 
   it('clamps a drag so the whole bubble stays inside the panel', async () => {
     const { calls } = mount()
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 900, clientY: -40 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 900, clientY: -40, buttons: 1 })
     fireEvent.pointerUp(stage(), { clientX: 900, clientY: -40 })
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
     expect(updates(calls)[0].dialogue?.[0].placement).toEqual({ x: 0.875, y: 0.0417 })
@@ -324,8 +324,8 @@ describe('PanelStage', () => {
     let release: () => void = () => undefined
     gate = new Promise((resolve) => (release = resolve))
     const { calls } = mount()
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
     fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
     act(() => bubble(1).focus())
@@ -340,10 +340,40 @@ describe('PanelStage', () => {
     expect(updates(calls)[1]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], placement: { x: 0.75, y: 0.25 } }] })
   })
 
+  it('forgets a press released outside the stage, so a later hover and click move nothing', async () => {
+    const { calls } = mount()
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    // Released over the header before the drag took the capture: the stage never sees the release.
+    fireEvent.pointerUp(document.body, { clientX: 50, clientY: 25 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 0 })
+    expect(bubble(0)).not.toHaveAttribute('data-dragging')
+    expect(bubble(0)).not.toHaveClass('bubble-placed')
+    await userEvent.click(media())
+    await userEvent.click(bubble(1))
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    expect(bubble(0)).not.toHaveClass('bubble-placed')
+  })
+
+  it('saves the open text first when its bubble is dragged by its edge, then drags the new text', async () => {
+    const { calls } = mount()
+    await userEvent.dblClick(bubble(0))
+    await userEvent.clear(textBox())
+    await userEvent.type(textBox(), 'Run!')
+    // On the bubble's padding, outside its text.
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[0].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], text: 'Run!' })
+    expect(updates(calls)[1].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], text: 'Run!', placement: { x: 0.75, y: 0.25 } })
+    expect(within(stage().parentElement!).queryByText('This line changed while you were editing it.')).toBeNull()
+  })
+
   it('sends nothing when the line changed under a drag, and says so (Review Focus 2)', async () => {
     const { calls } = mount()
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
     // The agent rewrites the line while the user holds it.
     replaceStored({ ...stored, dialogue: [{ ...hello, id: 'dlg_0000000009', text: 'Goodbye.' }, night] })
     fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
@@ -389,8 +419,8 @@ describe('PanelStage', () => {
   it('never calls a model: selecting, dragging, nudging, retyping, adding and deleting only save the dialogue (No AI)', async () => {
     const { calls } = mount()
     await userEvent.click(bubble(1))
-    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25 })
-    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150 })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
     fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
 

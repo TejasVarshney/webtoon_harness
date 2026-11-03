@@ -283,13 +283,29 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     nudgeTimer.current = setTimeout(flushNudge, NUDGE_COMMIT_MS)
   }
 
+  /** Forgets a press whose release the stage never saw, and the drag it may have started. */
+  function dropPress(): void {
+    const p = press.current
+    press.current = null
+    if (p?.dragging) {
+      setDragging(null)
+      setPreview(null)
+    }
+  }
+
   function pressBubble(e: PointerEvent<HTMLDivElement>, i: number): void {
     // A press in the open text places its caret.
     if (e.button !== 0 || inTextField(e.target)) return
     // The new line being typed is not dragged before it is saved.
     const line = base[i]
     if (line === undefined) return
+    dropPress()
     flushNudge()
+    // A press on the edge of a bubble whose text is open saves the text first, so the drag that follows is of the
+    // text the line will have, as commitText leaves it: what was typed, or the old text when nothing was.
+    const typed = text !== null && text.index === i && !textClosed.current ? text.draft.trim() : ''
+    if (text !== null && text.index === i) commitText()
+    const expect = typed === '' ? identityOf(line) : { ...identityOf(line), text: typed }
     select(i)
     e.currentTarget.focus({ preventScroll: true })
     const box = boxOf(e.currentTarget)
@@ -299,7 +315,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       start: { x: e.clientX, y: e.clientY },
       grab: { dx: e.clientX - (box.left + box.width / 2), dy: e.clientY - (box.top + box.height / 2) },
       bubble: { width: box.width, height: box.height },
-      expect: identityOf(line),
+      expect,
       dragging: false,
       placement: null
     }
@@ -355,12 +371,19 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     onPointerDown: (e) => {
       dragEnded.current = false
       if (e.button !== 0 || inBubble(e.target)) return
+      dropPress()
       flushNudge()
       select(null)
     },
     onPointerMove: (e) => {
       const p = press.current
       if (p === null || e.pointerId !== p.pointerId) return
+      // No button is down: the press was released where the stage could not see it (outside it, before the drag
+      // took the capture), so it is over.
+      if ((e.buttons & 1) === 0) {
+        dropPress()
+        return
+      }
       if (!p.dragging) {
         if (Math.hypot(e.clientX - p.start.x, e.clientY - p.start.y) < DRAG_THRESHOLD_PX) return
         // Captured on the stage, not the bubble: an automatic bubble remounts as it moves into the placed layer.
