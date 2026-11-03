@@ -66,11 +66,21 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
   return lines.join('\n')
 }
 
-/** One line: id, shot, cast, the first 160 characters of the description, the dialogue and, only when it has any, its items. `detail` is what follows a cast member's name. */
+/** The bracket content of a panel's line: the shot, the aspect, then only the layout that differs from the defaults. */
+export function layoutTag(p: Panel): string {
+  const parts: string[] = [p.shot, p.aspect]
+  if (p.beside) parts.push('beside')
+  if (p.frame !== 'bordered') parts.push(p.frame)
+  if (p.gapAfter !== 'normal') parts.push(`gap ${p.gapAfter}`)
+  if (p.gutter !== 'white') parts.push(`gutter ${p.gutter}`)
+  return parts.join(', ')
+}
+
+/** One line: id, shot and layout, cast, the first 160 characters of the description, the dialogue and, only when it has any, its items. `detail` is what follows a cast member's name. */
 function panelSummary(p: Panel, names: Map<string, string>, items: Item[], detail: (cast: PanelCharacter) => string): string {
   const cast = p.characters.map((pc) => `${names.get(pc.characterId) ?? pc.characterId} (${detail(pc)})`).join(', ')
   const shown = p.items.map((entry) => itemNames(entry, items)).map((n) => `${n.name} (${n.usageName})`)
-  return `${p.id} [${p.shot}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}`
+  return `${p.id} [${layoutTag(p)}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}`
 }
 
 const dialogueLine = (p: Panel, names: Map<string, string>): string =>

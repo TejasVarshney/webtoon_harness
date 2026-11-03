@@ -82,10 +82,10 @@ describe('panel chat tools: the tool set', () => {
     expect(schema('revert_to_version').required).toEqual(['versionId'])
     expect(schema('update_panel_fields').required ?? []).toEqual([])
     expect(Object.keys(schema('update_panel_fields').properties)).toEqual(
-      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
+      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
     )
     expect(schema('update_panel_fields').properties.shot.enum).toContain('close-up')
-    for (const field of ['description', 'setting', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
+    for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))
     }
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
@@ -274,6 +274,17 @@ describe('update_panel_fields', () => {
     expect(await panel(p2.id)).toMatchObject({ description: 'Mina steps out.', shot: 'wide', setting: 'Hall', currentVersionId: p2.currentVersionId })
     expect((await panel(p2.id)).versions).toHaveLength(1)
     expect(await panel(p1.id)).toMatchObject({ description: 'Mina waits.', shot: 'medium' })
+  })
+
+  it('sets the layout fields without drawing, and shows them in fields', async () => {
+    const { run, s, p2, panel } = await setup()
+    const generate = vi.spyOn(s.images, 'generate')
+    const r = await run('update_panel_fields', { gutter: 'black' })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r)).toMatchObject({ updated: ['gutter'], fields: { gutter: 'black', frame: 'bordered', beside: false, gapAfter: 'normal' } })
+    expect(generate).not.toHaveBeenCalled()
+    expect(await panel(p2.id)).toMatchObject({ gutter: 'black' })
+    expect((await panel(p2.id)).versions).toHaveLength(1)
   })
 
   it('replaces the dialogue and gives the new lines ids', async () => {

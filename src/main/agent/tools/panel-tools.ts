@@ -50,6 +50,14 @@ function versionBrief(panel: Panel): { id: string; status: PanelVersion['status'
   return v ? { id: v.id, status: v.status, imagePath: v.imagePath } : null
 }
 
+/** The layout inputs with their describe texts, shared by create_panel and the panel chat's update_panel_fields. */
+export const layoutFields = {
+  frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade.'),
+  beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false."),
+  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change.'),
+  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band.')
+}
+
 const episodeSummary = (e: Episode) => ({ id: e.id, number: e.number, title: e.title, synopsis: e.synopsis, panelCount: e.panelIds.length })
 
 const listEpisodes = defineTool({
@@ -72,7 +80,7 @@ const createEpisode = defineTool({
 const listPanels = defineTool({
   name: 'list_panels',
   description:
-    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), shot, aspect, cast, description, dialogue and ' +
+    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), shot, aspect, frame, beside, gapAfter, gutter, cast, description, dialogue and ' +
     'the current version (id, status, imagePath), which is null while the panel has no ready image. Read recent panels before drawing the next one.',
   input: z.object({
     episodeId,
@@ -90,6 +98,10 @@ const listPanels = defineTool({
           index: episode.panelIds.indexOf(p.id),
           shot: p.shot,
           aspect: p.aspect,
+          frame: p.frame,
+          beside: p.beside,
+          gapAfter: p.gapAfter,
+          gutter: p.gutter,
           cast: p.characters.map((c) => ({ name: names.get(c.characterId) ?? c.characterId, characterId: c.characterId, variationId: c.variationId })),
           description: p.description,
           dialogue: p.dialogue,
@@ -133,7 +145,8 @@ const createPanel = defineTool({
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),
     description: z.string().describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
     setting: z.string().describe('Where and when, e.g. "Apartment hallway, evening"'),
-    aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect'),
+    aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect. 1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
+    ...layoutFields,
     characters: z.array(PanelCharacterSchema).describe('Who is in the panel, at most three in the foreground. Empty for a scene without characters.'),
     items: PanelDraftSchema.shape.items.describe(
       "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
