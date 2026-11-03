@@ -329,6 +329,7 @@ describe('AgentRunner', () => {
       const { s, runner, projectId, sessionId, events } = await setup([{ text: 'should not run' }])
       const backend = fakeBackend(new Set([sessionId]))
       vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+      vi.spyOn(s.plugins, 'agentBackends').mockReturnValue([backend])
       const req = input(projectId, sessionId, 'Hello Claude')
 
       await expect(runner.start(req)).resolves.toEqual({ runId: 'run_backend000' })
@@ -365,6 +366,30 @@ describe('AgentRunner', () => {
       await runner.start(input(projectId, sessionId))
       await finished(events)
       expect(events.at(-1)).toMatchObject({ kind: 'run-finished', outcome: 'end' })
+    })
+
+    it('still stops a backend run after the plugin is switched off as the agent, and refuses a model-loop start meanwhile', async () => {
+      const { s, runner, projectId, sessionId, events } = await setup([{ text: 'should not run' }])
+      const running = new Set<string>()
+      const backend = fakeBackend(running)
+      backend.start.mockImplementation(async () => {
+        running.add(sessionId)
+        return { runId: 'run_backend000' }
+      })
+      backend.stop.mockImplementation(async () => void running.delete(sessionId))
+      const asAgent = vi.spyOn(s.plugins, 'agentBackend').mockReturnValue(backend)
+      vi.spyOn(s.plugins, 'agentBackends').mockReturnValue([backend])
+      await runner.start(input(projectId, sessionId))
+      asAgent.mockReturnValue(null)
+
+      expect(runner.isRunning(sessionId)).toBe(true)
+      await expect(runner.start(input(projectId, sessionId))).rejects.toBeInstanceOf(SessionBusyError)
+      expect(events).toEqual([])
+      runner.cancel('run_backend000')
+      expect(backend.cancel).toHaveBeenCalledWith('run_backend000')
+      await runner.stop(sessionId)
+      expect(backend.stop).toHaveBeenCalledWith(sessionId)
+      expect(runner.isRunning(sessionId)).toBe(false)
     })
 
     it('still stops a model-loop run that started before the backend was switched on', async () => {

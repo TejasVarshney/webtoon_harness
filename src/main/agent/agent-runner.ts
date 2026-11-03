@@ -43,17 +43,17 @@ export class AgentRunner {
   }
 
   isRunning(threadKey: string): boolean {
-    return this.host.isRunning(threadKey) || (this.backend()?.isRunning(threadKey) ?? false)
+    return this.host.isRunning(threadKey) || this.services.plugins.agentBackends().some((b) => b.isRunning(threadKey))
   }
 
   cancel(runId: string): void {
     this.host.cancel(runId)
-    this.backend()?.cancel(runId)
+    for (const b of this.services.plugins.agentBackends()) b.cancel(runId)
   }
 
   /** Aborts the session's run, if any, and resolves once it has ended. */
   async stop(sessionId: string): Promise<void> {
-    await Promise.all([this.host.stop(sessionId), this.backend()?.stop(sessionId)])
+    await Promise.all([this.host.stop(sessionId), ...this.services.plugins.agentBackends().map((b) => b.stop(sessionId))])
   }
 
   /** Aborts every run (app quit). Each loop still persists a result for its pending tool calls. */
@@ -89,6 +89,8 @@ export class AgentRunner {
       if (this.host.isRunning(input.sessionId)) throw new SessionBusyError(`session ${input.sessionId}`)
       return backend.start(input)
     }
+    // A plugin run from before the switch was turned off still holds the session.
+    if (this.services.plugins.agentBackends().some((b) => b.isRunning(input.sessionId))) throw new SessionBusyError(`session ${input.sessionId}`)
     return this.host.start({
       threadKey: input.sessionId,
       subject: `session ${input.sessionId}`,

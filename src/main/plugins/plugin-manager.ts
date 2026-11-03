@@ -140,6 +140,14 @@ export class PluginManager {
     return null
   }
 
+  /**
+   * Every plugin's backend, whatever its switches say: a run started while a plugin was the agent must still be
+   * found by status and stop after `useAsAgent` is turned off (a disabled plugin's runs end with its `stop()`).
+   */
+  agentBackends(): AgentBackend[] {
+    return this.plugins.flatMap((p) => (p.agentBackend ? [p.agentBackend] : []))
+  }
+
   private require(id: string): HarnessPlugin {
     const plugin = this.get(id)
     if (!plugin) throw new EntityNotFoundError('plugin', id)

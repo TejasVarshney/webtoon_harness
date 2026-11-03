@@ -340,6 +340,18 @@ describe('PluginManager', () => {
       expect(m.agentBackend()).toBeNull()
     })
 
+    it('agentBackends lists every plugin backend, whatever its switches say', async () => {
+      const p = fakePlugin()
+      p.agentBackend = backend
+      const m = manager([p, fakePlugin('other')])
+      await m.load()
+      expect(m.agentBackends()).toEqual([backend])
+      await m.setConfig('fake', { useAsAgent: true })
+      await m.setEnabled('fake', true)
+      await m.setConfig('fake', { useAsAgent: false })
+      expect(m.agentBackends()).toEqual([backend])
+    })
+
     it('is null when the plugin has no backend', async () => {
       const m = manager([fakePlugin()])
       await m.load()
