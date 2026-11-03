@@ -147,6 +147,27 @@ describe('PluginManager', () => {
     expect(await readFile()).toEqual({ plugins: { fake: { enabled: true, config: { port: 7900, useAsAgent: true } } } })
   })
 
+  it('restarts only for a patch the plugin says needs it, and saves it either way', async () => {
+    const p = fakePlugin()
+    const asked: Record<string, unknown>[] = []
+    p.restartOnConfig = (patch) => {
+      asked.push(patch)
+      return 'port' in patch
+    }
+    const m = manager([p])
+    await m.load()
+    await m.setEnabled('fake', true)
+    p.calls.length = 0
+    const view = await m.setConfig('fake', { useAsAgent: true })
+    expect(p.calls).toEqual([])
+    expect(view.config).toEqual({ useAsAgent: true })
+    expect(p.hosts.at(-1)!.config()).toEqual({ useAsAgent: true })
+    expect(await readFile()).toEqual({ plugins: { fake: { enabled: true, config: { useAsAgent: true } } } })
+    await m.setConfig('fake', { port: 7900 })
+    expect(p.calls).toEqual(['stop', 'start'])
+    expect(asked).toEqual([{ useAsAgent: true }, { port: 7900 }])
+  })
+
   it('lets a plugin save its own config without restarting it', async () => {
     const p = fakePlugin()
     const m = manager([p])

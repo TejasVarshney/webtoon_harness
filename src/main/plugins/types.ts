@@ -20,6 +20,8 @@ export interface HarnessPlugin {
   status(): PluginStatus
   /** Called with a config patch before it is saved; throws a readable error to refuse it. */
   validateConfig?(patch: Record<string, unknown>): void
+  /** Whether a running plugin must restart to apply a saved patch. Absent: always. */
+  restartOnConfig?(patch: Record<string, unknown>): boolean
   /** Phase 2. */
   agentBackend?: AgentBackend
 }
