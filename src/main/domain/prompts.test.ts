@@ -145,6 +145,38 @@ describe('composePanelPrompt', () => {
     expect(prompt.split('\n')[0]).toContain('16:9 aspect ratio')
   })
 
+  describe('panel shape lines', () => {
+    const TALL = 'Tall panel: keep the top fifth and bottom fifth plain background (sky, floor, darkness), so they can fade out.'
+    const BORDERLESS = 'Art runs to the edges, no frame.'
+    const styleLine = (o: Partial<Panel>) =>
+      composePanelPrompt({ stylePreset: 'S', panel: panel(o), roster, itemRoster, previous: null, maxReferences: 4 }).prompt.split('\n')[0]
+
+    it('draws a 1:3 panel at 9:16 and adds the tall sentence', () => {
+      const line = styleLine({ aspect: '1:3' })
+      expect(line).toContain('9:16 aspect ratio')
+      expect(line).not.toContain('1:3')
+      expect(line.endsWith(` ${TALL}`)).toBe(true)
+    })
+
+    it('adds the borderless sentence to a borderless panel', () => {
+      const line = styleLine({ aspect: '2:3', frame: 'borderless' })
+      expect(line.endsWith(` ${BORDERLESS}`)).toBe(true)
+      expect(line).not.toContain('Tall panel')
+    })
+
+    it('leaves the line of a default panel unchanged', () => {
+      expect(styleLine({})).toBe(
+        '[STYLE] S. Vertical-scroll webtoon panel, 2:3 aspect ratio, medium shot. No text, no speech bubbles, no captions, no watermark.'
+      )
+    })
+
+    it('gives a borderless tall panel only the tall sentence', () => {
+      const line = styleLine({ aspect: '1:2', frame: 'borderless' })
+      expect(line.endsWith(` ${TALL}`)).toBe(true)
+      expect(line).not.toContain(BORDERLESS)
+    })
+  })
+
   it('has no continuity line when there is no previous panel', () => {
     const { prompt, references } = composePanelPrompt({
       stylePreset: 'STYLE',

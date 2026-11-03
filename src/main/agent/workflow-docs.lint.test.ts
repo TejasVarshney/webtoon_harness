@@ -137,6 +137,7 @@ describe('workflow docs lint', () => {
         setting: '{setting}',
         shot: '{shot}' as never,
         aspect: '{aspect}' as never,
+        frame: 'bordered',
         characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
         items: [],
         continuityNotes: '{continuityNotes}'
@@ -187,6 +188,7 @@ describe('workflow docs lint', () => {
         setting: '{setting}',
         shot: '{shot}' as never,
         aspect: '{aspect}' as never,
+        frame: 'bordered',
         characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
         items: [entry],
         continuityNotes: '{continuityNotes}'
