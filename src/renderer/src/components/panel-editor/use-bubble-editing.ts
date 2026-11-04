@@ -82,7 +82,7 @@ const boxOf = (el: Element): Box => {
  * until the store catches up. The bubbles remount when their ids change, so the selected one gets the focus back.
  */
 export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement | null>): BubbleEditing {
-  const { save } = useDialogueSaver(panel.id)
+  const { save, reportConflict } = useDialogueSaver(panel.id)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [preview, setPreview] = useState<{ index: number; placement: BubblePlacement } | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
@@ -104,13 +104,23 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
   const lines = adding === null ? base : [...base, adding]
   const selected = selectedIndex !== null && selectedIndex < base.length ? selectedIndex : null
   // A line that is gone (the agent removed it) is no longer open for typing.
-  const textEditing = text === null ? null : text.index === null ? base.length : text.index < base.length ? text.index : null
+  const textGone = text !== null && text.index !== null && text.index >= base.length
+  const textEditing = text === null ? null : text.index === null ? base.length : textGone ? null : text.index
 
   // Timers and the unmount see the store's lines through a ref: their closures may be older than the store.
   const storedRef = useRef(panel.dialogue)
   useLayoutEffect(() => {
     storedRef.current = panel.dialogue
   })
+
+  // Its text went with it, unsaved, and the unmounted textarea had no blur to say so: the draft is dropped, so it never
+  // reopens on a line that comes to that place later, and the change is said in Lines.
+  useLayoutEffect(() => {
+    if (!textGone) return
+    textClosed.current = true
+    setText(null)
+    reportConflict()
+  }, [textGone, reportConflict])
 
   const select = useCallback((i: number | null) => setSelectedIndex(i), [])
 

@@ -20,6 +20,8 @@ export interface DialogueSaver {
   reported: number
   /** Forgets the refusal: "Undo my change". */
   clear(): void
+  /** Says a line changed under an edit that was given up without a save (the agent removed the line being typed in). */
+  reportConflict(): void
 }
 
 interface Notice {
@@ -92,6 +94,7 @@ export function useDialogueSaver(panelId: string): DialogueSaver {
   )
 
   const clear = useCallback(() => report(panelId, { error: null }, false), [panelId])
+  const reportConflict = useCallback(() => report(panelId, { conflict: true }, true), [panelId])
 
-  return { save, conflict: notice.conflict, error: notice.error, reported: notice.reported, clear }
+  return { save, conflict: notice.conflict, error: notice.error, reported: notice.reported, clear, reportConflict }
 }

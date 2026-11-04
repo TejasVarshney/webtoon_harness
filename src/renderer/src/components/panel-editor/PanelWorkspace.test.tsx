@@ -315,6 +315,31 @@ describe('PanelWorkspace', () => {
     expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
   })
 
+  it('closes the open text of a line the agent removed, says so in Lines, and reopens no old draft when a line comes back there', () => {
+    const line = (id: string, text: string) => ({ id, speakerId: null, kind: 'narration' as const, text, placement: null })
+    const night = line('dlg_0000000001', 'Night fell.')
+    const withLines = (dialogue: Panel['dialogue']): void => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue }, third] } })
+    withLines([night, line('dlg_0000000002', 'Dawn.')])
+    const { calls } = mount()
+    const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')
+    const textBox = (): HTMLElement | null => within(stage()).queryByRole('textbox', { name: 'Line text' })
+    fireEvent.doubleClick(within(stage()).getByLabelText('Line 2'))
+    fireEvent.change(textBox()!, { target: { value: 'Dusk.' } })
+
+    act(() => withLines([night]))
+    expect(textBox()).toBeNull()
+    expect(within(workspace()).getByRole('tabpanel')).toHaveTextContent('This line changed while you were editing it.')
+
+    // A line that comes back at that place is not opened with the old draft, and the focus stays where the user put it.
+    const composer = within(workspace()).getByTestId('composer-input')
+    focus(composer)
+    act(() => withLines([night, line('dlg_0000000003', 'Morning.')]))
+    expect(textBox()).toBeNull()
+    expect(within(stage()).getByLabelText('Line 2')).toHaveTextContent('Morning.')
+    expect(composer).toHaveFocus()
+    expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
+  })
+
   it('puts the tabs under the stage, on Lines, and selects the bubble of the row the user goes into', () => {
     const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
