@@ -133,12 +133,14 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
               </p>
             )}
             {panel !== undefined && notice !== null && (
-              <p className="stale-notice" data-testid="stale-notice">
-                {notice}
-                <button type="button" disabled={busy || generating} onClick={() => regenerate(panel.id)}>
-                  Regenerate
-                </button>
-              </p>
+              <div className="stale-notice-row">
+                <p className="stale-notice" data-testid="stale-notice">
+                  {notice}
+                  <button type="button" disabled={busy || generating} onClick={() => regenerate(panel.id)}>
+                    Regenerate
+                  </button>
+                </p>
+              </div>
             )}
             <div className="editing-body">
               {panel !== undefined ? (
