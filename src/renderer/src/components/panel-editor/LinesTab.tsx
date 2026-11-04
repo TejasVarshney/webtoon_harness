@@ -182,7 +182,10 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
       onFocus={() => {
         if (!selected) onSelect()
       }}
-      onBlur={leave}
+      onBlur={(e) => {
+        // Moving between the row's own fields is not leaving it: a text emptied on the way must not undo the rest.
+        if (leaves(e)) leave()
+      }}
     >
       <LineFields characters={characters} value={draft.value} onChange={change} />
       <div className="form-actions">

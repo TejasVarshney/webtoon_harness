@@ -248,6 +248,28 @@ describe('PanelInspector', () => {
       expect(within(rows()[0]).getByLabelText('Speaker')).toHaveValue('')
     })
 
+    it('keeps every change to a row while the user moves between its fields, even with the text emptied, until the row is left', async () => {
+      fakeTimers()
+      const { calls } = mount()
+      const row = (): HTMLElement => rows()[0]
+      act(() => within(row()).getByLabelText('Kind').focus())
+      fireEvent.change(within(row()).getByLabelText('Kind'), { target: { value: 'thought' } })
+      act(() => text(0).focus())
+      fireEvent.change(text(0), { target: { value: '' } })
+      act(() => within(row()).getByLabelText('Speaker').focus())
+      fireEvent.change(within(row()).getByLabelText('Speaker'), { target: { value: '' } })
+      expect(within(row()).getByLabelText('Kind')).toHaveValue('thought')
+      expect(within(row()).getByLabelText('Speaker')).toHaveValue('')
+      expect(text(0)).toHaveValue('')
+      act(() => text(0).focus())
+      fireEvent.change(text(0), { target: { value: 'Hm.' } })
+      expect(updates(calls)).toEqual([])
+      vi.useRealTimers()
+      act(() => text(0).blur())
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], speakerId: null, kind: 'thought', text: 'Hm.' }, toDrafts([night])[0]] })
+    })
+
     it('resets a placed line to auto, and offers it only on placed lines', async () => {
       const { calls } = mount()
       expect(within(rows()[0]).queryByRole('button', { name: 'Reset to auto' })).toBeNull()
