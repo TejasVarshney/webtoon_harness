@@ -354,9 +354,10 @@ export class ItemService {
   }
 
   /**
-   * Step 3 of Ruling T15a: under the lock, record the outcome (the image with its check) if the usage still exists. A failure keeps the stored image and check. Never
-   * throws: if recording fails, the usage is marked `failed` (best effort; `recoverInterrupted`
-   * is the backstop for a file that cannot be written) and a `failed` usage is returned.
+   * Step 3 of Ruling T15a: under the lock, record the outcome (the image with its check) if the usage
+   * still exists. A failure keeps the stored image and check. Never throws: if recording fails, the usage
+   * is marked `failed` (best effort; `recoverInterrupted` is the backstop for a file that cannot be
+   * written) and a `failed` usage is returned.
    */
   private async finish(
     ctx: ProjectContext,

@@ -422,6 +422,41 @@ describe('ItemService sheet check', () => {
     expect((await svc.get(ctx, item.id)).notes).toBe('x')
   })
 
+  it('keeps the previous image and check when the first draw fails', async () => {
+    let boom = false
+    const { svc, ctx } = await setup(
+      async () => {
+        if (boom) throw new ProviderError('unknown', 'boom')
+        return { data: PNG, ext: 'png' }
+      },
+      [],
+      { replies: [PASS] }
+    )
+    const item = await svc.create(ctx, input(), 'user')
+    const first = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    boom = true
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(out).toMatchObject({ status: 'failed', error: 'boom', imagePath: first.imagePath, check: PASS })
+    expect((await svc.get(ctx, item.id)).usages[0]).toMatchObject({ status: 'failed', imagePath: first.imagePath, check: PASS })
+  })
+
+  it('records the last candidate when a redraw fails', async () => {
+    let n = 0
+    const { svc, calls, ctx } = await setup(
+      async () => {
+        if (++n === 2) throw new ProviderError('unknown', 'boom')
+        return { data: PNG, ext: 'png' }
+      },
+      [],
+      { replies: [fail('x')] }
+    )
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(2)
+    expect(out).toMatchObject({ status: 'ready', error: null, check: fail('x') })
+    expect(imageFiles(ctx, item.id)).toHaveLength(1)
+  })
+
   it('sends the At rest sheet to the check of another usage', async () => {
     const { svc, checks, ctx } = await setup(undefined, [], { replies: [PASS] })
     const item = await svc.create(ctx, input(), 'user')
