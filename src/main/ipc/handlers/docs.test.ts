@@ -33,6 +33,7 @@ describe('docs IPC handlers', () => {
       'AGENTS',
       'reference/consistency-checklist',
       'reference/prompt-templates',
+      'reference/sheet-checklist',
       'reference/webtoon-style-guide',
       'workflows/character-creation',
       'workflows/item-creation',
