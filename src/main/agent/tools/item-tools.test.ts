@@ -231,6 +231,16 @@ describe('item tools', () => {
     expect((await env.s.items.get(env.ctx, itemId)).usages).toHaveLength(1)
   })
 
+  it('names no issues in the refusal when the failed check lists none', async () => {
+    const env = await setup()
+    const { itemId } = json(await env.run('create_item', blaster))
+    await withBaseCheck(env, itemId, { passed: false, issues: [], skipped: false })
+    expect(await env.run('create_item_usage', { itemId, name: 'Firing', kind: 'action', delta: 'x' })).toMatchObject({
+      ok: false,
+      content: 'The base sheet of Kestrel blaster failed its check: no issues named. Regenerate the base first.'
+    })
+  })
+
   it('create_item_usage goes ahead when the base sheet passed, was skipped or was never checked', async () => {
     for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: false, issues: ['x'], skipped: true }]) {
       const env = await setup()
@@ -271,6 +281,19 @@ describe('item tools', () => {
     expect(ok).not.toHaveProperty('note')
     generate.mockResolvedValueOnce({ ...base, check: null })
     expect(json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))).toMatchObject({ check: null })
+  })
+
+  it('adds no note when the sheet failed to draw, whatever older check it keeps', async () => {
+    const env = await setup()
+    const { itemId, baseUsageId } = json(await env.run('create_item', blaster))
+    const base = (await env.s.items.get(env.ctx, itemId)).usages[0]
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    const r = json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))
+    expect(r).toMatchObject({ status: 'failed', check: FAILED })
+    expect(r).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    expect(json(await env.run('create_item', { ...blaster, name: 'Zed' }))).not.toHaveProperty('note')
   })
 
   it('list_items shows each sheet check and the issues of a failed one', async () => {

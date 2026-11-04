@@ -342,6 +342,14 @@ describe('the sheet check gate', () => {
     expect(validatePanelDraft(draft, [], [lamp], sheetOpts(false))).toEqual({ errors: [], warnings: [message] })
   })
 
+  it('says no issues were named when the failed check lists none', () => {
+    const chk = checked({ passed: false, issues: [], skipped: false })
+    expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(true))).toEqual({
+      errors: ['Variation "Base" of Chk failed its sheet check: no issues named. Regenerate it or ask the user.'],
+      warnings: []
+    })
+  })
+
   it('does not report unchecked, passed or skipped sheets', () => {
     for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: true, issues: ['x'], skipped: true }, { passed: false, issues: ['x'], skipped: true }]) {
       const chk = checked(check)

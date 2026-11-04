@@ -3,7 +3,7 @@ import { CharacterInputSchema, CharacterPatchSchema, VariationInputSchema } from
 import type { Character, Variation } from '@shared/types'
 import { DuplicateCharacterError } from '../../domain/character-service'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
-import { sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
+import { joinIssues, sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and variations so new panels stay consistent.'
@@ -38,13 +38,21 @@ function refuseWhileBaseFailed(character: Character, target?: Variation): void {
   if (target?.kind === 'base') return
   const base = character.variations.find((v) => v.kind === 'base')
   const issues = base ? sheetCheckFailure(base) : null
-  if (issues) throw new ToolError(`The base sheet of ${character.name} failed its check: ${issues.join('; ')}. Regenerate the base first.`)
+  if (issues) throw new ToolError(`The base sheet of ${character.name} failed its check: ${joinIssues(issues)}. Regenerate the base first.`)
 }
 
 /** The sheet check as the model reads it in a list: the state, and the issues when it failed. */
 function checkFields(v: Variation): { check: 'passed' | 'failed' | 'skipped' | null; checkIssues?: string[] } {
   const issues = sheetCheckFailure(v)
   return issues ? { check: 'failed', checkIssues: issues } : { check: sheetCheckState(v.check) }
+}
+
+/**
+ * The note for a sheet that came out failed after the redraws: only a `ready` sheet whose check failed. A sheet whose
+ * drawing failed keeps its older check, and the redraws that note speaks of never happened.
+ */
+function failedNote(v: Variation): { note?: string } {
+  return v.status === 'ready' && sheetCheckFailure(v) ? { note: SHEET_FAILED_NOTE } : {}
 }
 
 /** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. A failed sheet check adds a `note`. */
@@ -56,7 +64,7 @@ function variationOutcome(v: Variation): ToolOutput {
       error: v.error,
       imagePath: v.imagePath,
       check: v.check,
-      ...(sheetCheckFailure(v) ? { note: SHEET_FAILED_NOTE } : {})
+      ...failedNote(v)
     },
     images: v.status === 'ready' && v.imagePath !== null ? [v.imagePath] : []
   }
@@ -114,7 +122,7 @@ const createCharacter = defineTool({
     // Generation never throws for provider failures; a failed image is reported in the result.
     const settled = generateBaseImage === false ? base : await characters.generateVariationImage(ctx.project, created.id, base.id, { signal: ctx.signal })
     return {
-      content: { characterId: created.id, baseVariationId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...(sheetCheckFailure(settled) ? { note: SHEET_FAILED_NOTE } : {}) },
+      content: { characterId: created.id, baseVariationId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...failedNote(settled) },
       images: settled.status === 'ready' && settled.imagePath !== null ? [settled.imagePath] : []
     }
   }

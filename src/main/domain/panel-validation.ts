@@ -34,6 +34,14 @@ export function sheetCheckFailure(sheet: { check: CheckResult | null }): string[
   return check !== null && check.passed === false && check.skipped === false ? check.issues : null
 }
 
+/** What stands in for the issues of a failed check that named none, so a message never reads "failed its check: .". */
+export const NO_ISSUES_NAMED = 'no issues named'
+
+/** The issues of a failed check as one line for a message: joined by "; ", or `NO_ISSUES_NAMED` when there are none. */
+export function joinIssues(issues: readonly string[]): string {
+  return issues.length > 0 ? issues.join('; ') : NO_ISSUES_NAMED
+}
+
 /** The state of a sheet's check for display: null when it was never checked. A skipped check is `skipped` whatever its verdict. */
 export function sheetCheckState(check: CheckResult | null): 'passed' | 'failed' | 'skipped' | null {
   if (check === null) return null
@@ -59,7 +67,7 @@ export function validatePanelDraft(draft: PanelDraftFields, roster: Character[],
 
   const reportSheet = (kind: 'Variation' | 'Usage', name: string, owner: string, sheet: { check: CheckResult | null }): void => {
     const issues = sheetCheckFailure(sheet)
-    if (issues) report(opts.strictSheets ? errors : warnings, `${kind} "${name}" of ${owner} failed its sheet check: ${issues.join('; ')}. Regenerate it or ask the user.`)
+    if (issues) report(opts.strictSheets ? errors : warnings, `${kind} "${name}" of ${owner} failed its sheet check: ${joinIssues(issues)}. Regenerate it or ask the user.`)
   }
 
   const byId = new Map(roster.map((c) => [c.id, c]))

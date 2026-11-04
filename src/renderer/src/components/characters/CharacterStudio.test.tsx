@@ -425,6 +425,11 @@ describe('CharacterStudio', () => {
       expect(card.queryByTestId('sheet-check-passed')).toBeNull()
     })
 
+    it('says no issues were named when the failed check lists none', async () => {
+      const card = await open({ passed: false, issues: [], skipped: false })
+      expect(card.getByTestId('sheet-check-failed')).toHaveAttribute('title', 'no issues named')
+    })
+
     it('marks a passed sheet as checked', async () => {
       const card = await open({ passed: true, issues: [], skipped: false })
       expect(card.getByTestId('sheet-check-passed')).toHaveTextContent('Checked')

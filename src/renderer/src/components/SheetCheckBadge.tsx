@@ -16,7 +16,7 @@ export function SheetCheckBadge({ check }: { check: CheckResult | null }) {
   }
   return (
     <div className="sheet-check-failed">
-      <span className="badge badge-failed" data-testid="sheet-check-failed" title={check.issues.join('\n')}>
+      <span className="badge badge-failed" data-testid="sheet-check-failed" title={check.issues.length > 0 ? check.issues.join('\n') : 'no issues named'}>
         Check failed
       </span>
       {check.issues.length > 0 && (

@@ -259,6 +259,16 @@ describe('character tools', () => {
     expect((await env.s.characters.get(env.ctx, characterId)).variations).toHaveLength(1)
   })
 
+  it('names no issues in the refusal when the failed check lists none', async () => {
+    const env = await setup()
+    const { characterId } = json(await env.run('create_character', mina))
+    await withBaseCheck(env, characterId, { passed: false, issues: [], skipped: false })
+    expect(await env.run('create_variation', { characterId, name: 'Outfit', kind: 'outfit', delta: 'x' })).toMatchObject({
+      ok: false,
+      content: 'The base sheet of Mina failed its check: no issues named. Regenerate the base first.'
+    })
+  })
+
   it('create_variation goes ahead when the base sheet passed, was skipped or was never checked', async () => {
     for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: false, issues: ['x'], skipped: true }]) {
       const env = await setup()
@@ -300,6 +310,19 @@ describe('character tools', () => {
     expect(ok).not.toHaveProperty('note')
     generate.mockResolvedValueOnce({ ...base, check: null })
     expect(json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))).toMatchObject({ check: null })
+  })
+
+  it('adds no note when the sheet failed to draw, whatever older check it keeps', async () => {
+    const env = await setup()
+    const { characterId, baseVariationId } = json(await env.run('create_character', mina))
+    const base = (await env.s.characters.get(env.ctx, characterId)).variations[0]
+    const generate = vi.spyOn(env.s.characters, 'generateVariationImage')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    const r = json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))
+    expect(r).toMatchObject({ status: 'failed', check: FAILED })
+    expect(r).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    expect(json(await env.run('create_character', { ...mina, name: 'Zed' }))).not.toHaveProperty('note')
   })
 
   it('list_characters shows each sheet check and the issues of a failed one', async () => {

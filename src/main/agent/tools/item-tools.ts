@@ -3,7 +3,7 @@ import { ItemInputSchema, ItemPatchSchema, ItemUsageInputSchema } from '@shared/
 import type { Item, ItemUsage } from '@shared/types'
 import { DuplicateItemError, DuplicateUsageError } from '../../domain/item-service'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
-import { sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
+import { joinIssues, sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and every usage so new panels stay consistent.'
@@ -49,13 +49,21 @@ function refuseWhileBaseFailed(item: Item, target?: ItemUsage): void {
   if (target?.kind === 'base') return
   const base = item.usages.find((u) => u.kind === 'base')
   const issues = base ? sheetCheckFailure(base) : null
-  if (issues) throw new ToolError(`The base sheet of ${item.name} failed its check: ${issues.join('; ')}. Regenerate the base first.`)
+  if (issues) throw new ToolError(`The base sheet of ${item.name} failed its check: ${joinIssues(issues)}. Regenerate the base first.`)
 }
 
 /** The sheet check as the model reads it in a list: the state, and the issues when it failed. */
 function checkFields(u: ItemUsage): { check: 'passed' | 'failed' | 'skipped' | null; checkIssues?: string[] } {
   const issues = sheetCheckFailure(u)
   return issues ? { check: 'failed', checkIssues: issues } : { check: sheetCheckState(u.check) }
+}
+
+/**
+ * The note for a sheet that came out failed after the redraws: only a `ready` sheet whose check failed. A sheet whose
+ * drawing failed keeps its older check, and the redraws that note speaks of never happened.
+ */
+function failedNote(u: ItemUsage): { note?: string } {
+  return u.status === 'ready' && sheetCheckFailure(u) ? { note: SHEET_FAILED_NOTE } : {}
 }
 
 /** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. A failed sheet check adds a `note`. */
@@ -67,7 +75,7 @@ function usageOutcome(u: ItemUsage): ToolOutput {
       error: u.error,
       imagePath: u.imagePath,
       check: u.check,
-      ...(sheetCheckFailure(u) ? { note: SHEET_FAILED_NOTE } : {})
+      ...failedNote(u)
     },
     images: u.status === 'ready' && u.imagePath !== null ? [u.imagePath] : []
   }
@@ -127,7 +135,7 @@ const createItem = defineTool({
     // Generation never throws for provider failures; a failed image is reported in the result.
     const settled = generateBaseImage === false ? base : await items.generateUsageImage(ctx.project, created.id, base.id, { signal: ctx.signal })
     return {
-      content: { itemId: created.id, baseUsageId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...(sheetCheckFailure(settled) ? { note: SHEET_FAILED_NOTE } : {}) },
+      content: { itemId: created.id, baseUsageId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...failedNote(settled) },
       images: settled.status === 'ready' && settled.imagePath !== null ? [settled.imagePath] : []
     }
   }
