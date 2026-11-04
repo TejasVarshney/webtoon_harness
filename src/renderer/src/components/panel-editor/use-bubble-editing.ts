@@ -66,6 +66,8 @@ interface TextEdit {
 
 const inTextField = (target: EventTarget): boolean => target instanceof Element && target.closest('textarea, input, select') !== null
 const inBubble = (target: EventTarget): boolean => target instanceof Element && target.closest('.bubble') !== null
+/** The panel's status (Generating…, or Failed with its Retry) and any button are not empty stage: a double-click there adds no line. */
+const inControl = (target: EventTarget): boolean => target instanceof Element && target.closest('.panel-status, button') !== null
 const boxOf = (el: Element): Box => {
   const r = el.getBoundingClientRect()
   return { left: r.left, top: r.top, width: r.width, height: r.height }
@@ -398,7 +400,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     onPointerCancel: (e) => endPress(e, false),
     onLostPointerCapture: (e) => endPress(e, false),
     onDoubleClick: (e) => {
-      if (dragEnded.current || inBubble(e.target) || adding !== null) return
+      if (dragEnded.current || inBubble(e.target) || inControl(e.target) || adding !== null) return
       const panelB = panelBox()
       if (panelB === null || panelB.width <= 0 || panelB.height <= 0) return
       const x = e.clientX - panelB.left

@@ -7,7 +7,7 @@ import { initialCharactersState, useCharactersStore } from '../../stores/charact
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
-import { EPISODE_ID, panel } from '../../test/panel-fixtures'
+import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
 import { PanelStage } from './PanelStage'
 import { useDialogueSaver } from './use-dialogue-saver'
@@ -349,6 +349,21 @@ describe('PanelStage', () => {
     await userEvent.type(textBox(), 'Later.{Enter}')
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
     expect(updates(calls)[0]).toEqual({ dialogue: [{ speakerId: null, kind: 'narration', text: 'Later.', placement: { x: 0.25, y: 0.25 } }] })
+  })
+
+  it('adds no line on a double-click on the panel status, or on its Retry', () => {
+    const version = (status: 'pending' | 'failed') => panelVersion({ id: `ver_000000000${status === 'pending' ? 8 : 9}`, status, error: status === 'failed' ? 'Timed out' : null, imagePath: null })
+    stored = { ...stored, versions: [version('pending')] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    fireEvent.doubleClick(within(stage()).getByText('Generating…'), { clientX: 200, clientY: 300 })
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+
+    replaceStored({ ...stored, versions: [version('failed')] })
+    fireEvent.doubleClick(within(stage()).getByText('Failed: Timed out'), { clientX: 200, clientY: 300 })
+    fireEvent.doubleClick(within(stage()).getByRole('button', { name: 'Retry' }), { clientX: 200, clientY: 300 })
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+    expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
   })
 
   it('builds a save sent while another is still going on top of that one, and shows both meanwhile', async () => {
