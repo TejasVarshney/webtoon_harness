@@ -51,7 +51,7 @@ test('user creates a panel manually, agent continues from it', async () => {
 })
 
 // Panel shapes: a panel set beside and slanted in editing mode's Scene tab shares the previous panel's row, and a
-// slanted card is not cut off by its slant, so a click on it still opens editing mode.
+// slanted card's toolbar is not cut off by its slant, and a click on the card still opens editing mode.
 test('a panel set beside and slanted in editing mode joins the row and still opens', async () => {
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
@@ -86,6 +86,15 @@ test('a panel set beside and slanted in editing mode joins the row and still ope
   await expect(page.locator('.strip-row')).toHaveCount(1)
   const slanted = page.locator('.panel-card[data-frame="slanted"]')
   await expect(slanted).toHaveAttribute('data-beside', 'true')
+  // The slant does not cut off the toolbar: each of its buttons is what the pointer lands on.
+  await slanted.hover()
+  const toolbar = slanted.getByRole('group', { name: 'Panel actions' })
+  for (const name of ['Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
+    const button = toolbar.getByRole('button', { name })
+    const box = (await button.boundingBox())!
+    const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
+    expect(hit, `${name} is reachable`).toBe(true)
+  }
   await slanted.click()
   await expect(workspace).toBeVisible()
   await workspace.getByRole('tab', { name: 'Scene' }).click()

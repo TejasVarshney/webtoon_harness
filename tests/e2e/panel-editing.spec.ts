@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { createProjectAndSession, launchApp, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
 
 const shots = resolve(__dirname, '..', '..', 'test-results', 'panel-editing')
 
@@ -26,15 +26,23 @@ async function setWindowSize(app: ElectronApplication, page: Page, width: number
 }
 
 // Panel editing checkpoint (spec §1): click a card, retype its bubble and drag it to a new spot, change the panel's
-// layout, ask the panel chat for an edit, go back. The strip shows the new text in the new spot, on the card the user
-// left from, and only the chat's edit drew a new version.
+// layout, add a character and an item, ask the panel chat to fix the line, go back. The strip shows the chat's text in
+// the user's spot, on the card the user left from, and none of it drew a new version.
+// The panel chat's state names no ids for the mock to resolve refs from, so a first launch makes the cast, the item
+// and the panel, and a second one, on the same folders, has a script that names Mina's id outright.
 test('edit a panel in editing mode and find the changes on the strip', async () => {
   const mina = { $character: 'Mina' }
-  const { app, page, projectsRoot } = await launchApp({
+  const first = await launchApp({
     script: {
       turns: [
-        { toolCalls: [{ name: 'create_character', input: { name: 'Mina', role: 'protagonist', appearanceLock: 'Teenage girl, silver bob haircut, amber eyes, red bomber jacket.' } }] },
-        { text: 'Created Mina.' },
+        {
+          toolCalls: [
+            { name: 'create_character', input: { name: 'Mina', role: 'protagonist', appearanceLock: 'Teenage girl, silver bob haircut, amber eyes, red bomber jacket.' } },
+            { name: 'create_character', input: { name: 'Jun', role: 'supporting', appearanceLock: 'Tall teenage boy, messy black hair, round glasses, green hoodie.' } },
+            { name: 'create_item', input: { name: 'Kestrel blaster', appearanceLock: 'Compact matte-black sidearm the length of a hand, a cyan glowing slit along the barrel.' } }
+          ]
+        },
+        { text: 'Cast ready.' },
         {
           toolCalls: [
             {
@@ -50,20 +58,42 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
             }
           ]
         },
-        { text: 'Drew panel 1.' },
-        { toolCalls: [{ name: 'edit_image', input: { instruction: 'make her smile' } }] }, // panel chat turn
-        { text: 'Updated.' }
+        { text: 'Drew panel 1.' }
       ]
     }
   })
-  await createProjectAndSession(page, 'Moon Diary')
-  await sendChat(page, 'Create Mina', 'Created Mina.')
-  await sendChat(page, 'Draw panel 1', 'Drew panel 1.')
-  await page.getByTestId('tab-webtoon').click()
+  const { projectsRoot } = first
+  await createProjectAndSession(first.page, 'Moon Diary')
+  await sendChat(first.page, 'Make Mina, Jun and the blaster', 'Cast ready.')
+  await sendChat(first.page, 'Draw panel 1', 'Drew panel 1.')
+  await openTab(first.page, 'webtoon')
+  await expect(first.page.getByTestId('panel-card').locator('img')).toHaveCount(1)
+  await first.app.close()
+  const characters = await readProjectJson(projectsRoot, 'characters')
+  const idOf = (name: string): string => characters.find((c: { name: string }) => c.name === name).id
+  for (const c of characters) expect(c.variations[0].status, `${c.name}'s base look is ready`).toBe('ready')
+  const [item] = await readProjectJson(projectsRoot, 'items')
+  expect(item.usages[0].status).toBe('ready')
+
+  const fixed = "It's so huge!"
+  const { app, page } = await launchApp({
+    userDataDir: first.userDataDir,
+    projectsRoot,
+    script: {
+      turns: [
+        // The panel chat turn fixes the line. It leaves placement out, so the user's spot is kept.
+        { toolCalls: [{ name: 'update_panel_fields', input: { dialogue: [{ speakerId: idOf('Mina'), kind: 'speech', text: fixed }] } }] },
+        { text: 'Fixed the line.' }
+      ]
+    }
+  })
+  await page.getByTestId('session-item').click()
+  await openTab(page, 'webtoon')
   const card = page.getByTestId('panel-card').first()
   await expect(card.locator('img')).toHaveCount(1)
   const panelId = (await card.getAttribute('data-panel-id'))!
   const stored = () => readProjectJson(projectsRoot, `panels/${panelId}.json`)
+  const versions = (await stored()).versions.length
 
   // 1. Editing mode, at a laptop size.
   await setWindowSize(app, page, 1440, 900)
@@ -99,20 +129,35 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   await expect.poll(async () => near((await stored()).dialogue[0].placement), { message: 'line 0 is placed at 25% / 75%' }).toBe(true)
 
   // 4. A layout change saves without a redraw.
-  const versions = (await stored()).versions.length
   await workspace.getByRole('tab', { name: 'Scene' }).click()
   await workspace.getByLabel('Gutter').selectOption('black')
   await expect.poll(async () => (await stored()).gutter).toBe('black')
   expect((await stored()).versions).toHaveLength(versions)
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
 
-  // 5. The panel chat edits the image: a new version.
-  await workspace.getByTestId('composer-input').fill('make her smile')
-  await workspace.getByTestId('composer-send').click()
-  await expect(workspace.getByTestId('panel-version-label')).toHaveText('v2 / 2')
-  await expect(workspace.getByTestId('message-assistant').last()).toContainText('Updated.')
+  // 5. Jun joins the cast, and the blaster the items, each saved on its own.
+  await workspace.getByRole('tab', { name: 'Cast' }).click()
+  await workspace.getByRole('button', { name: 'Add character', exact: true }).click()
+  await workspace.getByLabel('Character').last().selectOption({ label: 'Jun' })
+  await expect(workspace.getByLabel('Variation').last().locator('option:checked')).toHaveText('Base')
+  await expect.poll(async () => (await stored()).characters.map((c: { characterId: string }) => c.characterId)).toEqual([idOf('Mina'), idOf('Jun')])
+  await workspace.getByRole('tab', { name: 'Items' }).click()
+  await workspace.getByRole('button', { name: 'Add item', exact: true }).click()
+  await workspace.getByLabel('Item', { exact: true }).selectOption({ label: 'Kestrel blaster' })
+  await expect.poll(async () => (await stored()).items.map((i: { itemId: string }) => i.itemId)).toEqual([item.id])
+  expect((await stored()).versions).toHaveLength(versions)
 
-  // 6. How it looks, at a laptop size and at a small one.
+  // 6. The panel chat fixes the line: its text changes, the user's spot stays, and nothing is redrawn.
+  await workspace.getByTestId('composer-input').fill('Make her line say it is so huge')
+  await workspace.getByTestId('composer-send').click()
+  await expect(workspace.getByTestId('message-assistant').last()).toContainText('Fixed the line.')
+  await expect.poll(async () => (await stored()).dialogue[0].text).toBe(fixed)
+  expect(near((await stored()).dialogue[0].placement)).toBe(true)
+  expect((await stored()).versions).toHaveLength(versions)
+  await expect(stage.locator('.dialogue-placed .bubble')).toHaveText(fixed)
+  await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
+
+  // 7. How it looks, at a laptop size and at a small one.
   await mkdir(shots, { recursive: true })
   const size = async () => (await viewport(page)).join('x')
   console.log(`editor-1440 viewport: ${await size()}`)
@@ -124,12 +169,13 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   console.log(`editor-1100 viewport: ${await size()}`)
   await page.screenshot({ path: resolve(shots, 'editor-1100.png'), animations: 'disabled' })
 
-  // 7. Back to the strip: the card the user left from has the focus, and its bubble has the new text in the new spot.
+  // 8. Back to the strip: the card the user left from has the focus, and its bubble has the chat's text in the
+  // user's spot.
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await expect(workspace).toHaveCount(0)
   await expect(card).toBeFocused()
   const placed = card.locator('.dialogue-placed .bubble')
-  await expect(placed).toHaveText("It's huge!")
+  await expect(placed).toHaveText(fixed)
   const left = await placed.evaluate((el: any) => el.style.left as string)
   expect(left).toMatch(/%$/)
   expect(Math.abs(parseFloat(left) - 25)).toBeLessThanOrEqual(2)
@@ -186,7 +232,10 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   await expect(stage.locator('.bubble')).toHaveCount(texts.length)
   const top = async (l: Locator) => (await boxOf(l)).y
   // The row starts out of sight, below the tabs' scroll area.
-  expect(await top(row)).toBeGreaterThan(await area.evaluate((el) => el.getBoundingClientRect().bottom))
+  const [width, height] = await viewport(page)
+  /** Where the tabs' area stops being visible: its bottom, or the window's. */
+  const shownBottom = async (): Promise<number> => Math.min(height, await area.evaluate((el) => el.getBoundingClientRect().bottom))
+  expect(await top(row)).toBeGreaterThan(await shownBottom())
   const stageTop = await top(stage)
 
   // A double-click opens the text in place, and it is still in sight once the row has been brought into view.
@@ -194,7 +243,6 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   const editor = stage.locator('.bubble-editor')
   await expect(editor).toBeFocused()
   await page.waitForTimeout(600)
-  const [width, height] = await viewport(page)
   const box = await boxOf(editor)
   expect(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height, 'the open text is inside the window').toBe(true)
   expect(await top(stage)).toBe(stageTop)
@@ -209,7 +257,10 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   await page.keyboard.press('Enter')
   await expect.poll(async () => (await stored()).dialogue[last].text).toBe('Then answer it, Mina.')
 
-  // A drag of the same bubble: the stage is where it was after the drop, and the placement is saved.
+  // A drag of the last bubble while another line is selected, so the press selects it and its row is scrolled to: the
+  // stage is where it was after the drop, the placement is saved, and the row came into view inside the tabs.
+  await stage.locator('[data-line="0"]').click()
+  await expect.poll(async () => (await boxOf(row)).y > (await shownBottom())).toBe(true)
   const from = await boxOf(bubble)
   const media = await boxOf(stage.locator('.panel-media'))
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
@@ -219,5 +270,11 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   await expect.poll(async () => (await stored()).dialogue[last].placement).not.toBeNull()
   await page.waitForTimeout(600)
   expect(await top(stage)).toBe(stageTop)
+  const shown = await area.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return { top: r.top, bottom: r.bottom }
+  })
+  const dropped = await boxOf(row)
+  expect(dropped.y >= shown.top - 1 && dropped.y < Math.min(shown.bottom, height), 'the row came into view in the scroll area').toBe(true)
   await app.close()
 })
