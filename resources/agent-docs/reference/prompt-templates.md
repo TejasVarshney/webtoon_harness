@@ -240,3 +240,5 @@ What the app does with the answer:
 6. Every attempt stays in the panel's history. The current image becomes the last attempt that passed or, if none passed, the last attempt that rendered. A redraw that fails to render never replaces the image that is current.
 
 So the issues the checker writes become fix instructions for the image model: they must be short, concrete and about what is visible (see `reference/consistency-checklist`).
+
+After a failed sheet check, the redraw appends ` Fix these issues: {issues joined by "; "}` to the sheet prompt (any of the four above).

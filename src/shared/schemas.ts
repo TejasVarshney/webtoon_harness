@@ -77,6 +77,12 @@ export const ProjectMetaSchema = z.object({
 
 const text = () => z.string().default('')
 
+export const CheckResultSchema = z.object({
+  passed: z.boolean(),
+  issues: z.array(z.string()),
+  skipped: z.boolean().default(false)
+})
+
 export const CharacterizationSchema = z.object({
   personality: text(),
   backstory: text(),
@@ -108,6 +114,7 @@ export const VariationSchema = z.object({
   imagePath: z.string().nullable().default(null),
   status: ImageStatusSchema,
   error: z.string().nullable().default(null),
+  check: CheckResultSchema.nullable().default(null),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp
 })
@@ -161,6 +168,7 @@ export const ItemUsageSchema = z.object({
   imagePath: z.string().nullable().default(null),
   status: ImageStatusSchema,
   error: z.string().nullable().default(null),
+  check: CheckResultSchema.nullable().default(null),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp
 })
@@ -229,12 +237,6 @@ export const DialogueLineSchema = z.object({
   speakerId: Id.nullable(),
   kind: DialogueKindSchema,
   text: z.string()
-})
-
-export const CheckResultSchema = z.object({
-  passed: z.boolean(),
-  issues: z.array(z.string()),
-  skipped: z.boolean().default(false)
 })
 
 export const PanelVersionSchema = z.object({

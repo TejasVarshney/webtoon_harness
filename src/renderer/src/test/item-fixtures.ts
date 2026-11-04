@@ -13,6 +13,7 @@ export function usage(o: Partial<ItemUsage> = {}): ItemUsage {
     imagePath: 'items/itm_0000000001/use_0000000001_aaaaaa.png',
     status: 'ready',
     error: null,
+    check: null,
     createdBy: 'user',
     createdAt: T,
     ...o

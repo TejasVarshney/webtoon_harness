@@ -188,6 +188,7 @@ export class CharacterService {
       delta: input.delta,
       imagePath: null,
       ...initialStatus(opts),
+      check: null,
       createdBy,
       createdAt: now()
     }

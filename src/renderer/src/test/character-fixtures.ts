@@ -13,6 +13,7 @@ export function variation(o: Partial<Variation> = {}): Variation {
     imagePath: 'characters/chr_0000000001/var_0000000001_aaaaaa.png',
     status: 'ready',
     error: null,
+    check: null,
     createdBy: 'user',
     createdAt: T,
     ...o
