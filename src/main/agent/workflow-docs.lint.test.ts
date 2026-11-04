@@ -23,7 +23,7 @@ const REQUIRED: Record<string, string[]> = {
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
   'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Attaching Items', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
-  'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
+  'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Panel Layout', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
   'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
   'reference/consistency-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance'],
   'reference/sheet-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance']
@@ -138,6 +138,7 @@ describe('workflow docs lint', () => {
         setting: '{setting}',
         shot: '{shot}' as never,
         aspect: '{aspect}' as never,
+        frame: 'bordered',
         characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
         items: [],
         continuityNotes: '{continuityNotes}'
@@ -188,6 +189,7 @@ describe('workflow docs lint', () => {
         setting: '{setting}',
         shot: '{shot}' as never,
         aspect: '{aspect}' as never,
+        frame: 'bordered',
         characters: [{ characterId: character.id, variationId: character.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never }],
         items: [entry],
         continuityNotes: '{continuityNotes}'
@@ -253,6 +255,20 @@ describe('workflow docs lint', () => {
     const checklist = read('reference/consistency-checklist')
     expect(extractSection(checklist, 'Severity')).toContain('gray hands')
     expect(extractSection(checklist, 'Checklist')).toContain('**Items, per item.**')
+  })
+
+  it('panel-editing says a layout change needs no redraw (spec §5.1), where the panel side chat reads it', () => {
+    const table = extractSection(read('workflows/panel-editing'), 'Edit vs Regenerate')
+    const row = table.split('\n').find((line) => line.includes('`frame`'))
+    expect(row, 'a row for the layout fields').toBeDefined()
+    for (const word of ['`beside`', '`gapAfter`', '`gutter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
+    expect(row!.trimEnd().endsWith('| no |')).toBe(true)
+    // The composition row is about the picture's arrangement, not the panel's layout.
+    expect(table.split('\n').find((line) => line.includes('A different composition'))).not.toMatch(/\blayout\b/)
+    const catalog = extractSection(read('AGENTS'), 'Tool Catalog')
+    const update = catalog.split('\n').find((line) => line.startsWith('- `update_panel` '))!
+    expect(update).toContain('`frame`, `beside`, `gapAfter` and `gutter` need no redraw')
+    expect(update).toContain('an aspect change between 9:16, 1:2 and 1:3')
   })
 
   it('panel-generation explains how items are attached', () => {

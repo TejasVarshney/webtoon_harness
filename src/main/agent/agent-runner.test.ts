@@ -172,9 +172,9 @@ describe('AgentRunner', () => {
       expect(snapshot).toContain(
         [
           'recent_panels:',
-          `- ${ids[2]} [medium] cast: none | Beat 2 | dialogue: none`,
-          `- ${ids[3]} [medium] cast: none | Beat 3 | dialogue: none`,
-          `- ${last.panel.id} [close-up] cast: Mina (${variationId}) | Beat 4 | dialogue: Mina: "Hello?" / narration: "Silence."`
+          `- ${ids[2]} [medium, 2:3] cast: none | Beat 2 | dialogue: none`,
+          `- ${ids[3]} [medium, 2:3] cast: none | Beat 3 | dialogue: none`,
+          `- ${last.panel.id} [close-up, 2:3] cast: Mina (${variationId}) | Beat 4 | dialogue: Mina: "Hello?" / narration: "Silence."`
         ].join('\n')
       )
       expect(snapshot).not.toContain('Beat 1')

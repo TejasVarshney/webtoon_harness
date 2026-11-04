@@ -7,6 +7,7 @@ import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
 import { castNames, itemNames, speakerName, type PanelNeighbor } from '../system-prompt'
+import { layoutFields } from './panel-tools'
 import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 /*
@@ -21,6 +22,10 @@ function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
   return {
     shot: panel.shot,
     aspect: panel.aspect,
+    frame: panel.frame,
+    beside: panel.beside,
+    gapAfter: panel.gapAfter,
+    gutter: panel.gutter,
     setting: panel.setting,
     description: panel.description,
     continuityNotes: panel.continuityNotes,
@@ -188,6 +193,8 @@ const viewCurrentImage = (panelId: string): ToolDefinition =>
 const patchInput = PanelPatchSchema.extend({
   description: PanelPatchSchema.shape.description.describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
   setting: PanelPatchSchema.shape.setting.describe('Where and when, e.g. "Apartment hallway, evening"'),
+  aspect: PanelPatchSchema.shape.aspect.describe('1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
+  ...layoutFields,
   characters: PanelPatchSchema.shape.characters.describe('Who is in the panel (characterId and variationId from the roster), replacing the whole cast. Empty for a scene without characters.'),
   items: PanelPatchSchema.shape.items.describe(
     'Items in the panel (itemId, a ready usageId, heldBy a cast member or null, action), replacing the whole list. Removing a cast member who holds an item is rejected: change heldBy too.'

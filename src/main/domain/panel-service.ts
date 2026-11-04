@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
 import type { Character, CheckResult, DialogueLine, Episode, Item, ItemUsage, Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch, PanelVersion, Variation } from '@shared/types'
@@ -127,6 +128,10 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       setting: draft.setting,
       shot: draft.shot,
       aspect: draft.aspect ?? meta.defaultAspect,
+      frame: draft.frame,
+      beside: draft.beside,
+      gapAfter: draft.gapAfter,
+      gutter: draft.gutter,
       characters: draft.characters,
       items: draft.items ?? [],
       dialogue: draft.dialogue.map(withId),
@@ -173,6 +178,10 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         setting: patch.setting ?? current.setting,
         shot: patch.shot ?? current.shot,
         aspect: patch.aspect ?? current.aspect,
+        frame: patch.frame ?? current.frame,
+        beside: patch.beside ?? current.beside,
+        gapAfter: patch.gapAfter ?? current.gapAfter,
+        gutter: patch.gutter ?? current.gutter,
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
         dialogue: patch.dialogue ? patch.dialogue.map(withId) : current.dialogue,
@@ -252,7 +261,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
-      request = { prompt: attempt.prompt, references: composed.references, aspect: panel.aspect, signal: opts.signal }
+      request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
       context = { panel, roster: [...roster.values()], itemRoster, references: composed.references, retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await this.record(ctx, id, attempt, { error: failureMessage(error) }), context: null }
@@ -285,7 +294,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       })
       attempt.prompt = editPanelPrompt(instruction, cast, attached)
       attempt.referenceImagePaths = references.map((r) => r.relPath)
-      request = { prompt: attempt.prompt, references, aspect: panel.aspect, signal: opts.signal, sourceRelPath: source.imagePath }
+      request = { prompt: attempt.prompt, references, aspect: drawAspect(panel.aspect), signal: opts.signal, sourceRelPath: source.imagePath }
     } catch (error) {
       return this.record(ctx, id, attempt, { error: failureMessage(error) })
     }

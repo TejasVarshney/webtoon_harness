@@ -122,8 +122,22 @@ describe('Panel', () => {
   it('accepts every shot type and aspect from the spec', () => {
     for (const shot of ['establishing', 'wide', 'medium', 'close-up', 'extreme-close-up', 'over-the-shoulder', 'birds-eye', 'worms-eye'])
       expect(PanelSchema.parse({ ...minimalPanel, shot }).shot).toBe(shot)
-    for (const aspect of ['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
+    for (const aspect of ['1:1', '2:3', '3:4', '9:16', '4:3', '16:9', '1:2', '1:3'])
       expect(PanelSchema.parse({ ...minimalPanel, aspect }).aspect).toBe(aspect)
+  })
+
+  it('defaults the layout fields of a panel stored without them', () => {
+    expect(PanelSchema.parse(minimalPanel)).toMatchObject({ frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' })
+  })
+
+  it('refuses a frame or gap it does not know', () => {
+    expect(() => PanelSchema.parse({ ...minimalPanel, frame: 'tilted' })).toThrow()
+    expect(() => PanelSchema.parse({ ...minimalPanel, gapAfter: 'huge' })).toThrow()
+    expect(() => PanelSchema.parse({ ...minimalPanel, gutter: 'red' })).toThrow()
+  })
+
+  it('patches the layout fields alone', () => {
+    expect(PanelPatchSchema.parse({ beside: true })).toEqual({ beside: true })
   })
 
   it('defaults panel character fields', () => {
