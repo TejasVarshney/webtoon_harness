@@ -87,3 +87,16 @@ PanelVersion  += drawnFrom: VisualFields | null          default null
 ## 8. Look (app-screen rules)
 
 The app is the framed-sheet style. The editor takes its tokens from `styles.css` and adds no colour. The accent is only on the selected bubble and the active tab. Surfaces are separated by 1px `--border` or one tone step. Shadows only on what floats (a dragged bubble). Icons are 15–16px lucide outlines in `--muted`, never in a tinted box. Words of the trade: Lines, Cast, Items, Scene, Lettering.
+
+## 9. Amendments (rulings during implementation)
+
+Where the sections above and these differ, these win.
+
+- **R1, one save queue per panel (§6).** Every save of a panel goes through one queue (`panel-save-queue.ts`), shared by the stage and every tab. Each save is built when its turn comes, from the last save's result when the store has not caught up. Items are saved before characters, because the service refuses a cast that drops someone who still holds an item.
+- **R2, where save messages show (§6).** The conflict copy and refused dialogue saves show in the Lines tab, once. A stage action that produces one opens Lines. Each tab shows only the warnings of the last save it made.
+- **R3, scrolling to a line (§4).** The tabs scroll inside their own area. Selecting a bubble scrolls only that area to its row, so the stage and an open bubble never move.
+- **R4, the split (§4).** The tabs keep at least 240px. The stage's height is `max(160px, min(62vh, what is left of the column after 256px))`. In a short window (1100×720) the tabs are the larger block.
+- **R5, Lines rows (§5).** Each row puts Speaker, Kind and Text on one line, then Reset to auto (placed lines only) and Remove. At narrow widths the text wraps under the selects.
+- **R6, the header (§4).** It may wrap to two rows at narrow widths. Nothing in it is dropped.
+- **R7, Regenerate and Upload (§4, §6).** Both wait until the panel's queued saves settle, and do nothing after a refused one, so an image is never drawn from fields that have not been saved.
+- **R8, focus (§2).** Opening the editor puts the focus on Back. Back puts it on the card the user left from.
