@@ -362,7 +362,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       await this.opts.trash(file)
       const dir = ctx.paths.panelDir(id)
       if (fs.existsSync(dir)) await this.opts.trash(dir)
-      // Ruling T18d: the panel's side-chat thread goes with it.
+      // Ruling T18d: the panel's chat thread goes with it.
       const chat = ctx.paths.panelChatFile(id)
       if (fs.existsSync(chat)) await this.opts.trash(chat)
     })

@@ -4,10 +4,10 @@
 
 This doc tells you how to change a panel that already exists: its dialogue, its fields, or its image. It applies in two places:
 
-- **The panel side chat.** The user opened one panel in editing mode and is talking to you about it. This doc and the Hard Rules are your instructions there.
-- **The main chat**, when the user asks to change an existing panel there. The Scope table gives the main-chat tool for each side-chat tool, and Example 7 is a main-chat edit.
+- **The panel chat.** The user opened one panel in editing mode and is talking to you about it in the chat beside it. This doc and the Hard Rules are your instructions there.
+- **The main chat**, when the user asks to change an existing panel there. The Scope table gives the main-chat tool for each panel-chat tool, and Example 7 is a main-chat edit.
 
-In the side chat, every user message starts with a `<panel_context>` block. The app writes it; the user does not see it. Example:
+In the panel chat, every user message starts with a `<panel_context>` block. The app writes it; the user does not see it. Example:
 
 ```
 <panel_context>
@@ -40,20 +40,20 @@ The block is a snapshot from when the user sent the message. After you change so
 
 ## Scope
 
-In the side chat, every tool acts on this one panel, and none takes a panel id:
+In the panel chat, every tool acts on this one panel, and none takes a panel id:
 
-| Side chat tool | What it does | Main chat tool |
+| Panel chat tool | What it does | Main chat tool |
 |---|---|---|
 | `get_panel_context` | Reads this panel now: fields, cast with ids, dialogue, versions with labels, neighbors. | `get_panel` |
 | `view_current_image` | Shows you the current image (only if your model can see images). | `view_panel_image` |
 | `update_panel_fields` | Changes fields. Draws nothing. | `update_panel` |
 | `regenerate_image` | Draws the panel again from its fields: a new version. | `regenerate_panel` |
 | `edit_image` | Edits the current image with an instruction: a new version. | `edit_panel_image` |
-| `revert_to_version` | Makes an earlier ready version current. | none: the user uses the version switcher in the side chat |
+| `revert_to_version` | Makes an earlier ready version current. | none: the user opens the panel (clicks its card) and uses the ‹ vN / M › switcher in the editor's header |
 
-In the side chat, the main-chat tools in the right column do not exist: never call them there. Use the side chat tools in the left column.
+In the panel chat, the main-chat tools in the right column do not exist: never call them there. Use the panel chat tools in the left column.
 
-You cannot do these in the side chat. Tell the user to ask in the main chat:
+You cannot do these in the panel chat. Tell the user to ask in the main chat:
 
 - change another panel, add or delete panels;
 - create a character or a variation, or change a character's appearance lock;
@@ -122,7 +122,7 @@ A character must look the same in every panel. When you change a panel:
 - Every image attempt is a **version**: generated, edited or uploaded. No version is ever deleted.
 - The **current** version is the one shown in the strip. A failed attempt never becomes current: the previous image stays.
 - **Labels** count ready versions only: `v2 of 3` means the current image is the 2nd of 3 ready images. A failed or pending version has no label; its status says why.
-- The user can switch versions with the ‹ vN / M › switcher at the top of the side chat; switching makes that version current.
+- The user can switch versions with the ‹ vN / M › switcher in the editor's header, above the panel; switching makes that version current.
 
 To revert, you need the version's id (ver_...), not its label:
 
@@ -130,7 +130,7 @@ To revert, you need the version's id (ver_...), not its label:
 2. Find the label the user means ("the first one" is `v1`).
 3. Call `revert_to_version` with that version's `id`.
 
-Only a `ready` version can be made current. In the main chat there is no revert tool: tell the user to select the panel and use the version switcher in its side chat.
+Only a `ready` version can be made current. In the main chat there is no revert tool: tell the user to open the panel (click its card) and use the ‹ vN / M › switcher in the editor's header, above the panel.
 
 ## Dialogue-Only Changes
 
@@ -141,7 +141,7 @@ Dialogue is drawn over the image by the app, so changing it needs no image call 
 - `speakerId` is a character id (copy it from `get_panel_context`), or null for `narration` and `sfx`.
 - At most 2 bubbles per panel and 25 words per bubble.
 - `"dialogue": []` removes all lines.
-- Main chat only (this tool does not exist in the side chat): `update_panel` with `panelId` and `patch: {"dialogue": [...]}`, without `regenerate`.
+- Main chat only (this tool does not exist in the panel chat): `update_panel` with `panelId` and `patch: {"dialogue": [...]}`, without `regenerate`.
 
 Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself.
 
@@ -253,7 +253,7 @@ If the retry fails too, stop: say it failed twice and suggest checking the image
 
 ### Example 7: the same request in the main chat (main chat only)
 
-This example is for the main chat. In the side chat, use Example 2 instead.
+This example is for the main chat. In the panel chat, use Example 2 instead.
 
 User in the main chat: "In panel 3, make Jin look scared."
 

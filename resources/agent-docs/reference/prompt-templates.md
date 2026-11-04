@@ -6,7 +6,7 @@ Placeholders are in braces. Every other character, including punctuation, is exa
 
 ## Panel Prompt
 
-Used for every generated panel image (`create_panel`, `regenerate_panel`, `update_panel` with `"regenerate": true`, and `regenerate_image` in the side chat):
+Used for every generated panel image (`create_panel`, `regenerate_panel`, `update_panel` with `"regenerate": true`, and `regenerate_image` in the panel chat):
 
 ```
 [STYLE] {stylePreset}. Vertical-scroll webtoon panel, {aspect} aspect ratio, {shot} shot. No text, no speech bubbles, no captions, no watermark.
@@ -172,7 +172,7 @@ Item usage reference sheet. {stylePreset}. Plain light-gray background, no text.
 
 ## Panel Edit Prompt
 
-Used for `edit_panel_image` and the side chat's `edit_image`. The panel's current image is sent first ("the first image"), followed by the cast members' variation images in cast order and the usage images of the panel's items in panel order (no previous panel). It uses the model assigned to the image-edit role.
+Used for `edit_panel_image` and the panel chat's `edit_image`. The panel's current image is sent first ("the first image"), followed by the cast members' variation images in cast order and the usage images of the panel's items in panel order (no previous panel). It uses the model assigned to the image-edit role.
 
 ```
 Edit the first image: {instruction}. Keep everything else unchanged — composition, framing, lighting, art style — and keep these characters on-model: {name}: {appearanceLock} No text, no speech bubbles.

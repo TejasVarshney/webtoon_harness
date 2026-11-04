@@ -119,7 +119,7 @@ export function speakerName(line: DialogueLine, roster: Character[]): string | n
 export type PanelNeighbor = Panel | 'unreadable' | null
 
 /**
- * The `<panel_context>` block stored with each panel side-chat message. `roster` should include archived
+ * The `<panel_context>` block stored with each message of a panel's chat. `roster` should include archived
  * characters and `itemRoster` every item, archived ones too: they still name the cast, speakers and items of panels drawn before they were archived.
  */
 export function buildPanelContext(panel: Panel, roster: Character[], itemRoster: Item[], prev: PanelNeighbor, next: PanelNeighbor): string {
