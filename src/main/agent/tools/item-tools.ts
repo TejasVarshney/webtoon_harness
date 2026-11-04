@@ -3,9 +3,13 @@ import { ItemInputSchema, ItemPatchSchema, ItemUsageInputSchema } from '@shared/
 import type { Item, ItemUsage } from '@shared/types'
 import { DuplicateItemError, DuplicateUsageError } from '../../domain/item-service'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
+import { sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and every usage so new panels stay consistent.'
+
+/** What the model is told when a generated sheet failed its check after the redraws (spec §9). */
+const SHEET_FAILED_NOTE = 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
 
 const itemId = z.string().describe('Item id, e.g. itm_0123456789')
 const usageId = z.string().describe('Usage id, e.g. use_0123456789')
@@ -37,10 +41,34 @@ async function checkOwner(ctx: ToolContext, ownerId: string | null | undefined):
   }
 }
 
-/** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. */
+/**
+ * Usages are drawn from the base image, so none is created or redrawn while the base sheet has failed its check (spec §9).
+ * Redrawing the base itself stays allowed: pass `target` and the base is let through.
+ */
+function refuseWhileBaseFailed(item: Item, target?: ItemUsage): void {
+  if (target?.kind === 'base') return
+  const base = item.usages.find((u) => u.kind === 'base')
+  const issues = base ? sheetCheckFailure(base) : null
+  if (issues) throw new ToolError(`The base sheet of ${item.name} failed its check: ${issues.join('; ')}. Regenerate the base first.`)
+}
+
+/** The sheet check as the model reads it in a list: the state, and the issues when it failed. */
+function checkFields(u: ItemUsage): { check: 'passed' | 'failed' | 'skipped' | null; checkIssues?: string[] } {
+  const issues = sheetCheckFailure(u)
+  return issues ? { check: 'failed', checkIssues: issues } : { check: sheetCheckState(u.check) }
+}
+
+/** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. A failed sheet check adds a `note`. */
 function usageOutcome(u: ItemUsage): ToolOutput {
   return {
-    content: { usageId: u.id, status: u.status, error: u.error, imagePath: u.imagePath },
+    content: {
+      usageId: u.id,
+      status: u.status,
+      error: u.error,
+      imagePath: u.imagePath,
+      check: u.check,
+      ...(sheetCheckFailure(u) ? { note: SHEET_FAILED_NOTE } : {})
+    },
     images: u.status === 'ready' && u.imagePath !== null ? [u.imagePath] : []
   }
 }
@@ -58,7 +86,7 @@ const listItems = defineTool({
           name: i.name,
           aliases: i.aliases,
           ownerId: i.ownerId,
-          usages: i.usages.map((u) => ({ id: u.id, name: u.name, kind: u.kind, status: u.status }))
+          usages: i.usages.map((u) => ({ id: u.id, name: u.name, kind: u.kind, status: u.status, ...checkFields(u) }))
         }))
       }
     }
@@ -138,7 +166,7 @@ const createItemUsage = defineTool({
     generateImage: z.boolean().optional().describe('Generate the reference image now. Default true.')
   }),
   handler: async ({ itemId, generateImage, ...input }, ctx) => {
-    await loadItem(ctx, itemId)
+    refuseWhileBaseFailed(await loadItem(ctx, itemId))
     const { items } = ctx.services
     let added: ItemUsage
     try {
@@ -160,7 +188,7 @@ const regenerateItemUsage = defineTool({
   input: z.object({ itemId, usageId }),
   handler: async ({ itemId, usageId }, ctx) => {
     const item = await loadItem(ctx, itemId)
-    findUsage(item, usageId)
+    refuseWhileBaseFailed(item, findUsage(item, usageId))
     return usageOutcome(await ctx.services.items.generateUsageImage(ctx.project, itemId, usageId, { signal: ctx.signal }))
   }
 })

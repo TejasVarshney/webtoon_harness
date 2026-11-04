@@ -3,9 +3,13 @@ import { CharacterInputSchema, CharacterPatchSchema, VariationInputSchema } from
 import type { Character, Variation } from '@shared/types'
 import { DuplicateCharacterError } from '../../domain/character-service'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
+import { sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and variations so new panels stay consistent.'
+
+/** What the model is told when a generated sheet failed its check after the redraws (spec §9). */
+const SHEET_FAILED_NOTE = 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
 
 const characterId = z.string().describe('Character id, e.g. chr_0123456789')
 const variationId = z.string().describe('Variation id, e.g. var_0123456789')
@@ -26,10 +30,34 @@ function findVariation(character: Character, id: string): Variation {
   return found
 }
 
-/** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. */
+/**
+ * Variations copy the base's face, so none is created or redrawn while the base sheet has failed its check (spec §9).
+ * Redrawing the base itself stays allowed: pass `target` and the base is let through.
+ */
+function refuseWhileBaseFailed(character: Character, target?: Variation): void {
+  if (target?.kind === 'base') return
+  const base = character.variations.find((v) => v.kind === 'base')
+  const issues = base ? sheetCheckFailure(base) : null
+  if (issues) throw new ToolError(`The base sheet of ${character.name} failed its check: ${issues.join('; ')}. Regenerate the base first.`)
+}
+
+/** The sheet check as the model reads it in a list: the state, and the issues when it failed. */
+function checkFields(v: Variation): { check: 'passed' | 'failed' | 'skipped' | null; checkIssues?: string[] } {
+  const issues = sheetCheckFailure(v)
+  return issues ? { check: 'failed', checkIssues: issues } : { check: sheetCheckState(v.check) }
+}
+
+/** The outcome of an image generation. A `failed` status is a result for the model to read, not a thrown error. A failed sheet check adds a `note`. */
 function variationOutcome(v: Variation): ToolOutput {
   return {
-    content: { variationId: v.id, status: v.status, error: v.error, imagePath: v.imagePath },
+    content: {
+      variationId: v.id,
+      status: v.status,
+      error: v.error,
+      imagePath: v.imagePath,
+      check: v.check,
+      ...(sheetCheckFailure(v) ? { note: SHEET_FAILED_NOTE } : {})
+    },
     images: v.status === 'ready' && v.imagePath !== null ? [v.imagePath] : []
   }
 }
@@ -47,7 +75,7 @@ const listCharacters = defineTool({
           name: c.name,
           role: c.role,
           aliases: c.aliases,
-          variations: c.variations.map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status }))
+          variations: c.variations.map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, ...checkFields(v) }))
         }))
       }
     }
@@ -122,7 +150,7 @@ const createVariation = defineTool({
     generateImage: z.boolean().optional().describe('Generate the reference image now. Default true.')
   }),
   handler: async ({ characterId, generateImage, ...input }, ctx) => {
-    await loadCharacter(ctx, characterId)
+    refuseWhileBaseFailed(await loadCharacter(ctx, characterId))
     const { characters } = ctx.services
     const added = await characters.addVariation(ctx.project, characterId, input, 'ai', { generate: generateImage !== false })
     const settled = generateImage === false ? added : await characters.generateVariationImage(ctx.project, characterId, added.id, { signal: ctx.signal })
@@ -138,7 +166,7 @@ const regenerateVariation = defineTool({
   input: z.object({ characterId, variationId }),
   handler: async ({ characterId, variationId }, ctx) => {
     const character = await loadCharacter(ctx, characterId)
-    findVariation(character, variationId)
+    refuseWhileBaseFailed(character, findVariation(character, variationId))
     return variationOutcome(await ctx.services.characters.generateVariationImage(ctx.project, characterId, variationId, { signal: ctx.signal }))
   }
 })

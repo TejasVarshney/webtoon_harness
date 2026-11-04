@@ -25,6 +25,22 @@ describe('system prompt', () => {
     expect(s.trim().endsWith('</project_state>')).toBe(true)
   })
 
+  it('marks only a failed sheet check in the snapshot', () => {
+    const failed = { passed: false, issues: ['x'], skipped: false }
+    const mina = makeCharacter({
+      variations: [
+        makeVariation({ status: 'ready', check: failed }),
+        makeVariation({ id: 'var_0000000002', name: 'Outfit', kind: 'outfit', status: 'ready', check: { passed: true, issues: [], skipped: false } }),
+        makeVariation({ id: 'var_0000000003', name: 'Pose', kind: 'pose', status: 'ready', check: null }),
+        makeVariation({ id: 'var_0000000004', name: 'Look', kind: 'other', status: 'ready', check: { passed: false, issues: ['x'], skipped: true } })
+      ]
+    })
+    const blaster = makeItem({ usages: [makeItemUsage({ status: 'ready', check: failed }), makeItemUsage({ id: 'use_0000000002', name: 'Firing', status: 'ready', check: null })] })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [mina], items: [blaster], episode: null, recentPanels: [] })
+    expect(s).toContain('variations: var_0000000001 Base (ready, check failed), var_0000000002 Outfit (ready), var_0000000003 Pose (ready), var_0000000004 Look (ready)')
+    expect(s).toMatch(/usages: use_0000000001 .* \(ready, check failed\), use_0000000002 Firing \(ready\)/)
+  })
+
   it('renders characters, episode and panels; omits archived characters', () => {
     const mina = makeCharacter({
       variations: [makeVariation({ status: 'ready' }), makeVariation({ id: 'var_0000000002', name: 'Outfit: School uniform', kind: 'outfit', status: 'pending' })]
