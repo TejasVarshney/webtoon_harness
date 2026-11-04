@@ -12,6 +12,8 @@ interface Queue {
   tail: Promise<void>
   /** Saves queued and not settled yet. */
   waiting: number
+  /** Those saves themselves, for `whenSaved`: each goes once it settles. */
+  runs: Set<Promise<SaveResult | null>>
   /** The panel as the last save returned it, until the store has one as new. */
   latest: Panel | null
 }
@@ -83,7 +85,7 @@ function caughtUp(stored: Panel | undefined, queue: Queue): boolean {
  * saves queued after it. `by` (a field's name, or `dialogue`) is what made the save: its warnings show there.
  */
 export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[], by: string): Promise<SaveResult | null> {
-  const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, latest: null }
+  const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, runs: new Set(), latest: null }
   queues.set(panelId, queue)
   queue.waiting += 1
   const run = queue.tail.then(async () => {
@@ -98,11 +100,25 @@ export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPa
     }
     return result
   })
+  queue.runs.add(run)
   const settle = (): void => {
     queue.waiting -= 1
+    queue.runs.delete(run)
     // A queue that ran dry is forgotten once the store has caught up with it; until then its last save stays the base.
     if (queue.waiting === 0 && queues.get(panelId) === queue && caughtUp(findPanel(panelId), queue)) queues.delete(panelId)
   }
   queue.tail = run.then(settle, settle)
   return run
+}
+
+/**
+ * Settles once every save of the panel queued so far has, so a redraw or an upload works from the fields as the user
+ * left them (a field is saved when it is left, which comes before the click). Rejects with the first of those saves the
+ * service refused: what waits on it does not run, as the field keeps the refused draft.
+ */
+export async function whenSaved(panelId: string): Promise<void> {
+  const queue = queues.get(panelId)
+  if (queue === undefined) return
+  const refused = (await Promise.allSettled([...queue.runs])).find((outcome) => outcome.status === 'rejected')
+  if (refused !== undefined) throw refused.reason
 }

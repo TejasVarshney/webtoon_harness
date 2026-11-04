@@ -126,6 +126,65 @@ describe('PanelWorkspace', () => {
     expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
   })
 
+  describe.each([
+    ['Regenerate in the header', 'panels:generate', () => within(header()).getByRole('button', { name: 'Regenerate' })],
+    ["the stale notice's Regenerate", 'panels:generate', () => within(within(workspace()).getByTestId('stale-notice')).getByRole('button', { name: 'Regenerate' })],
+    ['Upload image…', 'panels:uploadImage', () => within(header()).getByRole('button', { name: 'Upload image…' })]
+  ] as const)('%s', (_, channel, button) => {
+    // An image drawn from other fields, so the notice shows.
+    const stale = (): Panel => {
+      const version = panelVersion({ id: 'ver_00000000b9', drawnFrom: { ...visualFields(second), setting: 'Street' } })
+      return { ...second, versions: [version], currentVersionId: version.id }
+    }
+
+    it('waits for the save of a field just left, so it works from what the user typed', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, stale(), third] } })
+      let release: () => void = () => undefined
+      const { calls } = mount({
+        'panels:update': () => new Promise((resolve) => (release = () => resolve({ panel: stale(), warnings: [] }))),
+        'panels:generate': () => undefined,
+        'panels:uploadImage': () => null
+      })
+      fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
+      focus(within(workspace()).getByLabelText('Description'))
+      await userEvent.keyboard('A wider view')
+      await userEvent.click(button())
+      await act(async () => undefined)
+      const saving = calls.filter((c) => c.channel === 'panels:update').length
+      const ranMeanwhile = calls.some((c) => c.channel === channel)
+      // Released before anything is asserted, so a save left waiting cannot hold up the next test's.
+      await act(async () => release())
+      expect(saving).toBe(1)
+      expect(ranMeanwhile).toBe(false)
+      await waitFor(() => expect(calls.some((c) => c.channel === channel)).toBe(true))
+      const order = calls.map((c) => c.channel)
+      // After the save, and after the reload that follows it.
+      const reload = order.indexOf('panels:list', order.indexOf('panels:update'))
+      expect(reload).toBeGreaterThan(-1)
+      expect(order.indexOf(channel)).toBeGreaterThan(reload)
+    })
+
+    it('does not run when that save is refused, and says why', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, stale(), third] } })
+      const { calls } = mount({
+        'panels:update': () => {
+          throw new Error('Description is too long')
+        },
+        'panels:generate': () => undefined,
+        'panels:uploadImage': () => null
+      })
+      fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
+      focus(within(workspace()).getByLabelText('Description'))
+      await userEvent.keyboard('A wider view')
+      await userEvent.click(button())
+      // Said above the stage, as well as by the field.
+      await waitFor(() => expect(workspace().querySelector('.editing-error')).toHaveTextContent('Description is too long'))
+      expect(within(within(workspace()).getByRole('tabpanel')).getByRole('alert')).toHaveTextContent('Description is too long')
+      expect(within(header()).getByRole('button', { name: 'Upload image…' })).toBeEnabled()
+      expect(calls.some((c) => c.channel === channel)).toBe(false)
+    })
+  })
+
   it('shows a failed regeneration', async () => {
     mount({
       'panels:generate': () => {

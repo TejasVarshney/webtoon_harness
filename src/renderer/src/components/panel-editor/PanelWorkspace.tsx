@@ -9,6 +9,7 @@ import { PanelThread } from '../panel-chat/PanelThread'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 import { layoutStrip, rowShares } from '../visualizer/strip-layout'
 import { PanelInspector } from './PanelInspector'
+import { whenSaved } from './panel-save-queue'
 import { PanelStage } from './PanelStage'
 import { staleNotice } from './stale-notice'
 
@@ -85,16 +86,22 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  function run(id: string, task: Promise<unknown>): void {
+  /**
+   * Runs `task` for the panel once its saves have settled, so a redraw or an upload never works from fields still being
+   * saved. A refused save stops it, and is said here as well as by its field.
+   */
+  function run(id: string, task: () => Promise<unknown>): void {
     setAction({ panelId: id, busy: true, error: null })
     const settle = (error: string | null): void => setAction((a) => (a?.panelId === id ? { panelId: id, busy: false, error } : a))
-    task.then(
-      () => settle(null),
-      (e: unknown) => settle(errorText(e))
-    )
+    whenSaved(id)
+      .then(task)
+      .then(
+        () => settle(null),
+        (e: unknown) => settle(errorText(e))
+      )
   }
 
-  const regenerate = (id: string): void => run(id, usePanelsStore.getState().generatePanel(id))
+  const regenerate = (id: string): void => run(id, () => usePanelsStore.getState().generatePanel(id))
   const select = (id: string): void => useAppStore.getState().selectPanel(id)
   const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
 
@@ -122,7 +129,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                   <div className="editing-actions">
                     {/* Keyed, so a revert that failed or is still running stays with the panel it ran for. */}
                     <VersionSwitcher key={panel.id} panel={panel} />
-                    <button type="button" disabled={busy} onClick={() => run(panel.id, usePanelsStore.getState().uploadPanelImage(panel.id))}>
+                    <button type="button" disabled={busy} onClick={() => run(panel.id, () => usePanelsStore.getState().uploadPanelImage(panel.id))}>
                       Upload image…
                     </button>
                     <button type="button" className="btn-primary" disabled={busy || generating} onClick={() => regenerate(panel.id)}>
