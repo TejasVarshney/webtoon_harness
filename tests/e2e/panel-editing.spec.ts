@@ -159,14 +159,11 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
 
   // 7. How it looks, at a laptop size and at a small one.
   await mkdir(shots, { recursive: true })
-  const size = async () => (await viewport(page)).join('x')
-  console.log(`editor-1440 viewport: ${await size()}`)
   await page.screenshot({ path: resolve(shots, 'editor-1440.png'), animations: 'disabled' })
   const fitWidth = () => stage.locator('.stage-fit').evaluate((el) => el.getBoundingClientRect().width)
   const wide = await fitWidth()
   await setWindowSize(app, page, 1100, 720)
   await expect.poll(fitWidth).not.toBe(wide)
-  console.log(`editor-1100 viewport: ${await size()}`)
   await page.screenshot({ path: resolve(shots, 'editor-1100.png'), animations: 'disabled' })
 
   // 8. Back to the strip: the card the user left from has the focus, and its bubble has the chat's text in the
