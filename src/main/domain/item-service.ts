@@ -3,14 +3,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { newId } from '@shared/ids'
 import { ItemSchema } from '@shared/schemas'
-import type { Item, ItemInput, ItemPatch, ItemUsage, ItemUsageInput } from '@shared/types'
+import type { CheckResult, Item, ItemInput, ItemPatch, ItemUsage, ItemUsageInput } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import { isInside } from '../storage/project-paths'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors'
 import type { ImageService } from './image-service'
-import { itemReferencePrompt, itemUsagePrompt } from './prompts'
+import type { ConsistencyChecker } from './consistency-checker'
+import { itemReferencePrompt, itemUsagePrompt, sheetFixInstruction } from './prompts'
 import { isNotFound } from '../storage/fs-errors'
 
 type CreatedBy = ItemUsage['createdBy']
@@ -57,6 +58,8 @@ export interface ItemServiceOptions {
   usage: ItemUsageLookup
   /** Moves a path to the OS trash. */
   trash: (absPath: string) => Promise<void>
+  /** Judges each drawn sheet against its appearance lock. Without it nothing is checked and no sheet is redrawn. */
+  sheetChecker?: Pick<ConsistencyChecker, 'checkSheet'>
 }
 
 const INTERRUPTED = 'Interrupted: the app closed during generation'
@@ -198,6 +201,7 @@ export class ItemService {
       delta: input.delta,
       imagePath: null,
       ...initialStatus(opts),
+      check: null,
       createdBy,
       createdAt: now()
     }
@@ -215,6 +219,10 @@ export class ItemService {
   /**
    * Ruling T15a: mark pending under the lock, generate OUTSIDE it, then re-read and record the
    * outcome under the lock. Never throws for generation failures; the previous image is kept.
+   *
+   * Sheet check (spec §7): draw, check, and redraw with the issues up to `consistencyRetries` times while the
+   * check fails. Candidates stay in memory; only the last one is written, together with its check, so the
+   * usage stays `pending` until both are recorded.
    */
   async generateUsageImage(ctx: ProjectContext, itemId: string, usageId: string, opts: { signal?: AbortSignal } = {}): Promise<ItemUsage> {
     const started = await this.mutate(ctx, itemId, (i) => {
@@ -228,24 +236,68 @@ export class ItemService {
     const base = snapshot.usages.find((u) => u.kind === 'base')
 
     let result: { data: Buffer; ext: string } | null = null
+    let check: CheckResult | null = null
     let failure: string | null = null
     try {
       if (!isBase && (!base || base.status !== 'ready' || !base.imagePath)) {
         failure = 'Base reference image is not ready'
       } else {
-        const stylePreset = (await this.opts.projects.getMeta(ctx)).stylePreset
-        result = await this.opts.images.generate(ctx, {
-          prompt: isBase ? itemReferencePrompt(snapshot, stylePreset) : itemUsagePrompt(snapshot, usage, stylePreset),
-          references: isBase ? [] : [{ relPath: base!.imagePath!, label: 'item base reference' }],
-          aspect: '1:1',
-          signal: opts.signal
-        })
+        const meta = await this.opts.projects.getMeta(ctx)
+        const baseRel = isBase ? null : base!.imagePath!
+        let fix: string | undefined
+        for (let attempt = 0; ; attempt++) {
+          try {
+            result = await this.draw(ctx, snapshot, usage, baseRel, meta.stylePreset, fix, opts.signal)
+          } catch (error) {
+            // A failed first draw is the outcome; a failed redraw leaves the last candidate and its failed check to record.
+            if (result === null) failure = failureMessage(error)
+            break
+          }
+          check = await this.runSheetCheck(ctx, snapshot, usage, baseRel, result.data, opts.signal)
+          if (check === null || check.passed || check.skipped || attempt >= meta.consistencyRetries || opts.signal?.aborted) break
+          fix = sheetFixInstruction(check.issues)
+        }
       }
     } catch (error) {
       failure = failureMessage(error)
     }
 
-    return this.finish(ctx, itemId, usage, result, failure)
+    return this.finish(ctx, itemId, usage, result, failure, check)
+  }
+
+  /** One image generation for the sheet; `fix` is the previous check's issues, if any. */
+  private draw(
+    ctx: ProjectContext,
+    snapshot: Item,
+    usage: ItemUsage,
+    baseRel: string | null,
+    stylePreset: string,
+    fix: string | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<{ data: Buffer; ext: string }> {
+    return this.opts.images.generate(ctx, {
+      prompt: baseRel === null ? itemReferencePrompt(snapshot, stylePreset, fix) : itemUsagePrompt(snapshot, usage, stylePreset, fix),
+      references: baseRel === null ? [] : [{ relPath: baseRel, label: 'item base reference' }],
+      aspect: '1:1',
+      signal
+    })
+  }
+
+  /** The sheet check of a candidate; null when there is no checker or it has no verdict. A throwing checker counts as no verdict. */
+  private async runSheetCheck(
+    ctx: ProjectContext,
+    snapshot: Item,
+    usage: ItemUsage,
+    baseRel: string | null,
+    image: Buffer,
+    signal: AbortSignal | undefined
+  ): Promise<CheckResult | null> {
+    if (!this.opts.sheetChecker) return null
+    try {
+      return await this.opts.sheetChecker.checkSheet(ctx, { image, subject: { kind: 'item', item: snapshot, usage }, baseImageRelPath: baseRel, signal })
+    } catch {
+      return null
+    }
   }
 
   async uploadUsageImage(ctx: ProjectContext, itemId: string, usageId: string, data: Buffer, ext: UploadExt): Promise<ItemUsage> {
@@ -259,7 +311,7 @@ export class ItemService {
       const rel = imageRelPath(itemId, usageId, ext)
       const abs = ctx.paths.resolveAsset(rel)
       await writeFileAtomic(abs, data)
-      const ready: ItemUsage = { ...u, status: 'ready', error: null, imagePath: rel }
+      const ready: ItemUsage = { ...u, status: 'ready', error: null, imagePath: rel, check: null }
       try {
         await writeJsonAtomic(file, { ...i, usages: i.usages.map((x) => (x.id === usageId ? ready : x)), updatedAt: now() })
       } catch (error) {
@@ -302,16 +354,18 @@ export class ItemService {
   }
 
   /**
-   * Step 3 of Ruling T15a: under the lock, record the outcome if the usage still exists. Never
-   * throws: if recording fails, the usage is marked `failed` (best effort; `recoverInterrupted`
-   * is the backstop for a file that cannot be written) and a `failed` usage is returned.
+   * Step 3 of Ruling T15a: under the lock, record the outcome (the image with its check) if the usage
+   * still exists. A failure keeps the stored image and check. Never throws: if recording fails, the usage
+   * is marked `failed` (best effort; `recoverInterrupted` is the backstop for a file that cannot be
+   * written) and a `failed` usage is returned.
    */
   private async finish(
     ctx: ProjectContext,
     itemId: string,
     fallback: ItemUsage,
     result: { data: Buffer; ext: string } | null,
-    failure: string | null
+    failure: string | null,
+    check: CheckResult | null
   ): Promise<ItemUsage> {
     const file = ctx.paths.itemFile(itemId)
     const outcome = await ctx.mutex.run(file, async (): Promise<{ usage: ItemUsage; persisted: boolean } | null> => {
@@ -334,7 +388,7 @@ export class ItemService {
           const rel = imageRelPath(itemId, fallback.id, result.ext)
           imageAbs = ctx.paths.resolveAsset(rel)
           await writeFileAtomic(imageAbs, result.data)
-          next = { ...existing, status: 'ready', error: null, imagePath: rel }
+          next = { ...existing, status: 'ready', error: null, imagePath: rel, check }
         } else {
           next = { ...existing, status: 'failed', error: failure ?? 'Image generation failed' }
         }

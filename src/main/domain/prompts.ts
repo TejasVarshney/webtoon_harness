@@ -5,24 +5,34 @@ import { hasReadyReference, hasReadyUsage } from './panel-validation'
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
 // to it, and every sheet must say "no text" because dialogue is rendered as HTML (never in the image).
 
-export function baseReferencePrompt(c: Character, stylePreset: string): string {
-  return `Character reference sheet. ${stylePreset}. Full body, front view, neutral expression, standing straight, plain light-gray background, even studio lighting, no text. ${c.appearanceLock}`
+/** The redraw instruction after a failed sheet check: `Important details: a; b.`, plain description added to the drawing prompt, or undefined when there are no issues. */
+export function sheetFixInstruction(issues: string[]): string | undefined {
+  return issues.length > 0 ? `Important details: ${issues.join('; ')}.` : undefined
 }
 
-export function variationPrompt(c: Character, v: Variation, stylePreset: string): string {
-  return `Character reference sheet. ${stylePreset}. Full body, front view, plain light-gray background, no text. ${c.appearanceLock} Variation: ${v.name} — ${v.delta}. Keep face, hair, body and colors identical to the reference image except for the variation.`
+/** Appends the optional fix instruction to a sheet prompt, after one space. */
+function withFix(prompt: string, fix?: string): string {
+  return fix ? `${prompt} ${fix}` : prompt
 }
 
-export function itemReferencePrompt(item: Item, stylePreset: string): string {
-  return `Item reference sheet. ${stylePreset}. The object alone, three-quarter view, centered, plain light-gray background, even studio lighting, no people, no hands, no text. ${item.appearanceLock}`
+export function baseReferencePrompt(c: Character, stylePreset: string, fix?: string): string {
+  return withFix(`Character reference sheet. ${stylePreset}. Full body, front view, neutral expression, standing straight, plain light-gray background, even studio lighting, no text. ${c.appearanceLock}`, fix)
+}
+
+export function variationPrompt(c: Character, v: Variation, stylePreset: string, fix?: string): string {
+  return withFix(`Character reference sheet. ${stylePreset}. Full body, front view, plain light-gray background, no text. ${c.appearanceLock} Variation: ${v.name} — ${v.delta}. Keep face, hair, body and colors identical to the reference image except for the variation.`, fix)
+}
+
+export function itemReferencePrompt(item: Item, stylePreset: string, fix?: string): string {
+  return withFix(`Item reference sheet. ${stylePreset}. The object alone, three-quarter view, centered, plain light-gray background, even studio lighting, no people, no hands, no text. ${item.appearanceLock}`, fix)
 }
 
 /** Action usages show only the gray grip; every other kind (state, and base, which `itemReferencePrompt` makes) uses the state wording. */
-export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: string): string {
+export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: string, fix?: string): string {
   if (usage.kind === 'action') {
-    return `Item usage reference sheet. ${stylePreset}. Plain light-gray background, no text. ${item.appearanceLock} Usage: ${usage.name} — ${usage.delta}. Show only plain gray hands and forearms, cropped at the elbow, with no face, body, clothing or jewelry, so the sheet shows only the grip, the motion and the effect. Keep shape, size, materials, colors and markings identical to the reference image.`
+    return withFix(`Item usage reference sheet. ${stylePreset}. Plain light-gray background, no text. ${item.appearanceLock} Usage: ${usage.name} — ${usage.delta}. Show only plain gray hands and forearms, cropped at the elbow, with no face, body, clothing or jewelry, so the sheet shows only the grip, the motion and the effect. Keep shape, size, materials, colors and markings identical to the reference image.`, fix)
   }
-  return `Item reference sheet. ${stylePreset}. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. ${item.appearanceLock} State: ${usage.name} — ${usage.delta}. Keep shape, size, materials, colors and markings identical to the reference image except for the state.`
+  return withFix(`Item reference sheet. ${stylePreset}. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. ${item.appearanceLock} State: ${usage.name} — ${usage.delta}. Keep shape, size, materials, colors and markings identical to the reference image except for the state.`, fix)
 }
 
 // ---------------------------------------------------------------------------------------------

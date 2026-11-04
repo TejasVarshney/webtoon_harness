@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Character, Item, PanelCharacter, PanelDraft, PanelItem } from '@shared/types'
+import type { Character, CheckResult, Item, PanelCharacter, PanelDraft, PanelItem } from '@shared/types'
 import { makeCharacter, makeItem, makeItemUsage, makeVariation } from '../test/factories'
-import { findUnattachedMentions, hasReadyUsage, validatePanelDraft } from './panel-validation'
+import { findUnattachedMentions, hasReadyUsage, sheetCheckFailure, sheetCheckState, validatePanelDraft } from './panel-validation'
 
 function readyVariation(characterId: string, id: string, name = 'Base') {
   return makeVariation({ id, characterId, name, kind: name === 'Base' ? 'base' : 'outfit', imagePath: `characters/${characterId}/${id}.png`, status: 'ready' })
@@ -25,8 +25,8 @@ type Draft = Pick<PanelDraft, 'description' | 'characters' | 'dialogue' | 'offPa
 function d(o: Partial<Draft> = {}): Draft {
   return { description: 'A quiet street.', characters: [], dialogue: [], offPanelMentions: [], ...o }
 }
-const strict = { strictMentions: true }
-const lenient = { strictMentions: false }
+const strict = { strictMentions: true, strictSheets: false }
+const lenient = { strictMentions: false, strictSheets: false }
 
 describe('validatePanelDraft', () => {
   it('accepts a clean draft', () => {
@@ -111,13 +111,13 @@ describe('validatePanelDraft', () => {
 
   it('mention guard is whole-word and strict only for the agent', () => {
     const draft = d({ description: 'Mina looks at the poster of Jinx.' })
-    expect(validatePanelDraft(draft, roster, [], { strictMentions: true }).errors).toEqual([
+    expect(validatePanelDraft(draft, roster, [], { strictMentions: true, strictSheets: false }).errors).toEqual([
       'Mentioned but not attached: Mina. Attach them to characters or list them in offPanelMentions.'
     ])
-    expect(validatePanelDraft(draft, roster, [], { strictMentions: true }).warnings).toEqual([])
-    expect(validatePanelDraft(draft, roster, [], { strictMentions: false }).errors).toEqual([])
-    expect(validatePanelDraft(draft, roster, [], { strictMentions: false }).warnings).toHaveLength(1)
-    expect(validatePanelDraft({ ...draft, offPanelMentions: ['mina'] }, roster, [], { strictMentions: true }).errors).toEqual([])
+    expect(validatePanelDraft(draft, roster, [], { strictMentions: true, strictSheets: false }).warnings).toEqual([])
+    expect(validatePanelDraft(draft, roster, [], { strictMentions: false, strictSheets: false }).errors).toEqual([])
+    expect(validatePanelDraft(draft, roster, [], { strictMentions: false, strictSheets: false }).warnings).toHaveLength(1)
+    expect(validatePanelDraft({ ...draft, offPanelMentions: ['mina'] }, roster, [], { strictMentions: true, strictSheets: false }).errors).toEqual([])
   })
 
   it('lists every unattached name in one message', () => {
@@ -309,5 +309,65 @@ describe('findUnattachedMentions', () => {
   it('ignores blank names and aliases', () => {
     const blank = makeCharacter({ id: 'chr_blank', name: 'Blank', aliases: ['', '  '] })
     expect(findUnattachedMentions('nothing here', [blank], none, [])).toEqual([])
+  })
+})
+
+describe('the sheet check gate', () => {
+  const failedCheck = { passed: false, issues: ['hair is black', 'no scar'], skipped: false }
+  const checked = (check: CheckResult | null) =>
+    makeCharacter({ id: 'chr_chk', name: 'Chk', variations: [makeVariation({ id: 'var_c0', characterId: 'chr_chk', name: 'Base', imagePath: 'characters/chr_chk/var_c0.png', status: 'ready', check })] })
+  const castChk = (c: Character) => d({ characters: [cast(c, 'var_c0')] })
+  const variationMessage = 'Variation "Base" of Chk failed its sheet check: hair is black; no scar. Regenerate it or ask the user.'
+  const sheetOpts = (strictSheets: boolean) => ({ strictMentions: false, strictSheets })
+
+  it('reports a cast variation that failed its sheet check as an error when strictSheets', () => {
+    const chk = checked(failedCheck)
+    expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(true))).toEqual({ errors: [variationMessage], warnings: [] })
+  })
+
+  it('reports a cast variation that failed its sheet check as a warning without strictSheets', () => {
+    const chk = checked(failedCheck)
+    expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(false))).toEqual({ errors: [], warnings: [variationMessage] })
+  })
+
+  it('reports an item usage that failed its sheet check', () => {
+    const lamp = makeItem({
+      id: 'itm_lamp',
+      name: 'Lamp',
+      usages: [makeItemUsage({ id: 'use_l0', itemId: 'itm_lamp', name: 'Lit', imagePath: 'items/itm_lamp/use_l0.png', status: 'ready', check: failedCheck })]
+    })
+    const draft = d({ items: [{ itemId: 'itm_lamp', usageId: 'use_l0', heldBy: null, action: '', position: 'center' } as PanelItem] })
+    const message = 'Usage "Lit" of Lamp failed its sheet check: hair is black; no scar. Regenerate it or ask the user.'
+    expect(validatePanelDraft(draft, [], [lamp], sheetOpts(true))).toEqual({ errors: [message], warnings: [] })
+    expect(validatePanelDraft(draft, [], [lamp], sheetOpts(false))).toEqual({ errors: [], warnings: [message] })
+  })
+
+  it('says no issues were named when the failed check lists none', () => {
+    const chk = checked({ passed: false, issues: [], skipped: false })
+    expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(true))).toEqual({
+      errors: ['Variation "Base" of Chk failed its sheet check: no issues named. Regenerate it or ask the user.'],
+      warnings: []
+    })
+  })
+
+  it('does not report unchecked, passed or skipped sheets', () => {
+    for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: true, issues: ['x'], skipped: true }, { passed: false, issues: ['x'], skipped: true }]) {
+      const chk = checked(check)
+      expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(true))).toEqual({ errors: [], warnings: [] })
+    }
+  })
+
+  it('does not report a failed sheet that is also not ready', () => {
+    const chk = makeCharacter({ id: 'chr_chk', name: 'Chk', variations: [makeVariation({ id: 'var_c0', characterId: 'chr_chk', name: 'Base', status: 'failed', error: 'boom', check: failedCheck })] })
+    expect(validatePanelDraft(castChk(chk), [chk], [], sheetOpts(true))).toEqual({ errors: ['Variation "Base" of Chk has no ready reference image'], warnings: [] })
+  })
+
+  it('names the state of a check', () => {
+    expect(sheetCheckState(null)).toBeNull()
+    expect(sheetCheckState({ passed: true, issues: [], skipped: false })).toBe('passed')
+    expect(sheetCheckState(failedCheck)).toBe('failed')
+    expect(sheetCheckState({ passed: false, issues: [], skipped: true })).toBe('skipped')
+    expect(sheetCheckFailure({ check: failedCheck })).toEqual(['hair is black', 'no scar'])
+    expect(sheetCheckFailure({ check: null })).toBeNull()
   })
 })

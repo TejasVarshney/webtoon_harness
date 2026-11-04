@@ -67,6 +67,23 @@ describe('character tools', () => {
     expect(stored.variations).toMatchObject([{ id: out.baseVariationId, kind: 'base', status: 'ready', createdBy: 'ai' }])
   })
 
+  it('create_character reports the base check, with the note when it failed', async () => {
+    const env = await setup()
+    const probe = json(await env.run('create_character', { ...mina, name: 'Probe' }))
+    const base = (await env.s.characters.get(env.ctx, probe.characterId)).variations[0]
+    const generate = vi.spyOn(env.s.characters, 'generateVariationImage')
+    generate.mockResolvedValueOnce({ ...base, check: { passed: false, issues: ['reads male'], skipped: false } })
+    expect(json(await env.run('create_character', { ...mina, name: 'Ara' }))).toMatchObject({
+      baseCheck: { passed: false, issues: ['reads male'], skipped: false },
+      note: 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
+    })
+    const good = { passed: true, issues: [], skipped: false }
+    generate.mockResolvedValueOnce({ ...base, check: good })
+    const ok = json(await env.run('create_character', { ...mina, name: 'Bea' }))
+    expect(ok.baseCheck).toEqual(good)
+    expect(ok).not.toHaveProperty('note')
+  })
+
   it('create_character passes the optional fields through', async () => {
     const { run, ctx, s } = await setup()
     const r = await run('create_character', {
@@ -219,6 +236,104 @@ describe('character tools', () => {
     expect(r.images).toEqual([])
   })
 
+  const FAILED = { passed: false, issues: ['eyes are visible', 'hair is short'], skipped: false }
+  const REFUSAL = 'The base sheet of Mina failed its check: eyes are visible; hair is short. Regenerate the base first.'
+  const NOTE = 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
+
+  /** The stored character as the tools see it, with the base sheet carrying `check`. */
+  async function withBaseCheck(env: Awaited<ReturnType<typeof setup>>, characterId: string, check: typeof FAILED | null) {
+    const stored = await env.s.characters.get(env.ctx, characterId)
+    const failed = { ...stored, variations: stored.variations.map((v) => (v.kind === 'base' ? { ...v, check } : v)) }
+    vi.spyOn(env.s.characters, 'get').mockResolvedValue(failed)
+    return failed
+  }
+
+  it('create_variation refuses while the base sheet failed its check, and adds nothing', async () => {
+    const env = await setup()
+    const { characterId } = json(await env.run('create_character', mina))
+    await withBaseCheck(env, characterId, FAILED)
+    const add = vi.spyOn(env.s.characters, 'addVariation')
+    expect(await env.run('create_variation', { characterId, name: 'Outfit', kind: 'outfit', delta: 'x' })).toMatchObject({ ok: false, content: REFUSAL })
+    expect(add).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
+    expect((await env.s.characters.get(env.ctx, characterId)).variations).toHaveLength(1)
+  })
+
+  it('names no issues in the refusal when the failed check lists none', async () => {
+    const env = await setup()
+    const { characterId } = json(await env.run('create_character', mina))
+    await withBaseCheck(env, characterId, { passed: false, issues: [], skipped: false })
+    expect(await env.run('create_variation', { characterId, name: 'Outfit', kind: 'outfit', delta: 'x' })).toMatchObject({
+      ok: false,
+      content: 'The base sheet of Mina failed its check: no issues named. Regenerate the base first.'
+    })
+  })
+
+  it('create_variation goes ahead when the base sheet passed, was skipped or was never checked', async () => {
+    for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: false, issues: ['x'], skipped: true }]) {
+      const env = await setup()
+      const { characterId } = json(await env.run('create_character', mina))
+      await withBaseCheck(env, characterId, check as typeof FAILED | null)
+      const add = vi.spyOn(env.s.characters, 'addVariation')
+      await env.run('create_variation', { characterId, name: 'Outfit', kind: 'outfit', delta: 'x', generateImage: false })
+      expect(add).toHaveBeenCalledOnce()
+      vi.restoreAllMocks()
+      await s?.cleanup()
+      s = undefined
+    }
+  })
+
+  it('regenerate_variation refuses a non-base variation while the base failed, but regenerates the base itself', async () => {
+    const env = await setup()
+    const { characterId, baseVariationId } = json(await env.run('create_character', mina))
+    const { variationId } = json(await env.run('create_variation', { characterId, name: 'Outfit', kind: 'outfit', delta: 'x' }))
+    const failed = await withBaseCheck(env, characterId, FAILED)
+    const generate = vi.spyOn(env.s.characters, 'generateVariationImage').mockResolvedValue(failed.variations[0])
+    expect(await env.run('regenerate_variation', { characterId, variationId })).toMatchObject({ ok: false, content: REFUSAL })
+    expect(generate).not.toHaveBeenCalled()
+    expect((await env.run('regenerate_variation', { characterId, variationId: baseVariationId })).ok).toBe(true)
+    expect(generate).toHaveBeenCalledOnce()
+  })
+
+  it('a generation outcome carries its check, and the note when the sheet failed', async () => {
+    const env = await setup()
+    const { characterId, baseVariationId } = json(await env.run('create_character', mina))
+    const base = (await env.s.characters.get(env.ctx, characterId)).variations[0]
+    const generate = vi.spyOn(env.s.characters, 'generateVariationImage')
+    generate.mockResolvedValueOnce({ ...base, check: FAILED })
+    const bad = json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))
+    expect(bad).toMatchObject({ check: FAILED, note: NOTE })
+    const good = { passed: true, issues: [], skipped: false }
+    generate.mockResolvedValueOnce({ ...base, check: good })
+    const ok = json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))
+    expect(ok.check).toEqual(good)
+    expect(ok).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, check: null })
+    expect(json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))).toMatchObject({ check: null })
+  })
+
+  it('adds no note when the sheet failed to draw, whatever older check it keeps', async () => {
+    const env = await setup()
+    const { characterId, baseVariationId } = json(await env.run('create_character', mina))
+    const base = (await env.s.characters.get(env.ctx, characterId)).variations[0]
+    const generate = vi.spyOn(env.s.characters, 'generateVariationImage')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    const r = json(await env.run('regenerate_variation', { characterId, variationId: baseVariationId }))
+    expect(r).toMatchObject({ status: 'failed', check: FAILED })
+    expect(r).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    expect(json(await env.run('create_character', { ...mina, name: 'Zed' }))).not.toHaveProperty('note')
+  })
+
+  it('list_characters shows each sheet check and the issues of a failed one', async () => {
+    const env = await setup()
+    const { characterId } = json(await env.run('create_character', mina))
+    await withBaseCheck(env, characterId, FAILED)
+    vi.spyOn(env.s.characters, 'list').mockImplementation(async () => [await env.s.characters.get(env.ctx, characterId)])
+    const [v] = json(await env.run('list_characters', {})).characters[0].variations
+    expect(v).toMatchObject({ check: 'failed', checkIssues: ['eyes are visible', 'hair is short'] })
+  })
+
   it('update_character warns on appearance lock change', async () => {
     const { run, ctx, s } = await setup()
     const { characterId } = json(await run('create_character', mina))
@@ -256,7 +371,7 @@ describe('character tools', () => {
     const out = json(await run('list_characters', {}))
     expect(out).toEqual({
       characters: [
-        { id: a.characterId, name: 'Mina', role: 'protagonist', aliases: ['Min'], variations: [{ id: a.baseVariationId, name: 'Base', kind: 'base', status: 'ready' }] }
+        { id: a.characterId, name: 'Mina', role: 'protagonist', aliases: ['Min'], variations: [{ id: a.baseVariationId, name: 'Base', kind: 'base', status: 'ready', check: null }] }
       ]
     })
   })

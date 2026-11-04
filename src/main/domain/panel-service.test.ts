@@ -47,8 +47,8 @@ vi.mock('../storage/atomic', async (importOriginal) => {
 })
 
 const INTERRUPTED = 'Interrupted: the app closed during generation'
-const USER = { createdBy: 'user' as const, strictMentions: false }
-const AGENT = { createdBy: 'ai' as const, strictMentions: true }
+const USER = { createdBy: 'user' as const, strictMentions: false, strictSheets: false }
+const AGENT = { createdBy: 'ai' as const, strictMentions: true, strictSheets: false }
 const VERSION_KEYS = ['check', 'createdAt', 'error', 'id', 'imagePath', 'instruction', 'parentVersionId', 'prompt', 'referenceImagePaths', 'source', 'status']
 
 let counter = 0
@@ -477,6 +477,36 @@ describe('PanelService update', () => {
       issues: ['Mina is cast twice', 'Variation "Outfit" of Mina has no ready reference image']
     })
     expect((await svc.get(ctx, p.id)).characters.map((c) => c.variationId)).toEqual([m.varId])
+  })
+
+  it('update grandfathers an unchanged cast entry whose sheet failed its check', async () => {
+    const { svc, characters, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), AGENT)).panel
+    const stored = await characters.get(ctx, m.id)
+    const bad = { passed: false, issues: ['hair is black'], skipped: false }
+    await writeJsonAtomic(ctx.paths.characterFile(m.id), { ...stored, variations: stored.variations.map((v) => ({ ...v, check: bad })) })
+    const STRICT = { strictMentions: true, strictSheets: true }
+
+    expect((await svc.update(ctx, p.id, { description: 'Mina waits.' }, STRICT)).panel.description).toBe('Mina waits.')
+    await expect(svc.update(ctx, p.id, { characters: [castOf(m, { variationId: m.varId2 })] }, STRICT)).rejects.toMatchObject({
+      issues: ['Variation "Outfit" of Mina failed its sheet check: hair is black. Regenerate it or ask the user.']
+    })
+  })
+
+  it('update grandfathers an unchanged item entry whose sheet failed its check', async () => {
+    const { svc, items, epi, ctx } = await setup()
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), AGENT)).panel
+    const stored = await items.get(ctx, b.id)
+    const bad = { passed: false, issues: ['wrong barrel'], skipped: false }
+    await writeJsonAtomic(ctx.paths.itemFile(b.id), { ...stored, usages: stored.usages.map((u) => ({ ...u, check: bad })) })
+    const STRICT = { strictMentions: true, strictSheets: true }
+
+    expect((await svc.update(ctx, p.id, { description: 'A door opens.' }, STRICT)).panel.description).toBe('A door opens.')
+    await expect(svc.update(ctx, p.id, { items: [itemOf(b, { usageId: b.useId2 })] }, STRICT)).rejects.toMatchObject({
+      issues: ['Usage "Charged" of Kestrel blaster failed its sheet check: wrong barrel. Regenerate it or ask the user.']
+    })
   })
 
   it('still reports an unknown character or foreign variation in an unchanged cast entry', async () => {

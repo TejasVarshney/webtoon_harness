@@ -123,7 +123,7 @@ describe('AgentRunner', () => {
       dialogue: [],
       ...o
     })
-    const AI = { createdBy: 'ai' as const, strictMentions: true }
+    const AI = { createdBy: 'ai' as const, strictMentions: true, strictSheets: false }
 
     it('names Episode 1 (created on demand) and has no recent panels in a new project', async () => {
       const h = await setup([])

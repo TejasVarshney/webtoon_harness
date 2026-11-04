@@ -100,6 +100,8 @@ What to do with it:
 - `baseStatus` `failed` with any other error: the item exists, only the image is missing. Read `baseError`, then retry once with `regenerate_item_usage` using `baseUsageId`. If it fails again, stop and tell the user (R12). Never call `create_item` again: you would get "An item named ... already exists".
 - The picture contradicts the lock (wrong color, a missing stripe): regenerate once. If it is wrong again, the lock is probably unclear. Show the user the line you would change and change the lock only after their yes (R3).
 
+- Read `check`. Every new sheet is checked against its lock and redrawn on a failure. The `create_item` result carries it as `baseCheck`; `regenerate_item_usage` and `create_item_usage` results carry `check`; `list_items` shows `check` and `checkIssues`. A failed sheet adds a `note` to the result. A failed sheet cannot be cast. While the base sheet has failed, no other usage can be created or regenerated, though the base itself can be regenerated. To fix a lock that keeps failing, propose a rewording to the user with positive, visible traits (say what is there, not what is absent), apply it only after their yes (R3), then regenerate; or regenerate once with the lock as it is. Never cast a failed sheet. `check` `null` (never checked) and `skipped` are not failures.
+
 The base must be `ready` before any other usage can get its image (usage images are made from the base image).
 
 ## Usages

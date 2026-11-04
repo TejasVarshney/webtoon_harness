@@ -25,7 +25,8 @@ const REQUIRED: Record<string, string[]> = {
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
   'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Panel Layout', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
   'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
-  'reference/consistency-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance']
+  'reference/consistency-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance'],
+  'reference/sheet-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance']
 }
 const DOCS = Object.keys(REQUIRED)
 

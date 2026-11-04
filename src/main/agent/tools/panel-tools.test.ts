@@ -295,7 +295,7 @@ describe('list_panels and get_panel', () => {
     const { run, s, ctx, episode, character, cast } = await setup()
     const mina = await character('Mina')
     for (let i = 0; i < 7; i++) {
-      await s.panels.create(ctx, { episodeId: episode.id, description: `Beat ${i}`, setting: 'Hall', shot: 'medium', characters: i === 6 ? [cast(mina)] : [], dialogue: [] }, { createdBy: 'ai', strictMentions: true })
+      await s.panels.create(ctx, { episodeId: episode.id, description: `Beat ${i}`, setting: 'Hall', shot: 'medium', characters: i === 6 ? [cast(mina)] : [], dialogue: [] }, { createdBy: 'ai', strictMentions: true, strictSheets: false })
     }
     const last = json(await run('list_panels', { episodeId: episode.id }))
     expect(last.panels.map((p: { index: number }) => p.index)).toEqual([2, 3, 4, 5, 6])
@@ -338,7 +338,7 @@ describe('list_panels and get_panel', () => {
   it('reports no current version for a panel with no ready image, and keeps naming an archived cast member (Review Focus 4)', async () => {
     const { run, s, ctx, episode, character, cast } = await setup()
     const mina = await character('Mina')
-    await s.panels.create(ctx, { episodeId: episode.id, description: 'Mina waits.', setting: 'Hall', shot: 'wide', characters: [cast(mina)], dialogue: [] }, { createdBy: 'ai', strictMentions: true })
+    await s.panels.create(ctx, { episodeId: episode.id, description: 'Mina waits.', setting: 'Hall', shot: 'wide', characters: [cast(mina)], dialogue: [] }, { createdBy: 'ai', strictMentions: true, strictSheets: false })
     await s.characters.archive(ctx, mina.id)
     const { panels } = json(await run('list_panels', { episodeId: episode.id }))
     expect(panels[0]).toMatchObject({ currentVersion: null, cast: [{ name: 'Mina', characterId: mina.id }] })
@@ -436,7 +436,7 @@ describe('update_panel', () => {
       const mina = await h.character('Mina')
       await h.character('Jin')
       const draft = h.draft([mina], { description: 'Mina waits while Jin watches.' }) as PanelDraft
-      const { panel, warnings } = await h.s.panels.create(h.ctx, draft, { createdBy: 'user', strictMentions: false })
+      const { panel, warnings } = await h.s.panels.create(h.ctx, draft, { createdBy: 'user', strictMentions: false, strictSheets: false })
       expect(warnings).toHaveLength(1)
       return { ...h, mina, id: panel.id }
     }

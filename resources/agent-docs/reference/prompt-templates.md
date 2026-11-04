@@ -170,6 +170,8 @@ Item usage reference sheet. {stylePreset}. Plain light-gray background, no text.
 - Gray hands are only a way to show the grip. The panel prompt tells the image model to draw the holder's own hands instead, and the consistency check treats gray hands in a panel as a Major problem.
 - If the base image is not ready, no prompt is sent: the usage fails with "Base reference image is not ready".
 
+After a failed sheet check, the redraw appends ` Important details: {issues joined by "; "}.` to the sheet prompt (any of the four above).
+
 ## Panel Edit Prompt
 
 Used for `edit_panel_image` and the side chat's `edit_image`. The panel's current image is sent first ("the first image"), followed by the cast members' variation images in cast order and the usage images of the panel's items in panel order (no previous panel). It uses the model assigned to the image-edit role.
