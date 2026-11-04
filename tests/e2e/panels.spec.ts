@@ -50,10 +50,10 @@ test('user creates a panel manually, agent continues from it', async () => {
   await app.close()
 })
 
-// Panel shapes: a panel set beside the previous one shares its row, and a slanted panel's toolbar is not cut off by
-// the slant, so its Edit button still opens the editor.
-test('a panel set beside and slanted in the editor joins the row and keeps its toolbar', async () => {
-  const { app, page } = await launchApp()
+// Panel shapes: a panel set beside and slanted in editing mode's Scene tab shares the previous panel's row, and a
+// slanted card is not cut off by its slant, so a click on it still opens editing mode.
+test('a panel set beside and slanted in editing mode joins the row and still opens', async () => {
+  const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
   for (const description of ['Mina looks up.', 'Jun looks back.']) {
@@ -67,25 +67,34 @@ test('a panel set beside and slanted in the editor joins the row and keeps its t
   await expect(cards).toHaveCount(2)
   await expect(page.locator('.strip-row[data-row-size="1"]')).toHaveCount(2)
 
-  await cards.nth(1).getByRole('button', { name: 'Edit' }).click()
-  const editor = page.getByTestId('panel-editor')
-  await editor.getByLabel('Frame').selectOption('slanted')
-  await editor.getByLabel('Beside the previous panel').check()
-  await editor.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(editor).toHaveCount(0)
+  const id = (await cards.nth(1).getAttribute('data-panel-id'))!
+  await cards.nth(1).click()
+  const workspace = page.getByTestId('panel-workspace')
+  await expect(workspace.getByRole('heading', { level: 1 })).toHaveText('Panel 2 of 2')
+  await workspace.getByRole('tab', { name: 'Scene' }).click()
+  await workspace.getByLabel('Frame').selectOption('slanted')
+  await workspace.getByLabel('Beside the previous panel').check()
+  // Each field saves on its own, a moment after it changes.
+  await expect.poll(async () => {
+    const stored = await readProjectJson(projectsRoot, `panels/${id}.json`)
+    return `${stored.frame} ${stored.beside}`
+  }).toBe('slanted true')
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+  await expect(workspace).toHaveCount(0)
 
   await expect(page.locator('.strip-row[data-row-size="2"]')).toHaveCount(1)
   await expect(page.locator('.strip-row')).toHaveCount(1)
   const slanted = page.locator('.panel-card[data-frame="slanted"]')
   await expect(slanted).toHaveAttribute('data-beside', 'true')
-  await slanted.getByRole('button', { name: 'Edit' }).click()
-  await expect(editor).toBeVisible()
-  await expect(editor.getByLabel('Frame')).toHaveValue('slanted')
+  await slanted.click()
+  await expect(workspace).toBeVisible()
+  await workspace.getByRole('tab', { name: 'Scene' }).click()
+  await expect(workspace.getByLabel('Frame')).toHaveValue('slanted')
   await app.close()
 })
 
 // The toolbar is wider than a narrow card. It grows towards the row, so the first card of a row (which has nothing to its
-// left) must still show all of it, and its Edit button must still open the editor.
+// left) must still show all of it, and a click on the card must still open editing mode.
 test('the toolbar of a narrow first card in a row stays inside the strip', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
@@ -109,14 +118,16 @@ test('the toolbar of a narrow first card in a row stays inside the strip', async
   await first.hover()
   const toolbar = first.getByRole('group', { name: 'Panel actions' })
   // Hit-testing, not geometry: a button the pane clips (it cannot scroll left) is not what the pointer lands on.
-  for (const name of ['Edit', 'Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
+  for (const name of ['Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
     const button = toolbar.getByRole('button', { name })
     const box = (await button.boundingBox())!
     const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
     expect(hit, `${name} is reachable`).toBe(true)
   }
-  await toolbar.getByRole('button', { name: 'Edit' }).click()
-  await expect(page.getByTestId('panel-editor')).toBeVisible()
-  await expect(page.getByTestId('panel-editor').getByLabel('Aspect')).toHaveValue('1:3')
+  await first.click()
+  const workspace = page.getByTestId('panel-workspace')
+  await expect(workspace).toBeVisible()
+  await workspace.getByRole('tab', { name: 'Scene' }).click()
+  await expect(workspace.getByLabel('Aspect')).toHaveValue('1:3')
   await app.close()
 })
