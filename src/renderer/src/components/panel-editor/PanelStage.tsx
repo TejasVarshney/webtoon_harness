@@ -5,7 +5,10 @@ import { PanelArt } from '../visualizer/PanelArt'
 import { STAGE_ROW_PX, fitScale } from './bubble-placement'
 import { useBubbleEditing } from './use-bubble-editing'
 
-/** The most of the window's height the stage takes; the stylesheet caps `.panel-stage` at the same 62vh. */
+/**
+ * The most of the window's height the stage takes. The stylesheet's cap on `.panel-stage` is this 62vh, or less when
+ * the column must keep room for the tabs; the fit reads that cap, and falls back to this when there is none to read.
+ */
 const STAGE_MAX_HEIGHT = 0.62
 
 export interface PanelStageProps {
@@ -29,8 +32,8 @@ interface Fit {
 
 /**
  * The scale that fits the panel into its slot's width and the stage's height cap. Measured from the slot's width (a
- * ResizeObserver), the panel's laid-out size and the window's height. Until all of them have a size it is `null`, and
- * a measure that finds no room keeps the last fit, so the panel never collapses to nothing.
+ * ResizeObserver), the panel's laid-out size and the cap the stylesheet gives the stage. Until all of them have a
+ * size it is `null`, and a measure that finds no room keeps the last fit, so the panel never collapses to nothing.
  */
 function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObject<HTMLElement | null>): Fit | null {
   const [fit, setFit] = useState<Fit | null>(null)
@@ -43,9 +46,10 @@ function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObject<HTMLE
       const style = getComputedStyle(s)
       const px = (v: string): number => parseFloat(v) || 0
       const natural = { width: p.offsetWidth, height: p.offsetHeight }
+      const cap = parseFloat(style.maxHeight)
       const avail = {
         width: s.clientWidth - px(style.paddingLeft) - px(style.paddingRight),
-        height: window.innerHeight * STAGE_MAX_HEIGHT - px(style.paddingTop) - px(style.paddingBottom)
+        height: (Number.isFinite(cap) ? cap : window.innerHeight * STAGE_MAX_HEIGHT) - px(style.paddingTop) - px(style.paddingBottom)
       }
       if (natural.width <= 0 || natural.height <= 0) return
       const scale = fitScale(avail, natural)
@@ -56,6 +60,8 @@ function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObject<HTMLE
     const observer = new ResizeObserver(measure)
     observer.observe(s)
     observer.observe(p)
+    // The cap follows the column's height, which a notice above it or a resize changes without changing the stage.
+    if (s.parentElement !== null) observer.observe(s.parentElement)
     window.addEventListener('resize', measure)
     return () => {
       observer.disconnect()

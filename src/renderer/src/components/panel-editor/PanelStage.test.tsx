@@ -149,6 +149,12 @@ describe('PanelStage', () => {
     width = 0
     act(() => resized())
     expect(row().style.transform).toBe(`scale(${(2000 * 0.62) / 840})`)
+
+    // The stylesheet's cap, when it gives one (it keeps room for the tabs): the panel fits that instead.
+    width = 2000
+    stage().style.maxHeight = '420px'
+    act(() => resized())
+    expect(row().style.transform).toBe('scale(0.5)')
   })
 
   it('selects a bubble on click, without selecting the panel', async () => {

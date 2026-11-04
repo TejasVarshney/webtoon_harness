@@ -1396,17 +1396,21 @@ kbd {
   /* A scrollbar that comes and goes would change the stage's width, and so its scale, and so the height again. */
   scrollbar-gutter: stable;
   padding: var(--pad);
+  /* Its height is what the stage's cap is measured against (`cqh`). */
+  container-type: size;
 }
 
 /* The stage: the open panel on a field of its gutter colour, centred, as big as the column allows and at most 62vh
-   tall. The panel is laid out in a row of the strip's reference width (`.stage-row`, whose width comes from
-   STAGE_ROW_PX, and which is the lettering's container), then scaled to fit from its top left corner. `.stage-fit` is
-   the room the scaled panel takes, since a transform takes none. */
+   tall, and less when the column must keep its 240px of tabs under it (and their 16px margin); never less than 160px,
+   in a window too short for both, where the column scrolls. PanelStage fits the panel to this cap. The panel is laid
+   out in a row of the strip's reference width (`.stage-row`, whose width comes from STAGE_ROW_PX, and which is the
+   lettering's container), then scaled to fit from its top left corner. `.stage-fit` is the room the scaled panel
+   takes, since a transform takes none. */
 .panel-stage {
   display: flex;
   flex: none;
   justify-content: center;
-  max-height: 62vh;
+  max-height: max(160px, min(62vh, calc(100cqh - 256px)));
   padding: var(--pad);
   overflow: hidden;
   background: var(--raised);
@@ -1427,14 +1431,14 @@ kbd {
 }
 
 /* The tabs under the stage, in the strip's tab look, then the open tab's controls. They fill what the stage leaves of
-   the column, and the open tab scrolls on its own, so bringing a line's row into view never moves the stage. When the
-   window is too short for even their least height (the tab bar and about a field's worth: a 1440x900 window has it),
-   the column scrolls instead. */
+   the column, and the open tab scrolls on its own, so bringing a line's row into view never moves the stage. They
+   keep at least 240px: the stage gives way to them (see `.panel-stage`), and only in a window too short for both does
+   the column scroll. */
 .panel-inspector {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
-  min-height: 140px;
+  min-height: 240px;
   margin-top: 16px;
 }
 
@@ -1471,6 +1475,55 @@ kbd {
 /* The row of the selected bubble is one tone step deeper; the accent stays on the bubble. */
 .line-row[aria-current='true'] {
   background: var(--active);
+}
+
+/* A line on one row: who says it and how, as two narrow selects, then its text taking the rest and growing with what
+   is typed, then the row's buttons at its end. The labels stay for screen readers. In a narrow column the text wraps
+   under the selects. */
+.line-rows > .line-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.line-row .field > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.line-row .field-row {
+  flex: none;
+  gap: 8px;
+}
+
+.line-row .field-row .field {
+  flex: none;
+}
+
+.line-row .field-row .field:first-child select {
+  width: 140px;
+}
+
+.line-row .field-row .field:last-child select {
+  width: 116px;
+}
+
+.line-row > .field {
+  flex: 1 1 180px;
+}
+
+.line-row textarea {
+  field-sizing: content;
+  resize: none;
+}
+
+.line-row > .form-actions {
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 /* The pickers' and the layout's groups sit in the tab without the dialog's frame. */
