@@ -59,7 +59,7 @@ You cannot do these in the panel chat. Tell the user to ask in the main chat:
 - create a character or a variation, or change a character's appearance lock;
 - read or change the story bible or the beats.
 
-You also cannot look up other characters or variations here: `get_panel_context` only shows the ids of the cast already in the panel. To add a character, or to switch someone to another look, ask the user to do it in the panel editor (the edit button on the panel in the Webtoon tab) or in the main chat.
+You also cannot look up other characters or variations here: `get_panel_context` only shows the ids of the cast already in the panel. To add a character, or to switch someone to another look, ask the user to do it in the Cast tab under the panel in its editor (they click the panel's card in the Webtoon tab to open it) or in the main chat.
 
 The Hard Rules apply here too. In particular: never put text in the image (R6), never restate a character's appearance (R2), and read every result (R11).
 
@@ -241,7 +241,7 @@ User: "Put Mina in pajamas here."
 
 There is no pajamas variation in this panel's cast, and you cannot create variations or look up other ones here. Reply:
 
-> I can't create a new look from this chat. In the main chat, ask me to create an "Outfit: Pajamas" variation for Mina. Then switch her look in this panel with the panel editor (the edit button on the panel), or ask me here to redraw once she wears it.
+> I can't create a new look from this chat. In the main chat, ask me to create an "Outfit: Pajamas" variation for Mina. Then switch her look in the Cast tab under this panel, or ask me here to redraw once she wears it.
 
 ### Example 6: a failed redraw
 
