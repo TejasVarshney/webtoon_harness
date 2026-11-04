@@ -253,11 +253,21 @@ export class ConsistencyChecker {
    * candidate is a skipped pass.
    */
   async checkSheet(ctx: ProjectContext, input: SheetCheckInput): Promise<CheckResult | null> {
+    // The candidate is prepared before the turn: the adapters turn an ImageUnavailableError from `loadImage` into a
+    // text note and carry on, so a failure there would leave the model judging a sheet it never saw (spec §5).
+    let candidate: { mime: string; base64: string } | undefined
     return this.runVision(ctx, {
       doc: SHEET_CHECKLIST_DOC,
       text: () => buildSheetCheckMessage(input),
       imagePaths: [...(input.baseImageRelPath === null ? [] : [input.baseImageRelPath]), CANDIDATE_IMAGE_KEY],
-      loadImage: (relPath) => (relPath === CANDIDATE_IMAGE_KEY ? this.loadCandidate(input.image) : loadImageForTextModel(ctx, this.opts.imageOps, relPath)),
+      prepare: async () => {
+        candidate = await this.loadCandidate(input.image)
+      },
+      loadImage: async (relPath) => {
+        if (relPath !== CANDIDATE_IMAGE_KEY) return loadImageForTextModel(ctx, this.opts.imageOps, relPath)
+        if (!candidate) throw new ImageUnavailableError(CANDIDATE_IMAGE_KEY, 'the image was not prepared')
+        return candidate
+      },
       signal: input.signal
     })
   }
@@ -279,7 +289,7 @@ export class ConsistencyChecker {
   /** The shared body of `check` and `checkSheet`: one tool-less vision turn with `doc` as system prompt. Never throws. */
   private async runVision(
     ctx: ProjectContext,
-    run: { doc: string; text: () => string; imagePaths: string[]; loadImage: (relPath: string) => Promise<{ mime: string; base64: string }>; signal?: AbortSignal }
+    run: { doc: string; text: () => string; imagePaths: string[]; prepare?: () => Promise<void>; loadImage: (relPath: string) => Promise<{ mime: string; base64: string }>; signal?: AbortSignal }
   ): Promise<CheckResult | null> {
     const resolved = this.opts.registry.resolveOptional('vision')
     if (!resolved) return null
@@ -288,6 +298,7 @@ export class ConsistencyChecker {
     const signal = run.signal ? AbortSignal.any([run.signal, timeout]) : timeout
     try {
       const system = await this.opts.docs.read(ctx, run.doc)
+      await run.prepare?.()
       const provider = this.create(resolved)
       const message: ChatMessage = {
         id: newId('msg'),

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Character, ChatMessage, EndpointConfig } from '@shared/types'
 import { WorkflowDocs } from '../agent/workflow-docs'
+import { planImageReplay } from '../models/providers/image-replay'
 import { encodeSolidPng } from '../models/providers/png'
 import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/providers/types'
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
@@ -20,7 +21,7 @@ import {
   type ConsistencyCheckInput,
   type SheetCheckInput
 } from './consistency-checker'
-import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE } from './image-ops'
+import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 
 const UNPARSEABLE = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
 
@@ -565,9 +566,10 @@ describe('ConsistencyChecker.checkSheet', () => {
     expect(turns[0].req.tools).toEqual([])
     expect(turns[0].loaded[0]).toEqual({ mime: 'image/png', base64: PNG.toString('base64') })
     expect(turns[0].loaded[1]).toEqual({ mime: 'image/png', base64: CANDIDATE.toString('base64') })
+    // The candidate is prepared before the turn, the base sheet is loaded by the turn.
     expect(imageOps.calls).toEqual([
-      { maxEdge: 1568, bytes: PNG.length, format: 'jpeg' },
-      { maxEdge: 1568, bytes: CANDIDATE.length, format: 'jpeg' }
+      { maxEdge: 1568, bytes: CANDIDATE.length, format: 'jpeg' },
+      { maxEdge: 1568, bytes: PNG.length, format: 'jpeg' }
     ])
   })
 
@@ -609,6 +611,61 @@ describe('ConsistencyChecker.checkSheet', () => {
 
     const slow = await setup({ timeoutMs: 40, provider: { runTurn: () => new Promise<never>(() => undefined) } })
     expect(await slow.checker.checkSheet(slow.ctx, sheetInput())).toEqual({ passed: true, issues: ['Consistency check timed out after 0.04s'], skipped: true })
+  })
+
+  describe('an unusable candidate (spec §5)', () => {
+    /**
+     * A provider that loads user-message images the way openai-chat and anthropic do: through `planImageReplay`, which
+     * turns an `ImageUnavailableError` into a text note and goes on. `turns` counts the turns that ran, `notes` the
+     * placeholders the model would have been shown.
+     */
+    function replayingProvider() {
+      const seen = { turns: 0, notes: [] as string[] }
+      const provider: TextProvider = {
+        async runTurn(req): Promise<TextTurnResult> {
+          const message = req.messages.at(-1) as Extract<ChatMessage, { role: 'user' }>
+          const images = await planImageReplay(req.messages, req.loadImage)(req.messages.length - 1, message.imagePaths)
+          seen.turns++
+          for (const img of images) if (img.kind === 'note') seen.notes.push(img.text)
+          return { text: '{"passed": false, "issues": ["judged a sheet it never saw"]}', toolCalls: [], stopReason: 'end', raw: null }
+        }
+      }
+      return { provider, seen }
+    }
+
+    const emptyDownscale: ImageOps = { downscale: async () => ({ mime: 'image/jpeg', data: Buffer.alloc(0) }), size: () => ({ width: 0, height: 0 }) }
+    const unreadable: ImageOps = {
+      downscale: async () => {
+        throw new UnreadableImageError('not an image')
+      },
+      size: () => ({ width: 0, height: 0 })
+    }
+
+    it.each([
+      ['an empty buffer', undefined, Buffer.alloc(0)],
+      ['bytes that are no image', unreadable, Buffer.from('nope')],
+      ['a downscale that comes back empty', emptyDownscale, CANDIDATE]
+    ])('is a skipped pass without running the turn for %s', async (_name, imageOps, buffer) => {
+      const { provider, seen } = replayingProvider()
+      const { registry, docs, ctx } = await setup()
+      const checker = new ConsistencyChecker({ registry, docs, imageOps: imageOps ?? createIdentityImageOps(), createTextProvider: () => provider })
+      await image(ctx, BASE)
+      const result = await checker.checkSheet(ctx, sheetInput({ image: buffer }))
+      expect(result).toMatchObject({ passed: true, skipped: true })
+      expect(result?.issues[0]).toMatch(/^Consistency check failed to run: .*candidate:\/\/sheet/)
+      expect(seen.turns).toBe(0)
+      expect(seen.notes).toEqual([])
+    })
+
+    it('still serves a good candidate to the turn', async () => {
+      const { provider, seen } = replayingProvider()
+      const { registry, docs, ctx, imageOps } = await setup()
+      const checker = new ConsistencyChecker({ registry, docs, imageOps, createTextProvider: () => provider })
+      await image(ctx, BASE)
+      expect(await checker.checkSheet(ctx, sheetInput())).toEqual({ passed: false, issues: ['judged a sheet it never saw'], skipped: false })
+      expect(seen).toEqual({ turns: 1, notes: [] })
+      expect(imageOps.calls.filter((c) => c.bytes === CANDIDATE.length)).toHaveLength(1)
+    })
   })
 
   it('reads Cancelled when the caller aborts', async () => {
