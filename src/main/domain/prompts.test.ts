@@ -42,7 +42,7 @@ describe('sheet fix instruction', () => {
   const FIX = sheetFixInstruction(['X'])
 
   it('joins the issues, and gives nothing for none', () => {
-    expect(sheetFixInstruction(['A is wrong', 'B is missing'])).toBe('Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: A is wrong; B is missing.')
+    expect(sheetFixInstruction(['A is wrong', 'B is missing'])).toBe('Important details: A is wrong; B is missing.')
     expect(sheetFixInstruction([])).toBeUndefined()
   })
 

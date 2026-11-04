@@ -26,7 +26,7 @@ the mention guard).
 
 1. **Checked on generation.** When a vision model is assigned, every generated sheet (base, variation, item base, state
    usage, action usage) is checked before it is recorded.
-2. **Redrawn on failure.** A failed check redraws the sheet with `Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues joined by "; "}.` appended to its
+2. **Redrawn on failure.** A failed check redraws the sheet with `Important details: {issues joined by "; "}.` appended to its
    prompt, up to the project's `consistencyRetries` (default 1) times. Only the final image is kept.
 3. **Never castable while checking.** The sheet stays `pending` through every draw and check. The final image and its check
    are recorded together in one locked step.
@@ -94,7 +94,7 @@ SheetCheckInput {
 
 The checker's instructions. Same structure as `consistency-checklist`: what you receive, checklist, severity, retry
 guidance, output format (`{"passed": …, "issues": [...]}`, at most 4 fixable issues of about 20 words, each written as the
-requirement the sheet must meet, taken from the lock, never naming the wrong attribute that was drawn).
+plain visual description of what the sheet must show, never naming the wrong attribute that was drawn and never using meta words (lock, reference, fix, edit, original)).
 
 **Character sheets.** Judge the main full-body figure:
 
@@ -134,7 +134,7 @@ loop:
                                                       failure on a redraw: stop, record the last candidate and its failed check
   check = sheetChecker?.checkSheet(candidate)        → null (no vision model) : stop with check null
   if check.passed or check.skipped or attempt == retries or signal aborted: stop
-  attempt++; instruction = "Draw it fresh from this description: … It must meet these requirements: …."     (none when issues is empty: a plain re-roll)
+  attempt++; instruction = "Important details: …."     (none when issues is empty: a plain re-roll)
 record the last candidate + its check (finish)
 ```
 
@@ -145,7 +145,7 @@ record the last candidate + its check (finish)
   `pending`, which `recoverInterrupted` turns into `failed` as today.
 - A non-base sheet whose base has failed its check: the services still generate it (the user may want it); the **agent
   tools** refuse it (§9).
-- The prompt builders gain an optional `fix` argument appended at the end: `… {prompt} Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues}.`.
+- The prompt builders gain an optional `fix` argument appended at the end: `… {prompt} Important details: {issues}.`.
   Pinned in `reference/prompt-templates`.
 
 ## 8. The gate (`src/main/domain/panel-validation.ts`)
@@ -221,7 +221,14 @@ Seen (ChatGPT bridge, 2026-11-04): the checker detected the failures (Ara drawn 
 
 Changed:
 
-- The redraw instruction is now `Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues joined by "; "}.`, so it reads as a new drawing (§3.2, §7).
+- The redraw instruction is now `Important details: {issues joined by "; "}.`, so it reads as a new drawing (§3.2, §7).
 - Issues are written as requirements taken from the lock, never naming the wrong attribute drawn, because the image model copies the words it reads (§6).
 - Which side a mark is on is Minor; a mark is reported only when it is missing (§6).
 - The panel redraw instruction is unchanged.
+
+Second live run: ChatGPT still treated the "Draw it fresh ..." redraw as an edit. Ara got "Please upload the reference image so I can make the requested version of Ara", and the Hound got a ChatGPT error. Two direct probes drew an image at once, with and without the name "Ara", when the suffix was plain description: ` Important details: Ara is clearly a young woman of twenty-four, with a feminine face and figure; a thin vertical scar crosses Ara's right eyebrow.` So the trigger is the meta words, not the name.
+
+Changed again:
+
+- The redraw instruction is now `Important details: {issues joined by "; "}.` (§3.2, §7). It is still absent for no issues.
+- Issues are plain visual description, as if part of the drawing description; the words lock, reference, sheet check, earlier, original, fix, requirement, edit and "as ... says" are banned (§6).
