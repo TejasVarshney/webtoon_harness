@@ -1388,6 +1388,8 @@ kbd {
 }
 
 .editing-body {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1402,6 +1404,7 @@ kbd {
    the room the scaled panel takes, since a transform takes none. */
 .panel-stage {
   display: flex;
+  flex: none;
   justify-content: center;
   max-height: 62vh;
   padding: var(--pad);
@@ -1423,8 +1426,15 @@ kbd {
   transform-origin: 0 0;
 }
 
-/* The tabs under the stage, in the strip's tab look, then the open tab's controls. */
+/* The tabs under the stage, in the strip's tab look, then the open tab's controls. They fill what the stage leaves of
+   the column, and the open tab scrolls on its own, so bringing a line's row into view never moves the stage. When the
+   window is too short for even their least height (the tab bar and about a field's worth: a 1440x900 window has it),
+   the column scrolls instead. */
 .panel-inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 140px;
   margin-top: 16px;
 }
 
@@ -1432,8 +1442,13 @@ kbd {
   padding: 0;
 }
 
+/* The 4px either side, taken back by the margin, keep the fields' focus rings inside the scroll area's clip. */
 .inspector-panel {
-  padding-top: 16px;
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 0 -4px;
+  padding: 16px 4px 4px;
+  overflow: auto;
 }
 
 .lines-tab,

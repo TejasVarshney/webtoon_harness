@@ -12,7 +12,6 @@ import { installFakeApi } from '../../test/fake-api'
 import { item, usage } from '../../test/item-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
-import { AFTER_PRESS_MS } from './LinesTab'
 import { PanelInspector } from './PanelInspector'
 import { PanelStage } from './PanelStage'
 
@@ -105,6 +104,31 @@ function fakeTimers(): void {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 }
 
+/**
+ * Lays the tab panel and its rows out, as jsdom has no layout: the panel spans `area` (top, bottom) on screen, and row
+ * `i` starts `rowTop + i * rowHeight` down it, less what the panel is scrolled by. Hands back what `scrollIntoView` was
+ * called on, which must stay empty: it would scroll the column above the panel too.
+ */
+function layOutRows({ area, rowTop, rowHeight }: { area: [number, number]; rowTop: number; rowHeight: number }): Element[] {
+  const box = (top: number, height: number): DOMRect =>
+    ({ left: 0, top, width: 400, height, x: 0, y: top, right: 400, bottom: top + height, toJSON: () => ({}) }) as DOMRect
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.getAttribute('role') === 'tabpanel') return box(area[0], area[1] - area[0])
+    if (this.classList.contains('line-row')) {
+      const panelEl = this.closest('[role="tabpanel"]') as HTMLElement
+      const i = Array.from(this.parentElement!.children).indexOf(this)
+      return box(area[0] + rowTop + i * rowHeight - panelEl.scrollTop, rowHeight)
+    }
+    if (this.classList.contains('bubble')) return box(0, 50)
+    return box(0, 600)
+  })
+  const scrolled: Element[] = []
+  Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+    scrolled.push(this)
+  })
+  return scrolled
+}
+
 describe('PanelInspector', () => {
   it('has the Lines, Cast, Items and Scene tabs, and opens on Lines', () => {
     mount()
@@ -114,16 +138,27 @@ describe('PanelInspector', () => {
     expect(tabPanel()).toHaveAccessibleName('Lines')
   })
 
-  it('marks the line the stage selected, and scrolls it into view', () => {
-    const scrolled: Element[] = []
-    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
-      scrolled.push(this)
-    })
-    mount({ selectedLine: 1 })
+  it('marks the line the stage selected, and scrolls its row into view inside the tab panel only', () => {
+    const scrolled = layOutRows({ area: [0, 100], rowTop: 50, rowHeight: 200 })
+    const { rerender } = mount({ selectedLine: 1 })
     const [first, second] = rows()
     expect(second).toHaveAttribute('aria-current', 'true')
     expect(first).not.toHaveAttribute('aria-current')
-    expect(scrolled).toEqual([second])
+    // The row is 250-450 under an area of 0-100: its top is brought to the area's top.
+    expect(tabPanel().scrollTop).toBe(250)
+    expect(scrolled).toEqual([])
+    expect(document.documentElement.scrollTop).toBe(0)
+    // Back up to the first row, now 200 above the area's top: the panel scrolls back by that much.
+    rerender(0)
+    expect(tabPanel().scrollTop).toBe(50)
+  })
+
+  it('leaves the row the user is in where it is', () => {
+    layOutRows({ area: [0, 100], rowTop: 50, rowHeight: 200 })
+    const { rerender } = mount()
+    act(() => text(1).focus())
+    rerender(1)
+    expect(tabPanel().scrollTop).toBe(0)
   })
 
   it('selects the line of a row the user goes into', () => {
@@ -534,28 +569,23 @@ describe('PanelInspector', () => {
       expect(rows()[1]).not.toHaveAttribute('aria-current')
     })
 
-    it('waits to scroll to the row of a pressed bubble until the press, and a double-click, are over', async () => {
-      const scrolled: Element[] = []
-      Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
-        scrolled.push(this)
-      })
-      fakeTimers()
+    it('scrolls to the row of a pressed bubble at once, inside the tab panel, so the stage never moves', async () => {
+      const scrolled = layOutRows({ area: [600, 700], rowTop: 100, rowHeight: 200 })
       installApi()
-      render(<Editor />)
+      render(
+        <div data-testid="column">
+          <Editor />
+        </div>
+      )
       fireEvent.pointerDown(bubble(1), { clientX: 50, clientY: 25, buttons: 1 })
+      // Held, as a drag may follow: the row is brought into view already, as nothing above the panel moves.
       expect(rows()[1]).toHaveAttribute('aria-current', 'true')
-      // Held: a drag may follow, and scrolling would move the panel under the pointer.
-      await wait(1000)
+      expect(tabPanel().scrollTop).toBe(300)
       expect(scrolled).toEqual([])
+      expect(screen.getByTestId('column').scrollTop).toBe(0)
+      expect(stage().scrollTop).toBe(0)
       fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
-      await wait(100)
-      // The second click of a double-click.
-      fireEvent.pointerDown(bubble(1), { clientX: 50, clientY: 25, buttons: 1 })
-      fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
-      await wait(AFTER_PRESS_MS - 1)
-      expect(scrolled).toEqual([])
-      await wait(1)
-      expect(scrolled).toEqual([rows()[1]])
+      expect(tabPanel().scrollTop).toBe(300)
     })
 
     it('shows a conflict on the stage once, in Lines, and opens Lines for it', async () => {

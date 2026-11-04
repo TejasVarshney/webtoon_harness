@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type RefObject } from 'react'
 import { DialogueKindSchema } from '@shared/schemas'
 import type { Character, DialogueLine, Panel } from '@shared/types'
 import { Field } from '../characters/controls'
@@ -11,77 +11,43 @@ const KINDS = DialogueKindSchema.options
 /** The saves Lines shows the warnings of: the dialogue's, from here or from the stage. */
 const DIALOGUE = ['dialogue'] as const
 
-/** How long a row waits after a press is released before it is scrolled to: the second click of a double-click may be coming. */
-export const AFTER_PRESS_MS = 400
-
 /** Focus moved somewhere outside the element the event is on. */
 const leaves = (e: FocusEvent<HTMLElement>): boolean => !(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))
 
-/** The pointer's last press anywhere in the window, kept up to date by `usePresses`. */
-export interface Presses {
-  down: boolean
-  /** `performance.now()` when it was last released. */
-  releasedAt: number
-}
-
-/** Tracks the pointer's presses from the capture phase, so a handler further in sees the press that is going. */
-export function usePresses(): Presses {
-  const presses = useRef<Presses>({ down: false, releasedAt: Number.NEGATIVE_INFINITY }).current
-  useEffect(() => {
-    const press = (): void => {
-      presses.down = true
-    }
-    const release = (): void => {
-      presses.down = false
-      presses.releasedAt = performance.now()
-    }
-    document.addEventListener('pointerdown', press, true)
-    document.addEventListener('pointerup', release, true)
-    document.addEventListener('pointercancel', release, true)
-    return () => {
-      document.removeEventListener('pointerdown', press, true)
-      document.removeEventListener('pointerup', release, true)
-      document.removeEventListener('pointercancel', release, true)
-    }
-  }, [presses])
-  return presses
+/**
+ * The part of `el` that is on screen, top to bottom: its box, cut by each ancestor that clips and by the window. When
+ * a short window has the column scrolled, part of the scroll area may be out of sight below it.
+ */
+function visibleSpan(el: HTMLElement): { top: number; bottom: number } {
+  const box = el.getBoundingClientRect()
+  let top = box.top
+  let bottom = Math.min(box.bottom, window.innerHeight)
+  for (let p = el.parentElement; p !== null; p = p.parentElement) {
+    if (getComputedStyle(p).overflowY === 'visible') continue
+    const r = p.getBoundingClientRect()
+    top = Math.max(top, r.top)
+    bottom = Math.min(bottom, r.bottom)
+  }
+  return bottom > top ? { top, bottom } : { top: box.top, bottom: box.bottom }
 }
 
 /**
- * Scrolls the row of the selected line into view. The stage sits above the rows in the same column, so scrolling moves
- * it: while the pointer is pressed (a bubble being dragged), or a double-click may still come, the row waits, and is
- * scrolled to `AFTER_PRESS_MS` after the last release.
+ * Scrolls the row of the selected line into view inside the inspector's own scroll area, and nowhere else: the stage
+ * above it never moves, so a bubble being pressed, dragged or typed in stays under the pointer and in sight. That is
+ * why there is no waiting for a press or a double-click to end. A row the user is already in (it has the focus) is
+ * where they put it, and stays.
  */
-function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | null, presses: Presses): void {
+function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | null, area: RefObject<HTMLElement | null>): void {
   useEffect(() => {
-    if (line === null) return
-    const scroll = (): void => row(line)?.scrollIntoView?.({ block: 'nearest' })
-    if (!presses.down && performance.now() - presses.releasedAt >= AFTER_PRESS_MS) {
-      scroll()
-      return
-    }
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const stop = (): void => {
-      if (timer !== null) clearTimeout(timer)
-      timer = null
-      document.removeEventListener('pointerdown', wait, true)
-      document.removeEventListener('pointerup', wait, true)
-    }
-    // Registered after `usePresses`' listeners, so `presses` already has the press or the release.
-    function wait(): void {
-      if (timer !== null) clearTimeout(timer)
-      timer = presses.down
-        ? null
-        : setTimeout(() => {
-            stop()
-            scroll()
-          }, AFTER_PRESS_MS)
-    }
-    wait()
-    document.addEventListener('pointerdown', wait, true)
-    document.addEventListener('pointerup', wait, true)
-    return stop
-  }, [line, row, presses])
+    const el = line === null ? null : row(line)
+    const box = area.current
+    if (el === null || box === null || el.contains(document.activeElement)) return
+    const r = el.getBoundingClientRect()
+    const a = visibleSpan(box)
+    // The nearest edge, and the row's top when it is taller than the area.
+    if (r.top < a.top) box.scrollTop += r.top - a.top
+    else if (r.bottom > a.bottom) box.scrollTop += Math.min(r.bottom - a.bottom, r.top - a.top)
+  }, [line, row, area])
 }
 
 export interface LinesTabProps {
@@ -91,8 +57,8 @@ export interface LinesTabProps {
   /** The line selected on the stage, or by a row here. */
   selectedLine: number | null
   onSelectLine(i: number | null): void
-  /** The pointer's presses, from the inspector, which outlives this tab: a press on the stage can open it. */
-  presses: Presses
+  /** The inspector's scroll area the rows are in, which the selected row is scrolled inside. */
+  scrollArea: RefObject<HTMLElement | null>
 }
 
 /** Who says a line: Narration, or a non-archived character, plus the line's own speaker if they were archived since. */
@@ -333,17 +299,17 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
 
 /**
  * The Lines tab: the panel's lines in reading order, each a row with its speaker, kind, text, "Reset to auto" when
- * placed, and Remove; then "Add line". The row of the line selected on the stage is marked and scrolled into view, and
- * going into a row selects its bubble. A line that changed under an edit, here or on the stage, and a dialogue save the
- * service refused, are said here, once.
+ * placed, and Remove; then "Add line". The row of the line selected on the stage is marked and scrolled into view, in
+ * the inspector's scroll area only, and going into a row selects its bubble. A line that changed under an edit, here or
+ * on the stage, and a dialogue save the service refused, are said here, once.
  */
-export function LinesTab({ panel, characters, selectedLine, onSelectLine, presses }: LinesTabProps) {
+export function LinesTab({ panel, characters, selectedLine, onSelectLine, scrollArea }: LinesTabProps) {
   const { save, conflict, error, clear } = useDialogueSaver(panel.id)
   const warnings = useLastWarnings(panel.id, DIALOGUE)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
   const rows = useRef<(HTMLLIElement | null)[]>([])
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
-  useScrollToRow(selectedLine, rowAt, presses)
+  useScrollToRow(selectedLine, rowAt, scrollArea)
 
   function addLine(): void {
     const speakerId = panel.characters[0]?.characterId ?? null

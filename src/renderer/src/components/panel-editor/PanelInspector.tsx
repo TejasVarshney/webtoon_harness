@@ -1,10 +1,10 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Panel, PanelCharacter, PanelItem } from '@shared/types'
 import { CastPicker } from '../visualizer/CastPicker'
 import { ItemPicker } from '../visualizer/ItemPicker'
 import { useItemRoster } from '../visualizer/use-item-roster'
 import { useRoster } from '../visualizer/use-roster'
-import { LinesTab, usePresses } from './LinesTab'
+import { LinesTab } from './LinesTab'
 import { SceneTab, type SceneFields } from './SceneTab'
 import { useDialogueSaver } from './use-dialogue-saver'
 import { useFieldAutosave, type FieldAutosave } from './use-field-autosave'
@@ -66,8 +66,8 @@ export function PanelInspector({ panel, selectedLine, onSelectLine }: PanelInspe
   const roster = useRoster()
   const itemRoster = useItemRoster()
   const { reported } = useDialogueSaver(panel.id)
-  // Here, not in Lines: a press on the stage can open Lines, which must know the press is still going.
-  const presses = usePresses()
+  // The tabs' own scroll area: Lines scrolls the selected row inside it, so the stage above never moves.
+  const scrollArea = useRef<HTMLDivElement>(null)
   // The cast before the items: on unmount it saves first, so no item is saved with a holder the stored cast lacks.
   const characters = useFieldAutosave(panel, 'characters')
   const items = useFieldAutosave(panel, 'items')
@@ -118,8 +118,8 @@ export function PanelInspector({ panel, selectedLine, onSelectLine }: PanelInspe
           </button>
         ))}
       </div>
-      <div className="inspector-panel" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
-        {tab === 'lines' && <LinesTab panel={panel} characters={roster} selectedLine={selectedLine} onSelectLine={onSelectLine} presses={presses} />}
+      <div ref={scrollArea} className="inspector-panel" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
+        {tab === 'lines' && <LinesTab panel={panel} characters={roster} selectedLine={selectedLine} onSelectLine={onSelectLine} scrollArea={scrollArea} />}
         {tab === 'cast' && (
           // The pickers' inputs have no blur of their own: leaving any of them saves at once.
           <div className="inspector-fields" onBlur={flushPickers}>
