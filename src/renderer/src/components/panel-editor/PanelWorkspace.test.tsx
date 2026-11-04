@@ -83,6 +83,15 @@ describe('PanelWorkspace', () => {
     expect(within(chat).getByTestId('composer-input')).toBeInTheDocument()
   })
 
+  it('takes the focus when it opens, and leaves it where it is when stepping to another panel', () => {
+    mount()
+    expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveFocus()
+    const next = within(header()).getByRole('button', { name: 'Next panel' })
+    focus(next)
+    act(() => useAppStore.getState().selectPanel(A))
+    expect(next).toHaveFocus()
+  })
+
   it('goes back to the strip, and focuses the card it came from', async () => {
     mount()
     await userEvent.click(within(header()).getByRole('button', { name: 'Back to the strip' }))

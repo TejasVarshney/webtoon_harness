@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Group, Panel as Column, Separator } from 'react-resizable-panels'
 import { staleVisualFields } from '@shared/visual-fields'
@@ -61,6 +61,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const share = panel === undefined || row === undefined ? 1 : rowShares(row.panels)[panel.id]
   const slant = panel === undefined ? undefined : row?.slants[panel.id]
 
+  // Opening the editor takes the focus from the card, which goes inert under it: Back has it, so the next Tab stays in
+  // the editor. Stepping with ‹ › keeps the same workspace, so it leaves the focus where the user put it.
+  const back = useRef<HTMLButtonElement>(null)
+  useEffect(() => back.current?.focus(), [])
+
   // A panel opened from a chat thumbnail can arrive before the Webtoon tab ever loaded the strip.
   useEffect(() => {
     if (projectId !== null && !loaded) void usePanelsStore.getState().loadEpisodes()
@@ -99,7 +104,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
         <Column id="workspace-editor" defaultSize="64%" minSize="40%">
           <div className="editing-main">
             <header className="editing-header" data-testid="workspace-header">
-              <button type="button" className="editing-back" aria-label="Back to the strip" onClick={backToStrip}>
+              <button ref={back} type="button" className="editing-back" aria-label="Back to the strip" onClick={backToStrip}>
                 <ArrowLeft size={16} aria-hidden="true" />
                 Strip
               </button>
