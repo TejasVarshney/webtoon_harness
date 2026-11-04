@@ -73,7 +73,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingCharacter: (ctx, characterId) => services.panels.panelsUsingCharacter(ctx, characterId),
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)
   }
-  // The vision check is optional at run time: with no model on the `vision` role it returns null and panels are not checked.
+  // The vision check is optional at run time: with no model on the `vision` role it returns null, and neither panels nor reference sheets are checked.
   const checker = new ConsistencyChecker({ registry, docs, imageOps: opts.imageOps })
   const characters = new CharacterService({ bus, images, projects, usage, trash: opts.trash, sheetChecker: checker })
   // Lazy for the same reason as `usage`: PanelService does not exist yet when ItemService is built.
@@ -81,7 +81,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingItem: (ctx, itemId) => services.panels.panelsUsingItem(ctx, itemId),
     panelsUsingItemUsage: (ctx, usageId) => services.panels.panelsUsingItemUsage(ctx, usageId)
   }
-  const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash })
+  const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash, sheetChecker: checker })
   const episodes = new EpisodeService({ bus })
   const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash })
   const story = new StoryService({ bus, projects })
