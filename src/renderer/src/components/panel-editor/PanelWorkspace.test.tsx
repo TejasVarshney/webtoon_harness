@@ -185,6 +185,51 @@ describe('PanelWorkspace', () => {
     })
   })
 
+  describe("the stage's Retry", () => {
+    // The newest attempt failed, so the stage shows its status with Retry.
+    const failed = (): Panel => ({ ...second, versions: [...second.versions, panelVersion({ id: 'ver_00000000bf', status: 'failed', error: 'Timed out', imagePath: null })] })
+    const retry = (): HTMLElement => within(within(workspace()).getByTestId('panel-stage')).getByRole('button', { name: 'Retry' })
+
+    it('waits for the save of a field just left, so it redraws from what the user typed', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, failed(), third] } })
+      let release: () => void = () => undefined
+      const { calls } = mount({
+        'panels:update': () => new Promise((resolve) => (release = () => resolve({ panel: failed(), warnings: [] }))),
+        'panels:generate': () => undefined
+      })
+      fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
+      focus(within(workspace()).getByLabelText('Description'))
+      await userEvent.keyboard('A wider view')
+      await userEvent.click(retry())
+      await act(async () => undefined)
+      const saving = calls.filter((c) => c.channel === 'panels:update').length
+      const ranMeanwhile = calls.some((c) => c.channel === 'panels:generate')
+      await act(async () => release())
+      expect(saving).toBe(1)
+      expect(ranMeanwhile).toBe(false)
+      await waitFor(() => expect(calls.some((c) => c.channel === 'panels:generate')).toBe(true))
+      const order = calls.map((c) => c.channel)
+      expect(order.indexOf('panels:generate')).toBeGreaterThan(order.indexOf('panels:update'))
+    })
+
+    it('does not redraw when that save is refused, and says why', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, failed(), third] } })
+      const { calls } = mount({
+        'panels:update': () => {
+          throw new Error('Description is too long')
+        },
+        'panels:generate': () => undefined
+      })
+      fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
+      focus(within(workspace()).getByLabelText('Description'))
+      await userEvent.keyboard('A wider view')
+      await userEvent.click(retry())
+      await waitFor(() => expect(within(workspace()).getByTestId('panel-stage').parentElement?.querySelector('.panel-error')).toHaveTextContent('Description is too long'))
+      expect(retry()).toBeEnabled()
+      expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+  })
+
   it('shows a failed regeneration', async () => {
     mount({
       'panels:generate': () => {

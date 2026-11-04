@@ -5,6 +5,7 @@ import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
+import { whenSaved } from '../panel-editor/panel-save-queue'
 import { DialogueOverlay, type OverlayEditing } from './DialogueOverlay'
 
 export interface PanelArtProps {
@@ -40,10 +41,12 @@ export function PanelArt({ panel, editing }: PanelArtProps) {
   }
   const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
 
+  // Like the editor's Regenerate, it waits for the panel's saves (none off the editor), so it never redraws from a field
+  // still being saved, and does not redraw at all after a refused one.
   function retry(): void {
     setBusy(true)
     setError(null)
-    usePanelsStore.getState().generatePanel(panel.id).then(
+    whenSaved(panel.id).then(() => usePanelsStore.getState().generatePanel(panel.id)).then(
       () => setBusy(false),
       (e: unknown) => {
         setError(errorText(e))
