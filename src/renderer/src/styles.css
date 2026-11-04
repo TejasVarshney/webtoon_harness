@@ -1959,6 +1959,16 @@ kbd {
   color: var(--muted);
 }
 
+.sheet-check-passed {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sheet-check-issues {
+  margin: 2px 0 0;
+  padding-left: 16px;
+}
+
 .variation-actions {
   display: flex;
   flex-wrap: wrap;

@@ -3,6 +3,7 @@ import { assetUrl } from '@shared/asset-url'
 import type { Item, ItemUsage } from '@shared/types'
 import { useItemsStore } from '../../stores/items-store'
 import { ConfirmButton, errorText } from '../characters/controls'
+import { SheetCheckBadge } from '../SheetCheckBadge'
 import { UsageForm } from './UsageForm'
 
 const BADGE: Record<ItemUsage['status'], string> = { pending: 'Generating…', ready: 'Ready', failed: 'Failed' }
@@ -62,6 +63,7 @@ export function UsageGrid({ item, projectId }: UsageGridProps) {
               <span className="variation-kind">{KIND_LABEL[u.kind]}</span>
               {u.delta !== '' && <span className="variation-delta">{u.delta}</span>}
               {u.status === 'failed' && u.error !== null && <span className="error">{u.error}</span>}
+              <SheetCheckBadge check={u.check} />
             </div>
             <div className="variation-actions">
               {u.status !== 'pending' && (

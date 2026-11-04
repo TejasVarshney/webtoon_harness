@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { assetUrl } from '@shared/asset-url'
-import type { Item } from '@shared/types'
+import type { Item, ItemUsage } from '@shared/types'
 import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
@@ -376,6 +376,35 @@ describe('ItemStudio', () => {
       i = item()
       api.emit({ type: 'item.changed', projectId, itemId: pistol.id })
       expect(await within(screen.getByTestId('usage-card')).findByRole('img')).toBeInTheDocument()
+    })
+  })
+
+  describe('sheet check', () => {
+    const open = async (check: ItemUsage['check']) => {
+      mount({ 'items:list': () => [item({ usages: [usage({ check })] })] })
+      await userEvent.click(await screen.findByText('Ray Pistol'))
+      return within(await screen.findByTestId('usage-card'))
+    }
+
+    it('flags a failed sheet and lists its issues', async () => {
+      const card = await open({ passed: false, issues: ['Barrel ring is red, lock says cyan', 'Grip is wooden'], skipped: false })
+      const badge = card.getByTestId('sheet-check-failed')
+      expect(badge).toHaveTextContent('Check failed')
+      expect(badge).toHaveAttribute('title', 'Barrel ring is red, lock says cyan\nGrip is wooden')
+      expect(card.getByText('Barrel ring is red, lock says cyan')).toBeInTheDocument()
+      expect(card.queryByTestId('sheet-check-passed')).toBeNull()
+    })
+
+    it('marks a passed sheet as checked', async () => {
+      const card = await open({ passed: true, issues: [], skipped: false })
+      expect(card.getByTestId('sheet-check-passed')).toHaveTextContent('Checked')
+      expect(card.queryByTestId('sheet-check-failed')).toBeNull()
+    })
+
+    it.each([null, { passed: false, issues: ['x'], skipped: true }])('shows nothing for an unchecked or skipped sheet (%j)', async (check) => {
+      const card = await open(check)
+      expect(card.queryByTestId('sheet-check-failed')).toBeNull()
+      expect(card.queryByTestId('sheet-check-passed')).toBeNull()
     })
   })
 })

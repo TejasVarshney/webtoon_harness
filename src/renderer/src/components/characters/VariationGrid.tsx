@@ -3,6 +3,7 @@ import { assetUrl } from '@shared/asset-url'
 import type { Character, Variation } from '@shared/types'
 import { useCharactersStore } from '../../stores/characters-store'
 import { ConfirmButton, errorText } from './controls'
+import { SheetCheckBadge } from '../SheetCheckBadge'
 import { VariationForm } from './VariationForm'
 
 const BADGE: Record<Variation['status'], string> = { pending: 'Generating…', ready: 'Ready', failed: 'Failed' }
@@ -61,6 +62,7 @@ export function VariationGrid({ character, projectId }: VariationGridProps) {
               <span className="variation-kind">{v.kind}</span>
               {v.delta !== '' && <span className="variation-delta">{v.delta}</span>}
               {v.status === 'failed' && v.error !== null && <span className="error">{v.error}</span>}
+              <SheetCheckBadge check={v.check} />
             </div>
             <div className="variation-actions">
               {v.status === 'failed' && (
