@@ -12,7 +12,7 @@ import type { EpisodeService } from './episode-service'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageGenResult, ImageService } from './image-service'
 import type { ItemService, ItemUsageLookup } from './item-service'
-import { hasReadyReference, hasReadyUsage, validatePanelDraft } from './panel-validation'
+import { hasReadyReference, hasReadyUsage, sheetCheckFailure, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { isNotFound } from '../storage/fs-errors'
 
@@ -108,13 +108,13 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     return this.previousOf(ctx, await this.get(ctx, panelId))
   }
 
-  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const episode = await this.opts.episodes.get(ctx, draft.episodeId)
     if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
 
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
-    const check = validatePanelDraft(draft, roster, itemRoster, { strictMentions: opts.strictMentions })
+    const check = validatePanelDraft(draft, roster, itemRoster, { strictMentions: opts.strictMentions, strictSheets: opts.strictSheets })
     if (check.errors.length > 0) throw new PanelValidationError(check.errors)
 
     const meta = await this.opts.projects.getMeta(ctx)
@@ -159,9 +159,10 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
    * changed, so a panel that casts a since-archived character, or a variation whose regeneration
    * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
    * Items work the same way: an unchanged item and usage pair is grandfathered, and the unknown-item,
-   * foreign-usage and holder errors apply to every entry.
+   * foreign-usage and holder errors apply to every entry. Ruling T18b: it also clears a failed sheet check on
+   * an unchanged pair, so editing a panel never blocks a cast it already had.
    */
-  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
@@ -179,7 +180,8 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
       const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), grandfatherUnchangedItems(itemRoster, current.items, merged.items), {
-        strictMentions: opts.strictMentions
+        strictMentions: opts.strictMentions,
+        strictSheets: opts.strictSheets
       })
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
@@ -655,9 +657,9 @@ function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[],
   const keptCharacters = new Set(unchanged.map((entry) => entry.characterId).filter((id) => !changedCharacters.has(id)))
   return roster.map((c) => {
     const archived = c.archived && !keptCharacters.has(c.id)
-    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && !hasReadyReference(v)
+    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && (!hasReadyReference(v) || sheetCheckFailure(v) !== null)
     if (archived === c.archived && !c.variations.some(unusable)) return c
-    return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged' } : v)) }
+    return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged', check: null } : v)) }
   })
 }
 
@@ -676,9 +678,9 @@ function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next
   const keptItems = new Set(unchanged.map((entry) => entry.itemId).filter((id) => !changedItems.has(id)))
   return itemRoster.map((i) => {
     const archived = i.archived && !keptItems.has(i.id)
-    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && !hasReadyUsage(u)
+    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && (!hasReadyUsage(u) || sheetCheckFailure(u) !== null)
     if (archived === i.archived && !i.usages.some(unusable)) return i
-    return { ...i, archived, usages: i.usages.map((u) => (unusable(u) ? { ...u, status: 'ready' as const, imagePath: u.imagePath || 'unchanged' } : u)) }
+    return { ...i, archived, usages: i.usages.map((u) => (unusable(u) ? { ...u, status: 'ready' as const, imagePath: u.imagePath || 'unchanged', check: null } : u)) }
   })
 }
 

@@ -210,7 +210,7 @@ const updatePanelFields = (panelId: string): ToolDefinition =>
       try {
         // Ruling T21b (as T19a): strict only for a description edit, so a panel saved with an unattached-mention warning
         // (the manual editor allows it) stays editable here; the warning is passed on instead.
-        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined })
+        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
       } catch (error) {
         throw asToolError(error)
       }

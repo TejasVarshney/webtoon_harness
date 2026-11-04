@@ -26,7 +26,7 @@ async function setup(): Promise<{ s: TestServices; invoke: Invoke; projectId: st
   const { panel } = await s.panels.create(
     ctx,
     { episodeId: episode.id, description: 'A quiet street', setting: 'street', shot: 'wide', aspect: '3:4', characters: [], dialogue: [], continuityNotes: '', offPanelMentions: [] },
-    { createdBy: 'user', strictMentions: false }
+    { createdBy: 'user', strictMentions: false, strictSheets: false }
   )
   return { s, invoke, projectId: ctx.id, sessionId: session.id, episodeId: episode.id, panelId: panel.id }
 }

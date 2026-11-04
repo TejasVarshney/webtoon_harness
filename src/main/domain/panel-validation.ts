@@ -1,4 +1,4 @@
-import type { Character, Item, ItemUsage, PanelDraft, Variation } from '@shared/types'
+import type { Character, CheckResult, Item, ItemUsage, PanelDraft, Variation } from '@shared/types'
 
 // Pure panel-draft validation (spec §9, step 2). No I/O: the caller passes the whole roster
 // (archived characters included, so an archived cast member is named as such rather than reported
@@ -26,18 +26,40 @@ export function hasReadyUsage(usage: ItemUsage): usage is ItemUsage & { imagePat
 }
 
 /**
+ * The issues of a sheet whose check failed, else null. A sheet that was never checked (`check` null) or whose
+ * check was skipped is not a failure: only a verdict that ran and said no counts.
+ */
+export function sheetCheckFailure(sheet: { check: CheckResult | null }): string[] | null {
+  const { check } = sheet
+  return check !== null && check.passed === false && check.skipped === false ? check.issues : null
+}
+
+/** The state of a sheet's check for display: null when it was never checked. A skipped check is `skipped` whatever its verdict. */
+export function sheetCheckState(check: CheckResult | null): 'passed' | 'failed' | 'skipped' | null {
+  if (check === null) return null
+  if (check.skipped) return 'skipped'
+  return check.passed ? 'passed' : 'failed'
+}
+
+/**
  * Messages come back in a stable order: cast errors in cast order, then dialogue speakers, then item
  * errors in item order, then the mention guard (characters, then items). An archived or unknown
  * character is reported once and its variation is not checked further (the entry has to go anyway);
  * an item works the same way. Identical messages are reported once.
  * `strictMentions` turns the mention guard into an error (the agent); otherwise it is a warning
- * (the manual editor).
+ * (the manual editor). `strictSheets` does the same for a ready sheet whose check failed (spec §8): an error for
+ * the agent, a warning in the editor; it is reported in the same place as the "no ready reference image" error.
  */
-export function validatePanelDraft(draft: PanelDraftFields, roster: Character[], itemRoster: Item[], opts: { strictMentions: boolean }): PanelDraftCheck {
+export function validatePanelDraft(draft: PanelDraftFields, roster: Character[], itemRoster: Item[], opts: { strictMentions: boolean; strictSheets: boolean }): PanelDraftCheck {
   const errors: string[] = []
   const warnings: string[] = []
   const report = (list: string[], message: string): void => {
     if (!list.includes(message)) list.push(message)
+  }
+
+  const reportSheet = (kind: 'Variation' | 'Usage', name: string, owner: string, sheet: { check: CheckResult | null }): void => {
+    const issues = sheetCheckFailure(sheet)
+    if (issues) report(opts.strictSheets ? errors : warnings, `${kind} "${name}" of ${owner} failed its sheet check: ${issues.join('; ')}. Regenerate it or ask the user.`)
   }
 
   const byId = new Map(roster.map((c) => [c.id, c]))
@@ -59,6 +81,7 @@ export function validatePanelDraft(draft: PanelDraftFields, roster: Character[],
     const variation = character.variations.find((v) => v.id === entry.variationId)
     if (!variation) report(errors, `Variation ${entry.variationId} does not belong to ${character.name}`)
     else if (!hasReadyReference(variation)) report(errors, `Variation "${variation.name}" of ${character.name} has no ready reference image`)
+    else reportSheet('Variation', variation.name, character.name, variation)
   }
 
   for (const line of draft.dialogue) {
@@ -85,6 +108,7 @@ export function validatePanelDraft(draft: PanelDraftFields, roster: Character[],
     const usage = item.usages.find((u) => u.id === entry.usageId)
     if (!usage) report(errors, `Usage ${entry.usageId} does not belong to ${item.name}`)
     else if (!hasReadyUsage(usage)) report(errors, `Usage "${usage.name}" of ${item.name} has no ready reference image`)
+    else reportSheet('Usage', usage.name, item.name, usage)
 
     if (entry.heldBy !== null && !draftCharacterIds.has(entry.heldBy)) {
       const holderName = byId.get(entry.heldBy)?.name
