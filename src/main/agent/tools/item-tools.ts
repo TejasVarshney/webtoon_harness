@@ -127,7 +127,7 @@ const createItem = defineTool({
     // Generation never throws for provider failures; a failed image is reported in the result.
     const settled = generateBaseImage === false ? base : await items.generateUsageImage(ctx.project, created.id, base.id, { signal: ctx.signal })
     return {
-      content: { itemId: created.id, baseUsageId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath },
+      content: { itemId: created.id, baseUsageId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...(sheetCheckFailure(settled) ? { note: SHEET_FAILED_NOTE } : {}) },
       images: settled.status === 'ready' && settled.imagePath !== null ? [settled.imagePath] : []
     }
   }

@@ -114,7 +114,7 @@ const createCharacter = defineTool({
     // Generation never throws for provider failures; a failed image is reported in the result.
     const settled = generateBaseImage === false ? base : await characters.generateVariationImage(ctx.project, created.id, base.id, { signal: ctx.signal })
     return {
-      content: { characterId: created.id, baseVariationId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath },
+      content: { characterId: created.id, baseVariationId: base.id, baseStatus: settled.status, baseError: settled.error, imagePath: settled.imagePath, baseCheck: settled.check, ...(sheetCheckFailure(settled) ? { note: SHEET_FAILED_NOTE } : {}) },
       images: settled.status === 'ready' && settled.imagePath !== null ? [settled.imagePath] : []
     }
   }

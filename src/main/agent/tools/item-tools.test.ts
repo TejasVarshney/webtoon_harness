@@ -282,6 +282,23 @@ describe('item tools', () => {
     expect(u).toMatchObject({ check: 'failed', checkIssues: ['the stripe is missing', 'the grip is blue'] })
   })
 
+  it('create_item reports the base check, with the note when it failed', async () => {
+    const env = await setup()
+    const probe = json(await env.run('create_item', { ...blaster, name: 'Probe' }))
+    const base = (await env.s.items.get(env.ctx, probe.itemId)).usages[0]
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage')
+    generate.mockResolvedValueOnce({ ...base, check: { passed: false, issues: ['no stripe'], skipped: false } })
+    expect(json(await env.run('create_item', { ...blaster, name: 'Lantern' }))).toMatchObject({
+      baseCheck: { passed: false, issues: ['no stripe'], skipped: false },
+      note: 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
+    })
+    const good = { passed: true, issues: [], skipped: false }
+    generate.mockResolvedValueOnce({ ...base, check: good })
+    const ok = json(await env.run('create_item', { ...blaster, name: 'Key' }))
+    expect(ok.baseCheck).toEqual(good)
+    expect(ok).not.toHaveProperty('note')
+  })
+
   it('update_item warns on an item lock change', async () => {
     const { run, ctx, s } = await setup()
     const { itemId } = json(await run('create_item', blaster))
