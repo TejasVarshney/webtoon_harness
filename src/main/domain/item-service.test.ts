@@ -7,7 +7,7 @@ import { makeItem, makeItemUsage } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import type { ImageGenRequest, ImageService } from './image-service'
 import { DuplicateItemError, DuplicateUsageError, ItemInUseError, ItemService, type ItemUsageLookup } from './item-service'
-import { itemReferencePrompt, itemUsagePrompt } from './prompts'
+import { itemReferencePrompt, itemUsagePrompt, sheetFixInstruction } from './prompts'
 import type { CheckResult } from '@shared/types'
 import type { SheetCheckInput } from './consistency-checker'
 
@@ -371,7 +371,7 @@ describe('ItemService sheet check', () => {
     const style = (await tp!.store.getMeta(ctx)).stylePreset
     expect(calls).toHaveLength(3)
     expect(calls[1].prompt).toBe(itemUsagePrompt(snapshot, snapshot.usages[1], style))
-    expect(calls[2].prompt).toBe(itemUsagePrompt(snapshot, snapshot.usages[1], style) + ' Fix these issues: grip is the wrong colour')
+    expect(calls[2].prompt).toBe(itemUsagePrompt(snapshot, snapshot.usages[1], style) + ` ${sheetFixInstruction(['grip is the wrong colour'])}`)
     expect(out.check).toEqual(PASS)
     expect(isDraw(ctx, out, 3)).toBe(true)
     expect(imageFiles(ctx, item.id)).toHaveLength(2)

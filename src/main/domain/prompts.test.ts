@@ -39,10 +39,10 @@ describe('item prompts', () => {
 })
 
 describe('sheet fix instruction', () => {
-  const FIX = 'Fix these issues: X'
+  const FIX = sheetFixInstruction(['X'])
 
   it('joins the issues, and gives nothing for none', () => {
-    expect(sheetFixInstruction(['A is wrong', 'B is missing'])).toBe('Fix these issues: A is wrong; B is missing')
+    expect(sheetFixInstruction(['A is wrong', 'B is missing'])).toBe('Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: A is wrong; B is missing.')
     expect(sheetFixInstruction([])).toBeUndefined()
   })
 

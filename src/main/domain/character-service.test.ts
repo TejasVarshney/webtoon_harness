@@ -7,6 +7,7 @@ import { makeCharacter, makeVariation } from '../test/factories'
 import { testServices } from '../test/test-services'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { CharacterInUseError, CharacterService, DuplicateCharacterError, type PanelUsageLookup } from './character-service'
+import { sheetFixInstruction } from './prompts'
 import type { CheckResult } from '@shared/types'
 import type { SheetCheckInput } from './consistency-checker'
 import type { ImageGenRequest, ImageService } from './image-service'
@@ -302,7 +303,7 @@ describe('CharacterService sheet check', () => {
     const c = await svc.create(ctx, input(), 'user')
     const out = await svc.generateVariationImage(ctx, c.id, c.variations[0].id)
     expect(calls).toHaveLength(2)
-    expect(calls[1].prompt.endsWith(' Fix these issues: Ara reads as a man')).toBe(true)
+    expect(calls[1].prompt.endsWith(` ${sheetFixInstruction(['Ara reads as a man'])}`)).toBe(true)
     expect(out.check).toEqual(PASS)
     expect(isDraw(ctx, out, 2)).toBe(true)
     expect(imageFiles(ctx, c.id)).toHaveLength(1)

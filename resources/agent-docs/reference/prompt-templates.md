@@ -165,7 +165,7 @@ Item usage reference sheet. {stylePreset}. Plain light-gray background, no text.
 - Gray hands are only a way to show the grip. The panel prompt tells the image model to draw the holder's own hands instead, and the consistency check treats gray hands in a panel as a Major problem.
 - If the base image is not ready, no prompt is sent: the usage fails with "Base reference image is not ready".
 
-After a failed sheet check, the redraw appends ` Fix these issues: {issues joined by "; "}` to the sheet prompt (any of the four above).
+After a failed sheet check, the redraw appends ` Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues joined by "; "}.` to the sheet prompt (any of the four above).
 
 ## Panel Edit Prompt
 

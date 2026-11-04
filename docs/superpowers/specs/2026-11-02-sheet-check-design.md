@@ -26,7 +26,7 @@ the mention guard).
 
 1. **Checked on generation.** When a vision model is assigned, every generated sheet (base, variation, item base, state
    usage, action usage) is checked before it is recorded.
-2. **Redrawn on failure.** A failed check redraws the sheet with `Fix these issues: {issues joined by "; "}` appended to its
+2. **Redrawn on failure.** A failed check redraws the sheet with `Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues joined by "; "}.` appended to its
    prompt, up to the project's `consistencyRetries` (default 1) times. Only the final image is kept.
 3. **Never castable while checking.** The sheet stays `pending` through every draw and check. The final image and its check
    are recorded together in one locked step.
@@ -93,8 +93,8 @@ SheetCheckInput {
 ## 6. `reference/sheet-checklist` (new doc in `resources/agent-docs/reference/`)
 
 The checker's instructions. Same structure as `consistency-checklist`: what you receive, checklist, severity, retry
-guidance, output format (`{"passed": …, "issues": [...]}`, at most 4 fixable issues of about 20 words, naming what is wrong
-and what it must be, pointing at the lock).
+guidance, output format (`{"passed": …, "issues": [...]}`, at most 4 fixable issues of about 20 words, each written as the
+requirement the sheet must meet, taken from the lock, never naming the wrong attribute that was drawn).
 
 **Character sheets.** Judge the main full-body figure:
 
@@ -118,7 +118,7 @@ missing; wrong outfit or clearly wrong colors; an item of a different shape, mat
 a person or skin-colored hands on an action sheet; hands on a base or state sheet; any text; a second subject.
 
 **Minor (never fail a sheet for these):** several views on one sheet (turnarounds, back views, close-up insets of the face,
-hands or details); the pose; the background shade; lighting; art quality; small folds and strands.
+hands or details); which side a mark is on (left and right are easy to mirror: report a mark only when it is missing); the pose; the background shade; lighting; art quality; small folds and strands.
 
 When unsure, Minor.
 
@@ -134,7 +134,7 @@ loop:
                                                       failure on a redraw: stop, record the last candidate and its failed check
   check = sheetChecker?.checkSheet(candidate)        → null (no vision model) : stop with check null
   if check.passed or check.skipped or attempt == retries or signal aborted: stop
-  attempt++; instruction = "Fix these issues: …"     (none when issues is empty: a plain re-roll)
+  attempt++; instruction = "Draw it fresh from this description: … It must meet these requirements: …."     (none when issues is empty: a plain re-roll)
 record the last candidate + its check (finish)
 ```
 
@@ -145,7 +145,7 @@ record the last candidate + its check (finish)
   `pending`, which `recoverInterrupted` turns into `failed` as today.
 - A non-base sheet whose base has failed its check: the services still generate it (the user may want it); the **agent
   tools** refuse it (§9).
-- The prompt builders gain an optional `fix` argument appended at the end: `… {prompt} Fix these issues: {issues}`.
+- The prompt builders gain an optional `fix` argument appended at the end: `… {prompt} Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues}.`.
   Pinned in `reference/prompt-templates`.
 
 ## 8. The gate (`src/main/domain/panel-validation.ts`)
@@ -214,3 +214,14 @@ record the last candidate + its check (finish)
 3. The base-failed rule is enforced in the agent tools only; the studio still lets the user generate a variation.
 4. Uploads are never checked: the user chose that image.
 5. A check that could not run (`skipped`) counts as unchecked, as for panels.
+
+## 14. Amendments after the live run
+
+Seen (ChatGPT bridge, 2026-11-04): the checker detected the failures (Ara drawn as a man, a human beside the Rift Hound), but the redraw never happened. The suffix `Fix these issues: ...` read as an edit request, so ChatGPT asked for the original image and drew nothing. The checker also reported a scar on the wrong side, probably a left/right mirroring mistake.
+
+Changed:
+
+- The redraw instruction is now `Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: {issues joined by "; "}.`, so it reads as a new drawing (§3.2, §7).
+- Issues are written as requirements taken from the lock, never naming the wrong attribute drawn, because the image model copies the words it reads (§6).
+- Which side a mark is on is Minor; a mark is reported only when it is missing (§6).
+- The panel redraw instruction is unchanged.

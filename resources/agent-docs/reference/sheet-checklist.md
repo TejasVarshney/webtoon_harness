@@ -55,7 +55,8 @@ Minor (the sheet passes):
 - the shade of the background;
 - the lighting;
 - art quality and anatomy details;
-- small folds of clothing and single hair strands.
+- small folds of clothing and single hair strands;
+- which side a mark is on (a scar over the left eyebrow when the lock says the right): left and right are easy to mirror, so report a mark only when it is missing.
 
 Rules:
 
@@ -65,27 +66,29 @@ Rules:
 
 ## Retry Guidance
 
-When the sheet fails, your issues are pasted into the image prompt for an automatic redraw, after the words "Fix these issues:", joined with "; ". The image model reads them as instructions. So write each issue so that it can be fixed:
+When the sheet fails, your issues are pasted into the image prompt for an automatic redraw, after the words "It must meet these requirements:", joined with "; ". The image model draws a new image from them and copies the words it reads. So write each issue as **the requirement the sheet must meet, taken from the lock**, and never name the wrong attribute that was drawn ("reads as a man" plants "man"):
 
 - one short sentence, at most about 20 words;
-- name the character or the item (as written in the text) and what is wrong **and** what it must be, pointing at the lock: "Ara reads as a man, but her lock says a twenty-four-year-old woman";
+- name the character or the item (as written in the text) and say what the sheet must show, as the lock says it;
 - only visible facts: no opinions, no art critique, no story;
 - no semicolons inside an issue;
 - at most 4 issues, the most important first.
 
 Good issues:
 
-- "Ara reads as a man, but her lock says a twenty-four-year-old woman"
-- "The scar through Ara's right eyebrow is missing"
-- "Ara's hair is brown, but her lock says a black bob"
-- "The Vesper glaive has a silver blade, but its lock says a brass blade"
-- "Skin-colored hands hold the glaive, but an action sheet shows only plain gray hands"
-- "There is lettering in the corner, remove all text"
+- "Ara clearly reads as a twenty-four-year-old woman, as her lock says"
+- "A thin vertical scar crosses Ara's right eyebrow"
+- "Ara has a black bob, as her lock says"
+- "The Vesper glaive's blade is brass, as its lock says"
+- "Only the Rift Hound appears on the sheet, with no people"
+- "The glaive is held only by plain gray hands and forearms"
+- "There is no text or lettering anywhere"
 
 Bad issues, and why:
 
 - "The image is not good" (nothing to fix)
 - "Hair wrong" (whose hair, and what should it be?)
+- "Ara reads as a man" (it names what is wrong, not what the sheet must show)
 - "There are two views of Ara" (Minor: several views are allowed, do not report)
 - "Make it more dramatic" (taste, not consistency)
 
@@ -105,7 +108,7 @@ A passing sheet:
 A failing sheet:
 
 ```json
-{"passed": false, "issues": ["Ara reads as a man, but her lock says a twenty-four-year-old woman", "The scar through Ara's right eyebrow is missing"]}
+{"passed": false, "issues": ["Ara clearly reads as a twenty-four-year-old woman, as her lock says", "A thin vertical scar crosses Ara's right eyebrow"]}
 ```
 
 Respond with only one JSON object: {"passed": true|false, "issues": ["…"]}

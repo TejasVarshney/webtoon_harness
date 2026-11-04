@@ -4,9 +4,9 @@ import { hasReadyReference, hasReadyUsage } from './panel-validation'
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
 // to it, and every sheet must say "no text" because dialogue is rendered as HTML (never in the image).
 
-/** The redraw instruction after a failed sheet check: `Fix these issues: a; b`, or undefined when there are no issues. */
+/** The redraw instruction after a failed sheet check: a fresh-drawing request that lists the requirements (`a; b`), or undefined when there are no issues. */
 export function sheetFixInstruction(issues: string[]): string | undefined {
-  return issues.length > 0 ? `Fix these issues: ${issues.join('; ')}` : undefined
+  return issues.length > 0 ? `Draw it fresh from this description: it is a new image, not an edit of an earlier one. It must meet these requirements: ${issues.join('; ')}.` : undefined
 }
 
 /** Appends the optional fix instruction to a sheet prompt, after one space. */
