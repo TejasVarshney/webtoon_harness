@@ -19,7 +19,8 @@ Go through these items for the generated panel, in order.
    - eyes: color;
    - skin tone;
    - face: shape and distinguishing marks (scars, freckles, glasses, piercings, tattoos);
-   - build and apparent age.
+   - apparent gender and apparent age: they match the appearance lock;
+   - build.
 3. **Outfit, per character.** The clothes must match the character's look for this panel: the look's own description if it has one (for example "Outfit: School uniform — navy blazer ..."), otherwise the default outfit in the appearance lock. Check the main pieces and their colors.
 4. **Items, per item.** Skip this when the text has no Items block. Compare each item with its own reference image and item lock:
    - shape and size, materials, colors and markings match the reference;
@@ -34,6 +35,8 @@ Go through these items for the generated panel, in order.
 
 If a character or an item has "(no reference image)" in the text, judge it from its lock (and, for an item, its usage text) alone.
 
+When a reference image and the appearance lock disagree, the lock wins: judge the panel against the lock.
+
 ## Severity
 
 Every problem you find is either **Major** or **Minor**.
@@ -41,6 +44,7 @@ Every problem you find is either **Major** or **Minor**.
 Major (the panel fails):
 
 - a character's hair color or length, eye color or skin tone differs from the reference;
+- a character reads as a different gender, or a clearly different age, than the appearance lock says;
 - a distinguishing mark from the lock is missing (a scar, glasses, a piercing);
 - the outfit does not match the look (wrong clothes, or clearly wrong colors);
 - a cast member is missing, appears twice, is merged with another character, or is swapped with someone else;
