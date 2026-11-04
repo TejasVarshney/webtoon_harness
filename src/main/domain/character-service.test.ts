@@ -353,7 +353,7 @@ describe('CharacterService sheet check', () => {
     expect(out).toMatchObject({ status: 'ready', check: fail('x') })
   })
 
-  it('stays pending while the check runs', async () => {
+  it('stays pending while the check runs, and a concurrent update is not blocked (Ruling T15a)', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -364,8 +364,10 @@ describe('CharacterService sheet check', () => {
     while (checks.length === 0) await new Promise((r) => setTimeout(r, 5))
     expect((await svc.get(ctx, c.id)).variations[0]).toMatchObject({ status: 'pending', imagePath: null, check: null })
     expect(imageFiles(ctx, c.id)).toEqual([])
+    await svc.update(ctx, c.id, { role: 'minor' })
     release()
     expect(await running).toMatchObject({ status: 'ready', check: PASS })
+    expect((await svc.get(ctx, c.id)).role).toBe('minor')
   })
 
   it('keeps the previous image and check when the first draw fails', async () => {

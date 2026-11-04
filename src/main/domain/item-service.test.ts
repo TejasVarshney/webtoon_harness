@@ -396,6 +396,23 @@ describe('ItemService sheet check', () => {
     expect(out).toMatchObject({ status: 'ready', check: fail('x') })
   })
 
+  it('re-rolls without a fix when a failed check names no issue', async () => {
+    const { svc, calls, ctx } = await setup(undefined, [], { replies: [fail(), PASS] })
+    const item = await svc.create(ctx, input(), 'user')
+    await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(2)
+    expect(calls[1].prompt).toBe(calls[0].prompt)
+  })
+
+  it('stops on a skipped check and records it', async () => {
+    const skipped: CheckResult = { passed: false, issues: ['Cancelled'], skipped: true }
+    const { svc, calls, ctx } = await setup(undefined, [], { replies: [skipped] })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(1)
+    expect(out).toMatchObject({ status: 'ready', check: skipped })
+  })
+
   it('stops redrawing once the signal is aborted', async () => {
     const ac = new AbortController()
     const { svc, calls, ctx } = await setup(undefined, [], { replies: [fail('x')], hold: async () => ac.abort() })
