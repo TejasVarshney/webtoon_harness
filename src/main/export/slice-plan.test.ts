@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { longImagePartHeight, planSlices } from './slice-plan'
+import { longImagePartHeight, pageHeightCss, planSlices, printPageHeightCss } from './slice-plan'
 
 describe('planSlices', () => {
   it('cuts anywhere into page-height slices with a short last one', () => {
@@ -33,12 +33,22 @@ describe('planSlices', () => {
     expect(planSlices({ totalHeight: 0, rows: [], pageHeight: 1280, breaks: 'rows' })).toEqual([])
   })
 
-  it('splits a long image into parts', () => {
+  it('splits a long image into parts of at most 65,000 output px, in CSS px of the 440 px view', () => {
+    // 65000 / scale output px, at 440 / 800 CSS px per output px.
+    expect(longImagePartHeight(1)).toBe(35750)
     const pageHeight = longImagePartHeight(2)
-    expect(pageHeight).toBe(32500)
-    const slices = planSlices({ totalHeight: 70000, rows: [], pageHeight, breaks: 'anywhere' })
+    expect(pageHeight).toBe(17875)
+    const slices = planSlices({ totalHeight: 40000, rows: [], pageHeight, breaks: 'anywhere' })
     expect(slices).toHaveLength(3)
-    expect(Math.max(...slices.map((s) => s.height))).toBeLessThanOrEqual(32500)
-    expect(slices.reduce((sum, s) => sum + s.height, 0)).toBe(70000)
+    expect(Math.max(...slices.map((s) => s.height))).toBeLessThanOrEqual(17875)
+    expect(slices.reduce((sum, s) => sum + s.height, 0)).toBe(40000)
+  })
+
+  it('gives every page height in whole CSS px of the 440 px view', () => {
+    expect(pageHeightCss('webtoon')).toBe(704)
+    expect(pageHeightCss('pdf-reading')).toBe(704)
+    expect(pageHeightCss('cbz')).toBe(704)
+    expect(printPageHeightCss('a4')).toBe(647)
+    expect(printPageHeightCss('letter')).toBe(586)
   })
 })

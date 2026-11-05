@@ -14,30 +14,26 @@ export type PdfPage = {
 
 const PAPER = { a4: { width: 595.28, height: 841.89 }, letter: { width: 612, height: 792 } } as const
 const MARGIN = 36
-/** The export view is 800 CSS px wide. */
-const CSS_WIDTH = 800
-/** pt per CSS px for reading PDFs: 800 CSS px become 600 pt. */
-const READING_SCALE = 0.75
+/** A reading page's width: 0.75 pt per output px at scale 1, so 800 px become 600 pt. */
+const READING_WIDTH = 600
 
-/** A reading page: 600 pt wide, as tall as the slice, with the image filling it. */
-export function readingPage(slice: { cssHeight: number }, jpeg: Buffer, px: { w: number; h: number }): PdfPage {
-  const height = slice.cssHeight * READING_SCALE
+/**
+ * A reading page: 600 pt wide, as tall as the image at that width, with the image filling it. Sized from the image's
+ * own pixels, so a 1280 px slice (2560 at High) is a 600×960 pt page.
+ */
+export function readingPage(jpeg: Buffer, px: { w: number; h: number }): PdfPage {
+  const height = (px.h * READING_WIDTH) / px.w
   return {
     jpeg,
     pixelWidth: px.w,
     pixelHeight: px.h,
-    page: { width: 600, height },
-    draw: { x: 0, y: 0, width: 600, height }
+    page: { width: READING_WIDTH, height },
+    draw: { x: 0, y: 0, width: READING_WIDTH, height }
   }
 }
 
-/** A print page: A4 or Letter with 36 pt margins, the image at the printable width and top-aligned. */
-export function printPage(
-  paper: 'a4' | 'letter',
-  slice: { cssHeight: number },
-  jpeg: Buffer,
-  px: { w: number; h: number }
-): PdfPage {
+/** A print page: A4 or Letter with 36 pt margins, the image at the printable width (its height to scale) and top-aligned. */
+export function printPage(paper: 'a4' | 'letter', jpeg: Buffer, px: { w: number; h: number }): PdfPage {
   const size = PAPER[paper]
   const width = size.width - 2 * MARGIN
   return {
@@ -45,7 +41,7 @@ export function printPage(
     pixelWidth: px.w,
     pixelHeight: px.h,
     page: { width: size.width, height: size.height },
-    draw: { x: MARGIN, y: MARGIN, width, height: (slice.cssHeight * width) / CSS_WIDTH }
+    draw: { x: MARGIN, y: MARGIN, width, height: (px.h * width) / px.w }
   }
 }
 

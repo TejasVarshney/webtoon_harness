@@ -1755,7 +1755,8 @@ kbd {
 }
 
 /* The panels of a row share one height: each takes the row's width in proportion to its aspect (`--ar`, set by the
-   card). The row is also the size container the lettering is measured against. */
+   card). The row is also the size container the lettering is measured against. Its 440px (and the gap's) is
+   STRIP_CSS_WIDTH in src/shared/strip-width.ts, the width the export lays the strip out at: change them together. */
 .strip-row {
   display: flex;
   align-items: center;

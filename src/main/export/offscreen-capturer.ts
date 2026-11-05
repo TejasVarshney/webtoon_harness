@@ -1,13 +1,14 @@
 import { join } from 'node:path'
 import { BrowserWindow } from 'electron'
+import { captureScaleFactor, STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { ExportSnapshot, ViewLayout } from '@shared/types'
-import type { Slice } from './slice-plan'
+import { pageHeightCss, type Slice } from './slice-plan'
 import { snapshotScript } from './snapshot-script'
 import type { StripCapturer } from './types'
 
-/** The export view's width in CSS px, and the window's starting height. */
-const WIDTH = 800
-const HEIGHT = 1280
+/** The export view's width in CSS px (the strip's row width on screen), and its height while an episode is drawn. */
+const WIDTH = STRIP_CSS_WIDTH
+const HEIGHT = pageHeightCss('webtoon')
 const JPEG_QUALITY = 90
 /** A capture is one scroll and one screenshot; this long means the window has stopped painting. */
 const CAPTURE_TIMEOUT_MS = 30000
@@ -22,9 +23,10 @@ export interface OffscreenCapturerOptions {
 }
 
 /**
- * The `StripCapturer` of spec §3: an offscreen window with no preload, driven over the DevTools protocol. Each slice
- * sets the viewport to the slice's height at the export scale, scrolls to its top, waits two frames and takes a
- * screenshot. `close()` (or a crash) rejects whatever call is in flight at once.
+ * The `StripCapturer` of spec §3: an offscreen window with no preload, driven over the DevTools protocol. The view is
+ * 440 CSS px wide; each slice sets the viewport to the slice's (whole) CSS height at 800 / 440 × scale device px per
+ * CSS px, so the image is 800 × scale px wide, scrolls to its top, waits two frames and takes a screenshot.
+ * `close()` (or a crash) rejects whatever call is in flight at once.
  */
 export function createOffscreenCapturer(opts: OffscreenCapturerOptions): StripCapturer {
   let win: BrowserWindow | null = null
@@ -118,9 +120,9 @@ export function createOffscreenCapturer(opts: OffscreenCapturerOptions): StripCa
           } catch (error) {
             throw new Error(`The export page could not be loaded: ${messageOf(error)}`)
           }
-          // Overrides outlive a page load: start every episode from the full-height viewport at scale 1.
+          // Overrides outlive a page load: draw every episode in a page-high viewport at the Standard capture scale.
           await wc.debugger.sendCommand('Emulation.setScrollbarsHidden', { hidden: true })
-          await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false })
+          await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: captureScaleFactor(1), mobile: false })
           // The page's rejection comes back as data, so its message reaches the user as written.
           const result = (await wc.executeJavaScript(
             `Promise.resolve().then(() => ${snapshotScript(snapshot)}).then((layout) => ({ layout }), (e) => ({ error: String((e && e.message) || e) }))`
@@ -134,10 +136,12 @@ export function createOffscreenCapturer(opts: OffscreenCapturerOptions): StripCa
     },
 
     capture(slice: Slice, scale, format) {
+      // DevTools refuses a fractional viewport height ("Invalid parameters"); the slice plan gives whole CSS px.
+      if (!Number.isInteger(slice.height) || slice.height <= 0) return Promise.reject(new Error(`The export view cannot capture a slice ${slice.height} px tall`))
       return guarded(
         async () => {
           const wc = openWindow().webContents
-          await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: slice.height, deviceScaleFactor: scale, mobile: false })
+          await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: slice.height, deviceScaleFactor: captureScaleFactor(scale), mobile: false })
           const scrolled = (await wc.executeJavaScript(
             `scrollTo(0, ${slice.top}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(scrollY))))`
           )) as number

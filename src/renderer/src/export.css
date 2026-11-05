@@ -1,8 +1,10 @@
-/* The export page: the strip at full width, 800px, with none of the app's theme. Loaded after styles.css. */
+/* The export page: the strip at the width of its rows on screen, with none of the app's theme. Loaded after styles.css.
+   ExportView sets --export-strip-width from STRIP_CSS_WIDTH (src/shared/strip-width.ts, 440px); the capture scales it
+   to 800 px, so every cqw and px value keeps its size relative to the art. */
 html,
 body {
   margin: 0;
-  width: 800px;
+  width: var(--export-strip-width);
   overflow: hidden;
   background: #fff;
 }
@@ -17,7 +19,7 @@ body,
 
 .webtoon-strip {
   padding: 0;
-  width: 800px;
+  width: var(--export-strip-width);
 }
 
 .strip-band {

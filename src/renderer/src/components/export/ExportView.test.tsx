@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { DialogueLine, ExportSnapshot } from '@shared/types'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
@@ -34,7 +35,15 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.style.background = ''
+  document.documentElement.style.removeProperty('--export-strip-width')
 })
+
+/** A stylesheet's text, whitespace collapsed. The web tsconfig has no node types, and a ?raw import of CSS comes back empty under vitest. */
+async function cssOf(file: string): Promise<string> {
+  const specifier: string = 'node:fs'
+  const fs = (await import(/* @vite-ignore */ specifier)) as { readFileSync(file: string, encoding: 'utf8'): string }
+  return fs.readFileSync(file, 'utf8').replace(/\s+/g, ' ')
+}
 
 describe('ExportView', () => {
   it('draws no add-panel, status, Retry or No image yet', () => {
@@ -100,14 +109,21 @@ describe('ExportView', () => {
     expect(reads).toBe(0)
   })
 
-  it('the export stylesheet widens rows and gaps to the full strip', async () => {
-    // The web tsconfig has no node types, and a ?raw import of CSS comes back empty under vitest.
-    const specifier: string = 'node:fs'
-    const fs = (await import(/* @vite-ignore */ specifier)) as { readFileSync(file: string, encoding: 'utf8'): string }
-    const css = fs.readFileSync('src/renderer/src/export.css', 'utf8').replace(/\s+/g, ' ')
-    expect(css).toMatch(/html, body \{[^}]*width: 800px[^}]*overflow: hidden[^}]*background: #fff/)
+  it('lays the strip out at the on-screen row width, 440 CSS px', async () => {
+    render(<ExportView snapshot={snapshot()} />)
+    expect(document.documentElement.style.getPropertyValue('--export-strip-width')).toBe(`${STRIP_CSS_WIDTH}px`)
+    expect(STRIP_CSS_WIDTH).toBe(440)
+    // styles.css is the source of truth on screen: its rows and gaps are at most that wide.
+    const app = await cssOf('src/renderer/src/styles.css')
+    expect(app).toMatch(new RegExp(String.raw`\.strip-row \{[^}]*width: min\(100%, ${STRIP_CSS_WIDTH}px\)[^}]*container-type: inline-size`))
+    expect(app).toMatch(new RegExp(String.raw`\.strip-gap \{[^}]*width: min\(100%, ${STRIP_CSS_WIDTH}px\)`))
+  })
+
+  it('the export stylesheet makes the page and the strip that width, with rows and gaps across it', async () => {
+    const css = await cssOf('src/renderer/src/export.css')
+    expect(css).toMatch(/html, body \{[^}]*width: var\(--export-strip-width\)[^}]*overflow: hidden[^}]*background: #fff/)
     expect(css).toMatch(/html, body, #root \{ height: auto; \}/)
-    expect(css).toMatch(/\.webtoon-strip \{[^}]*padding: 0[^}]*width: 800px/)
+    expect(css).toMatch(/\.webtoon-strip \{[^}]*padding: 0[^}]*width: var\(--export-strip-width\)/)
     expect(css).toMatch(/\.strip-band \{[^}]*padding: 0[^}]*background: #fff/)
     expect(css).toMatch(/\.strip-band\[data-gutter='black'\] \{[^}]*background: #000/)
     expect(css).toMatch(/\.strip-row, \.strip-gap \{[^}]*width: 100%/)

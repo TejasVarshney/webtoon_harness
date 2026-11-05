@@ -7,7 +7,7 @@ import type { ExportPreset, ViewLayout } from '@shared/types'
 import { comicInfoXml } from './comic-info'
 import { stitchBitmaps, type Bitmap } from './long-image'
 import { PdfWriter, printPage, readingPage } from './pdf-writer'
-import { longImagePartHeight, PAGE_HEIGHT, planSlices, PRINT_PAGE_HEIGHT, type Slice } from './slice-plan'
+import { longImagePartHeight, pageHeightCss, planSlices, printPageHeightCss, type Slice } from './slice-plan'
 import type { ImageCodec } from './types'
 import { ZipWriter } from './zip-writer'
 
@@ -87,7 +87,7 @@ export interface WriterOptions {
   preset: ExportPreset
   imageType: 'jpeg' | 'png'
   paper: 'a4' | 'letter'
-  /** Device px per CSS px for the presets that offer a resolution. `pdf-print` is always 2. */
+  /** 1 for Standard (800 px wide outputs), 2 for High (1600). `pdf-print` is always 2. */
   scale: 1 | 2
   /** The project title, for ComicInfo. */
   series: string
@@ -136,7 +136,7 @@ export function createPresetWriter(o: WriterOptions): PresetWriter {
 const pad3 = (n: number): string => String(n).padStart(3, '0')
 const extOf = (format: 'jpeg' | 'png'): string => (format === 'jpeg' ? 'jpg' : 'png')
 
-/** `webtoon`: a folder per episode of `001.jpg`, `002.jpg`... cut every 1280 CSS px. */
+/** `webtoon`: a folder per episode of `001.jpg`, `002.jpg`... cut every 1280 output px (704 CSS px). */
 class WebtoonSlices implements PresetWriter {
   readonly capture: { scale: 1 | 2; format: 'jpeg' | 'png' }
   readonly outputs: { part: string; final: string }[] = []
@@ -152,7 +152,7 @@ class WebtoonSlices implements PresetWriter {
     this.current = { part: final + PART, final }
     this.count = 0
     await writing(final, () => this.o.parts.claimDir(this.current.part))
-    return planSlices({ ...layout, pageHeight: PAGE_HEIGHT.webtoon, breaks: 'anywhere' })
+    return planSlices({ ...layout, pageHeight: pageHeightCss('webtoon'), breaks: 'anywhere' })
   }
 
   async addSlice(_slice: Slice, image: Buffer): Promise<void> {
@@ -171,8 +171,8 @@ class WebtoonSlices implements PresetWriter {
 }
 
 /**
- * `long-image`: one image per episode, in parts of at most 65,000 device px. Each part is captured as PNG slices of
- * at most 1280 CSS px, stitched, and encoded in the chosen type; only one part's bitmaps are held at a time.
+ * `long-image`: one image per episode, in parts of at most 65,000 output px. Each part is captured as PNG slices of
+ * at most 1280 output px, stitched, and encoded in the chosen type; only one part's bitmaps are held at a time.
  */
 class LongImage implements PresetWriter {
   readonly capture: { scale: 1 | 2; format: 'jpeg' | 'png' }
@@ -191,7 +191,7 @@ class LongImage implements PresetWriter {
     const parts = planSlices({ ...layout, pageHeight: longImagePartHeight(this.o.scale), breaks: 'anywhere' })
     const slices: Slice[] = []
     this.pending = parts.map((part, k) => {
-      const own = planSlices({ totalHeight: part.height, rows: [], pageHeight: PAGE_HEIGHT.webtoon, breaks: 'anywhere' })
+      const own = planSlices({ totalHeight: part.height, rows: [], pageHeight: pageHeightCss('webtoon'), breaks: 'anywhere' })
       slices.push(...own.map((s) => ({ top: part.top + s.top, height: s.height })))
       return { final: parts.length > 1 ? `${base}-${k + 1}${ext}` : `${base}${ext}`, slices: own.length }
     })
@@ -287,7 +287,10 @@ abstract class PagedOutput<W extends { close(): Promise<void>; abort(): Promise<
   }
 }
 
-/** `pdf-reading` (pages the size of 1280 px slices) and `pdf-print` (A4 or Letter pages, cut between rows, at scale 2). */
+/**
+ * `pdf-reading` (pages the size of 1280 px slices) and `pdf-print` (A4 or Letter pages, cut between rows, at scale 2).
+ * Pages are sized from each image's own pixels.
+ */
 class PdfOutput extends PagedOutput<PdfWriter> {
   readonly capture: { scale: 1 | 2; format: 'jpeg' | 'png' }
 
@@ -302,14 +305,14 @@ class PdfOutput extends PagedOutput<PdfWriter> {
 
   protected plan(layout: ViewLayout): Slice[] {
     return this.o.preset === 'pdf-print'
-      ? planSlices({ ...layout, pageHeight: PRINT_PAGE_HEIGHT[this.o.paper], breaks: 'rows' })
-      : planSlices({ ...layout, pageHeight: PAGE_HEIGHT['pdf-reading'], breaks: 'anywhere' })
+      ? planSlices({ ...layout, pageHeight: printPageHeightCss(this.o.paper), breaks: 'rows' })
+      : planSlices({ ...layout, pageHeight: pageHeightCss('pdf-reading'), breaks: 'anywhere' })
   }
 
-  async addSlice(slice: Slice, jpeg: Buffer): Promise<void> {
+  async addSlice(_slice: Slice, jpeg: Buffer): Promise<void> {
     const size = this.o.codec.size(jpeg)
     const px = { w: size.width, h: size.height }
-    const page = this.o.preset === 'pdf-print' ? printPage(this.o.paper, { cssHeight: slice.height }, jpeg, px) : readingPage({ cssHeight: slice.height }, jpeg, px)
+    const page = this.o.preset === 'pdf-print' ? printPage(this.o.paper, jpeg, px) : readingPage(jpeg, px)
     const pdf = this.writer!
     await writing(this.current.final, () => pdf.addPage(page))
     this.pages += 1
@@ -330,7 +333,7 @@ class CbzOutput extends PagedOutput<ZipWriter> {
   }
 
   protected plan(layout: ViewLayout): Slice[] {
-    return planSlices({ ...layout, pageHeight: PAGE_HEIGHT.cbz, breaks: 'rows' })
+    return planSlices({ ...layout, pageHeight: pageHeightCss('cbz'), breaks: 'rows' })
   }
 
   async addSlice(_slice: Slice, jpeg: Buffer): Promise<void> {

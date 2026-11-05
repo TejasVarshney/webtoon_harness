@@ -46,9 +46,13 @@ function deferred(): { promise: Promise<void>; release: () => void } {
   return { promise, release }
 }
 
-/** Lays a strip out as `rowHeight` CSS px per finished row, and returns fake images of the slices it is asked for. */
+/**
+ * Lays a strip out as `rowHeight` CSS px per finished row, and returns fake images of the slices it is asked for, sized
+ * as the real capture sizes them: the 440 CSS px view at 800 / 440 × scale device px per CSS px, rounded.
+ */
 class FakeCapturer implements StripCapturer {
-  rowHeight = 600
+  /** 330 CSS px is 600 output px at Standard. */
+  rowHeight = 330
   opened = 0
   closed = 0
   renders: { snapshot: ExportSnapshot; timeoutMs: number }[] = []
@@ -88,7 +92,7 @@ class FakeCapturer implements StripCapturer {
     this.captures.push({ slice, scale, format })
     if (this.gate) await this.gate
     if (this.failAt === this.captures.length) throw this.failWith ?? new Error('Episode 1, panel 2: the image could not be loaded')
-    return fakeImage(format, 800 * scale, slice.height * scale)
+    return fakeImage(format, 800 * scale, Math.round((slice.height * 800 * scale) / 440))
   }
 
   async close(): Promise<void> {
@@ -292,9 +296,10 @@ describe('ExportService', () => {
     expect(await readdir(folder)).toEqual(['001.jpg', '002.jpg'])
     expect(sizeOf(await fs.promises.readFile(path.join(folder, '001.jpg')))).toEqual({ width: 800, height: 1280 })
     expect(sizeOf(await fs.promises.readFile(path.join(folder, '002.jpg')))).toEqual({ width: 800, height: 520 })
+    // In CSS px of the 440 px view: 704 CSS px is 1280 output px.
     expect(capturer.captures.map((c) => c.slice)).toEqual([
-      { top: 0, height: 1280 },
-      { top: 1280, height: 520 }
+      { top: 0, height: 704 },
+      { top: 704, height: 286 }
     ])
     expect(capturer.captures.every((c) => c.scale === 1 && c.format === 'jpeg')).toBe(true)
     expect(svc.outputsOf(jobId)).toEqual([folder])
@@ -317,7 +322,7 @@ describe('ExportService', () => {
     expect(await finished(second.jobId)).toMatchObject({ stage: 'done', outputs: [file] })
     const pdf = await fs.promises.readFile(file)
     expect(pageCount(pdf)).toBe(3)
-    // 0.75 pt per CSS px: episode 1's 1200 px page, then episode 2's 1280 and 520 px pages.
+    // 0.75 pt per output px: episode 1's 1200 px page, then episode 2's 1280 and 520 px pages.
     expect(pageHeights(pdf)).toEqual([900, 960, 390])
   })
 
@@ -327,15 +332,19 @@ describe('ExportService', () => {
     const file = path.join(target, 'print.pdf')
     const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'pdf-print', paper: 'letter' }), file)
     expect((await finished(jobId)).stage).toBe('done')
+    // A Letter page is 586 CSS px (1067 output px), so each 330 CSS px row gets a page of its own.
     expect(capturer.captures.map((c) => c.slice)).toEqual([
-      { top: 0, height: 600 },
-      { top: 600, height: 600 },
-      { top: 1200, height: 600 }
+      { top: 0, height: 330 },
+      { top: 330, height: 330 },
+      { top: 660, height: 330 }
     ])
     expect(capturer.captures.every((c) => c.scale === 2 && c.format === 'jpeg')).toBe(true)
     const pdf = await fs.promises.readFile(file)
     expect(pageCount(pdf)).toBe(3)
     expect(pageHeights(pdf)).toEqual([792, 792, 792])
+    // Each 1600×1200 image fills the 540 pt printable width: 405 pt tall.
+    expect(pdf.toString('latin1')).toContain('/Width 1600 /Height 1200')
+    expect(pdf.toString('latin1')).toContain('q 540 0 0 405 36 351 cm /Im Do Q')
   })
 
   it('writes a cbz with pages and ComicInfo.xml', async () => {
@@ -348,7 +357,7 @@ describe('ExportService', () => {
     const { jobId } = await svc.start(request, file)
     expect(await finished(jobId)).toMatchObject({ stage: 'done', outputs: [file] })
     const entries = readZip(await fs.promises.readFile(file))
-    // Breaks between rows: 1280 px fits two 600 px rows, so the pages are 1200 and 600 px.
+    // Breaks between rows: a 704 CSS px page fits two 330 CSS px rows, so the pages are 1200 and 600 px.
     expect(entries.map((e) => e.name)).toEqual(['001.jpg', '002.jpg', 'ComicInfo.xml'])
     expect(sizeOf(entries[0].data)).toEqual({ width: 800, height: 1200 })
     expect(sizeOf(entries[1].data)).toEqual({ width: 800, height: 600 })
@@ -417,13 +426,13 @@ describe('ExportService', () => {
     const first = await svc.start(request, target)
     const single = path.join(target, 'Moon Tower - 01 - The Rooftop.png')
     expect(await finished(first.jobId)).toMatchObject({ stage: 'done', outputs: [single] })
-    expect(capturer.captures.every((c) => c.format === 'png' && c.slice.height <= 1280)).toBe(true)
+    expect(capturer.captures.every((c) => c.format === 'png' && c.slice.height <= 704)).toBe(true)
     // The 1×N fake bitmaps stack, so the stitched part is as tall as the strip.
     expect(sizeOf(await fs.promises.readFile(single))).toEqual({ width: 1, height: 1200 })
     await fs.promises.rm(single)
 
-    // Two 40000 px rows are taller than one 65000 px part at Standard.
-    capturer.rowHeight = 40000
+    // Two 22000 CSS px rows (40000 output px each) are taller than one 65000 px part (35750 CSS px) at Standard.
+    capturer.rowHeight = 22000
     capturer.captures = []
     const second = await svc.start(request, target)
     const parts = [path.join(target, 'Moon Tower - 01 - The Rooftop-1.png'), path.join(target, 'Moon Tower - 01 - The Rooftop-2.png')]
@@ -432,7 +441,21 @@ describe('ExportService', () => {
     expect(sizeOf(await fs.promises.readFile(parts[0]))).toEqual({ width: 1, height: 65000 })
     expect(sizeOf(await fs.promises.readFile(parts[1]))).toEqual({ width: 1, height: 15000 })
     // No capture crosses a part boundary.
-    expect(capturer.captures.some((c) => c.slice.top < 65000 && c.slice.top + c.slice.height > 65000)).toBe(false)
+    expect(capturer.captures.some((c) => c.slice.top < 35750 && c.slice.top + c.slice.height > 35750)).toBe(false)
+  })
+
+  it('splits a long image at High into parts of 65000 output px (17875 CSS px)', async () => {
+    const { svc, capturer, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready', 'ready'])
+    capturer.rowHeight = 22000
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'long-image', imageType: 'png', resolution: 'high' }), target)
+    const parts = [1, 2, 3].map((k) => path.join(target, `Moon Tower - 01 - The Rooftop-${k}.png`))
+    expect(await finished(jobId)).toMatchObject({ stage: 'done', outputs: parts })
+    const heights = await Promise.all(parts.map(async (p) => sizeOf(await fs.promises.readFile(p)).height))
+    // 44000 CSS px at 1600 / 440 is 160000 px: two full parts and the rest.
+    expect(heights).toEqual([65000, 65000, 30000])
+    expect(capturer.captures.every((c) => c.scale === 2 && c.slice.height <= 704)).toBe(true)
+    expect(capturer.captures.some((c) => [17875, 35750].some((b) => c.slice.top < b && c.slice.top + c.slice.height > b))).toBe(false)
   })
 
   it('skips an episode with no finished panel, and fails with "Nothing to export: no episode has a finished panel" when none has one', async () => {

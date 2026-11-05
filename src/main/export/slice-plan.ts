@@ -1,4 +1,7 @@
-// Where an exported strip is cut. Pure: heights are CSS px of the 800 px wide export view.
+// Where an exported strip is cut. Pure. Limits are set in output px at scale 1 (800 px wide); slices are planned in
+// CSS px of the export view, which is laid out STRIP_CSS_WIDTH (440) CSS px wide and captured at 800 / 440 × scale.
+
+import { cssFromPx } from '@shared/strip-width'
 
 /** One horizontal cut of the strip. */
 export interface Slice {
@@ -6,18 +9,28 @@ export interface Slice {
   height: number
 }
 
-/** The tallest bitmap a long-image part may be, in device pixels. */
+/** The tallest bitmap a long-image part may be, in output pixels. */
 export const MAX_LONG_IMAGE_PX = 65000
 
-/** Slice height in CSS px for the formats that cut at a fixed page height. */
+/** Slice height in output px at scale 1 for the formats that cut at a fixed page height. */
 export const PAGE_HEIGHT = { webtoon: 1280, 'pdf-reading': 1280, cbz: 1280 } as const
 
-/** Page height in CSS px for print PDFs: the printable height of the page at 800 CSS px across the printable width. */
+/** Page height in output px at scale 1 for print PDFs: the printable height of the page with 800 px across the printable width. */
 export const PRINT_PAGE_HEIGHT = { a4: 1177, letter: 1067 } as const
 
-/** The tallest part of a long image in CSS px, so that part * scale stays within the bitmap limit. */
+/** A fixed page height in whole CSS px: 1280 px → 704. */
+export function pageHeightCss(preset: keyof typeof PAGE_HEIGHT): number {
+  return cssFromPx(PAGE_HEIGHT[preset])
+}
+
+/** A print page's height in whole CSS px, rounded down so the page's image fits the printable height. */
+export function printPageHeightCss(paper: keyof typeof PRINT_PAGE_HEIGHT): number {
+  return cssFromPx(PRINT_PAGE_HEIGHT[paper])
+}
+
+/** The tallest part of a long image in CSS px, so the part stays within 65,000 output px at `scale`. */
 export function longImagePartHeight(scale: 1 | 2): number {
-  return Math.floor(MAX_LONG_IMAGE_PX / scale)
+  return cssFromPx(Math.floor(MAX_LONG_IMAGE_PX / scale))
 }
 
 /**

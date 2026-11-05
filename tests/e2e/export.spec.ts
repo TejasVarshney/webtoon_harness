@@ -42,6 +42,45 @@ async function slicesOf(app: ElectronApplication, dir: string): Promise<{ path: 
 
 const total = (slices: { height: number }[]): number => slices.reduce((sum, s) => sum + s.height, 0)
 
+/** The strip's first row width, and its first bubble's height, font size and panel height, in CSS px. */
+type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number }
+
+/** Run in a page (the main window or the export window): measures the strip as it is drawn there. */
+const MEASURE_STRIP = `(() => {
+  const bubble = document.querySelector('.bubble')
+  const media = bubble && bubble.closest('.panel-media')
+  if (!bubble || !media) return null
+  return {
+    rowWidth: document.querySelector('.strip-row').getBoundingClientRect().width,
+    bubbleHeight: bubble.getBoundingClientRect().height,
+    panelHeight: media.getBoundingClientRect().height,
+    fontSize: parseFloat(getComputedStyle(bubble.querySelector('.bubble-text')).fontSize)
+  }
+})()`
+
+/**
+ * Measures the next export window's strip as soon as it has drawn its first episode, before any capture: it wraps
+ * that window's `executeJavaScript`, so `exportGeometry` can read the result after the export.
+ */
+async function recordExportGeometry(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ app }, measure) => {
+    const g = globalThis as { __exportGeometry?: unknown }
+    g.__exportGeometry = null
+    app.once('browser-window-created', (_e, w) => {
+      const wc = w.webContents
+      const run = wc.executeJavaScript.bind(wc)
+      wc.executeJavaScript = (async (code: string, gesture?: boolean) => {
+        const result: unknown = await run(code, gesture)
+        if (g.__exportGeometry === null && code.includes('webtoonExport.render')) g.__exportGeometry = await run(measure)
+        return result
+      }) as typeof wc.executeJavaScript
+    })
+  }, MEASURE_STRIP)
+}
+
+const exportGeometry = (app: ElectronApplication): Promise<Geometry | null> =>
+  app.evaluate(() => (globalThis as { __exportGeometry?: Geometry | null }).__exportGeometry ?? null)
+
 test('exports webtoon slices, a cbz and a reading pdf that match the strip', async () => {
   const mina = { $character: 'Mina' }
   const panel = (description: string, extra: Record<string, unknown> = {}) => ({
@@ -62,7 +101,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
       { text: 'Created Mina.' },
       {
         toolCalls: [
-          panel('Mina looks up.'),
+          panel('Mina looks up.', { dialogue: [{ speakerId: mina, kind: 'speech', text: 'We made it to the roof. Can you see the city lights from up here?' }] }),
           panel('Mina runs.', { frame: 'slanted' }),
           panel('Mina stops.', { beside: false }),
           panel('Mina is in the dark.', { gutter: 'black' })
@@ -86,7 +125,19 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   expect(episode.panelIds).toHaveLength(4)
   const thirdId: string = episode.panelIds[2]
 
+  await recordExportGeometry(first.app)
   await exportActiveEpisode(first.page, 'webtoon', false)
+
+  // The export lays the strip out at the on-screen row width, 440 CSS px, so the lettering keeps its size against the
+  // art: the bubble is as tall relative to its panel, and its text as large, as on screen.
+  const onScreen = (await first.page.evaluate(MEASURE_STRIP)) as Geometry | null
+  const inExport = await exportGeometry(first.app)
+  expect(onScreen).not.toBeNull()
+  expect(inExport).not.toBeNull()
+  expect(inExport!.rowWidth).toBe(440)
+  expect(onScreen!.rowWidth).toBe(440)
+  expect(inExport!.fontSize).toBe(onScreen!.fontSize)
+  expect(inExport!.bubbleHeight / inExport!.panelHeight).toBeCloseTo(onScreen!.bubbleHeight / onScreen!.panelHeight, 2)
   const folderA = (await readdir(targetA)).filter((n) => n.startsWith('Moon Diary - 01 - '))
   expect(folderA).toHaveLength(1)
   const slicesA = await slicesOf(first.app, join(targetA, folderA[0]))
@@ -95,13 +146,18 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
     expect(s.width).toBe(800)
     expect(s.height).toBeLessThanOrEqual(1280)
   }
+  // 704 CSS px of the 440 px view captured at 800 / 440: every slice but the last is exactly 1280 px.
+  expect(slicesA.length).toBeGreaterThan(1)
+  for (const s of slicesA.slice(0, -1)) expect(s.height).toBe(1280)
   const heightA = total(slicesA)
 
-  // The last 40 px of the strip are panel 4's black gap (a normal gap is at least 40 px).
+  // The strip ends with panel 4's black gap: a normal gap, 48 CSS px, is 87 px of output. The last slice may be
+  // shorter than that, so sample 20 px above its bottom, or its top row.
   const last = slicesA[slicesA.length - 1]
-  expect(last.height).toBeGreaterThan(20)
+  expect(last.height).toBeGreaterThan(0)
+  const y = Math.max(0, last.height - 20)
   for (const x of [100, 400, 700]) {
-    const bgra = await first.app.evaluate(({ nativeImage }, [p, x, y]) => nativeImage.createFromPath(p as string).crop({ x: x as number, y: y as number, width: 1, height: 1 }).toBitmap(), [last.path, x, last.height - 20])
+    const bgra = await first.app.evaluate(({ nativeImage }, [p, x, y]) => nativeImage.createFromPath(p as string).crop({ x: x as number, y: y as number, width: 1, height: 1 }).toBitmap(), [last.path, x, y])
     const [b, g, r] = Array.from(bgra as Uint8Array)
     expect(Math.max(r, g, b), `pixel at x=${x} is black`).toBeLessThan(16)
   }
