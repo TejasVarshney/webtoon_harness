@@ -20,7 +20,10 @@ export const electronCodec: ImageCodec = {
   },
   encode(b, format) {
     const img = nativeImage.createFromBitmap(b.data, { width: b.width, height: b.height })
-    return format === 'jpeg' ? img.toJPEG(JPEG_QUALITY) : img.toPNG()
+    if (img.isEmpty()) throw new Error(`a ${b.width}×${b.height} px image could not be encoded`)
+    const out = format === 'jpeg' ? img.toJPEG(JPEG_QUALITY) : img.toPNG()
+    if (out.length === 0) throw new Error(`a ${b.width}×${b.height} px image could not be encoded`)
+    return out
   },
   size(img) {
     return decode(img).getSize()

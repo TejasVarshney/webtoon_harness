@@ -4,10 +4,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ExportPreset, ViewLayout } from '@shared/types'
+import { EXPORT_PX_WIDTH, STRIP_CSS_WIDTH } from '@shared/strip-width'
 import { comicInfoXml } from './comic-info'
-import { stitchBitmaps, type Bitmap } from './long-image'
+import { PartCanvas } from './long-image'
 import { PdfWriter, printPage, readingPage } from './pdf-writer'
-import { longImagePartHeight, pageHeightCss, planSlices, printPageHeightCss, type Slice } from './slice-plan'
+import { longImagePartHeight, MAX_LONG_IMAGE_PX, pageHeightCss, planSlices, printPageHeightCss, type Slice } from './slice-plan'
 import type { ImageCodec } from './types'
 import { ZipWriter } from './zip-writer'
 
@@ -172,14 +173,15 @@ class WebtoonSlices implements PresetWriter {
 
 /**
  * `long-image`: one image per episode, in parts of at most 65,000 output px. Each part is captured as PNG slices of
- * at most 1280 output px, stitched, and encoded in the chosen type; only one part's bitmaps are held at a time.
+ * at most 1280 output px, each copied into the part's one buffer as it arrives, then encoded in the chosen type.
  */
 class LongImage implements PresetWriter {
   readonly capture: { scale: 1 | 2; format: 'jpeg' | 'png' }
   readonly outputs: { part: string; final: string }[] = []
-  /** The final path of each part of the current episode, and how many slices make it up. */
-  private pending: { final: string; slices: number }[] = []
-  private bitmaps: Bitmap[] = []
+  /** The final path of each part of the current episode, how many slices make it up, and the most rows they can give. */
+  private pending: { final: string; slices: number; rows: number }[] = []
+  private canvas: PartCanvas | null = null
+  private added = 0
 
   constructor(private readonly o: WriterOptions) {
     this.capture = { scale: o.scale, format: 'png' }
@@ -190,22 +192,35 @@ class LongImage implements PresetWriter {
     const base = this.o.finals[index].slice(0, -ext.length)
     const parts = planSlices({ ...layout, pageHeight: longImagePartHeight(this.o.scale), breaks: 'anywhere' })
     const slices: Slice[] = []
+    // A capture's height in px is its CSS height at 800 / 440 × scale, rounded: at most this many rows.
+    const rowsOf = (s: Slice): number => Math.ceil((s.height * EXPORT_PX_WIDTH * this.o.scale) / STRIP_CSS_WIDTH)
     this.pending = parts.map((part, k) => {
       const own = planSlices({ totalHeight: part.height, rows: [], pageHeight: pageHeightCss('webtoon'), breaks: 'anywhere' })
       slices.push(...own.map((s) => ({ top: part.top + s.top, height: s.height })))
-      return { final: parts.length > 1 ? `${base}-${k + 1}${ext}` : `${base}${ext}`, slices: own.length }
+      const rows = Math.min(MAX_LONG_IMAGE_PX, own.reduce((sum, s) => sum + rowsOf(s), 0))
+      return { final: parts.length > 1 ? `${base}-${k + 1}${ext}` : `${base}${ext}`, slices: own.length, rows }
     })
-    this.bitmaps = []
+    this.canvas = null
+    this.added = 0
     return slices
   }
 
   async addSlice(_slice: Slice, image: Buffer): Promise<void> {
-    this.bitmaps.push(this.o.codec.toBitmap(image))
     const next = this.pending[0]
-    if (this.bitmaps.length < next.slices) return
-    const data = this.o.codec.encode(stitchBitmaps(this.bitmaps), this.o.imageType)
-    this.bitmaps = []
+    this.canvas ??= new PartCanvas(next.rows)
+    // The decoded slice is copied in and dropped at once: only the part's buffer is kept.
+    this.canvas.add(this.o.codec.toBitmap(image))
+    this.added += 1
+    if (this.added < next.slices) return
+    const bitmap = this.canvas.take()
+    this.canvas = null
+    this.added = 0
     this.pending.shift()
+    const data = await writing(next.final, async () => {
+      const encoded = this.o.codec.encode(bitmap, this.o.imageType)
+      if (encoded.length === 0) throw new WriteError(`Could not write ${next.final}: the encoded image is empty`)
+      return encoded
+    })
     const part = next.final + PART
     await writing(next.final, async () => {
       await this.o.parts.claimFile(part)
@@ -219,7 +234,7 @@ class LongImage implements PresetWriter {
   async finish(): Promise<void> {}
 
   async abort(): Promise<void> {
-    this.bitmaps = []
+    this.canvas = null
   }
 }
 

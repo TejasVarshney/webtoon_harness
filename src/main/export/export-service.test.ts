@@ -458,6 +458,16 @@ describe('ExportService', () => {
     expect(capturer.captures.some((c) => [17875, 35750].some((b) => c.slice.top < b && c.slice.top + c.slice.height > b))).toBe(false)
   })
 
+  it('fails a long image whose encode comes back empty, and leaves nothing', async () => {
+    const { svc, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready'])
+    vi.spyOn(fakeCodec, 'encode').mockReturnValue(Buffer.alloc(0))
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'long-image' }), target)
+    const single = path.join(target, 'Moon Tower - 01 - The Rooftop.jpg')
+    expect(await finished(jobId)).toMatchObject({ stage: 'failed', message: `Could not write ${single}: the encoded image is empty`, outputs: [] })
+    expect(await readdir(target)).toEqual([])
+  })
+
   it('skips an episode with no finished panel, and fails with "Nothing to export: no episode has a finished panel" when none has one', async () => {
     const { svc, capturer, addEpisode, req, finished, progress, target } = await setup()
     const one = await addEpisode('The Rooftop', ['ready'])
