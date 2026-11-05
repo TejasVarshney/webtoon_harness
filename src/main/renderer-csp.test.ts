@@ -11,10 +11,14 @@ import { describe, expect, it } from 'vitest'
 // production policy never needs a dev-only 'unsafe-inline'.
 
 const htmlFile = path.resolve('src/renderer/index.html')
+const exportHtmlFile = path.resolve('src/renderer/export.html')
 
 describe('renderer Content-Security-Policy', () => {
-  it('stays strict: scripts only from the app itself', () => {
-    const html = fs.readFileSync(htmlFile, 'utf8')
+  it.each([
+    ['index.html', htmlFile],
+    ['export.html', exportHtmlFile]
+  ])('%s stays strict: scripts only from the app itself', (_name, file) => {
+    const html = fs.readFileSync(file, 'utf8')
     const csp = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1]
     const directives = Object.fromEntries((csp ?? '').split(';').map((d) => d.trim().split(/\s+/)).map(([name, ...sources]) => [name, sources]))
     expect(directives['script-src']).toEqual(["'self'"])

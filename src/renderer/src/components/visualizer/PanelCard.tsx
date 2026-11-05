@@ -15,6 +15,12 @@ export interface PanelCardProps {
   slant?: 'left' | 'right'
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
+  /** `export` draws only the picture and lettering: no toolbar, handlers, focus or selection. Default `edit`. */
+  mode?: 'edit' | 'export'
+  /** Export mode: whether the dialogue is drawn. Default true. */
+  lettering?: boolean
+  /** Export mode: the panel's 1-based place in the whole episode, for naming it when its image fails to load. */
+  position?: number
 }
 
 /**
@@ -26,7 +32,7 @@ export interface PanelCardProps {
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', lettering = true, position }: PanelCardProps) {
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -67,6 +73,25 @@ export function PanelCard({ panel, selected, slant, share = 1 }: PanelCardProps)
       e.preventDefault()
       select()
     }
+  }
+
+  if (mode === 'export') {
+    return (
+      <article
+        className="panel-card panel-shape"
+        data-testid="panel-card"
+        data-panel-id={panel.id}
+        data-position={position}
+        data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
+        data-beside={String(panel.beside)}
+        data-gutter={panel.gutter}
+        data-gap={panel.gapAfter}
+        data-slant={slant}
+        style={shape}
+      >
+        <PanelArt panel={panel} mode="export" lettering={lettering} />
+      </article>
+    )
   }
 
   return (

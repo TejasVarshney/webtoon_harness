@@ -41,4 +41,14 @@ describe('WebtoonStrip', () => {
     render(<Harness />)
     expect(document.querySelector('.webtoon-strip > .insert-panel:last-child')).not.toBeNull()
   })
+
+  it('edit mode is unchanged: the "+" buttons, the toolbar and the selection stay', () => {
+    installFakeApi({})
+    useAppStore.setState({ selectedPanelId: a.id })
+    render(<Harness />)
+    expect(document.querySelectorAll('.insert-panel').length).toBe(2)
+    expect(screen.getAllByRole('group', { name: 'Panel actions' }).length).toBe(2)
+    expect(screen.getAllByTestId('panel-card')[0].getAttribute('data-selected')).toBe('true')
+    expect(screen.getAllByTestId('panel-card')[0].getAttribute('data-position')).toBeNull()
+  })
 })

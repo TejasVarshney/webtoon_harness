@@ -1,0 +1,27 @@
+/* The export page: the strip at full width, 800px, with none of the app's theme. Loaded after styles.css. */
+html,
+body {
+  margin: 0;
+  width: 800px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.webtoon-strip {
+  padding: 0;
+  width: 800px;
+}
+
+.strip-band {
+  padding: 0;
+  background: #fff;
+}
+
+.strip-band[data-gutter='black'] {
+  background: #000;
+}
+
+.strip-row,
+.strip-gap {
+  width: 100%;
+}

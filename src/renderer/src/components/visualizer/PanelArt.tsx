@@ -12,6 +12,10 @@ export interface PanelArtProps {
   panel: Panel
   /** Given on the editing stage, where the lettering can be selected and dragged. */
   editing?: OverlayEditing
+  /** `export` draws the picture and lettering only: no "No image yet", status, Retry or error. Default `edit`. */
+  mode?: 'edit' | 'export'
+  /** Export mode: false leaves the dialogue out. Default true. */
+  lettering?: boolean
 }
 
 /**
@@ -19,7 +23,7 @@ export interface PanelArtProps {
  * a status when the newest attempt is pending or failed. A failed regeneration keeps showing the image that was good,
  * until the user reverts. The strip's card and the editing stage both draw the panel with this.
  */
-export function PanelArt({ panel, editing }: PanelArtProps) {
+export function PanelArt({ panel, editing, mode = 'edit', lettering = true }: PanelArtProps) {
   const projectId = useAppStore((s) => s.projectId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +56,15 @@ export function PanelArt({ panel, editing }: PanelArtProps) {
         setError(errorText(e))
         setBusy(false)
       }
+    )
+  }
+
+  if (mode === 'export') {
+    return (
+      <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
+        {imagePath !== null && projectId !== null && <img src={assetUrl(projectId, imagePath)} alt={panel.description} draggable={false} />}
+        {lettering && <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} />}
+      </div>
     )
   }
 
