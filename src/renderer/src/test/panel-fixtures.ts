@@ -16,6 +16,7 @@ export function panelVersion(o: Partial<PanelVersion> = {}): PanelVersion {
     referenceImagePaths: [],
     instruction: null,
     parentVersionId: null,
+    drawnFrom: null,
     check: null,
     createdAt: T,
     ...o

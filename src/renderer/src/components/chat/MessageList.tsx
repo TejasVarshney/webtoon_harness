@@ -15,7 +15,7 @@ export interface MessageListProps {
   emptyHint?: string
 }
 
-/** Renders one thread (the main chat, or a panel side chat). User messages show text and images only, never the state snapshot. */
+/** Renders one thread (the main chat, or a panel's chat). User messages show text and images only, never the state snapshot. */
 export function MessageList({
   threadKey,
   emptyTitle = 'Start with the premise, a character or the next scene.',

@@ -1,0 +1,37 @@
+/* The export page: the strip at the width of its rows on screen, with none of the app's theme. Loaded after styles.css.
+   ExportView sets --export-strip-width from STRIP_CSS_WIDTH (src/shared/strip-width.ts, 440px); the capture scales it
+   to 800 px, so every cqw and px value keeps its size relative to the art. */
+html,
+body {
+  margin: 0;
+  width: var(--export-strip-width);
+  overflow: hidden;
+  background: #fff;
+}
+
+/* styles.css makes these as tall as the window. Here they hug the strip, so the page scrolls through all of it and
+   #root's bottom is the strip's bottom (measure.ts). */
+html,
+body,
+#root {
+  height: auto;
+}
+
+.webtoon-strip {
+  padding: 0;
+  width: var(--export-strip-width);
+}
+
+.strip-band {
+  padding: 0;
+  background: #fff;
+}
+
+.strip-band[data-gutter='black'] {
+  background: #000;
+}
+
+.strip-row,
+.strip-gap {
+  width: 100%;
+}

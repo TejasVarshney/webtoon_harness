@@ -3,6 +3,7 @@ import { ChatHeader } from './components/chat/ChatHeader'
 import { ChatPane } from './components/chat/ChatPane'
 import { RightPane } from './components/layout/RightPane'
 import { ThreePaneLayout } from './components/layout/ThreePaneLayout'
+import { PanelWorkspace } from './components/panel-editor/PanelWorkspace'
 import { SessionSidebar } from './components/sessions/SessionSidebar'
 import { startEventSync } from './events'
 import { startActiveContextSync, useAppStore } from './stores/app-store'
@@ -10,6 +11,8 @@ import { useModelsStore } from './stores/models-store'
 import { usePluginsStore } from './stores/plugins-store'
 
 export function App() {
+  const selectedPanelId = useAppStore((s) => s.selectedPanelId)
+
   useEffect(() => {
     const stopEvents = startEventSync()
     const stopContext = startActiveContextSync()
@@ -29,6 +32,7 @@ export function App() {
       left={<SessionSidebar />}
       middle={<ChatPane />}
       right={<RightPane />}
+      overlay={selectedPanelId === null ? undefined : <PanelWorkspace panelId={selectedPanelId} />}
     />
   )
 }

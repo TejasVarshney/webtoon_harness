@@ -129,6 +129,49 @@ describe('composePanelPrompt', () => {
     ])
   })
 
+  it('sends the layout sketch after the cast and before the previous panel, with a [LAYOUT] line', () => {
+    const { prompt, references } = composePanelPrompt({
+      stylePreset: 'STYLE',
+      panel: panel({ characters: [cast(mina, 'var_m1')] }),
+      roster,
+      itemRoster,
+      previous: PREVIOUS,
+      sketch: 'panels/pnl_1/sketch-a.png',
+      maxReferences: 4
+    })
+    expect(references.map((r) => r.subject.kind)).toEqual(['character', 'sketch', 'previous'])
+    expect(references[1]).toEqual({ relPath: 'panels/pnl_1/sketch-a.png', label: 'layout sketch', subject: { kind: 'sketch' } })
+    expect(prompt).toContain('[LAYOUT] Follow the rough composition of the sketch (reference image 2): ')
+    expect(prompt).toContain('never copy its scribbled lines')
+    expect(prompt).toContain('[CONTINUITY] Continues directly from the previous panel (reference image 3).')
+  })
+
+  it('leaves the sketch and its line out when the cast fills the reference cap, after the previous panel', () => {
+    const { prompt, references } = composePanelPrompt({
+      stylePreset: 'STYLE',
+      panel: panel({ characters: [cast(mina, 'var_m1')] }),
+      roster,
+      itemRoster,
+      previous: PREVIOUS,
+      sketch: 'panels/pnl_1/sketch-a.png',
+      maxReferences: 1
+    })
+    expect(references.map((r) => r.subject.kind)).toEqual(['character'])
+    expect(prompt).not.toContain('[LAYOUT]')
+  })
+
+  it('has no [LAYOUT] line without a sketch', () => {
+    const { prompt } = composePanelPrompt({ stylePreset: 'STYLE', panel: panel({ characters: [cast(mina, 'var_m1')] }), roster, itemRoster, previous: null, maxReferences: 4 })
+    expect(prompt).not.toContain('[LAYOUT]')
+  })
+
+  it("takes a position in the user's own words, and leaves an empty one out", () => {
+    const own = composePanelPrompt({ stylePreset: 'S', panel: panel({ characters: [cast(mina, 'var_m1', '', '', 'far left, half in shadow')] }), roster, itemRoster, previous: null, maxReferences: 4 })
+    expect(own.prompt).toContain('Position: far left, half in shadow.')
+    const none = composePanelPrompt({ stylePreset: 'S', panel: panel({ characters: [cast(mina, 'var_m1', '', '', '  ')] }), roster, itemRoster, previous: null, maxReferences: 4 })
+    expect(none.prompt).not.toContain('Position:')
+  })
+
   it('matches the spec template line for line', () => {
     const { prompt } = composePanelPrompt({
       stylePreset: 'STYLE',
@@ -274,7 +317,7 @@ describe('composePanelPrompt', () => {
       stylePreset: 'STYLE',
       panel: panel({
         characters: [cast(mina, 'var_m0')],
-        dialogue: [{ id: 'dlg_1', speakerId: 'chr_mina', kind: 'speech', text: 'SECRET LINE' }]
+        dialogue: [{ id: 'dlg_1', speakerId: 'chr_mina', kind: 'speech', text: 'SECRET LINE', placement: null }]
       }),
       roster,
       itemRoster,

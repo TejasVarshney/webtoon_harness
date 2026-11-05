@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import { join } from 'node:path'
+import { ExportService } from './export/export-service'
+import type { ImageCodec, StripCapturer } from './export/types'
 import { AgentRunner } from './agent/agent-runner'
 import { PanelChatRunner } from './agent/panel-chat'
 import { WorkflowDocs } from './agent/workflow-docs'
@@ -31,6 +33,12 @@ export interface ServicesOptions {
   templatesDir: string
   imageOps: ImageOps
   bus?: EventBus
+  /** A fresh strip capturer per export job. Without it, using export throws. */
+  createCapturer?: () => StripCapturer
+  /** Image decode/encode for export. Without it, using export throws. */
+  codec?: ImageCodec
+  /** Where the export dialog starts. Default: `Exports` beside the projects folder. */
+  exportsDir?: string
 }
 
 export interface Services {
@@ -48,6 +56,7 @@ export interface Services {
   episodes: EpisodeService
   panels: PanelService
   story: StoryService
+  exports: ExportService
   agent: AgentRunner
   panelChat: PanelChatRunner
   activeContext: ActiveContext
@@ -85,11 +94,25 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const episodes = new EpisodeService({ bus })
   const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash })
   const story = new StoryService({ bus, projects })
+  const unavailable = (): never => {
+    throw new Error('Export is not available in this build')
+  }
+  const exports = new ExportService({
+    projects,
+    episodes,
+    panels,
+    characters,
+    bus,
+    trash: opts.trash,
+    createCapturer: opts.createCapturer ?? unavailable,
+    codec: opts.codec ?? { toBitmap: unavailable, encode: unavailable, size: unavailable },
+    exportsDir: opts.exportsDir ?? join(opts.projectsRoot, '..', 'Exports')
+  })
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story } as Services
+  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story, exports } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   services.activeContext = new ActiveContext()

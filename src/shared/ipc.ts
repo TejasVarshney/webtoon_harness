@@ -10,6 +10,8 @@ import type {
   EndpointConfig,
   EndpointKind,
   Episode,
+  ExportInspection,
+  ExportRequest,
   Item,
   ItemInput,
   ItemPatch,
@@ -135,7 +137,11 @@ export interface IpcContract {
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
   'panels:uploadImage': { req: { projectId: string; panelId: string }; res: PanelVersion | null }
-  /** A panel's side-chat thread, oldest first; empty until the first message. */
+  /** Stores the layout sketch, a `data:image/png;base64,` URL, as a new file; `null` forgets it. It never touches the image. */
+  'panels:saveSketch': { req: { projectId: string; panelId: string; png: string | null }; res: Panel }
+  /** The layout sketch as a `data:image/png;base64,` URL (a canvas can read it back, unlike an asset URL), or `null`. */
+  'panels:readSketch': { req: { projectId: string; panelId: string }; res: string | null }
+  /** A panel's chat thread, oldest first; empty until the first message. */
   'panelChat:load': { req: { projectId: string; panelId: string }; res: ChatMessage[] }
   /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
   'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
@@ -168,6 +174,13 @@ export interface IpcContract {
   'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
+  /** Per episode: its panel counts and the unfinished panels, for the export dialog. */
+  'export:inspect': { req: { projectId: string; episodeIds: string[] }; res: ExportInspection }
+  /** Asks where to save (a file or a folder, by preset), then starts the job. `{ cancelled: true }` when the dialog is dismissed. Rejects with a readable message when nothing can be exported or a job is running. */
+  'export:start': { req: ExportRequest; res: { jobId: string } | { cancelled: true } }
+  'export:cancel': { req: { jobId: string }; res: void }
+  /** Shows the job's first output in the file manager; does nothing when the job has none. Takes no path. */
+  'export:reveal': { req: { jobId: string }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -230,6 +243,8 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:move': true,
   'panels:revert': true,
   'panels:uploadImage': true,
+  'panels:saveSketch': true,
+  'panels:readSketch': true,
   'panelChat:load': true,
   'panelChat:send': true,
   'panelChat:cancel': true,
@@ -247,7 +262,11 @@ const channelSet: Record<IpcChannel, true> = {
   'claudeCode:connectCommand': true,
   'claudeCode:regenerateToken': true,
   'claudeCode:detect': true,
-  'app:setActiveContext': true
+  'app:setActiveContext': true,
+  'export:inspect': true,
+  'export:start': true,
+  'export:cancel': true,
+  'export:reveal': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]

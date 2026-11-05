@@ -183,6 +183,15 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().episodes[0].title).toBe('Pilot')
     })
 
+    it("saveSketch sends the PNG and reloads the panel's episode; readSketch asks for it", async () => {
+      const sketched = panel({ id: 'pnl_0000000009', sketchPath: 'panels/pnl_0000000009/sketch-1.png' })
+      const { calls } = installFakeApi({ 'panels:saveSketch': () => sketched, 'panels:list': () => [sketched], 'panels:readSketch': () => 'data:image/png;base64,AA' })
+      expect(await usePanelsStore.getState().saveSketch(sketched.id, 'data:image/png;base64,AA')).toEqual(sketched)
+      expect(calls[0]).toEqual({ channel: 'panels:saveSketch', req: { projectId, panelId: sketched.id, png: 'data:image/png;base64,AA' } })
+      expect(calls[1]).toMatchObject({ channel: 'panels:list', req: { projectId, episodeId: sketched.episodeId } })
+      expect(await usePanelsStore.getState().readSketch(sketched.id)).toBe('data:image/png;base64,AA')
+    })
+
     it('createPanel sends the draft and reloads that episode', async () => {
       const made = panel({ id: 'pnl_0000000009', versions: [], currentVersionId: null })
       const { calls } = installFakeApi({ 'panels:create': () => ({ panel: made, warnings: ['w'] }), 'panels:list': () => [made] })

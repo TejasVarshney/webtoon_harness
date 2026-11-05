@@ -271,6 +271,13 @@ describe('workflow docs lint', () => {
     expect(update).toContain('an aspect change between 9:16, 1:2 and 1:3')
   })
 
+  it('sends the user to the version switcher in the editor header, and never to a side chat the app no longer has', () => {
+    for (const name of DOCS) expect(read(name), name).not.toMatch(/side[- ]chat/i)
+    const switchers = DOCS.flatMap((name) => read(name).split('\n').filter((line) => /switcher/i.test(line)))
+    expect(switchers.length).toBeGreaterThanOrEqual(3)
+    for (const line of switchers) expect(line).toMatch(/editor's header/)
+  })
+
   it('panel-generation explains how items are attached', () => {
     const section = extractSection(read('workflows/panel-generation'), 'Attaching Items')
     for (const word of ['usageId', 'heldBy', 'reference image']) expect(section).toContain(word)

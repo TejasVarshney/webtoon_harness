@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
 
 // Milestone 5 checkpoint: the whole product on the offline mock models. One scripted conversation builds the story
-// bible, two characters, a variation and two panels; the side chat edits a panel; AI-led mode continues the story;
+// bible, two characters, a variation and two panels; the panel chat edits a panel; AI-led mode continues the story;
 // and everything is still there after a relaunch. Every id in the script is a placeholder the mock provider resolves
 // from the <project_state> of the user message that triggered the turn, so characters are created one message before
 // any panel casts them. The script has one cursor for the whole app, so its turns are consumed in the order the runs ask.
@@ -69,7 +69,7 @@ const script = {
       ]
     },
     { text: 'Episode started.' },
-    // 3. side chat on panel 2: "make Jin frown"
+    // 3. panel chat on panel 2: "make Jin frown"
     { toolCalls: [{ name: 'edit_image', input: { instruction: 'make Jin frown' } }] },
     { text: 'Done.' },
     // 4. AI-led mode, "Continue story"
@@ -122,15 +122,17 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   await expect(cards.nth(0).locator('.dialogue-overlay')).toContainText('Is anyone there?')
   await expect(cards.nth(1).locator('.dialogue-overlay')).toContainText('Someone had been listening too.')
 
-  // 3. The side chat edits panel 2: a second ready version.
+  // 3. The panel chat edits panel 2: a second ready version. Then back to the strip, since editing mode covers it.
   await cards.nth(1).click()
-  const side = page.getByTestId('panel-side-chat')
-  await expect(side).toBeVisible()
-  await expect(side.getByTestId('panel-version-label')).toHaveText('v1 / 1')
-  await side.getByTestId('composer-input').fill('make Jin frown')
-  await side.getByTestId('composer-send').click()
-  await expect(side.getByTestId('panel-version-label')).toHaveText('v2 / 2')
-  await expect(side.getByTestId('message-assistant').last()).toContainText('Done.')
+  const workspace = page.getByTestId('panel-workspace')
+  await expect(workspace).toBeVisible()
+  await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
+  await workspace.getByTestId('composer-input').fill('make Jin frown')
+  await workspace.getByTestId('composer-send').click()
+  await expect(workspace.getByTestId('panel-version-label')).toHaveText('v2 / 2')
+  await expect(workspace.getByTestId('message-assistant').last()).toContainText('Done.')
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+  await expect(workspace).toHaveCount(0)
 
   // 4. The Story tab shows what the agent wrote into the bible.
   await openTab(page, 'story')

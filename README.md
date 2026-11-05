@@ -1,6 +1,6 @@
 # Webtoon AI Harness
 
-A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. You chat with the agent in the middle pane; it develops the story, builds characters with reference images, and draws panels one beat at a time. The right pane shows the result as a webtoon strip, the character studio, and the story bible. Select any panel to edit it in a side chat that keeps every image version.
+A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. You chat with the agent in the middle pane; it develops the story, builds characters with reference images, and draws panels one beat at a time. The right pane shows the result as a webtoon strip, the character studio, and the story bible. Click any panel to open it in an editor, with its own chat, that keeps every image version.
 
 Everything runs on your machine. Model calls are made by the app's main process, projects are plain folders of JSON, markdown and PNG files, and the app works offline on a built-in mock model until you add real endpoints.
 
@@ -48,7 +48,7 @@ WEBTOON_MOCK_SCRIPT=./mock-script.json npm run dev
 
 (In PowerShell: `$env:WEBTOON_MOCK_SCRIPT = ".\mock-script.json"; npm run dev`.)
 
-The script has one cursor for the whole app: every run, main chat or panel side chat, takes the next unused turn, and once the script is exhausted the mock goes back to `(mock) <your text>`. Tool inputs can use placeholders instead of real ids: `{"$character": "Mina"}`, `{"$variation": ["Mina", "Base"]}` and `{"$episode": "current"}`. They are resolved from the project state that was sent with the user's message, so a character has to be created in an earlier message than the one whose panels cast it. `tests/e2e/full-flow.spec.ts` is a complete worked example.
+The script has one cursor for the whole app: every run, main chat or panel chat, takes the next unused turn, and once the script is exhausted the mock goes back to `(mock) <your text>`. Tool inputs can use placeholders instead of real ids: `{"$character": "Mina"}`, `{"$variation": ["Mina", "Base"]}` and `{"$episode": "current"}`. They are resolved from the project state that was sent with the user's message, so a character has to be created in an earlier message than the one whose panels cast it. `tests/e2e/full-flow.spec.ts` is a complete worked example.
 
 ## Connect real models
 
@@ -71,10 +71,10 @@ Anthropic cannot draw, so a working setup needs an image model from an `openai` 
 | Role | Needs | If unassigned | Used for |
 | --- | --- | --- | --- |
 | `agent` | text | none: chat shows "No model assigned to role 'agent'. Open Settings → Models." | The main chat. The default and recommended model is `claude-opus-5-5`. |
-| `panelChat` | text | uses `agent` | The side chat on a selected panel. A cheaper, faster model is fine. |
+| `panelChat` | text | uses `agent` | The chat of a panel open in the editor. A cheaper, faster model is fine. |
 | `vision` | vision | none: no consistency check | The consistency check (below). |
 | `image` | image-gen | none: image calls fail with a clear message and a Retry | Character and panel images. |
-| `imageEdit` | image-edit | uses `image` | Editing a panel's current image from the side chat. |
+| `imageEdit` | image-edit | uses `image` | Editing a panel's current image from its panel chat. |
 
 **Edit endpoint** changes an endpoint's name, base URL and timeout (see [Slow providers](#slow-providers)). Moving the base URL to another host clears the endpoint's stored key, so a key is never sent to a server it was not entered for; the Settings screen says "Key cleared because the host changed", and you set the key again. Removing an endpoint or model that is assigned to a role clears that role and tells you which. The model form also takes a JSON `params` object; for Anthropic text models `{"effort": "high"}` is the default and `low`, `medium`, `high`, `xhigh` and `max` are accepted. `maxReferenceImages` caps how many reference images are sent with one image request.
 
@@ -133,7 +133,7 @@ For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL
 
 ## Project folder layout
 
-Projects live under the projects folder, by default `Documents/Webtoon AI Harness/projects` (change it with `WEBTOON_PROJECTS_ROOT`). Each project is one folder named after its id. All paths stored inside the files are relative to the project folder.
+Projects live under the projects folder, by default `Documents/Webtoon AI Harness/projects` (change it with `WEBTOON_PROJECTS_ROOT`). Each project is one folder named after its id. All paths stored inside the files are relative to the project folder. Exported episodes go to an `Exports` folder next to the projects folder (see [Export](#export)).
 
 ```text
 prj_0123456789/
@@ -192,6 +192,28 @@ The link only acts on the project that is open in the app window; with no projec
 
 The chat header has a story-mode switch. In **User-led** mode the agent follows your story. In **AI-led** mode it decides what happens next, and a **Continue story** button appears: it asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
 
+## Export
+
+Press **Export** in the episode bar to open the **Export episodes** dialog. Tick the episodes you want, pick a **Format**, and press **Export**. The button is disabled while the project has no episodes, and the dialog starts with the active episode ticked.
+
+| Format | What you get |
+| --- | --- |
+| **Webtoon upload (JPEG slices)** | 800 px wide slices, each at most 1280 px tall, as JPEG or PNG (**Image type**). |
+| **Long image** | One image per episode, JPEG or PNG. An episode taller than 65,000 px is split into numbered parts. **Image type** applies here too. |
+| **PDF for reading** | 800×1280 px images on 600×960 pt pages, with no margin. |
+| **PDF for print** | **Paper** (A4 or Letter; shown for this format only) with 36 pt margins, always at 2× resolution, and pages break between rows. |
+| **CBZ (comic readers)** | Pages up to 1280 px tall that break between rows, with a `ComicInfo.xml` for the reader. |
+
+Set **Resolution** to **High** to double the pixels, so slices are 1600 px wide. **Resolution** is shown for every format except **PDF for print**, which is always High.
+
+**Without lettering** exports the art alone, with no dialogue or captions drawn over it.
+
+A panel counts as finished when its current version is ready. If a ticked episode has unfinished panels, the dialog lists them, and **Export anyway** leaves them out. If no ticked episode has a finished panel, there is nothing to export.
+
+**Combine into one file** appears for **PDF for reading**, **PDF for print** and **CBZ** when you tick two or more episodes. Without it, each episode gets its own file.
+
+When you press **Export**, a save dialog asks where to put the result. It starts in the `Exports` folder next to the projects folder. You pick a file when the export is a single file and a folder when it is several, such as slices or one file per episode. If an output already exists, it is replaced only after the export succeeds, and the old one goes to the operating system's trash. **Cancel** stops the export and removes any partial files. When it finishes, **Show in folder** opens the result.
+
 ## Environment overrides
 
 | Variable | Effect |
@@ -199,6 +221,7 @@ The chat header has a story-mode switch. In **User-led** mode the agent follows 
 | `WEBTOON_USER_DATA` | Electron user-data folder: `models.json`, `secrets.json` and Electron's own state. |
 | `WEBTOON_PROJECTS_ROOT` | Folder that holds the project folders. |
 | `WEBTOON_MOCK_SCRIPT` | Path to a mock script (see [First run](#first-run-on-the-mock-models)); only the mock model reads it. |
+| `WEBTOON_EXPORT_TARGET` | Test hook: a folder that replaces the export save dialog. Exports go straight into it. |
 
 The end-to-end tests point `WEBTOON_USER_DATA` and `WEBTOON_PROJECTS_ROOT` at throwaway folders, and set `WEBTOON_MOCK_SCRIPT` (a file, not a folder) to a temporary script only in the tests that script the mock; without one, the mock model answers each message with `(mock) <your text>`.
 

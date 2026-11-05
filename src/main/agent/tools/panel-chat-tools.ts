@@ -50,7 +50,8 @@ function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
       speakerId: line.speakerId,
       speaker: speakerName(line, roster),
       kind: line.kind,
-      text: line.text
+      text: line.text,
+      placement: line.placement
     }))
   }
 }
@@ -199,7 +200,7 @@ const patchInput = PanelPatchSchema.extend({
   items: PanelPatchSchema.shape.items.describe(
     'Items in the panel (itemId, a ready usageId, heldBy a cast member or null, action), replacing the whole list. Removing a cast member who holds an item is rejected: change heldBy too.'
   ),
-  dialogue: PanelPatchSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx.'),
+  dialogue: PanelPatchSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement.'),
   continuityNotes: PanelPatchSchema.shape.continuityNotes.describe('What must match the previous panel: lighting, time of day, props, outfits.'),
   offPanelMentions: PanelPatchSchema.shape.offPanelMentions.describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
 })

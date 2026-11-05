@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, PanelVersion } from '@shared/types'
+import { visualFields } from '@shared/visual-fields'
 import { NoModelForRoleError, type ModelRegistry, type ResolvedModel } from '../models/registry'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { ProviderError, type ImageEditRequest, type ImageProvider, type ImageRequest, type ImageResult, type TextProvider, type TextTurnRequest } from '../models/providers/types'
@@ -49,7 +50,7 @@ vi.mock('../storage/atomic', async (importOriginal) => {
 const INTERRUPTED = 'Interrupted: the app closed during generation'
 const USER = { createdBy: 'user' as const, strictMentions: false, strictSheets: false }
 const AGENT = { createdBy: 'ai' as const, strictMentions: true, strictSheets: false }
-const VERSION_KEYS = ['check', 'createdAt', 'error', 'id', 'imagePath', 'instruction', 'parentVersionId', 'prompt', 'referenceImagePaths', 'source', 'status']
+const VERSION_KEYS = ['check', 'createdAt', 'drawnFrom', 'error', 'id', 'imagePath', 'instruction', 'parentVersionId', 'prompt', 'referenceImagePaths', 'source', 'status']
 
 let counter = 0
 const nextPng = (): Buffer => encodeSolidPng(2, 2, [++counter % 250, 7, 7])
@@ -245,6 +246,7 @@ const version = (over: Partial<PanelVersion> = {}): PanelVersion => ({
   referenceImagePaths: [],
   instruction: null,
   parentVersionId: null,
+  drawnFrom: null,
   check: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   ...over
@@ -278,6 +280,17 @@ describe('PanelService create and list', () => {
     const p0 = (await svc.create(ctx, draft(ep.id, { description: 'zero', afterPanelId: null }), USER)).panel
     expect((await svc.list(ctx, ep.id)).map((p) => p.description)).toEqual(['zero', 'one', 'three', 'two'])
     expect((await episodes.get(ctx, ep.id)).panelIds).toEqual([p0.id, p1.id, p3.id, p2.id])
+  })
+
+  it('stores a line without placement as automatic and keeps one that has it', async () => {
+    const { svc, epi, ctx } = await setup()
+    const { panel } = await svc.create(
+      ctx,
+      draft(epi.id, { dialogue: [{ speakerId: null, kind: 'narration', text: 'A' }, { speakerId: null, kind: 'narration', text: 'B', placement: { x: 0.2, y: 0.8 } }, { speakerId: null, kind: 'narration', text: 'C', placement: null }] }),
+      USER
+    )
+    expect(panel.dialogue.map((d) => d.placement)).toEqual([null, { x: 0.2, y: 0.8 }, null])
+    expect((await svc.get(ctx, panel.id)).dialogue.map((d) => d.placement)).toEqual([null, { x: 0.2, y: 0.8 }, null])
   })
 
   it('fills defaults: aspect from the project, dlg ids, empty history', async () => {
@@ -397,11 +410,67 @@ describe('PanelService update', () => {
     events.length = 0
     const { panel } = await svc.update(ctx, p.id, { dialogue: [{ speakerId: m.id, kind: 'thought', text: 'new' }], shot: 'close-up' }, USER)
     expect(panel).toMatchObject({ shot: 'close-up', description: p.description, setting: p.setting, continuityNotes: 'rain', characters: p.characters })
-    expect(panel.dialogue).toEqual([{ id: expect.stringMatching(/^dlg_/), speakerId: m.id, kind: 'thought', text: 'new' }])
+    expect(panel.dialogue).toEqual([{ id: expect.stringMatching(/^dlg_/), speakerId: m.id, kind: 'thought', text: 'new', placement: null }])
     expect(panel.dialogue[0].id).not.toBe(p.dialogue[0].id)
     expect(await svc.get(ctx, p.id)).toEqual(panel)
     expect(events).toEqual([{ type: 'panel.changed', projectId: ctx.id, panelId: p.id }])
     await expect(svc.update(ctx, 'pnl_ffffffffff', { shot: 'wide' }, USER)).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  it('lets a line without placement inherit the stored placement at its index, and a new line start automatic', async () => {
+    const { svc, epi, ctx } = await setup()
+    const placed = { x: 0.3, y: 0.6 }
+    const other = { x: 0.7, y: 0.2 }
+    const p = (
+      await svc.create(
+        ctx,
+        draft(epi.id, {
+          dialogue: [
+            { speakerId: null, kind: 'narration', text: 'one', placement: placed },
+            { speakerId: null, kind: 'narration', text: 'two', placement: null },
+            { speakerId: null, kind: 'narration', text: 'three', placement: other }
+          ]
+        }),
+        USER
+      )
+    ).panel
+    const lines = (await svc.update(
+      ctx,
+      p.id,
+      { dialogue: [{ speakerId: null, kind: 'narration', text: 'ONE' }, { speakerId: null, kind: 'narration', text: 'TWO' }, { speakerId: null, kind: 'speech', text: 'THREE' }, { speakerId: null, kind: 'narration', text: 'four' }] },
+      USER
+    )).panel.dialogue
+    expect(lines.map((d) => d.text)).toEqual(['ONE', 'TWO', 'THREE', 'four'])
+    expect(lines.map((d) => d.placement)).toEqual([placed, null, other, null])
+    expect((await svc.get(ctx, p.id)).dialogue.map((d) => d.placement)).toEqual([placed, null, other, null])
+  })
+
+  it('clears a placement on an explicit null and sets one on an explicit value', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { dialogue: [{ speakerId: null, kind: 'narration', text: 'one', placement: { x: 0.3, y: 0.6 } }, { speakerId: null, kind: 'narration', text: 'two' }] }), USER)).panel
+    const { panel } = await svc.update(
+      ctx,
+      p.id,
+      { dialogue: [{ speakerId: null, kind: 'narration', text: 'one', placement: null }, { speakerId: null, kind: 'narration', text: 'two', placement: { x: 0.9, y: 0.1 } }] },
+      USER
+    )
+    expect(panel.dialogue.map((d) => d.placement)).toEqual([null, { x: 0.9, y: 0.1 }])
+  })
+
+  it('keeps the placements when the patch has no dialogue', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { dialogue: [{ speakerId: null, kind: 'narration', text: 'one', placement: { x: 0.3, y: 0.6 } }] }), USER)).panel
+    const { panel } = await svc.update(ctx, p.id, { shot: 'wide' }, USER)
+    expect(panel.dialogue).toEqual(p.dialogue)
+  })
+
+  it('changes the dialogue alone without adding a version or moving the current one', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    const { panel } = await svc.update(ctx, p.id, { dialogue: [{ speakerId: null, kind: 'narration', text: 'Night.', placement: { x: 0.5, y: 0.5 } }] }, USER)
+    expect(panel.versions).toHaveLength(1)
+    expect(panel.currentVersionId).toBe(v.id)
   })
 
   it('changes the layout alone without touching the image history', async () => {
@@ -538,6 +607,30 @@ describe('PanelService generate', () => {
     expect(calls[1].req.references.map((r) => r.label)).toEqual(['Mina', 'previous panel'])
     expect(calls[1].req.prompt).toBe(v2.prompt)
     expect(calls[1].req.aspect).toBe('2:3')
+  })
+
+  it('records what the panel showed when the draw began', async () => {
+    const { svc, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { aspect: '1:3', characters: [castOf(m)] }), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    expect(v.drawnFrom).toEqual(visualFields(p))
+    expect((await svc.get(ctx, p.id)).versions[0].drawnFrom).toEqual(visualFields(p))
+    // The panel changes after the draw: the next version records the new state, the old one keeps its own.
+    const changed = (await svc.update(ctx, p.id, { description: 'A different door.', shot: 'wide' }, USER)).panel
+    const v2 = await svc.generate(ctx, p.id)
+    expect(v2.drawnFrom).toEqual(visualFields(changed))
+    expect((await svc.get(ctx, p.id)).versions[0].drawnFrom).toEqual(visualFields(p))
+  })
+
+  it('records what the panel showed on a failed draw too', async () => {
+    const { svc, epi, ctx, behavior } = await setup()
+    behavior.generate = async () => {
+      throw new Error('boom')
+    }
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    expect(v).toMatchObject({ status: 'failed', drawnFrom: visualFields(p) })
   })
 
   it('draws a tall panel at 9:16', async () => {
@@ -1308,6 +1401,7 @@ describe('PanelService editImage', () => {
     const v2 = await svc.editImage(ctx, p.id, 'make it rain')
     expect(v2).toMatchObject({ source: 'edit', status: 'ready', parentVersionId: v1.id, instruction: 'make it rain', error: null, check: null, referenceImagePaths: [m.imagePath] })
     expect(Object.keys(v2).sort()).toEqual(VERSION_KEYS)
+    expect(v2.drawnFrom).toEqual(visualFields(p))
     expect(v2.prompt).toContain('Edit the first image: make it rain')
     expect(v2.prompt).toContain('Mina: Slim build')
     expect(v2.imagePath).toBe(`panels/${p.id}/${v2.id}.webp`)
@@ -1521,6 +1615,7 @@ describe('PanelService uploadImage and revert', () => {
     const up = await svc.uploadImage(ctx, p.id, PNG, 'jpg')
     expect(up).toMatchObject({ source: 'upload', status: 'ready', error: null, prompt: '', referenceImagePaths: [], instruction: null, parentVersionId: null, check: null })
     expect(Object.keys(up).sort()).toEqual(VERSION_KEYS)
+    expect(up.drawnFrom).toEqual(visualFields(p))
     expect(up.imagePath).toBe(`panels/${p.id}/${up.id}.jpg`)
     expect(fs.readFileSync(ctx.paths.resolveAsset(up.imagePath!)).equals(PNG)).toBe(true)
     const stored = await svc.get(ctx, p.id)
@@ -1567,6 +1662,61 @@ describe('PanelService uploadImage and revert', () => {
     await expect(svc.revert(ctx, p.id, 'ver_ffffffffff')).rejects.toThrow('Unknown version: ver_ffffffffff')
     await expect(svc.revert(ctx, p.id, failed.id)).rejects.toBeInstanceOf(EntityNotFoundError)
     expect((await svc.get(ctx, p.id)).currentVersionId).toBe(v1.id)
+  })
+})
+
+describe('PanelService layout sketch', () => {
+  const sketchFiles = (ctx: ProjectContext, id: string): string[] => {
+    const dir = ctx.paths.resolveAsset(`panels/${id}`)
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith('sketch-')) : []
+  }
+
+  it('stores a sketch under a new name and forgets it with null, removing a file nothing was drawn from', async () => {
+    const { svc, epi, ctx, events } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { description: '' }), USER)).panel
+    events.length = 0
+    const first = await svc.saveSketch(ctx, p.id, PNG)
+    expect(first.sketchPath).toMatch(new RegExp(`^panels/${p.id}/sketch-[a-z0-9]+\.png$`))
+    expect(fs.readFileSync(ctx.paths.resolveAsset(first.sketchPath!))).toEqual(PNG)
+    expect(await svc.readSketch(ctx, p.id)).toEqual(PNG)
+    expect(events.some((e) => e.type === 'panel.changed')).toBe(true)
+    // A later sketch replaces it; the old file goes, as no version was drawn from it.
+    await new Promise((r) => setTimeout(r, 2))
+    const second = await svc.saveSketch(ctx, p.id, nextPng())
+    expect(second.sketchPath).not.toBe(first.sketchPath)
+    expect(sketchFiles(ctx, p.id)).toEqual([second.sketchPath!.split('/').at(-1)])
+    const cleared = await svc.saveSketch(ctx, p.id, null)
+    expect(cleared.sketchPath).toBeNull()
+    expect(sketchFiles(ctx, p.id)).toEqual([])
+    expect(await svc.readSketch(ctx, p.id)).toBeNull()
+    // Nothing else about the panel changed.
+    expect({ ...cleared, sketchPath: undefined, updatedAt: p.updatedAt }).toEqual({ ...p, sketchPath: undefined })
+  })
+
+  it('draws from the sketch, keeps a sketch a version was drawn from, and never shows it to the checker or to edits', async () => {
+    const { svc, epi, ctx, calls, vision, behavior } = await setup({ vision: true })
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), USER)).panel
+    const { sketchPath } = await svc.saveSketch(ctx, p.id, PNG)
+    vision.replies.push(PASS)
+    const v = await svc.generate(ctx, p.id)
+    expect(v.referenceImagePaths).toEqual([m.imagePath, sketchPath])
+    expect(v.prompt).toContain('[LAYOUT] Follow the rough composition of the sketch (reference image 2)')
+    expect(calls[0].req.references.map((r) => r.label)).toEqual(['Mina', 'layout sketch'])
+    expect((vision.requests[0].messages[0] as { imagePaths: string[] }).imagePaths).toEqual([m.imagePath, v.imagePath])
+    // The version names the sketch, so a new sketch leaves that file in place.
+    await new Promise((r) => setTimeout(r, 2))
+    await svc.saveSketch(ctx, p.id, nextPng())
+    expect(fs.existsSync(ctx.paths.resolveAsset(sketchPath!))).toBe(true)
+    behavior.edit = async () => ({ mime: 'image/png', data: nextPng() })
+    const edited = await svc.editImage(ctx, p.id, 'make it rain')
+    expect(edited.referenceImagePaths).toEqual([m.imagePath])
+    expect(edited.prompt).not.toContain('[LAYOUT]')
+  })
+
+  it('refuses an unknown panel', async () => {
+    const { svc, ctx } = await setup()
+    await expect(svc.saveSketch(ctx, 'pnl_ffffffffff', PNG)).rejects.toThrow()
   })
 })
 
