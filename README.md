@@ -133,7 +133,7 @@ For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL
 
 ## Project folder layout
 
-Projects live under the projects folder, by default `Documents/Webtoon AI Harness/projects` (change it with `WEBTOON_PROJECTS_ROOT`). Each project is one folder named after its id. All paths stored inside the files are relative to the project folder.
+Projects live under the projects folder, by default `Documents/Webtoon AI Harness/projects` (change it with `WEBTOON_PROJECTS_ROOT`). Each project is one folder named after its id. All paths stored inside the files are relative to the project folder. Exported episodes go to an `Exports` folder next to the projects folder (see [Export](#export)).
 
 ```text
 prj_0123456789/
@@ -192,6 +192,28 @@ The link only acts on the project that is open in the app window; with no projec
 
 The chat header has a story-mode switch. In **User-led** mode the agent follows your story. In **AI-led** mode it decides what happens next, and a **Continue story** button appears: it asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
 
+## Export
+
+Press **Export** in the episode bar to open the **Export episodes** dialog. Tick the episodes you want, pick a **Format**, and press **Export**. The button is disabled while the project has no episodes, and the dialog starts with the active episode ticked.
+
+| Format | What you get |
+| --- | --- |
+| **Webtoon upload (JPEG slices)** | 800 px wide slices, each at most 1280 px tall, as JPEG or PNG (**Image type**). |
+| **Long image** | One image per episode, JPEG or PNG. An episode taller than 65,000 px is split into numbered parts. |
+| **PDF for reading** | Pages of 800×1280 with no margin. |
+| **PDF for print** | **Paper** A4 or Letter with 36 pt margins, always at 2× resolution, and pages break between rows. |
+| **CBZ (comic readers)** | Pages up to 1280 px tall that break between rows, with a `ComicInfo.xml` for the reader. |
+
+**Resolution: High** doubles the pixels, so slices are 1600 px wide. It is offered for the formats where it applies; PDF for print is always High.
+
+**Without lettering** exports the art alone, with no dialogue or captions drawn over it.
+
+A panel counts as finished when its current version is ready. If a ticked episode has unfinished panels, the dialog lists them, and **Export anyway** leaves them out. If no ticked episode has a finished panel, there is nothing to export.
+
+**Combine into one file** appears for PDF and CBZ when you tick two or more episodes. Without it, each episode gets its own file.
+
+When you press **Export**, a save dialog asks where to put the result. It starts in the `Exports` folder next to the projects folder. You pick a file when the export is a single file and a folder when it is several, such as slices or one file per episode. If an output already exists, it is replaced only after the export succeeds, and the old one goes to the operating system's trash. **Cancel** stops the export and removes any partial files. When it finishes, **Show in folder** opens the result.
+
 ## Environment overrides
 
 | Variable | Effect |
@@ -199,6 +221,7 @@ The chat header has a story-mode switch. In **User-led** mode the agent follows 
 | `WEBTOON_USER_DATA` | Electron user-data folder: `models.json`, `secrets.json` and Electron's own state. |
 | `WEBTOON_PROJECTS_ROOT` | Folder that holds the project folders. |
 | `WEBTOON_MOCK_SCRIPT` | Path to a mock script (see [First run](#first-run-on-the-mock-models)); only the mock model reads it. |
+| `WEBTOON_EXPORT_TARGET` | Test hook: a folder that replaces the export save dialog. Exports go straight into it. |
 
 The end-to-end tests point `WEBTOON_USER_DATA` and `WEBTOON_PROJECTS_ROOT` at throwaway folders, and set `WEBTOON_MOCK_SCRIPT` (a file, not a folder) to a temporary script only in the tests that script the mock; without one, the mock model answers each message with `(mock) <your text>`.
 
