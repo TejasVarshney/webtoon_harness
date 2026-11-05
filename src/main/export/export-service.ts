@@ -238,7 +238,7 @@ export class ExportService {
     } catch (error) {
       await writer.abort()
       await parts.removeAll()
-      outcome = error instanceof Cancelled ? { stage: 'cancelled' } : { stage: 'failed', message: error instanceof Error ? error.message : String(error) }
+      outcome = error instanceof Cancelled ? { stage: 'cancelled' } : { stage: 'failed', message: failureMessage(error, plan) }
     }
     this.ended.set(job.id, outcome.outputs ?? [])
     this.job = null
@@ -269,6 +269,19 @@ function extension(req: ExportRequest): string {
     case 'cbz':
       return '.cbz'
   }
+}
+
+/**
+ * The message of a failed job. A file-system error that names no path (a handle write on a full disk) gets the
+ * output it was writing: the one final path, or the output folder when there are several. The `.part` name is
+ * never shown, since the user has never seen it.
+ */
+function failureMessage(error: unknown, plan: JobPlan): string {
+  if (!(error instanceof Error)) return String(error)
+  const fsError = error as NodeJS.ErrnoException
+  if (!fsError.code || fsError.path) return error.message
+  const output = plan.writer.finals.length === 1 ? plan.writer.finals[0] : plan.outputDir
+  return `Could not write ${output}: ${error.message}`
 }
 
 function unique(ids: string[]): string[] {

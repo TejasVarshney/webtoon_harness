@@ -101,6 +101,7 @@ interface Rig {
 
 let rig: Rig | undefined
 afterEach(async () => {
+  vi.restoreAllMocks()
   if (rig) {
     await rig.svc.shutdown()
     await rig.s.cleanup()
@@ -511,6 +512,18 @@ describe('ExportService', () => {
     const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'webtoon' }), target)
     expect((await finished(jobId)).stage).toBe('failed')
     expect(capturer.closed).toBe(1)
+    expect(await readdir(target)).toEqual([])
+  })
+
+  it('a write failure names the output and the OS reason, and leaves no .part', async () => {
+    const { svc, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready', 'ready', 'ready'])
+    // A failed handle write carries no path of its own, as on a full disk.
+    vi.spyOn(fs.promises, 'writeFile').mockRejectedValueOnce(Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }))
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'webtoon' }), target)
+    const end = await finished(jobId)
+    expect(end.stage).toBe('failed')
+    expect(end.message).toBe(`Could not write ${path.join(target, 'Moon Tower - 01 - The Rooftop')}: ENOSPC: no space left on device, write`)
     expect(await readdir(target)).toEqual([])
   })
 
