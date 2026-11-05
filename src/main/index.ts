@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
 import { electronImageOps } from './domain/electron-image-ops'
@@ -81,6 +81,9 @@ function rendererUrl(): string | null {
  * create one), a file otherwise. Resolves to the chosen absolute path, or null when dismissed.
  */
 const chooseExportTarget: ChooseExportTarget = async (event, { kind, defaultPath, extension }) => {
+  // Test hook: a directory in WEBTOON_EXPORT_TARGET stands in for the dialog.
+  const fixedTarget = process.env.WEBTOON_EXPORT_TARGET
+  if (fixedTarget) return kind === 'folder' ? fixedTarget : join(fixedTarget, basename(defaultPath))
   const win = BrowserWindow.fromWebContents((event as IpcMainInvokeEvent).sender) ?? BrowserWindow.getFocusedWindow()
   if (kind === 'folder') {
     const options = { title: 'Export to folder', defaultPath, properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> }
