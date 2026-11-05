@@ -6,8 +6,8 @@ import type { BubblePlacement } from '@shared/types'
 /** Pointer travel before a press on a bubble becomes a drag instead of a click. */
 export const DRAG_THRESHOLD_PX = 3
 /** One arrow key press, and one with Shift, as fractions of the panel. */
-export const NUDGE = 0.01
-export const NUDGE_BIG = 0.05
+const NUDGE = 0.01
+const NUDGE_BIG = 0.05
 /** How long a run of nudges waits before it is saved as one change. */
 export const NUDGE_COMMIT_MS = 300
 /** The height the panel stage is laid out at before it is fitted to the room. */

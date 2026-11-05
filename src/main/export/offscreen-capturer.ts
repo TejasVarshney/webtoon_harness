@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow } from 'electron'
 import { captureScaleFactor, STRIP_CSS_WIDTH } from '@shared/strip-width'
-import type { ExportSnapshot, ViewLayout } from '@shared/types'
+import type { ViewLayout } from '@shared/types'
 import { pageHeightCss, type Slice } from './slice-plan'
 import { snapshotScript } from './snapshot-script'
 import type { StripCapturer } from './types'

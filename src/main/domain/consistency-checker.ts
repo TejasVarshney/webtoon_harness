@@ -9,10 +9,10 @@ import { loadImageForTextModel, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError,
 import type { PanelPromptReference } from './prompts'
 
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
-export const CHECKLIST_DOC = 'reference/consistency-checklist'
+const CHECKLIST_DOC = 'reference/consistency-checklist'
 
 /** The project doc that is the system prompt of a sheet check (`checkSheet`). */
-export const SHEET_CHECKLIST_DOC = 'reference/sheet-checklist'
+const SHEET_CHECKLIST_DOC = 'reference/sheet-checklist'
 
 /** The reserved image key under which the not-yet-saved candidate sheet is served to the vision model. */
 export const CANDIDATE_IMAGE_KEY = 'candidate://sheet'
@@ -48,7 +48,7 @@ export interface ConsistencyCheckerOptions {
 }
 
 /** What a sheet check judges: a character variation or an item usage, with its owner (which holds the lock). */
-export type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
+type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
 
 export interface SheetCheckInput {
   /** The candidate sheet, not yet on disk. */

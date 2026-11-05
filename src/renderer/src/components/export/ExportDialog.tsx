@@ -89,7 +89,6 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       stale = true
     }
     // `orderedTicked` is derived from `tickedKey`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, tickedKey])
 
   const terminal = progress !== null && (progress.stage === 'done' || progress.stage === 'failed' || progress.stage === 'cancelled')

@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const IdSchema = z.string().regex(/^[a-z]+_[A-Za-z0-9]+$/, 'not an id')
 
 /** `Invalid input: <path>: <problem>; ...` on one line. */
-export function describeZodError(error: z.ZodError): string {
+function describeZodError(error: z.ZodError): string {
   const issues = error.issues.map((i) => (i.path.length > 0 ? `${i.path.map(String).join('.')}: ${i.message}` : i.message))
   return `Invalid input: ${issues.join('; ')}`
 }

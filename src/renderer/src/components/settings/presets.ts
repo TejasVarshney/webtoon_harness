@@ -49,5 +49,3 @@ export const KIND_CAPABILITIES: Record<EndpointKind, Capability[]> = {
   openai: ['text', 'vision', 'image-gen', 'image-edit'],
   mock: ['text', 'vision', 'image-gen', 'image-edit']
 }
-
-export const ALL_CAPABILITIES: Capability[] = ['text', 'vision', 'image-gen', 'image-edit']

@@ -11,7 +11,7 @@ import { buildAgentTools } from './tools'
 
 export { SessionBusyError } from './run-host'
 
-export const DRIVEN_READ_ONLY = 'This session is driven by Claude Code and is read-only.'
+const DRIVEN_READ_ONLY = 'This session is driven by Claude Code and is read-only.'
 
 export interface AgentRunnerOptions {
   services: Services

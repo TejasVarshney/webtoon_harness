@@ -24,13 +24,11 @@ import type {
   ItemPatchSchema,
   ItemSchema,
   ItemUsageInputSchema,
-  ItemUsageKindSchema,
   ItemUsageSchema,
   ModelConfigSchema,
   PanelAspectSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
-  PanelFrameSchema,
   PanelGapSchema,
   PanelGutterSchema,
   PanelItemSchema,
@@ -40,7 +38,6 @@ import type {
   ProjectMetaSchema,
   RoleAssignmentsSchema,
   RoleSchema,
-  ShotTypeSchema,
   StoryModeSchema,
   ToolCallSchema,
   ToolMessageSchema,
@@ -97,13 +94,10 @@ export type ItemUsageInput = z.infer<typeof ItemUsageInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
 export type DrawAspect = z.infer<typeof DrawAspectSchema>
-export type PanelFrame = z.infer<typeof PanelFrameSchema>
 export type PanelGap = z.infer<typeof PanelGapSchema>
 export type PanelGutter = z.infer<typeof PanelGutterSchema>
-export type ShotType = z.infer<typeof ShotTypeSchema>
 export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>
-export type ItemUsageKind = z.infer<typeof ItemUsageKindSchema>
 
 export type Role = z.infer<typeof RoleSchema>
 export type Capability = z.infer<typeof CapabilitySchema>

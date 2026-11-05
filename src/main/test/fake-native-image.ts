@@ -25,7 +25,7 @@ export function fakeNativeImage(decodable: (data: Buffer) => boolean = decodesPn
   return { resized, createFromBuffer: (data: Buffer) => image(decodable(data), 3000, 1500) }
 }
 
-export function decodesPngAndJpeg(data: Buffer): boolean {
+function decodesPngAndJpeg(data: Buffer): boolean {
   const mime = sniffImageMime(data)
   return mime === 'image/png' || mime === 'image/jpeg'
 }

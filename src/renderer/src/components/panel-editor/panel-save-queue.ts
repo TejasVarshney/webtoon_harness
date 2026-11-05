@@ -65,7 +65,7 @@ export function useLastWarnings(panelId: string, by: readonly string[]): string[
 }
 
 /** The panel as the store has it, in whichever loaded episode has it. */
-export function findPanel(panelId: string): Panel | undefined {
+function findPanel(panelId: string): Panel | undefined {
   for (const panels of Object.values(usePanelsStore.getState().panelsByEpisode)) {
     const found = panels.find((p) => p.id === panelId)
     if (found !== undefined) return found

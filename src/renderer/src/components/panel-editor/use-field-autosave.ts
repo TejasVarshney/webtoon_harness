@@ -4,13 +4,13 @@ import { errorText } from '../characters/controls'
 import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 
 /** How long a field waits after the last change before it saves. */
-export const AUTOSAVE_MS = 600
+const AUTOSAVE_MS = 600
 
 /** The panel's fields the editing mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
 export type AutosaveField = 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'beside' | 'gapAfter' | 'gutter' | 'characters' | 'items'
 
 /** What became of a sent value: stored, refused by the service, or not sent after all (the line changed, the panel is gone). */
-export type AutosaveOutcome = 'saved' | 'refused' | 'dropped'
+type AutosaveOutcome = 'saved' | 'refused' | 'dropped'
 
 export interface Autosave<T> {
   /** The draft while it is waiting, being saved or refused; otherwise the stored value. */

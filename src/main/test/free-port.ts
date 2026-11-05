@@ -7,7 +7,7 @@ import http from 'node:http'
  */
 const FETCH_BAD_PORTS = new Set([1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080])
 
-export const isFetchablePort = (port: number): boolean => !FETCH_BAD_PORTS.has(port)
+const isFetchablePort = (port: number): boolean => !FETCH_BAD_PORTS.has(port)
 
 /** Listens on port 0, again while the port it got is one fetch refuses; resolves with the port. */
 export async function listenOnFetchablePort(server: { listen(port: number): Promise<void>; close(): Promise<void>; readonly port: number | null }): Promise<number> {

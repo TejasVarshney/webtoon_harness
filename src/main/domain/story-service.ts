@@ -10,9 +10,9 @@ import { CorruptFileError, EntityNotFoundError } from './errors'
 import { checkedHeading, listSections, upsertMarkdownSection } from './markdown-sections'
 
 /** The sections a new story bible starts with (spec §10). */
-export const BIBLE_SECTIONS = ['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'] as const
+const BIBLE_SECTIONS = ['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'] as const
 
-export const BIBLE_TEMPLATE = `# Story Bible\n\n${BIBLE_SECTIONS.map((name) => `## ${name}\n`).join('\n')}`
+const BIBLE_TEMPLATE = `# Story Bible\n\n${BIBLE_SECTIONS.map((name) => `## ${name}\n`).join('\n')}`
 
 export interface StoryServiceOptions {
   bus: EventBus

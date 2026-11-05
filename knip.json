@@ -1,0 +1,10 @@
+{
+  "entry": [
+    "src/renderer/src/main.tsx",
+    "src/renderer/src/export-main.tsx",
+    "tools/**/*.mjs",
+    "src/main/plugins/claude-code/fixtures/fake-claude.mjs"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.mjs"],
+  "ignore": ["src/renderer/src/global.d.ts"]
+}

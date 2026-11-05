@@ -41,7 +41,7 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
 // ---------------------------------------------------------------------------------------------
 
 /** Whose image a reference is. The checker matches references to cast and items by this, never by label. */
-export type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
+type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
 
 export interface PanelPromptReference {
   relPath: string

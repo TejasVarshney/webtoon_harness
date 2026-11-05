@@ -15,8 +15,8 @@ import { locateClaude } from './locate-claude'
 import { StreamJsonParser, type ClaudeStreamEvent } from './stream-json'
 
 export const LINK_OFF = "Turn on the Claude Code plugin's link first."
-export const CLAUDE_NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
-export const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
+const CLAUDE_NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
+const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
 
 /** What assistant messages written by this backend name as their model. */
 const MODEL = { endpointId: 'plugin:claude-code', modelId: 'claude-code' }

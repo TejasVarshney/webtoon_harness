@@ -9,9 +9,9 @@ export const MAX_TEXT_MODEL_IMAGE_EDGE = 1568
 /** Long-edge limit for reference images sent to an image model. */
 export const MAX_REFERENCE_IMAGE_EDGE = 1536
 /** JPEG quality for images sent to a text/vision model. */
-export const TEXT_MODEL_JPEG_QUALITY = 85
+const TEXT_MODEL_JPEG_QUALITY = 85
 
-export interface DownscaleOptions {
+interface DownscaleOptions {
   /** Encoding of a decoded image. Default `png`. Bytes that cannot be decoded are passed through as they are. */
   format?: 'png' | 'jpeg'
 }
@@ -119,8 +119,6 @@ export function createIdentityImageOps(): IdentityImageOps {
     }
   }
 }
-
-export const identityImageOps = createIdentityImageOps()
 
 /** The image is permanently unusable rather than briefly unreadable: gone, not a file, outside the project. */
 function isGone(error: unknown): boolean {

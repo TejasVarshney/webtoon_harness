@@ -53,7 +53,7 @@ export interface CharacterServiceOptions {
 
 const INTERRUPTED = 'Interrupted: the app closed during generation'
 /** Ruling F4: a variation created without a generation has nothing that would ever move it out of `pending`. */
-export const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
+const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
 
 /** `generate: false` means no generation follows, so the new variation is recorded `failed` (Ruling F4). Default true. */
 export interface CreateVariationOptions {

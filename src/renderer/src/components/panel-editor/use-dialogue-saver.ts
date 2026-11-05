@@ -5,7 +5,7 @@ import type { DialogueDraftLine } from './dialogue-edits'
 import { queuePanelSave } from './panel-save-queue'
 
 /** What became of a save: sent and kept, not sent because the line changed, refused by the service, or not sent because the panel is gone (R2). */
-export type DialogueSaveOutcome = 'saved' | 'conflict' | 'refused' | 'skipped'
+type DialogueSaveOutcome = 'saved' | 'conflict' | 'refused' | 'skipped'
 
 export interface DialogueSaver {
   /**

@@ -5,7 +5,7 @@ import type { Services } from '../../services'
 import { writeFileAtomic } from '../../storage/atomic'
 import type { HandlerMap } from './projects'
 
-export interface PickFilesOptions {
+interface PickFilesOptions {
   /** Default true. `false` offers a single-file dialog. */
   multiple?: boolean
   title?: string

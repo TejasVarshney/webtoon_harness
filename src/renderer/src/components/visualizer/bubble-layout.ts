@@ -7,7 +7,7 @@ import type { DialogueLine, PanelCharacter } from '@shared/types'
 export type BubbleShape = 'speech' | 'shout' | 'whisper' | 'thought' | 'caption' | 'sfx'
 export type BubbleSide = 'left' | 'center' | 'right'
 /** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it. */
-export type BubbleTail = 'down' | 'edge' | 'none'
+type BubbleTail = 'down' | 'edge' | 'none'
 
 export interface BubbleLayout {
   id: string

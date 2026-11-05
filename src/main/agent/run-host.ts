@@ -23,7 +23,7 @@ export interface RunHostOptions {
 }
 
 /** What a runner hands over once it has validated the request and stored the user's message. */
-export interface PreparedRun {
+interface PreparedRun {
   ctx: ProjectContext
   /** The thread so far, ending with the user message that was just persisted. */
   history: ChatMessage[]

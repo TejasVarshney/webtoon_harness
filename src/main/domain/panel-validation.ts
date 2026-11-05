@@ -35,7 +35,7 @@ export function sheetCheckFailure(sheet: { check: CheckResult | null }): string[
 }
 
 /** What stands in for the issues of a failed check that named none, so a message never reads "failed its check: .". */
-export const NO_ISSUES_NAMED = 'no issues named'
+const NO_ISSUES_NAMED = 'no issues named'
 
 /** The issues of a failed check as one line for a message: joined by "; ", or `NO_ISSUES_NAMED` when there are none. */
 export function joinIssues(issues: readonly string[]): string {
