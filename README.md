@@ -140,14 +140,17 @@ prj_0123456789/
   project.json            title, style preset, story mode, default aspect, autopilotPanels, consistencyRetries
   agent/                  this project's copy of the workflow docs (editable)
     AGENTS.md
-    workflows/            character-creation, panel-generation, panel-editing, story-direction
-    reference/            consistency-checklist, prompt-templates, webtoon-style-guide
+    workflows/            character-creation, item-creation, panel-generation, panel-editing, story-direction
+    reference/            consistency-checklist, sheet-checklist, prompt-templates, webtoon-style-guide
   story/
     bible.md              the story bible (markdown, one ## section per topic)
     outline.json          the beat outline
   characters/
     chr_xxxxxxxxxx.json   one character: appearance lock, variations
     chr_xxxxxxxxxx/       its reference images, one per variation attempt
+  items/
+    itm_xxxxxxxxxx.json   one item: appearance lock, owner, usages
+    itm_xxxxxxxxxx/       its reference images, one per usage attempt
   episodes/
     epi_xxxxxxxxxx.json   episode title, synopsis, ordered panel ids
   panels/
@@ -222,6 +225,11 @@ When you press **Export**, a save dialog asks where to put the result. It starts
 | `WEBTOON_PROJECTS_ROOT` | Folder that holds the project folders. |
 | `WEBTOON_MOCK_SCRIPT` | Path to a mock script (see [First run](#first-run-on-the-mock-models)); only the mock model reads it. |
 | `WEBTOON_EXPORT_TARGET` | Test hook: a folder that replaces the export save dialog. Exports go straight into it. |
+| `WEBTOON_LIVE_LOCAL` | Set to `1` to run the live tests against the local stack (gemma4 on Ollama and the SDXL bridge). Start both first. |
+| `WEBTOON_LIVE_BRIDGE` | Set to `1` to run the live item flow on the ChatGPT bridge. It uses the ChatGPT account behind the bridge and takes about 15 minutes. |
+| `WEBTOON_LIVE_CLAUDE` | Set to `1` to run the live test of Claude Code as the agent. It spends a little of the signed-in account's usage. |
+| `WEBTOON_MCP_TOKEN` | Read by the [Claude Code plugin](integrations/claude-code-plugin/README.md), not the app: the link's token, from the copied command. |
+| `WEBTOON_MCP_PORT` | Read by the [Claude Code plugin](integrations/claude-code-plugin/README.md), not the app: the link's port, if you changed it from `7880`. |
 
 The end-to-end tests point `WEBTOON_USER_DATA` and `WEBTOON_PROJECTS_ROOT` at throwaway folders, and set `WEBTOON_MOCK_SCRIPT` (a file, not a folder) to a temporary script only in the tests that script the mock; without one, the mock model answers each message with `(mock) <your text>`.
 

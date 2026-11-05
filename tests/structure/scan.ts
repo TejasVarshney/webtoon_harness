@@ -92,6 +92,26 @@ export function findCycles(graph: Map<string, string[]>): string[][] {
   return cycles
 }
 
+const REPO_PATH = /^(?:src|tests|tools|docs|resources|integrations)\//
+const NPM_RUN = /^npm run ([\w:-]+)$/
+
+/**
+ * The backticked paths and `npm run` scripts in a markdown file that do not exist. Placeholders and globs are not
+ * paths, and `.claude/` and `out/` are left out because a clean checkout does not have all of them.
+ */
+export function missingDocRefs(markdown: string, exists: (repoPath: string) => boolean, scripts: Set<string>): string[] {
+  const missing: string[] = []
+  for (const [, token] of markdown.matchAll(/`([^`\n]+)`/g)) {
+    const script = NPM_RUN.exec(token)
+    if (script) {
+      if (!scripts.has(script[1])) missing.push(token)
+    } else if (!/[<*]/.test(token) && (REPO_PATH.test(token) || token === 'README.md') && !exists(token)) {
+      missing.push(token)
+    }
+  }
+  return missing
+}
+
 // The labels of finished plans and rulings: `Ruling T18f`, `Review Focus 2`, `spec §9`, `Task 25`, `(I4)`, `// R3:`.
 const PLAN_LABEL = /\b[Rr]uling [A-Z]\d|\bReview Focus\b|§\s?\d|\bTask \d+\b|\([CFIPRT]\d{1,2}[a-z]?[,)]|\/\/ [CFIPRT]\d{1,2}:/g
 

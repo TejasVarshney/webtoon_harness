@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areaOf, findCycles, importsOf, resolveImport, stalePointers } from './scan'
+import { areaOf, findCycles, importsOf, missingDocRefs, resolveImport, stalePointers } from './scan'
 
 const refs = (s: string) => importsOf(s).map((r) => [r.specifier, r.typeOnly])
 
@@ -68,6 +68,28 @@ describe('findCycles', () => {
     expect(findCycles(new Map([['a', ['b']], ['b', ['a']]]))).toHaveLength(1)
     expect(findCycles(new Map([['a', ['a']]]))).toHaveLength(1)
     expect(findCycles(new Map([['a', ['b']], ['b', ['c']], ['c', ['a']]]))[0]).toEqual(expect.arrayContaining(['a', 'b', 'c']))
+  })
+})
+
+describe('missingDocRefs', () => {
+  const exists = (p: string) => ['src/main/test/', 'src/main/a.ts', 'README.md'].includes(p)
+  const refs = (s: string) => missingDocRefs(s, exists, new Set(['check']))
+
+  it('accepts real files, folders and scripts', () => {
+    expect(refs('`src/main/a.ts`, `src/main/test/` and `README.md`')).toEqual([])
+    expect(refs('Run `npm run check`.')).toEqual([])
+  })
+
+  it('leaves alone what is not a repo path', () => {
+    expect(refs('`origin/main` and `<path>` and `node_modules/` and `out/`')).toEqual([])
+    expect(refs('`tests/e2e/<spec>` and `resources/agent-docs/**` and `npx vitest run <path>`')).toEqual([])
+    expect(refs('`.claude/worktrees/`')).toEqual([])
+  })
+
+  it('reports dead paths and unknown scripts', () => {
+    expect(refs('`src/main/gone.ts`')).toEqual(['src/main/gone.ts'])
+    expect(refs('`npm run nope`')).toEqual(['npm run nope'])
+    expect(refs('`README.txt` is fine, `docs/gone/` is not')).toEqual(['docs/gone/'])
   })
 })
 
