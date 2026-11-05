@@ -42,7 +42,7 @@ async function setup(opts: { signal?: AbortSignal; vision?: boolean; realTrash?:
   const draft = (description: string, o: Partial<PanelDraft> = {}): PanelDraft => ({ episodeId: episode.id, description, setting: 'Hall', shot: 'medium', characters: cast, dialogue: [], ...o })
 
   async function drawn(description: string, o: Partial<PanelDraft> = {}): Promise<Panel> {
-    const { panel } = await services.panels.create(ctx, draft(description, o), { createdBy: 'ai', strictMentions: true })
+    const { panel } = await services.panels.create(ctx, draft(description, o), { createdBy: 'ai', strictMentions: true, strictSheets: false })
     await services.panels.generate(ctx, panel.id)
     return services.panels.get(ctx, panel.id)
   }
@@ -310,7 +310,7 @@ describe('update_panel_fields', () => {
 
   it('keeps a line\'s placement when the patch leaves it out, and shows it back', async () => {
     const { run, s, ctx, mina, p2 } = await setup()
-    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Old text', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true })
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Old text', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true, strictSheets: false })
     const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'New text' }] })
     expect(r.ok, r.content).toBe(true)
     expect(json(r).fields.dialogue[0]).toMatchObject({ text: 'New text', placement: { x: 0.62, y: 0.18 } })
@@ -318,7 +318,7 @@ describe('update_panel_fields', () => {
 
   it('clears a placement with an explicit null and sets one when given', async () => {
     const { run, s, ctx, mina, p2 } = await setup()
-    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true })
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true, strictSheets: false })
     const cleared = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: null }] })
     expect(json(cleared).fields.dialogue[0].placement).toBeNull()
     const set = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.3, y: 0.7 } }] })
@@ -356,7 +356,7 @@ describe('update_panel_fields', () => {
       const h = await setup()
       const jin = await h.s.characters.create(h.ctx, { name: 'Jin', role: 'supporting', appearanceLock: 'Jin LOCK' }, 'user')
       await h.s.characters.generateVariationImage(h.ctx, jin.id, jin.variations[0].id)
-      const { panel, warnings } = await h.s.panels.create(h.ctx, h.draft('Mina waits while Jin watches.'), { createdBy: 'user', strictMentions: false })
+      const { panel, warnings } = await h.s.panels.create(h.ctx, h.draft('Mina waits while Jin watches.'), { createdBy: 'user', strictMentions: false, strictSheets: false })
       expect(warnings).toHaveLength(1)
       return { ...h, id: panel.id }
     }
@@ -415,7 +415,7 @@ describe('view_current_image', () => {
 
   it('says so when the panel has no ready image', async () => {
     const { run, s, ctx, draft } = await setup()
-    const { panel: bare } = await s.panels.create(ctx, draft('Nothing drawn yet.'), { createdBy: 'ai', strictMentions: true })
+    const { panel: bare } = await s.panels.create(ctx, draft('Nothing drawn yet.'), { createdBy: 'ai', strictMentions: true, strictSheets: false })
     expect(await run('view_current_image', {}, bare.id)).toMatchObject({ ok: false, content: 'This panel has no ready image', images: [] })
   })
 })
@@ -464,7 +464,7 @@ describe('get_panel_context', () => {
 
   it('names the speakers of the dialogue, archived characters included', async () => {
     const { run, s, ctx, mina, p2 } = await setup()
-    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hi' }, { speakerId: null, kind: 'sfx', text: 'Click' }] }, { strictMentions: true })
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hi' }, { speakerId: null, kind: 'sfx', text: 'Click' }] }, { strictMentions: true, strictSheets: false })
     await s.characters.archive(ctx, mina.id)
     const out = json(await run('get_panel_context'))
     expect(out.dialogue).toMatchObject([
@@ -480,7 +480,7 @@ describe('get_panel_context', () => {
       ctx,
       p2.id,
       { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hi', placement: { x: 0.62, y: 0.18 } }, { speakerId: null, kind: 'sfx', text: 'Click' }] },
-      { strictMentions: true }
+      { strictMentions: true, strictSheets: false }
     )
     const out = json(await run('get_panel_context'))
     expect(out.dialogue.map((line: { placement: unknown }) => line.placement)).toEqual([{ x: 0.62, y: 0.18 }, null])
@@ -501,8 +501,8 @@ describe('the panel side chat sees the panel items', () => {
 
   it('get_panel_context shows the items with their usage names and holders, and the items of the neighbors', async () => {
     const { run, s, ctx, p2, p3, item, firing, entry, mina } = await armed()
-    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true })
-    await s.panels.update(ctx, p3.id, { items: [{ ...entry, heldBy: null, action: '' }] }, { strictMentions: true })
+    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true, strictSheets: false })
+    await s.panels.update(ctx, p3.id, { items: [{ ...entry, heldBy: null, action: '' }] }, { strictMentions: true, strictSheets: false })
     const out = json(await run('get_panel_context'))
     expect(out.items).toEqual([{ itemId: item.id, name: 'Kestrel blaster', usageId: firing.id, usageName: 'Firing', heldBy: mina.id, action: 'aimed down the hall' }])
     expect(out.next.items).toEqual([{ name: 'Kestrel blaster', usageName: 'Firing' }])
@@ -511,7 +511,7 @@ describe('the panel side chat sees the panel items', () => {
 
   it('still names an archived item', async () => {
     const { run, s, ctx, p2, item, entry } = await armed()
-    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true })
+    await s.panels.update(ctx, p2.id, { items: [entry] }, { strictMentions: true, strictSheets: false })
     await s.items.archive(ctx, item.id)
     expect(json(await run('get_panel_context')).items[0]).toMatchObject({ name: 'Kestrel blaster', usageName: 'Firing' })
   })

@@ -103,6 +103,8 @@ What to do with it:
 - `baseStatus` `failed` with any other error: the character exists, only the image is missing. Read `baseError`, then retry once with `regenerate_variation` using `baseVariationId`. If it fails again, stop and tell the user (R12). Never call `create_character` again: you would get "A character named ... already exists".
 - The picture contradicts the lock (wrong hair color, missing scar): regenerate once. If it is wrong again, the lock is probably unclear. Show the user the line you would change and change the lock only after their yes (R3).
 
+- Read `check`. Every new sheet is checked against its lock and redrawn on a failure. The `create_character` result carries it as `baseCheck`; `regenerate_variation` and `create_variation` results carry `check`; `list_characters` shows `check` and `checkIssues`. A failed sheet adds a `note` to the result. A failed sheet cannot be cast. While the base sheet has failed, no other variation can be created or regenerated, though the base itself can be regenerated. To fix a lock that keeps failing, propose a rewording to the user with positive, visible traits ("smooth eyeless brow plate", not "no visible eyes"; "a young woman" stated first), apply it only after their yes (R3), then regenerate; or regenerate once with the lock as it is. Never cast a failed sheet. `check` `null` (never checked) and `skipped` are not failures.
+
 The base must be `ready` before the character can be cast in a panel, and before any variation can get its image (variation images are made from the base image).
 
 ## Variations
@@ -130,6 +132,8 @@ How to write `delta`:
 ```json
 {"variationId": "var_4c19d2e8a0", "status": "ready", "error": null, "imagePath": "characters/chr_3e8a51c0d2/var_4c19d2e8a0_91be03.png"}
 ```
+
+Read the variation's `check` the same way. If the base failed its check, `create_variation` is refused with "Regenerate the base first"; do that first.
 
 `status` `failed` with "Base reference image is not ready": regenerate the base first, then `regenerate_variation` this one. `failed` with "No image yet: upload one or regenerate" means you passed `generateImage: false`: wait for the user's upload or their go-ahead to generate, and do not count it as a failure. Any other failure: retry once with `regenerate_variation`, then stop and report.
 

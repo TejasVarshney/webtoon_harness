@@ -1,4 +1,5 @@
 import { versionPosition } from '@shared/panel-versions'
+import { sheetCheckFailure } from '../domain/panel-validation'
 import type { Character, DialogueLine, Episode, Item, Panel, PanelCharacter, PanelItem, ProjectMeta } from '@shared/types'
 
 /** AGENTS.md plus the index of the other workflow docs. Stable for a given input. */
@@ -33,6 +34,11 @@ export interface StateSnapshotInput {
   recentPanels: Panel[]
 }
 
+/** A sheet's status for the snapshot; a ready sheet that failed its check says so (spec §9). */
+function statusLabel(sheet: { status: string; check: Parameters<typeof sheetCheckFailure>[0]['check'] }): string {
+  return sheet.status === 'ready' && sheetCheckFailure(sheet) ? 'ready, check failed' : sheet.status
+}
+
 /** The compact `<project_state>` block stored with each user message. */
 export function buildStateSnapshot(s: StateSnapshotInput): string {
   // Archived characters are left out of the roster but still name the speakers of existing panels.
@@ -44,7 +50,7 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
   else {
     lines.push('characters:')
     for (const c of roster) {
-      const vars = c.variations.map((v) => `${v.id} ${oneLine(v.name)} (${v.status})`).join(', ')
+      const vars = c.variations.map((v) => `${v.id} ${oneLine(v.name)} (${statusLabel(v)})`).join(', ')
       lines.push(`- ${c.id} ${oneLine(c.name)} [${c.role}] variations: ${vars || 'none'}`)
     }
   }
@@ -53,7 +59,7 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
   else {
     lines.push('items:')
     for (const i of activeItems) {
-      const usages = i.usages.map((u) => `${u.id} ${oneLine(u.name)} (${u.status})`).join(', ')
+      const usages = i.usages.map((u) => `${u.id} ${oneLine(u.name)} (${statusLabel(u)})`).join(', ')
       lines.push(`- ${i.id} ${oneLine(i.name)} usages: ${usages || 'none'}`)
     }
   }

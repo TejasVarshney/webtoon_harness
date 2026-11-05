@@ -19,6 +19,7 @@ const call = (name: string, input: unknown) => ({ id: `call_${++n}`, name, input
 const SHIPPED = [
   'reference/consistency-checklist',
   'reference/prompt-templates',
+  'reference/sheet-checklist',
   'reference/webtoon-style-guide',
   'workflows/character-creation',
   'workflows/item-creation',

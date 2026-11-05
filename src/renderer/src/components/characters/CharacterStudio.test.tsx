@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { assetUrl } from '@shared/asset-url'
-import type { Character } from '@shared/types'
+import type { Character, Variation } from '@shared/types'
 import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
@@ -406,6 +406,40 @@ describe('CharacterStudio', () => {
       c = character()
       act(() => api.emit({ type: 'character.changed', projectId, characterId: c.id }))
       await waitFor(() => expect(within(screen.getByTestId('variation-card')).getByRole('img')).toBeInTheDocument())
+    })
+  })
+
+  describe('sheet check', () => {
+    const open = async (check: Variation['check']) => {
+      mount({ 'characters:list': () => [character({ variations: [variation({ check })] })] })
+      await userEvent.click(await screen.findByText('Mina'))
+      return within(await screen.findByTestId('variation-card'))
+    }
+
+    it('flags a failed sheet and lists its issues', async () => {
+      const card = await open({ passed: false, issues: ['Hair is black, lock says silver', 'Eyes are brown'], skipped: false })
+      const badge = card.getByTestId('sheet-check-failed')
+      expect(badge).toHaveTextContent('Check failed')
+      expect(badge).toHaveAttribute('title', 'Hair is black, lock says silver\nEyes are brown')
+      expect(card.getByText('Hair is black, lock says silver')).toBeInTheDocument()
+      expect(card.queryByTestId('sheet-check-passed')).toBeNull()
+    })
+
+    it('says no issues were named when the failed check lists none', async () => {
+      const card = await open({ passed: false, issues: [], skipped: false })
+      expect(card.getByTestId('sheet-check-failed')).toHaveAttribute('title', 'no issues named')
+    })
+
+    it('marks a passed sheet as checked', async () => {
+      const card = await open({ passed: true, issues: [], skipped: false })
+      expect(card.getByTestId('sheet-check-passed')).toHaveTextContent('Checked')
+      expect(card.queryByTestId('sheet-check-failed')).toBeNull()
+    })
+
+    it.each([null, { passed: false, issues: ['x'], skipped: true }])('shows nothing for an unchecked or skipped sheet (%j)', async (check) => {
+      const card = await open(check)
+      expect(card.queryByTestId('sheet-check-failed')).toBeNull()
+      expect(card.queryByTestId('sheet-check-passed')).toBeNull()
     })
   })
 })

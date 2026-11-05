@@ -69,7 +69,7 @@ async function setup(turns: unknown[] = [], provider?: Provider) {
   const mina = await services.characters.get(ctx, made.id)
   const cast = [{ characterId: mina.id, variationId: mina.variations[0].id, action: '', expression: '', position: 'center' as const }]
   async function drawn(description: string, o: Partial<PanelDraft> = {}): Promise<Panel> {
-    const { panel } = await services.panels.create(ctx, { episodeId: episode.id, description, setting: 'Hall', shot: 'medium', characters: cast, dialogue: [], ...o }, { createdBy: 'ai', strictMentions: true })
+    const { panel } = await services.panels.create(ctx, { episodeId: episode.id, description, setting: 'Hall', shot: 'medium', characters: cast, dialogue: [], ...o }, { createdBy: 'ai', strictMentions: true, strictSheets: false })
     await services.panels.generate(ctx, panel.id)
     return services.panels.get(ctx, panel.id)
   }

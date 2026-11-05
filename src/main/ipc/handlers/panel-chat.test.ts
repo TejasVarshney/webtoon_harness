@@ -35,7 +35,7 @@ async function setup(provider?: TextProvider) {
   const { panel } = await services.panels.create(
     ctx,
     { episodeId: episode.id, description: 'An empty hallway.', setting: 'Hall', shot: 'wide', characters: [], dialogue: [] },
-    { createdBy: 'user', strictMentions: false }
+    { createdBy: 'user', strictMentions: false, strictSheets: false }
   )
   await services.panels.generate(ctx, panel.id)
   key = `panel:${panel.id}`

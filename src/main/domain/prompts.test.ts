@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Character, Item, Panel, PanelCharacter, PanelItem } from '@shared/types'
 import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
-import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, variationPrompt } from './prompts'
+import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, sheetFixInstruction, variationPrompt } from './prompts'
 
 describe('character prompts', () => {
   it('pins the base reference prompt', () =>
@@ -36,6 +36,29 @@ describe('item prompts', () => {
     ).toBe(
       'Item usage reference sheet. STYLE. Plain light-gray background, no text. LOCK Usage: Firing — cyan beam. Show only plain gray hands and forearms, cropped at the elbow, with no face, body, clothing or jewelry, so the sheet shows only the grip, the motion and the effect. Keep shape, size, materials, colors and markings identical to the reference image.'
     ))
+})
+
+describe('sheet fix instruction', () => {
+  const FIX = sheetFixInstruction(['X'])
+
+  it('joins the issues, and gives nothing for none', () => {
+    expect(sheetFixInstruction(['A is wrong', 'B is missing'])).toBe('Important details: A is wrong; B is missing.')
+    expect(sheetFixInstruction([])).toBeUndefined()
+  })
+
+  it('appends the fix after one space on all four sheet prompts, and nothing without it', () => {
+    const c = makeCharacter({ appearanceLock: 'LOCK' })
+    const item = makeItem({ appearanceLock: 'LOCK' })
+    const v = makeVariation({ name: 'Outfit: School uniform', kind: 'outfit', delta: 'navy blazer' })
+    const state = makeItemUsage({ kind: 'state', name: 'Folded', delta: 'barrel folded back' })
+    const action = makeItemUsage({ kind: 'action', name: 'Firing', delta: 'cyan beam' })
+    expect(baseReferencePrompt(c, 'STYLE', FIX)).toBe(`${baseReferencePrompt(c, 'STYLE')} ${FIX}`)
+    expect(variationPrompt(c, v, 'STYLE', FIX)).toBe(`${variationPrompt(c, v, 'STYLE')} ${FIX}`)
+    expect(itemReferencePrompt(item, 'STYLE', FIX)).toBe(`${itemReferencePrompt(item, 'STYLE')} ${FIX}`)
+    expect(itemUsagePrompt(item, state, 'STYLE', FIX)).toBe(`${itemUsagePrompt(item, state, 'STYLE')} ${FIX}`)
+    expect(itemUsagePrompt(item, action, 'STYLE', FIX)).toBe(`${itemUsagePrompt(item, action, 'STYLE')} ${FIX}`)
+    expect(baseReferencePrompt(c, 'STYLE', undefined)).toBe(baseReferencePrompt(c, 'STYLE'))
+  })
 })
 
 // ---------------------------------------------------------------------------------------------

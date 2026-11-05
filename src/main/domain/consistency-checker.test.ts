@@ -3,6 +3,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Character, ChatMessage, EndpointConfig } from '@shared/types'
 import { WorkflowDocs } from '../agent/workflow-docs'
+import { planImageReplay } from '../models/providers/image-replay'
 import { encodeSolidPng } from '../models/providers/png'
 import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/providers/types'
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
@@ -10,8 +11,17 @@ import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
 import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
-import { buildCheckMessage, CHECK_TIMEOUT_MS, ConsistencyChecker, parseCheckResponse, type ConsistencyCheckInput } from './consistency-checker'
-import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE } from './image-ops'
+import {
+  buildCheckMessage,
+  buildSheetCheckMessage,
+  CANDIDATE_IMAGE_KEY,
+  CHECK_TIMEOUT_MS,
+  ConsistencyChecker,
+  parseCheckResponse,
+  type ConsistencyCheckInput,
+  type SheetCheckInput
+} from './consistency-checker'
+import { createIdentityImageOps, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 
 const UNPARSEABLE = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
 
@@ -457,5 +467,217 @@ describe('buildCheckMessage with items', () => {
   it('has no Items block for a panel without items, and throws for an item that is gone', () => {
     expect(buildCheckMessage({ references: [], panel: makePanel(), roster: [], itemRoster: [novaItem] })).not.toContain('Items:')
     expect(() => buildCheckMessage({ references: [], panel, roster: [novaCharacter], itemRoster: [] })).toThrow('Unknown item entry: itm_nova/use_nova_fire')
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+
+describe('buildSheetCheckMessage', () => {
+  const ara = makeCharacter({ id: 'chr_ara', name: 'Ara', appearanceLock: 'LOCK' })
+  const glaive = makeItem({ id: 'itm_vesper', name: 'Vesper glaive', appearanceLock: 'GLAIVE LOCK' })
+  const rain = makeVariation({ id: 'var_rain', characterId: 'chr_ara', name: 'Outfit: Rain', kind: 'outfit', delta: 'yellow raincoat' })
+  const usage = (o: Parameters<typeof makeItemUsage>[0]) => makeItemUsage({ itemId: 'itm_vesper', ...o })
+
+  it('writes the base character sheet with only the candidate', () => {
+    expect(buildSheetCheckMessage({ subject: { kind: 'character', character: ara, variation: ara.variations[0] }, baseImageRelPath: null })).toBe(
+      ['Images, in the order attached:', '1. Generated sheet (the image to check)', '', 'Sheet: Character reference sheet', 'Subject: Ara', 'Lock: LOCK'].join('\n')
+    )
+  })
+
+  it('adds the base reference and the look for a character variation', () => {
+    expect(buildSheetCheckMessage({ subject: { kind: 'character', character: ara, variation: rain }, baseImageRelPath: 'characters/chr_ara/base.png' })).toBe(
+      [
+        'Images, in the order attached:',
+        '1. Base reference: character Ara',
+        '2. Generated sheet (the image to check)',
+        '',
+        'Sheet: Character reference sheet',
+        'Subject: Ara',
+        'Lock: LOCK',
+        'Look: Outfit: Rain — yellow raincoat'
+      ].join('\n')
+    )
+  })
+
+  it('writes an item base sheet without a State or Usage line', () => {
+    const text = buildSheetCheckMessage({ subject: { kind: 'item', item: glaive, usage: glaive.usages[0] }, baseImageRelPath: null })
+    expect(text).toBe(['Images, in the order attached:', '1. Generated sheet (the image to check)', '', 'Sheet: Item reference sheet', 'Subject: Vesper glaive', 'Lock: GLAIVE LOCK'].join('\n'))
+    expect(text).not.toMatch(/State:|Usage:/)
+  })
+
+  it('writes a state usage as an item reference sheet with a State line', () => {
+    const folded = usage({ id: 'use_folded', name: 'Folded', kind: 'state', delta: 'blade folded flat' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'item', item: glaive, usage: folded }, baseImageRelPath: 'items/itm_vesper/base.png' })).toBe(
+      [
+        'Images, in the order attached:',
+        '1. Base reference: item Vesper glaive',
+        '2. Generated sheet (the image to check)',
+        '',
+        'Sheet: Item reference sheet',
+        'Subject: Vesper glaive',
+        'Lock: GLAIVE LOCK',
+        'State: Folded — blade folded flat'
+      ].join('\n')
+    )
+  })
+
+  it('writes an action usage as an item usage reference sheet with a Usage line', () => {
+    const sweep = usage({ id: 'use_sweep', name: 'Sweeping strike', kind: 'action', delta: 'D' })
+    const text = buildSheetCheckMessage({ subject: { kind: 'item', item: glaive, usage: sweep }, baseImageRelPath: 'items/itm_vesper/base.png' })
+    expect(text).toContain('Sheet: Item usage reference sheet\n')
+    expect(text.split('\n').at(-1)).toBe('Usage: Sweeping strike — D')
+  })
+
+  it('reads the name alone when a non-base sheet has an empty delta', () => {
+    const noDelta = makeVariation({ id: 'var_plain', characterId: 'chr_ara', name: 'Outfit: Plain', kind: 'outfit', delta: '' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'character', character: ara, variation: noDelta }, baseImageRelPath: 'x.png' }).split('\n').at(-1)).toBe('Look: Outfit: Plain')
+    const state = usage({ id: 'use_s', name: 'Folded', kind: 'state', delta: '' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'item', item: glaive, usage: state }, baseImageRelPath: 'x.png' }).split('\n').at(-1)).toBe('State: Folded')
+    const action = usage({ id: 'use_a', name: 'Strike', kind: 'action', delta: '' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'item', item: glaive, usage: action }, baseImageRelPath: 'x.png' }).split('\n').at(-1)).toBe('Usage: Strike')
+  })
+})
+
+describe('ConsistencyChecker.checkSheet', () => {
+  const BASE = 'characters/chr_x/base.png'
+  const SHEET_TEMPLATE = fs.readFileSync(path.resolve('resources', 'agent-docs', 'reference', 'sheet-checklist.md'), 'utf8')
+  const CANDIDATE = encodeSolidPng(4, 5, [9, 8, 7])
+  const character = makeCharacter({ id: 'chr_x', name: 'Ara', appearanceLock: 'LOCK' })
+  const rain = makeVariation({ id: 'var_rain', characterId: 'chr_x', name: 'Outfit: Rain', kind: 'outfit', delta: 'yellow raincoat' })
+
+  const sheetInput = (over: Partial<SheetCheckInput> = {}): SheetCheckInput => ({
+    image: CANDIDATE,
+    subject: { kind: 'character', character, variation: rain },
+    baseImageRelPath: BASE,
+    ...over
+  })
+
+  it('sends the sheet checklist as system and the candidate as the last image', async () => {
+    const { checker, ctx, turns, docs, imageOps } = await setup({ reply: () => '{"passed": false, "issues": ["Ara reads as a man"]}' })
+    await image(ctx, BASE)
+    const result = await checker.checkSheet(ctx, sheetInput())
+    expect(result).toEqual({ passed: false, issues: ['Ara reads as a man'], skipped: false })
+    expect(turns[0].req.system).toBe(await docs.read(ctx, 'reference/sheet-checklist'))
+    expect(turns[0].req.system).toBe(SHEET_TEMPLATE)
+    const message = turns[0].req.messages[0] as Extract<ChatMessage, { role: 'user' }>
+    expect(message.imagePaths).toEqual([BASE, CANDIDATE_IMAGE_KEY])
+    expect(message.imagePaths.at(-1)).toBe('candidate://sheet')
+    expect(message.text).toBe(buildSheetCheckMessage(sheetInput()))
+    expect(turns[0].req.tools).toEqual([])
+    expect(turns[0].loaded[0]).toEqual({ mime: 'image/png', base64: PNG.toString('base64') })
+    expect(turns[0].loaded[1]).toEqual({ mime: 'image/png', base64: CANDIDATE.toString('base64') })
+    // The candidate is prepared before the turn, the base sheet is loaded by the turn.
+    expect(imageOps.calls).toEqual([
+      { maxEdge: 1568, bytes: CANDIDATE.length, format: 'jpeg' },
+      { maxEdge: 1568, bytes: PNG.length, format: 'jpeg' }
+    ])
+  })
+
+  it('sends only the candidate for a base sheet', async () => {
+    const { checker, ctx, turns } = await setup()
+    await checker.checkSheet(ctx, sheetInput({ baseImageRelPath: null, subject: { kind: 'character', character, variation: character.variations[0] } }))
+    expect((turns[0].req.messages[0] as Extract<ChatMessage, { role: 'user' }>).imagePaths).toEqual([CANDIDATE_IMAGE_KEY])
+    expect(turns[0].loaded).toHaveLength(1)
+  })
+
+  it('returns null without a vision model', async () => {
+    const { checker, ctx, createTextProvider } = await setup({ vision: false })
+    expect(await checker.checkSheet(ctx, sheetInput())).toBeNull()
+    expect(createTextProvider).not.toHaveBeenCalled()
+  })
+
+  it('is a skipped pass when the doc is missing, the base image is missing, the candidate is unusable, the provider throws or the call times out', async () => {
+    const { checker, ctx, docs } = await setup()
+    const noBase = await checker.checkSheet(ctx, sheetInput())
+    expect(noBase).toMatchObject({ passed: true, skipped: true })
+    expect(noBase?.issues[0]).toMatch(/^Consistency check failed to run: /)
+
+    await image(ctx, BASE)
+    const empty = await checker.checkSheet(ctx, sheetInput({ image: Buffer.alloc(0) }))
+    expect(empty).toMatchObject({ passed: true, skipped: true })
+    expect(empty?.issues[0]).toMatch(/^Consistency check failed to run: /)
+
+    await fs.promises.rm(docs.filePath(ctx, 'reference/sheet-checklist'))
+    expect(await checker.checkSheet(ctx, sheetInput())).toEqual({ passed: true, issues: ['Consistency check failed to run: Unknown doc: reference/sheet-checklist'], skipped: true })
+
+    const thrower = await setup({
+      provider: {
+        runTurn: async () => {
+          throw new Error('429 slow down')
+        }
+      }
+    })
+    expect(await thrower.checker.checkSheet(thrower.ctx, sheetInput())).toEqual({ passed: true, issues: ['Consistency check failed to run: 429 slow down'], skipped: true })
+
+    const slow = await setup({ timeoutMs: 40, provider: { runTurn: () => new Promise<never>(() => undefined) } })
+    expect(await slow.checker.checkSheet(slow.ctx, sheetInput())).toEqual({ passed: true, issues: ['Consistency check timed out after 0.04s'], skipped: true })
+  })
+
+  describe('an unusable candidate (spec §5)', () => {
+    /**
+     * A provider that loads user-message images the way openai-chat and anthropic do: through `planImageReplay`, which
+     * turns an `ImageUnavailableError` into a text note and goes on. `turns` counts the turns that ran, `notes` the
+     * placeholders the model would have been shown.
+     */
+    function replayingProvider() {
+      const seen = { turns: 0, notes: [] as string[] }
+      const provider: TextProvider = {
+        async runTurn(req): Promise<TextTurnResult> {
+          const message = req.messages.at(-1) as Extract<ChatMessage, { role: 'user' }>
+          const images = await planImageReplay(req.messages, req.loadImage)(req.messages.length - 1, message.imagePaths)
+          seen.turns++
+          for (const img of images) if (img.kind === 'note') seen.notes.push(img.text)
+          return { text: '{"passed": false, "issues": ["judged a sheet it never saw"]}', toolCalls: [], stopReason: 'end', raw: null }
+        }
+      }
+      return { provider, seen }
+    }
+
+    const emptyDownscale: ImageOps = { downscale: async () => ({ mime: 'image/jpeg', data: Buffer.alloc(0) }), size: () => ({ width: 0, height: 0 }) }
+    const unreadable: ImageOps = {
+      downscale: async () => {
+        throw new UnreadableImageError('not an image')
+      },
+      size: () => ({ width: 0, height: 0 })
+    }
+
+    it.each([
+      ['an empty buffer', undefined, Buffer.alloc(0)],
+      ['bytes that are no image', unreadable, Buffer.from('nope')],
+      ['a downscale that comes back empty', emptyDownscale, CANDIDATE]
+    ])('is a skipped pass without running the turn for %s', async (_name, imageOps, buffer) => {
+      const { provider, seen } = replayingProvider()
+      const { registry, docs, ctx } = await setup()
+      const checker = new ConsistencyChecker({ registry, docs, imageOps: imageOps ?? createIdentityImageOps(), createTextProvider: () => provider })
+      await image(ctx, BASE)
+      const result = await checker.checkSheet(ctx, sheetInput({ image: buffer }))
+      expect(result).toMatchObject({ passed: true, skipped: true })
+      expect(result?.issues[0]).toMatch(/^Consistency check failed to run: .*candidate:\/\/sheet/)
+      expect(seen.turns).toBe(0)
+      expect(seen.notes).toEqual([])
+    })
+
+    it('still serves a good candidate to the turn', async () => {
+      const { provider, seen } = replayingProvider()
+      const { registry, docs, ctx, imageOps } = await setup()
+      const checker = new ConsistencyChecker({ registry, docs, imageOps, createTextProvider: () => provider })
+      await image(ctx, BASE)
+      expect(await checker.checkSheet(ctx, sheetInput())).toEqual({ passed: false, issues: ['judged a sheet it never saw'], skipped: false })
+      expect(seen).toEqual({ turns: 1, notes: [] })
+      expect(imageOps.calls.filter((c) => c.bytes === CANDIDATE.length)).toHaveLength(1)
+    })
+  })
+
+  it('reads Cancelled when the caller aborts', async () => {
+    const controller = new AbortController()
+    const { checker, ctx } = await setup({
+      provider: {
+        runTurn: async () => {
+          controller.abort()
+          throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
+        }
+      }
+    })
+    expect(await checker.checkSheet(ctx, sheetInput({ signal: controller.signal }))).toEqual({ passed: true, issues: ['Consistency check failed to run: Cancelled'], skipped: true })
   })
 })

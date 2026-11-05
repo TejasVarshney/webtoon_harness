@@ -84,6 +84,12 @@ export const ProjectMetaSchema = z.object({
 
 const text = () => z.string().default('')
 
+export const CheckResultSchema = z.object({
+  passed: z.boolean(),
+  issues: z.array(z.string()),
+  skipped: z.boolean().default(false)
+})
+
 export const CharacterizationSchema = z.object({
   personality: text(),
   backstory: text(),
@@ -115,6 +121,7 @@ export const VariationSchema = z.object({
   imagePath: z.string().nullable().default(null),
   status: ImageStatusSchema,
   error: z.string().nullable().default(null),
+  check: CheckResultSchema.nullable().default(null),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp
 })
@@ -168,6 +175,7 @@ export const ItemUsageSchema = z.object({
   imagePath: z.string().nullable().default(null),
   status: ImageStatusSchema,
   error: z.string().nullable().default(null),
+  check: CheckResultSchema.nullable().default(null),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp
 })
@@ -241,12 +249,6 @@ export const DialogueLineSchema = z.object({
   text: z.string(),
   /** Null leaves the bubble where the strip's automatic layout puts it. */
   placement: BubblePlacementSchema.nullable().default(null)
-})
-
-export const CheckResultSchema = z.object({
-  passed: z.boolean(),
-  issues: z.array(z.string()),
-  skipped: z.boolean().default(false)
 })
 
 /** What a panel's picture shows. A change to any of these makes the image out of date. */

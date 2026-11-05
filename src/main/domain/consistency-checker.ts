@@ -1,15 +1,21 @@
 import { newId } from '@shared/ids'
-import type { Character, ChatMessage, CheckResult, Item, Panel } from '@shared/types'
+import type { Character, ChatMessage, CheckResult, Item, ItemUsage, Panel, Variation } from '@shared/types'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { createTextProvider as defaultCreateTextProvider } from '../models/providers/factory'
-import type { TextProvider } from '../models/providers/types'
+import { ImageUnavailableError, type TextProvider } from '../models/providers/types'
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import type { ProjectContext } from '../storage/project-store'
-import { loadImageForTextModel, type ImageOps } from './image-ops'
+import { loadImageForTextModel, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 import type { PanelPromptReference } from './prompts'
 
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
 export const CHECKLIST_DOC = 'reference/consistency-checklist'
+
+/** The project doc that is the system prompt of a sheet check (`checkSheet`). */
+export const SHEET_CHECKLIST_DOC = 'reference/sheet-checklist'
+
+/** The reserved image key under which the not-yet-saved candidate sheet is served to the vision model. */
+export const CANDIDATE_IMAGE_KEY = 'candidate://sheet'
 
 /**
  * How long the vision call may take before the check is given up (Ruling T25c), unless the vision model's endpoint
@@ -39,6 +45,19 @@ export interface ConsistencyCheckerOptions {
   createTextProvider?: (r: ResolvedModel) => TextProvider
   /** The limit when the endpoint sets no `timeoutSeconds`. Test seam; production uses 180 s. */
   timeoutMs?: number
+}
+
+/** What a sheet check judges: a character variation or an item usage, with its owner (which holds the lock). */
+export type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
+
+export interface SheetCheckInput {
+  /** The candidate sheet, not yet on disk. */
+  image: Buffer
+  subject: SheetSubject
+  /** The base sheet of the character or item, for a non-base sheet; null for a base sheet. */
+  baseImageRelPath: string | null
+  /** The caller's signal: aborting it ends the vision call. */
+  signal?: AbortSignal
 }
 
 const UNPARSEABLE: CheckResult = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
@@ -136,6 +155,44 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
 }
 
 /**
+ * The text half of a sheet check's user message: the images in the order attached (the base sheet first
+ * when there is one, then the candidate), then what the sheet is, its subject, the lock and, for a
+ * non-base sheet, its look, state or usage. `reference/sheet-checklist` documents it.
+ */
+export function buildSheetCheckMessage(input: Pick<SheetCheckInput, 'subject' | 'baseImageRelPath'>): string {
+  const { subject, baseImageRelPath } = input
+  const named = (name: string, delta: string): string => (delta ? `${name} — ${delta}` : name)
+  let sheet: string
+  let name: string
+  let lock: string
+  let detail: string | null = null
+  if (subject.kind === 'character') {
+    const { character, variation } = subject
+    sheet = 'Character reference sheet'
+    name = character.name
+    lock = character.appearanceLock
+    if (variation.kind !== 'base') detail = `Look: ${named(variation.name, variation.delta)}`
+  } else {
+    const { item, usage } = subject
+    sheet = usage.kind === 'action' ? 'Item usage reference sheet' : 'Item reference sheet'
+    name = item.name
+    lock = item.appearanceLock
+    if (usage.kind === 'state') detail = `State: ${named(usage.name, usage.delta)}`
+    else if (usage.kind === 'action') detail = `Usage: ${named(usage.name, usage.delta)}`
+  }
+  const images = [...(baseImageRelPath === null ? [] : [`Base reference: ${subject.kind} ${name}`]), 'Generated sheet (the image to check)']
+  return [
+    'Images, in the order attached:',
+    ...images.map((label, i) => `${i + 1}. ${label}`),
+    '',
+    `Sheet: ${sheet}`,
+    `Subject: ${name}`,
+    `Lock: ${lock}`,
+    ...(detail === null ? [] : [detail])
+  ].join('\n')
+}
+
+/**
  * Settles with `promise`, or rejects with the signal's reason as soon as it aborts. A provider that
  * ignores its signal therefore cannot keep a timed-out or cancelled check hanging.
  */
@@ -180,36 +237,82 @@ export class ConsistencyChecker {
    * a caller abort is told apart from it and reads "Cancelled".
    */
   async check(ctx: ProjectContext, input: ConsistencyCheckInput): Promise<CheckResult | null> {
+    return this.runVision(ctx, {
+      doc: CHECKLIST_DOC,
+      text: () => buildCheckMessage(input),
+      imagePaths: [...input.references.map((r) => r.relPath), input.imageRelPath],
+      loadImage: (relPath) => loadImageForTextModel(ctx, this.opts.imageOps, relPath),
+      signal: input.signal
+    })
+  }
+
+  /**
+   * The verdict on a sheet that is not on disk yet, judged against its lock (and its base sheet, for a
+   * non-base one), or null when no model is assigned to the `vision` role. Same contract as `check`:
+   * never throws, Ruling T25c timeout, a caller abort reads "Cancelled". An empty or undecodable
+   * candidate is a skipped pass.
+   */
+  async checkSheet(ctx: ProjectContext, input: SheetCheckInput): Promise<CheckResult | null> {
+    // The candidate is prepared before the turn: the adapters turn an ImageUnavailableError from `loadImage` into a
+    // text note and carry on, so a failure there would leave the model judging a sheet it never saw (spec §5).
+    let candidate: { mime: string; base64: string } | undefined
+    return this.runVision(ctx, {
+      doc: SHEET_CHECKLIST_DOC,
+      text: () => buildSheetCheckMessage(input),
+      imagePaths: [...(input.baseImageRelPath === null ? [] : [input.baseImageRelPath]), CANDIDATE_IMAGE_KEY],
+      prepare: async () => {
+        candidate = await this.loadCandidate(input.image)
+      },
+      loadImage: async (relPath) => {
+        if (relPath !== CANDIDATE_IMAGE_KEY) return loadImageForTextModel(ctx, this.opts.imageOps, relPath)
+        if (!candidate) throw new ImageUnavailableError(CANDIDATE_IMAGE_KEY, 'the image was not prepared')
+        return candidate
+      },
+      signal: input.signal
+    })
+  }
+
+  /** The candidate buffer shrunk for the vision model, with the empty and undecodable guards of `loadImageForTextModel`. */
+  private async loadCandidate(image: Buffer): Promise<{ mime: string; base64: string }> {
+    if (image.length === 0) throw new ImageUnavailableError(CANDIDATE_IMAGE_KEY, 'the image is empty')
+    let out: { mime: string; data: Buffer }
+    try {
+      out = await this.opts.imageOps.downscale(image, MAX_TEXT_MODEL_IMAGE_EDGE, { format: 'jpeg' })
+    } catch (error) {
+      if (error instanceof UnreadableImageError) throw new ImageUnavailableError(CANDIDATE_IMAGE_KEY, error.message)
+      throw error
+    }
+    if (out.data.length === 0) throw new ImageUnavailableError(CANDIDATE_IMAGE_KEY, 'the image could not be decoded')
+    return { mime: out.mime, base64: out.data.toString('base64') }
+  }
+
+  /** The shared body of `check` and `checkSheet`: one tool-less vision turn with `doc` as system prompt. Never throws. */
+  private async runVision(
+    ctx: ProjectContext,
+    run: { doc: string; text: () => string; imagePaths: string[]; prepare?: () => Promise<void>; loadImage: (relPath: string) => Promise<{ mime: string; base64: string }>; signal?: AbortSignal }
+  ): Promise<CheckResult | null> {
     const resolved = this.opts.registry.resolveOptional('vision')
     if (!resolved) return null
     const timeoutMs = (resolved.endpoint.options.timeoutSeconds ?? 0) * 1000 || this.timeoutMs
     const timeout = AbortSignal.timeout(timeoutMs)
-    const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout
+    const signal = run.signal ? AbortSignal.any([run.signal, timeout]) : timeout
     try {
-      const system = await this.opts.docs.read(ctx, CHECKLIST_DOC)
+      const system = await this.opts.docs.read(ctx, run.doc)
+      await run.prepare?.()
       const provider = this.create(resolved)
       const message: ChatMessage = {
         id: newId('msg'),
         role: 'user',
-        text: buildCheckMessage(input),
-        imagePaths: [...input.references.map((r) => r.relPath), input.imageRelPath],
+        text: run.text(),
+        imagePaths: run.imagePaths,
         stateSnapshot: null,
         createdAt: new Date().toISOString()
       }
-      const turn = await abortable(
-        provider.runTurn({
-          system,
-          messages: [message],
-          tools: [],
-          loadImage: (relPath) => loadImageForTextModel(ctx, this.opts.imageOps, relPath),
-          signal
-        }),
-        signal
-      )
+      const turn = await abortable(provider.runTurn({ system, messages: [message], tools: [], loadImage: run.loadImage, signal }), signal)
       return parseCheckResponse(turn.text)
     } catch (error) {
-      if (timeout.aborted && !input.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${timeoutMs / 1000}s`], skipped: true }
-      return skipped(failureMessage(error, input.signal))
+      if (timeout.aborted && !run.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${timeoutMs / 1000}s`], skipped: true }
+      return skipped(failureMessage(error, run.signal))
     }
   }
 }

@@ -15,6 +15,7 @@ import {
   ItemPatchSchema,
   ItemSchema,
   ItemUsageInputSchema,
+  ItemUsageSchema,
   ModelConfigSchema,
   ModelsFileSchema,
   OutlineSchema,
@@ -269,6 +270,14 @@ describe('Item and usage', () => {
     })
     expect(item).toMatchObject({ aliases: [], ownerId: null, notes: '', archived: false })
     expect(item.usages[0]).toMatchObject({ delta: '', imagePath: null, error: null })
+  })
+
+  it('parses a stored variation and usage without check as check: null', () => {
+    const v = VariationSchema.parse({ id: 'var_0000000001', characterId: 'chr_0000000001', name: 'Base', kind: 'base', status: 'ready', createdBy: 'user', createdAt: '2026-11-02T00:00:00.000Z' })
+    expect(v.check).toBeNull()
+    const u = ItemUsageSchema.parse({ id: 'use_0000000001', itemId: 'itm_0000000001', name: 'At rest', kind: 'base', status: 'ready', createdBy: 'user', createdAt: '2026-11-02T00:00:00.000Z' })
+    expect(u.check).toBeNull()
+    expect(VariationSchema.parse({ ...v, check: { passed: false, issues: ['x'] } }).check).toEqual({ passed: false, issues: ['x'], skipped: false })
   })
 
   it('reads a panel file written before items existed', () => {

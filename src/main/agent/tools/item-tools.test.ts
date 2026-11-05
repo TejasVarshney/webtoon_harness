@@ -208,6 +208,120 @@ describe('item tools', () => {
     expect(r.images).toEqual([])
   })
 
+  const FAILED = { passed: false, issues: ['the stripe is missing', 'the grip is blue'], skipped: false }
+  const REFUSAL = 'The base sheet of Kestrel blaster failed its check: the stripe is missing; the grip is blue. Regenerate the base first.'
+  const NOTE = 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
+
+  /** The stored item as the tools see it, with the base sheet carrying `check`. */
+  async function withBaseCheck(env: Awaited<ReturnType<typeof setup>>, itemId: string, check: typeof FAILED | null) {
+    const stored = await env.s.items.get(env.ctx, itemId)
+    const failed = { ...stored, usages: stored.usages.map((u) => (u.kind === 'base' ? { ...u, check } : u)) }
+    vi.spyOn(env.s.items, 'get').mockResolvedValue(failed)
+    return failed
+  }
+
+  it('create_item_usage refuses while the base sheet failed its check, and adds nothing', async () => {
+    const env = await setup()
+    const { itemId } = json(await env.run('create_item', blaster))
+    await withBaseCheck(env, itemId, FAILED)
+    const add = vi.spyOn(env.s.items, 'addUsage')
+    expect(await env.run('create_item_usage', { itemId, name: 'Firing', kind: 'action', delta: 'x' })).toMatchObject({ ok: false, content: REFUSAL })
+    expect(add).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
+    expect((await env.s.items.get(env.ctx, itemId)).usages).toHaveLength(1)
+  })
+
+  it('names no issues in the refusal when the failed check lists none', async () => {
+    const env = await setup()
+    const { itemId } = json(await env.run('create_item', blaster))
+    await withBaseCheck(env, itemId, { passed: false, issues: [], skipped: false })
+    expect(await env.run('create_item_usage', { itemId, name: 'Firing', kind: 'action', delta: 'x' })).toMatchObject({
+      ok: false,
+      content: 'The base sheet of Kestrel blaster failed its check: no issues named. Regenerate the base first.'
+    })
+  })
+
+  it('create_item_usage goes ahead when the base sheet passed, was skipped or was never checked', async () => {
+    for (const check of [null, { passed: true, issues: [], skipped: false }, { passed: false, issues: ['x'], skipped: true }]) {
+      const env = await setup()
+      const { itemId } = json(await env.run('create_item', blaster))
+      await withBaseCheck(env, itemId, check as typeof FAILED | null)
+      const add = vi.spyOn(env.s.items, 'addUsage')
+      await env.run('create_item_usage', { itemId, name: 'Firing', kind: 'action', delta: 'x', generateImage: false })
+      expect(add).toHaveBeenCalledOnce()
+      vi.restoreAllMocks()
+      await s?.cleanup()
+      s = undefined
+    }
+  })
+
+  it('regenerate_item_usage refuses a non-base usage while the base failed, but regenerates the base itself', async () => {
+    const env = await setup()
+    const { itemId, baseUsageId } = json(await env.run('create_item', blaster))
+    const { usageId } = json(await env.run('create_item_usage', { itemId, name: 'Firing', kind: 'action', delta: 'x' }))
+    const failed = await withBaseCheck(env, itemId, FAILED)
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage').mockResolvedValue(failed.usages[0])
+    expect(await env.run('regenerate_item_usage', { itemId, usageId })).toMatchObject({ ok: false, content: REFUSAL })
+    expect(generate).not.toHaveBeenCalled()
+    expect((await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId })).ok).toBe(true)
+    expect(generate).toHaveBeenCalledOnce()
+  })
+
+  it('a generation outcome carries its check, and the note when the sheet failed', async () => {
+    const env = await setup()
+    const { itemId, baseUsageId } = json(await env.run('create_item', blaster))
+    const base = (await env.s.items.get(env.ctx, itemId)).usages[0]
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage')
+    generate.mockResolvedValueOnce({ ...base, check: FAILED })
+    expect(json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))).toMatchObject({ check: FAILED, note: NOTE })
+    const good = { passed: true, issues: [], skipped: false }
+    generate.mockResolvedValueOnce({ ...base, check: good })
+    const ok = json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))
+    expect(ok.check).toEqual(good)
+    expect(ok).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, check: null })
+    expect(json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))).toMatchObject({ check: null })
+  })
+
+  it('adds no note when the sheet failed to draw, whatever older check it keeps', async () => {
+    const env = await setup()
+    const { itemId, baseUsageId } = json(await env.run('create_item', blaster))
+    const base = (await env.s.items.get(env.ctx, itemId)).usages[0]
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    const r = json(await env.run('regenerate_item_usage', { itemId, usageId: baseUsageId }))
+    expect(r).toMatchObject({ status: 'failed', check: FAILED })
+    expect(r).not.toHaveProperty('note')
+    generate.mockResolvedValueOnce({ ...base, status: 'failed', error: 'boom', check: FAILED })
+    expect(json(await env.run('create_item', { ...blaster, name: 'Zed' }))).not.toHaveProperty('note')
+  })
+
+  it('list_items shows each sheet check and the issues of a failed one', async () => {
+    const env = await setup()
+    const { itemId } = json(await env.run('create_item', blaster))
+    await withBaseCheck(env, itemId, FAILED)
+    vi.spyOn(env.s.items, 'list').mockImplementation(async () => [await env.s.items.get(env.ctx, itemId)])
+    const [u] = json(await env.run('list_items', {})).items[0].usages
+    expect(u).toMatchObject({ check: 'failed', checkIssues: ['the stripe is missing', 'the grip is blue'] })
+  })
+
+  it('create_item reports the base check, with the note when it failed', async () => {
+    const env = await setup()
+    const probe = json(await env.run('create_item', { ...blaster, name: 'Probe' }))
+    const base = (await env.s.items.get(env.ctx, probe.itemId)).usages[0]
+    const generate = vi.spyOn(env.s.items, 'generateUsageImage')
+    generate.mockResolvedValueOnce({ ...base, check: { passed: false, issues: ['no stripe'], skipped: false } })
+    expect(json(await env.run('create_item', { ...blaster, name: 'Lantern' }))).toMatchObject({
+      baseCheck: { passed: false, issues: ['no stripe'], skipped: false },
+      note: 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
+    })
+    const good = { passed: true, issues: [], skipped: false }
+    generate.mockResolvedValueOnce({ ...base, check: good })
+    const ok = json(await env.run('create_item', { ...blaster, name: 'Key' }))
+    expect(ok.baseCheck).toEqual(good)
+    expect(ok).not.toHaveProperty('note')
+  })
+
   it('update_item warns on an item lock change', async () => {
     const { run, ctx, s } = await setup()
     const { itemId } = json(await run('create_item', blaster))
@@ -248,7 +362,7 @@ describe('item tools', () => {
           name: 'Kestrel blaster',
           aliases: ['the blaster'],
           ownerId: null,
-          usages: [{ id: a.baseUsageId, name: 'At rest', kind: 'base', status: 'ready' }]
+          usages: [{ id: a.baseUsageId, name: 'At rest', kind: 'base', status: 'ready', check: null }]
         }
       ]
     })

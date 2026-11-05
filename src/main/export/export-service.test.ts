@@ -195,7 +195,7 @@ async function setup(): Promise<Rig> {
     } else episode = await s.episodes.create(ctx, { title, synopsis })
     for (const [i, kind] of kinds.entries()) {
       const draft = { episodeId: episode.id, description: `${title} panel ${i + 1}`, setting: 'Roof', shot: 'medium' as const, characters: [], dialogue: [] }
-      const { panel } = await s.panels.create(ctx, draft, { createdBy: 'user', strictMentions: false })
+      const { panel } = await s.panels.create(ctx, draft, { createdBy: 'user', strictMentions: false, strictSheets: false })
       if (kind === 'ready') await s.panels.uploadImage(ctx, panel.id, PNG, 'png')
       if (kind === 'failed' || kind === 'pending') {
         await writeJsonAtomic(ctx.paths.panelFile(panel.id), { ...panel, versions: [version(kind)], currentVersionId: null })
@@ -273,7 +273,7 @@ describe('ExportService', () => {
     capturer.gate = gate.promise
     const { jobId } = await svc.start(req({ episodeIds: [one.episode.id, two.episode.id], preset: 'webtoon' }), target)
     await vi.waitFor(() => expect(capturer.captures).toHaveLength(1))
-    await s.panels.update(ctx, two.panels[0].id, { description: 'Edited mid-export' }, { strictMentions: false })
+    await s.panels.update(ctx, two.panels[0].id, { description: 'Edited mid-export' }, { strictMentions: false, strictSheets: false })
     gate.release()
     expect((await finished(jobId)).stage).toBe('done')
     expect(capturer.renders).toHaveLength(2)

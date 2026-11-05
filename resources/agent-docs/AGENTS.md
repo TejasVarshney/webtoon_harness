@@ -209,6 +209,7 @@ read_workflow_doc {"name": "workflows/panel-generation"}
 | change an existing panel (fields, redraw, image edit) | `workflows/panel-editing` |
 | need the exact image prompt the app builds, or to explain a bad image | `reference/prompt-templates` |
 | need to understand a failed consistency check | `reference/consistency-checklist` |
+| need to understand a failed sheet check | `reference/sheet-checklist` |
 
 ## Communication Style
 

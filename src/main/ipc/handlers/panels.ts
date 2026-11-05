@@ -71,13 +71,13 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     'panels:create': async ({ projectId, draft, generate }) => {
       const ctx = await s.projects.open(projectId)
       // The manual editor is lenient: a mention of a character who is not attached is a warning, not an error.
-      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false }))
+      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false, strictSheets: false }))
       if (generate) inBackground(panels.generate(ctx, created.panel.id), 'Panel image generation')
       return created
     },
 
     'panels:update': async ({ projectId, panelId, patch }) =>
-      showIssues(panels.update(await s.projects.open(projectId), panelId, PanelPatchSchema.parse(patch), { strictMentions: false })),
+      showIssues(panels.update(await s.projects.open(projectId), panelId, PanelPatchSchema.parse(patch), { strictMentions: false, strictSheets: false })),
 
     'panels:generate': async ({ projectId, panelId }) => {
       const ctx = await s.projects.open(projectId)

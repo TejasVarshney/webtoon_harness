@@ -7,7 +7,9 @@ import { makeItem, makeItemUsage } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import type { ImageGenRequest, ImageService } from './image-service'
 import { DuplicateItemError, DuplicateUsageError, ItemInUseError, ItemService, type ItemUsageLookup } from './item-service'
-import { itemReferencePrompt } from './prompts'
+import { itemReferencePrompt, itemUsagePrompt, sheetFixInstruction } from './prompts'
+import type { CheckResult } from '@shared/types'
+import type { SheetCheckInput } from './consistency-checker'
 
 // Failure injection: while `disk.failJsonWrites > 0`, that many writeJsonAtomic calls reject.
 const disk = vi.hoisted(() => ({ failJsonWrites: 0 }))
@@ -37,7 +39,18 @@ afterEach(async () => {
 
 type Gen = (req: ImageGenRequest) => Promise<{ data: Buffer; ext: 'png' | 'jpg' | 'webp' }>
 
-async function setup(gen: Gen = async () => ({ data: PNG, ext: 'png' }), used: string[] = []) {
+interface SheetScript {
+  /** Replies in order: a null reply is "no verdict". The last reply repeats. */
+  replies: (CheckResult | null)[]
+  /** Sets the project's `consistencyRetries` before the test runs. */
+  retries?: number
+  /** Awaited before each reply. */
+  hold?: () => Promise<void>
+  /** Throws instead of replying. */
+  throws?: boolean
+}
+
+async function setup(gen: Gen = async () => ({ data: PNG, ext: 'png' }), used: string[] = [], script?: SheetScript) {
   const t = await tempProject()
   tp = t
   const calls: ImageGenRequest[] = []
@@ -49,8 +62,18 @@ async function setup(gen: Gen = async () => ({ data: PNG, ext: 'png' }), used: s
   } as unknown as ImageService
   const trashed: string[] = []
   const usage: ItemUsageLookup = { panelsUsingItem: async () => used, panelsUsingItemUsage: async () => used }
-  const svc = new ItemService({ bus: t.bus, images, projects: t.store, usage, trash: async (p) => void trashed.push(p) })
-  return { svc, calls, trashed, ctx: t.ctx, events: t.events, store: t.store }
+  const checks: SheetCheckInput[] = []
+  const sheetChecker = script && {
+    checkSheet: async (_c: unknown, input: SheetCheckInput) => {
+      checks.push(input)
+      await script.hold?.()
+      if (script.throws) throw new Error('checker blew up')
+      return script.replies[Math.min(checks.length - 1, script.replies.length - 1)]
+    }
+  }
+  if (script?.retries !== undefined) await t.store.updateMeta(t.ctx, { consistencyRetries: script.retries })
+  const svc = new ItemService({ bus: t.bus, images, projects: t.store, usage, trash: async (p) => void trashed.push(p), sheetChecker })
+  return { svc, calls, checks, trashed, ctx: t.ctx, events: t.events, store: t.store }
 }
 
 describe('ItemService', () => {
@@ -304,6 +327,182 @@ describe('ItemService', () => {
     await expect(svc.get(ctx, 'itm_aaaaaaaaaa')).rejects.toThrow(/does not match its file name/)
     expect(ctx.problems.map((p) => p.path).sort()).toEqual(['items/itm_aaaaaaaaaa.json', 'items/itm_cccccccccc.json'])
     expect(ctx.problems[0].message).toMatch(/does not match its file name/)
+  })
+})
+
+const PASS: CheckResult = { passed: true, issues: [], skipped: false }
+const fail = (...issues: string[]): CheckResult => ({ passed: false, issues, skipped: false })
+
+describe('ItemService sheet check', () => {
+  const imageFiles = (ctx: { paths: { itemDir(id: string): string } }, id: string): string[] => {
+    try {
+      return fs.readdirSync(ctx.paths.itemDir(id))
+    } catch {
+      return []
+    }
+  }
+  /** A generator whose every image has different bytes, so the recorded file shows which draw it came from. */
+  const numbered = (): Gen => {
+    let n = 0
+    return async () => ({ data: encodeSolidPng(2, 3, [++n, 0, 0]), ext: 'png' })
+  }
+  const isDraw = (ctx: { paths: { resolveAsset(p: string): string } }, u: { imagePath: string | null }, n: number): boolean =>
+    fs.readFileSync(ctx.paths.resolveAsset(u.imagePath!)).equals(encodeSolidPng(2, 3, [n, 0, 0]))
+
+  it('records a sheet that passes its first check', async () => {
+    const { svc, calls, checks, ctx } = await setup(undefined, [], { replies: [PASS] })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(1)
+    expect(checks).toHaveLength(1)
+    expect(out).toMatchObject({ status: 'ready', check: PASS })
+    expect(checks[0].baseImageRelPath).toBeNull()
+    expect(checks[0].subject.kind).toBe('item')
+    expect((await svc.get(ctx, item.id)).usages[0].check).toEqual(PASS)
+  })
+
+  it('redraws a failed action usage with the issues and records the second image', async () => {
+    const { svc, calls, ctx } = await setup(numbered(), [], { replies: [PASS, fail('grip is the wrong colour'), PASS] })
+    const item = await svc.create(ctx, input(), 'user')
+    await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    const added = await svc.addUsage(ctx, item.id, { name: 'Firing', kind: 'action', delta: 'both hands on the grip' }, 'ai')
+    const out = await svc.generateUsageImage(ctx, item.id, added.id)
+    const snapshot = await svc.get(ctx, item.id)
+    const style = (await tp!.store.getMeta(ctx)).stylePreset
+    expect(calls).toHaveLength(3)
+    expect(calls[1].prompt).toBe(itemUsagePrompt(snapshot, snapshot.usages[1], style))
+    expect(calls[2].prompt).toBe(itemUsagePrompt(snapshot, snapshot.usages[1], style) + ` ${sheetFixInstruction(['grip is the wrong colour'])}`)
+    expect(out.check).toEqual(PASS)
+    expect(isDraw(ctx, out, 3)).toBe(true)
+    expect(imageFiles(ctx, item.id)).toHaveLength(2)
+  })
+
+  it('records the last image with its failed check when every check fails', async () => {
+    const { svc, calls, ctx } = await setup(numbered(), [], { replies: [fail('a'), fail('b')], retries: 1 })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(2)
+    expect(out).toMatchObject({ status: 'ready', check: fail('b') })
+    expect(isDraw(ctx, out, 2)).toBe(true)
+    expect(imageFiles(ctx, item.id)).toHaveLength(1)
+  })
+
+  it('checks once and does not redraw when consistencyRetries is 0', async () => {
+    const { svc, calls, checks, ctx } = await setup(undefined, [], { replies: [fail('x')], retries: 0 })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(1)
+    expect(checks).toHaveLength(1)
+    expect(out).toMatchObject({ status: 'ready', check: fail('x') })
+  })
+
+  it('re-rolls without a fix when a failed check names no issue', async () => {
+    const { svc, calls, ctx } = await setup(undefined, [], { replies: [fail(), PASS] })
+    const item = await svc.create(ctx, input(), 'user')
+    await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(2)
+    expect(calls[1].prompt).toBe(calls[0].prompt)
+  })
+
+  it('stops on a skipped check and records it', async () => {
+    const skipped: CheckResult = { passed: false, issues: ['Cancelled'], skipped: true }
+    const { svc, calls, ctx } = await setup(undefined, [], { replies: [skipped] })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(1)
+    expect(out).toMatchObject({ status: 'ready', check: skipped })
+  })
+
+  it('stops redrawing once the signal is aborted', async () => {
+    const ac = new AbortController()
+    const { svc, calls, ctx } = await setup(undefined, [], { replies: [fail('x')], hold: async () => ac.abort() })
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id, { signal: ac.signal })
+    expect(calls).toHaveLength(1)
+    expect(out).toMatchObject({ status: 'ready', check: fail('x') })
+  })
+
+  it('stays pending while the check runs, and a concurrent update is not blocked (Ruling T15a)', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const { svc, checks, ctx } = await setup(undefined, [], { replies: [PASS], hold: () => gate })
+    const item = await svc.create(ctx, input(), 'user')
+    const running = svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    while (checks.length === 0) await new Promise((r) => setTimeout(r, 5))
+    expect((await svc.get(ctx, item.id)).usages[0]).toMatchObject({ status: 'pending', imagePath: null, check: null })
+    expect(imageFiles(ctx, item.id)).toEqual([])
+    await svc.update(ctx, item.id, { notes: 'x' })
+    release()
+    expect(await running).toMatchObject({ status: 'ready', check: PASS })
+    expect((await svc.get(ctx, item.id)).notes).toBe('x')
+  })
+
+  it('keeps the previous image and check when the first draw fails', async () => {
+    let boom = false
+    const { svc, ctx } = await setup(
+      async () => {
+        if (boom) throw new ProviderError('unknown', 'boom')
+        return { data: PNG, ext: 'png' }
+      },
+      [],
+      { replies: [PASS] }
+    )
+    const item = await svc.create(ctx, input(), 'user')
+    const first = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    boom = true
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(out).toMatchObject({ status: 'failed', error: 'boom', imagePath: first.imagePath, check: PASS })
+    expect((await svc.get(ctx, item.id)).usages[0]).toMatchObject({ status: 'failed', imagePath: first.imagePath, check: PASS })
+  })
+
+  it('records the last candidate when a redraw fails', async () => {
+    let n = 0
+    const { svc, calls, ctx } = await setup(
+      async () => {
+        if (++n === 2) throw new ProviderError('unknown', 'boom')
+        return { data: PNG, ext: 'png' }
+      },
+      [],
+      { replies: [fail('x')] }
+    )
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(calls).toHaveLength(2)
+    expect(out).toMatchObject({ status: 'ready', error: null, check: fail('x') })
+    expect(imageFiles(ctx, item.id)).toHaveLength(1)
+  })
+
+  it('sends the At rest sheet to the check of another usage', async () => {
+    const { svc, checks, ctx } = await setup(undefined, [], { replies: [PASS] })
+    const item = await svc.create(ctx, input(), 'user')
+    const base = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    const u = await svc.addUsage(ctx, item.id, { name: 'Holstered', kind: 'state', delta: 'in a holster' }, 'ai')
+    await svc.generateUsageImage(ctx, item.id, u.id)
+    expect(checks[1].baseImageRelPath).toBe(base.imagePath)
+    expect(checks[1].subject).toMatchObject({ kind: 'item', usage: { id: u.id, name: 'Holstered' } })
+  })
+
+  it.each([
+    ['no sheet checker', undefined],
+    ['a checker with no verdict', { replies: [null] }],
+    ['a checker that throws', { replies: [PASS], throws: true }]
+  ] as const)('records check null with %s', async (_name, script) => {
+    const { svc, calls, ctx } = await setup(undefined, [], script as SheetScript | undefined)
+    const item = await svc.create(ctx, input(), 'user')
+    const out = await svc.generateUsageImage(ctx, item.id, item.usages[0].id)
+    expect(out).toMatchObject({ status: 'ready', check: null })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('an upload clears a failed check', async () => {
+    const { svc, ctx } = await setup(undefined, [], { replies: [fail('x')], retries: 0 })
+    const item = await svc.create(ctx, input(), 'user')
+    expect((await svc.generateUsageImage(ctx, item.id, item.usages[0].id)).check).toEqual(fail('x'))
+    const up = await svc.uploadUsageImage(ctx, item.id, item.usages[0].id, PNG, 'png')
+    expect(up.check).toBeNull()
+    expect((await svc.get(ctx, item.id)).usages[0].check).toBeNull()
   })
 })
 

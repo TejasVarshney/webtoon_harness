@@ -160,7 +160,7 @@ const createPanel = defineTool({
     const { panels } = ctx.services
     let created: { panel: Panel; warnings: string[] }
     try {
-      created = await panels.create(ctx.project, draft, { createdBy: 'ai', strictMentions: true })
+      created = await panels.create(ctx.project, draft, { createdBy: 'ai', strictMentions: true, strictSheets: true })
     } catch (error) {
       throw asToolError(error)
     }
@@ -189,7 +189,7 @@ const updatePanel = defineTool({
     try {
       // Ruling T19a: the guard is strict only for a description edit. A panel saved with an unattached-mention
       // warning (the manual editor allows it) must stay editable by the agent; the warning is passed on instead.
-      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined })
+      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
     } catch (error) {
       throw asToolError(error)
     }
