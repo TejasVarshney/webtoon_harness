@@ -151,7 +151,7 @@ const createPanel = defineTool({
     items: PanelDraftSchema.shape.items.describe(
       "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
     ),
-    dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx.'),
+    dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement.'),
     continuityNotes: z.string().optional().describe('What must match the previous panel: lighting, time of day, props, outfits. Default empty.'),
     offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
@@ -179,7 +179,7 @@ const updatePanel = defineTool({
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list.'),
+    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

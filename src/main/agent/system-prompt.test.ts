@@ -116,6 +116,7 @@ const version = (id: string, status: PanelVersion['status']): PanelVersion => ({
   referenceImagePaths: [],
   instruction: null,
   parentVersionId: null,
+  drawnFrom: null,
   check: null,
   createdAt: '2026-01-01T00:00:00.000Z'
 })
@@ -188,6 +189,24 @@ describe('buildPanelContext', () => {
     expect(lines).toContain('dialogue: Mina: "Hi" / narration: "Wind."')
     expect(lines).toContain('previous: none')
     expect(lines).toContain('next: none')
+  })
+
+  it('ends a placed line with its placement to two decimals, and leaves an automatic one bare', () => {
+    const placed = makePanel({
+      characters: panel.characters,
+      dialogue: [
+        { id: 'dlg_0000000001', speakerId: jin.id, kind: 'speech', text: 'Hey', placement: { x: 0.62, y: 0.18 } },
+        { id: 'dlg_0000000002', speakerId: mina.id, kind: 'speech', text: 'Hi', placement: null },
+        { id: 'dlg_0000000003', speakerId: null, kind: 'sfx', text: 'Thud', placement: { x: 0.5, y: 0.123456 } }
+      ]
+    })
+    const lines = buildPanelContext(placed, [mina, jin], [], null, null).split('\n')
+    expect(lines).toContain('dialogue: Jin: "Hey" @0.62,0.18 / Mina: "Hi" / sfx: "Thud" @0.50,0.12')
+  })
+
+  it('does not show the placement of a neighbor panel', () => {
+    const neighbor = makePanel({ id: 'pnl_00000000a1', dialogue: [{ id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'Hey', placement: { x: 0.62, y: 0.18 } }] })
+    expect(buildPanelContext(panel, [mina, jin], [], neighbor, null)).toContain('| dialogue: Mina: "Hey"\n')
   })
 
   it('shows the layout only where it differs from the defaults', () => {

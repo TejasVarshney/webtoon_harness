@@ -2,6 +2,9 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
 import { electronImageOps } from './domain/electron-image-ops'
+import { electronCodec } from './export/electron-codec'
+import { createOffscreenCapturer } from './export/offscreen-capturer'
+import { fixedExportTarget, type ChooseExportTarget } from './ipc/handlers/export'
 import { electronEncryptor } from './models/electron-encryptor'
 import { registerIpc } from './ipc/register'
 import { handleAssetProtocol, registerAssetScheme } from './protocol/asset-protocol'
@@ -18,8 +21,13 @@ if (userDataOverride) app.setPath('userData', userDataOverride)
 // second set of services over the same files. It quits, and the window that is already open comes forward.
 const primary = app.requestSingleInstanceLock()
 if (!primary) app.quit()
+/** The app's own windows, without an export job's offscreen window. */
+function appWindows(): BrowserWindow[] {
+  return BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents.isOffscreen())
+}
+
 app.on('second-instance', () => {
-  const win = BrowserWindow.getAllWindows()[0]
+  const win = appWindows()[0]
   if (!win) return
   if (win.isMinimized()) win.restore()
   win.focus()
@@ -41,6 +49,12 @@ function createWindow(): void {
     }
   })
 
+  // An export's hidden window keeps `window-all-closed` from firing, so closing the last visible window quits here
+  // (the quit gate then cancels the export) rather than leaving the app running with no window.
+  win.on('closed', () => {
+    if (process.platform !== 'darwin' && appWindows().length === 0) app.quit()
+  })
+
   // The window holds the privileged `window.api` bridge, so it must never leave the app's own page.
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -48,12 +62,41 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (!app.isPackaged && devServerUrl) {
+  const devServerUrl = rendererUrl()
+  if (devServerUrl) {
     void win.loadURL(devServerUrl)
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+/** The renderer dev server in development, or null to load the built pages. */
+function rendererUrl(): string | null {
+  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+  return !app.isPackaged && devServerUrl ? devServerUrl : null
+}
+
+/**
+ * The export save dialog over the window that asked: a folder for several outputs (`openDirectory`, which may
+ * create one), a file otherwise. Resolves to the chosen absolute path, or null when dismissed.
+ */
+const chooseExportTarget: ChooseExportTarget = async (event, { kind, defaultPath, extension }) => {
+  // Test hook, in an unpackaged app only: a directory in WEBTOON_EXPORT_TARGET stands in for the dialog.
+  const fixedTarget = fixedExportTarget(process.env.WEBTOON_EXPORT_TARGET, app.isPackaged, { kind, defaultPath, extension })
+  if (fixedTarget) return fixedTarget
+  const win = BrowserWindow.fromWebContents((event as IpcMainInvokeEvent).sender) ?? BrowserWindow.getFocusedWindow()
+  if (kind === 'folder') {
+    const options = { title: 'Export to folder', defaultPath, properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> }
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  }
+  const options = {
+    title: 'Export',
+    defaultPath,
+    filters: extension ? [{ name: extension.toUpperCase(), extensions: [extension] }] : []
+  }
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+  return result.canceled || !result.filePath ? null : result.filePath
 }
 
 if (primary) void app.whenReady().then(async () => {
@@ -66,7 +109,9 @@ if (primary) void app.whenReady().then(async () => {
       trash: (absPath) => shell.trashItem(absPath),
       encryptor: electronEncryptor,
       templatesDir: join(app.getAppPath(), 'resources', 'agent-docs'),
-      imageOps: electronImageOps
+      imageOps: electronImageOps,
+      createCapturer: () => createOffscreenCapturer({ rendererUrl: rendererUrl(), rendererDir: join(__dirname, '../renderer') }),
+      codec: electronCodec
     })
   } catch (error) {
     // A hand-edited, corrupt models.json / secrets.json is left untouched; tell the user rather than start half-wired.
@@ -86,7 +131,9 @@ if (primary) void app.whenReady().then(async () => {
       const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
     },
-    openPath: (absPath) => shell.openPath(absPath)
+    openPath: (absPath) => shell.openPath(absPath),
+    chooseExportTarget,
+    showItemInFolder: (absPath) => shell.showItemInFolder(absPath)
   })
   void services.plugins.startEnabled()
   const { agent, panelChat, plugins } = services
@@ -98,20 +145,18 @@ if (primary) void app.whenReady().then(async () => {
         agent.cancelAll()
         panelChat.cancelAll()
       },
-      stopPlugins: () => plugins.stopAll(),
+      stopPlugins: () => Promise.all([plugins.stopAll(), services.exports.shutdown()]).then(() => undefined),
       quit: () => app.quit()
     })
   )
   handleAssetProtocol(services.projects)
   services.bus.subscribe((event) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNEL, event)
-    }
+    for (const win of appWindows()) win.webContents.send(EVENT_CHANNEL, event)
   })
 
   createWindow()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (appWindows().length === 0) createWindow()
   })
 })
 

@@ -3,7 +3,8 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, ItemUsage, Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch, PanelVersion, Variation } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Item, ItemUsage, Panel, PanelCharacter, PanelDraft, PanelItem, PanelPatch, PanelVersion, Variation, VisualFields } from '@shared/types'
+import { visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
@@ -53,6 +54,8 @@ interface Attempt {
   referenceImagePaths: string[]
   instruction: string | null
   parentVersionId: string | null
+  /** The panel's visual fields as the attempt read them. */
+  drawnFrom: VisualFields
 }
 
 /** Either the image call to make, or the reason it cannot be made (recorded as a `failed` version). */
@@ -134,7 +137,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       gutter: draft.gutter,
       characters: draft.characters,
       items: draft.items ?? [],
-      dialogue: draft.dialogue.map(withId),
+      dialogue: draft.dialogue.map((line) => withId(line, null)),
       continuityNotes: draft.continuityNotes ?? '',
       offPanelMentions: draft.offPanelMentions ?? [],
       versions: [],
@@ -183,7 +186,8 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         gutter: patch.gutter ?? current.gutter,
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
-        dialogue: patch.dialogue ? patch.dialogue.map(withId) : current.dialogue,
+        // A line sent without a placement keeps the one stored at its index: agents send the whole array when they reword one line.
+        dialogue: patch.dialogue ? patch.dialogue.map((line, i) => withId(line, current.dialogue[i]?.placement ?? null)) : current.dialogue,
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
@@ -246,7 +250,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   /** One draw: compose the prompt, record the attempt, call the image model. See `generate`. */
   private async draw(ctx: ProjectContext, id: string, opts: { signal?: AbortSignal; extraInstruction?: string }): Promise<Draw> {
     const panel = await this.get(ctx, id)
-    const attempt: Attempt = { source: 'generate', prompt: '', referenceImagePaths: [], instruction: null, parentVersionId: null }
+    const attempt: Attempt = { source: 'generate', prompt: '', referenceImagePaths: [], instruction: null, parentVersionId: null, drawnFrom: visualFields(panel) }
     let request: ImageGenRequest
     let context: DrawContext
     try {
@@ -255,12 +259,13 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const itemRoster = await this.itemRoster(ctx)
       const previous = readyImage(await this.previousOf(ctx, panel))
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, maxReferences })
+      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
-      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references, retries: meta.consistencyRetries }
+      // The checker compares the picture with the cast, items and previous panel; the sketch is only a layout guide.
+      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await this.record(ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -270,7 +275,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   /** Edits the current ready image into a child version. Same recording rules as `generate`. */
   async editImage(ctx: ProjectContext, id: string, instruction: string, opts: { signal?: AbortSignal } = {}): Promise<PanelVersion> {
     const panel = await this.get(ctx, id)
-    const attempt: Attempt = { source: 'edit', prompt: '', referenceImagePaths: [], instruction, parentVersionId: panel.currentVersionId }
+    const attempt: Attempt = { source: 'edit', prompt: '', referenceImagePaths: [], instruction, parentVersionId: panel.currentVersionId, drawnFrom: visualFields(panel) }
     let request: ImageGenRequest & { sourceRelPath: string }
     try {
       const source = panel.versions.find((v) => v.id === panel.currentVersionId)
@@ -319,6 +324,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         referenceImagePaths: [],
         instruction: null,
         parentVersionId: null,
+        drawnFrom: visualFields(current),
         check: null,
         createdAt: now()
       }
@@ -332,6 +338,50 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     })
     this.emit(ctx, id)
     return version
+  }
+
+  /**
+   * Stores the user's layout sketch (a PNG) under a new name, so versions drawn from an older sketch keep pointing at
+   * it, or forgets it with `null`. Generation sends it as a reference (see `composePanelPrompt`); edits do not.
+   */
+  async saveSketch(ctx: ProjectContext, id: string, png: Buffer | null): Promise<Panel> {
+    const file = ctx.paths.panelFile(id)
+    const next = await ctx.mutex.run(file, async () => {
+      const current = await this.get(ctx, id)
+      let sketchPath: string | null = null
+      if (png !== null) {
+        // Time first, so names sort by age; the random tail keeps two saves in one millisecond apart.
+        sketchPath = `panels/${id}/sketch-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`
+        await writeFileAtomic(ctx.paths.resolveAsset(sketchPath), png)
+      }
+      const valid = PanelSchema.parse({ ...current, sketchPath, updatedAt: now() })
+      try {
+        await writeJsonAtomic(file, valid)
+      } catch (error) {
+        if (sketchPath !== null) await fs.promises.rm(ctx.paths.resolveAsset(sketchPath), { force: true }).catch(() => undefined)
+        throw error
+      }
+      // The sketch it replaces goes, unless a version was drawn from it (its referenceImagePaths name it).
+      const old = current.sketchPath
+      if (old && old !== sketchPath && !current.versions.some((v) => v.referenceImagePaths.includes(old))) {
+        await fs.promises.rm(ctx.paths.resolveAsset(old), { force: true }).catch(() => undefined)
+      }
+      return valid
+    })
+    this.emit(ctx, id)
+    return next
+  }
+
+  /** The bytes of the panel's layout sketch, or `null` when it has none (or its file is gone). */
+  async readSketch(ctx: ProjectContext, id: string): Promise<Buffer | null> {
+    const { sketchPath } = await this.get(ctx, id)
+    if (!sketchPath) return null
+    try {
+      return await fs.promises.readFile(ctx.paths.resolveAsset(sketchPath))
+    } catch (error) {
+      if (isNotFound(error)) return null
+      throw error
+    }
   }
 
   /** Makes a ready version current. No version is deleted. */
@@ -357,7 +407,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       await this.opts.trash(file)
       const dir = ctx.paths.panelDir(id)
       if (fs.existsSync(dir)) await this.opts.trash(dir)
-      // Ruling T18d: the panel's side-chat thread goes with it.
+      // Ruling T18d: the panel's chat thread goes with it.
       const chat = ctx.paths.panelChatFile(id)
       if (fs.existsSync(chat)) await this.opts.trash(chat)
     })
@@ -435,6 +485,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       referenceImagePaths: attempt.referenceImagePaths,
       instruction: attempt.instruction,
       parentVersionId: attempt.parentVersionId,
+      drawnFrom: attempt.drawnFrom,
       check: null,
       createdAt: now()
     }
@@ -705,8 +756,9 @@ function fixInstruction(issues: string[]): string | undefined {
   return issues.length > 0 ? `Fix these consistency issues: ${issues.join('; ')}` : undefined
 }
 
-function withId(line: Omit<DialogueLine, 'id'>): DialogueLine {
-  return { id: newId('dlg'), speakerId: line.speakerId, kind: line.kind, text: line.text }
+/** Gives a draft line its id. A line sent without a placement takes `inherited`; an explicit null stays null. */
+function withId(line: Omit<DialogueLine, 'id' | 'placement'> & { placement?: DialogueLine['placement'] }, inherited: DialogueLine['placement']): DialogueLine {
+  return { id: newId('dlg'), speakerId: line.speakerId, kind: line.kind, text: line.text, placement: line.placement === undefined ? inherited : line.placement }
 }
 
 function imageRelPath(panelId: string, versionId: string, ext: string): string {

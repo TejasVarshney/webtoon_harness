@@ -35,6 +35,19 @@ const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
 const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ title: Title.optional(), synopsis: z.string().optional() }) })
 const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
+const PNG_DATA_URL = 'data:image/png;base64,'
+/** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
+const MAX_SKETCH_BYTES = 8 * 1024 * 1024
+const SaveSketchSchema = z.object({ projectId: z.string(), panelId: z.string(), png: z.string().startsWith(PNG_DATA_URL).nullable() })
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** The PNG a sketch data URL holds. Throws for anything that is not a PNG of a sane size. */
+function sketchBytes(url: string): Buffer {
+  const data = Buffer.from(url.slice(PNG_DATA_URL.length), 'base64')
+  if (data.length > MAX_SKETCH_BYTES) throw new Error('Sketch is too large')
+  if (data.length < PNG_SIGNATURE.length || !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw new Error('Sketch is not a PNG image')
+  return data
+}
 
 /** Episodes and the panels in them. */
 export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
@@ -88,6 +101,16 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
       const ext = STORED_EXT[path.extname(file).toLowerCase()]
       if (!ext) throw new Error('Unsupported image type: use png, jpg or webp')
       return panels.uploadImage(ctx, panelId, await fs.promises.readFile(file), ext)
+    },
+
+    'panels:saveSketch': async (req) => {
+      const { projectId, panelId, png } = parseInput(SaveSketchSchema, req)
+      return panels.saveSketch(await s.projects.open(projectId), panelId, png === null ? null : sketchBytes(png))
+    },
+
+    'panels:readSketch': async ({ projectId, panelId }) => {
+      const png = await panels.readSketch(await s.projects.open(projectId), panelId)
+      return png === null ? null : `${PNG_DATA_URL}${png.toString('base64')}`
     }
   }
 }

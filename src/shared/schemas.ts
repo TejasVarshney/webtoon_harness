@@ -49,7 +49,8 @@ export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16
 export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
 export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])
 export const PanelGutterSchema = z.enum(['white', 'black'])
-export const PanelPositionSchema = z.enum(['left', 'center', 'right', 'background'])
+/** Where a cast member stands, in the user's words ("left", "far right, half in shadow", "background"). */
+export const PanelPositionSchema = z.string()
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
 export const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
 export const BeatStatusSchema = z.enum(['planned', 'drawn', 'dropped'])
@@ -230,17 +231,32 @@ export const PanelItemSchema = z.object({
   action: z.string().default('')
 })
 
+/** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
+export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+
 export const DialogueLineSchema = z.object({
   id: Id,
   speakerId: Id.nullable(),
   kind: DialogueKindSchema,
-  text: z.string()
+  text: z.string(),
+  /** Null leaves the bubble where the strip's automatic layout puts it. */
+  placement: BubblePlacementSchema.nullable().default(null)
 })
 
 export const CheckResultSchema = z.object({
   passed: z.boolean(),
   issues: z.array(z.string()),
   skipped: z.boolean().default(false)
+})
+
+/** What a panel's picture shows. A change to any of these makes the image out of date. */
+export const VisualFieldsSchema = z.object({
+  description: z.string(),
+  setting: z.string(),
+  shot: ShotTypeSchema,
+  aspect: PanelAspectSchema,
+  characters: z.array(PanelCharacterSchema),
+  items: z.array(PanelItemSchema)
 })
 
 export const PanelVersionSchema = z.object({
@@ -253,6 +269,8 @@ export const PanelVersionSchema = z.object({
   referenceImagePaths: z.array(z.string()).default([]),
   instruction: z.string().nullable().default(null),
   parentVersionId: Id.nullable().default(null),
+  /** The visual fields of the panel when this attempt began; null for a version recorded before this was kept. */
+  drawnFrom: VisualFieldsSchema.nullable().default(null),
   check: CheckResultSchema.nullable(),
   createdAt: IsoTimestamp
 })
@@ -275,13 +293,18 @@ export const PanelSchema = z.object({
   offPanelMentions: z.array(z.string()).default([]),
   versions: z.array(PanelVersionSchema).default([]),
   currentVersionId: Id.nullable().default(null),
+  /** The user's rough layout sketch (`panels/<pnlId>/sketch-<n>.png`), a reference for generation only. Absent or null: none. */
+  sketchPath: z.string().nullable().optional(),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
 })
 
-/** A dialogue line before it is stored: the service assigns the `dlg_` id. */
-const DialogueDraftSchema = DialogueLineSchema.omit({ id: true })
+/**
+ * A dialogue line before it is stored: the service assigns the `dlg_` id. `placement` has no default
+ * on purpose: left out it stays `undefined` (the line inherits the stored one), where `null` means automatic.
+ */
+const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({ placement: BubblePlacementSchema.nullable().optional() })
 
 export const PanelDraftSchema = z.object({
   episodeId: Id,
@@ -315,6 +338,31 @@ export const OutlineSchema = z.object({ beats: z.array(BeatSchema) })
 
 /** What a caller may change on a beat. Like the other patch schemas it carries no defaults. */
 export const BeatPatchSchema = z.object({ summary: z.string().optional(), status: BeatStatusSchema.optional() })
+
+// ---------------------------------------------------------------------------------------------
+// Episode export (IPC input; nothing here is persisted)
+// ---------------------------------------------------------------------------------------------
+
+export const ExportPresetSchema = z.enum(['webtoon', 'long-image', 'pdf-reading', 'pdf-print', 'cbz'])
+
+/**
+ * One export job. Unfinished panels are always left out; the dialog's "Export anyway" is only a confirmation.
+ * `imageType` applies to `webtoon` and `long-image` (PDF and CBZ pages are always JPEG), `paper` to `pdf-print`
+ * (which is always high resolution), and `combine` to the PDF presets and CBZ with two or more episodes.
+ */
+export const ExportRequestSchema = z.object({
+  projectId: Id,
+  episodeIds: z.array(Id).min(1),
+  preset: ExportPresetSchema,
+  imageType: z.enum(['jpeg', 'png']).default('jpeg'),
+  paper: z.enum(['a4', 'letter']).default('a4'),
+  resolution: z.enum(['standard', 'high']).default('standard'),
+  combine: z.boolean().default(false),
+  lettering: z.boolean().default(true)
+})
+
+/** Which of a project's episodes the export dialog asks about. */
+export const ExportInspectRequestSchema = z.object({ projectId: Id, episodeIds: z.array(Id) })
 
 // ---------------------------------------------------------------------------------------------
 // Chat transcripts (discriminated on `role`)

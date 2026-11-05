@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
-import { PanelEditorDialog } from './PanelEditorDialog'
+import { useAppStore } from '../../stores/app-store'
+import { usePanelsStore } from '../../stores/panels-store'
+import { errorText } from '../characters/controls'
 
 export interface InsertPanelButtonProps {
   episodeId: string
@@ -8,20 +10,44 @@ export interface InsertPanelButtonProps {
   afterPanelId?: string
 }
 
-/** Where an open editor inserts. Held in state so the insert point is the one that was clicked, whatever the props become. */
-interface Target {
-  afterPanelId: string | undefined
-}
-
-/** The "+" between two panels and at the end of the strip: opens the editor to create a panel there. */
+/**
+ * The "+" between two panels and at the end of the strip: makes a blank panel there, with no image, and opens it in
+ * editing mode, where the user sketches the scene, fills in its details and generates it. One click makes one panel.
+ */
 export function InsertPanelButton({ episodeId, afterPanelId }: InsertPanelButtonProps) {
-  const [target, setTarget] = useState<Target | null>(null)
+  const [busy, setBusy] = useState(false)
+  const inFlight = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function add(): Promise<void> {
+    if (inFlight.current) return
+    inFlight.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      const { panel } = await usePanelsStore.getState().createPanel(
+        { episodeId, ...(afterPanelId !== undefined ? { afterPanelId } : {}), description: '', setting: '', shot: 'medium', characters: [], dialogue: [] },
+        false
+      )
+      useAppStore.getState().selectPanel(panel.id)
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      inFlight.current = false
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="insert-panel">
-      <button type="button" className="insert-panel-button" data-testid="add-panel" aria-label="Add panel" title="Add a panel here" onClick={() => setTarget({ afterPanelId })}>
+      <button type="button" className="insert-panel-button" data-testid="add-panel" aria-label="Add panel" title="Add a panel here" disabled={busy} onClick={() => void add()}>
         <Plus size={16} aria-hidden="true" />
       </button>
-      {target !== null && <PanelEditorDialog mode="create" episodeId={episodeId} afterPanelId={target.afterPanelId} onClose={() => setTarget(null)} />}
+      {error !== null && (
+        <p role="alert" className="error insert-panel-error">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

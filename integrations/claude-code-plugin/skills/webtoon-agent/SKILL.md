@@ -49,7 +49,7 @@ Never invent ids. Copy every `characterId`, `variationId`, `itemId`, `episodeId`
 - **Items:** `list_items`, `get_item`, `create_item`, `update_item`, `create_item_usage`, `regenerate_item_usage`.
 - **Panels:** `list_panels`, `get_panel`, `view_panel_image`, `create_panel`, `update_panel`, `regenerate_panel`, `edit_panel_image`. After a panel's beat is drawn, mark it with `update_beat`.
 
-Image tools wait for the image, so a call can take a while. There is no tool to revert a panel to an older version: the user does that from the panel's side chat in the app.
+Image tools wait for the image, so a call can take a while. There is no tool to revert a panel to an older version: the user does that in the app: they open the panel (click its card) and use the ‹ vN / M › switcher in the editor's header, above the panel.
 
 ## AI-led story runs
 

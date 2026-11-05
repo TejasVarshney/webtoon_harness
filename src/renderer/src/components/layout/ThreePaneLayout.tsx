@@ -7,13 +7,16 @@ export interface ThreePaneLayoutProps {
   right: ReactNode
   /** The top bar over the chat and the visualizer, on the frame like the sidebar. */
   header?: ReactNode
+  /** Drawn over the chat and the visualizer, on the sheet (editing mode). The panes under it stay mounted but inert. */
+  overlay?: ReactNode
 }
 
 /**
  * The window: the sessions sidebar and the top bar share one tinted frame (an L), and the chat and the visualizer sit
  * on one white sheet inside it. Sizes in numbers are pixels, so the sidebar keeps its width when the window grows.
  */
-export function ThreePaneLayout({ left, middle, right, header }: ThreePaneLayoutProps) {
+export function ThreePaneLayout({ left, middle, right, header, overlay }: ThreePaneLayoutProps) {
+  const covered = overlay !== undefined && overlay !== null
   return (
     <Group orientation="horizontal" className="three-pane">
       <Panel id="sessions" data-testid="pane-sessions" defaultSize={248} minSize={200} maxSize={380} groupResizeBehavior="preserve-pixel-size">
@@ -24,7 +27,7 @@ export function ThreePaneLayout({ left, middle, right, header }: ThreePaneLayout
         <div className="workspace">
           {header !== undefined && <header className="top-bar">{header}</header>}
           <div className="sheet">
-            <Group orientation="horizontal" className="sheet-panes">
+            <Group orientation="horizontal" className="sheet-panes" inert={covered}>
               <Panel id="chat" data-testid="pane-chat" defaultSize="56%" minSize="34%">
                 <div className="pane-content pane-chat">{middle}</div>
               </Panel>
@@ -33,6 +36,7 @@ export function ThreePaneLayout({ left, middle, right, header }: ThreePaneLayout
                 <div className="pane-content pane-visualizer">{right}</div>
               </Panel>
             </Group>
+            {covered && <div className="sheet-overlay">{overlay}</div>}
           </div>
         </div>
       </Panel>

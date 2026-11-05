@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
+import { ExportDialog } from '../export/ExportDialog'
 
 /** Picks which episode the strip shows, and starts a new one. */
 export function EpisodeBar() {
@@ -11,6 +12,7 @@ export function EpisodeBar() {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   function startCreating(): void {
     const next = episodes.reduce((max, e) => Math.max(max, e.number), 0) + 1
@@ -62,11 +64,15 @@ export function EpisodeBar() {
           New episode
         </button>
       )}
+      <button type="button" data-testid="export-open" disabled={episodes.length === 0} onClick={() => setExporting(true)}>
+        Export
+      </button>
       {error !== null && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
     </div>
   )
 }

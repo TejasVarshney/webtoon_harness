@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, Columns2, LoaderCircle, Pencil, RefreshCw, Trash2 } from 'lucide-react'
-import { assetUrl } from '@shared/asset-url'
+import { ArrowDown, ArrowUp, Columns2, RefreshCw, Trash2 } from 'lucide-react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
-import { DialogueOverlay } from './DialogueOverlay'
-import { aspectRatio } from './strip-layout'
+import { PanelArt } from './PanelArt'
+import { aspectRatio } from '@shared/strip-layout'
 
 export interface PanelCardProps {
   panel: Panel
@@ -16,20 +15,24 @@ export interface PanelCardProps {
   slant?: 'left' | 'right'
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
-  /** Asks the strip to open the editor on this panel. The strip owns the dialog, so it survives the card moving to another row. */
-  onEdit(): void
+  /** `export` draws only the picture and lettering: no toolbar, handlers, focus or selection. Default `edit`. */
+  mode?: 'edit' | 'export'
+  /** Export mode: whether the dialogue is drawn. Default true. */
+  lettering?: boolean
+  /** Export mode: the panel's 1-based place in the whole episode, for naming it when its image fails to load. */
+  position?: number
 }
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
  * toolbar on hover.
- * Clicking the card selects the panel; the toolbar's buttons and the delete confirmation it opens do not.
+ * Clicking the card selects the panel, which opens it in the editing mode; the toolbar's buttons and the delete
+ * confirmation it opens do not.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCardProps) {
-  const projectId = useAppStore((s) => s.projectId)
+export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', lettering = true, position }: PanelCardProps) {
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -43,22 +46,8 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
 
   const index = siblings?.findIndex((p) => p.id === panel.id) ?? -1
   const count = siblings?.length ?? 0
-  // The image is the version the panel points at; the status is the newest attempt, which may not be ready yet.
-  const current = panel.versions.find((v) => v.id === panel.currentVersionId)
-  const imagePath = current?.status === 'ready' ? current.imagePath : null
-  const latest = panel.versions.at(-1)
-  const generating = latest?.status === 'pending'
-
-  // A revert (from the version switcher, or by the agent) moves the current version while the newest attempt stays
-  // the same failed one: the user chose an image, so that old failure is no longer shown. A later attempt that fails
-  // is new, and shows again. Kept per card, from the data alone: nothing is stored.
-  const [seen, setSeen] = useState({ current: panel.currentVersionId, latest: latest?.id ?? null })
-  const [dismissedFailure, setDismissedFailure] = useState<string | null>(null)
-  if (seen.current !== panel.currentVersionId || seen.latest !== (latest?.id ?? null)) {
-    if (seen.current !== panel.currentVersionId && seen.latest === latest?.id && latest?.status === 'failed') setDismissedFailure(latest.id)
-    setSeen({ current: panel.currentVersionId, latest: latest?.id ?? null })
-  }
-  const failed = latest?.status === 'failed' && latest.id !== dismissedFailure ? latest : null
+  // The newest attempt, which may not be ready yet (see PanelArt, which shows its status).
+  const generating = panel.versions.at(-1)?.status === 'pending'
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height.
   const shape = { '--ar': String(aspectRatio(panel.aspect)), '--share': String(share) } as CSSProperties
@@ -86,12 +75,32 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
     }
   }
 
+  if (mode === 'export') {
+    return (
+      <article
+        className="panel-card panel-shape"
+        data-testid="panel-card"
+        data-panel-id={panel.id}
+        data-position={position}
+        data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
+        data-beside={String(panel.beside)}
+        data-gutter={panel.gutter}
+        data-gap={panel.gapAfter}
+        data-slant={slant}
+        style={shape}
+      >
+        <PanelArt panel={panel} mode="export" lettering={lettering} />
+      </article>
+    )
+  }
+
   return (
     <>
       <article
         ref={cardRef}
-        className="panel-card"
+        className="panel-card panel-shape"
         data-testid="panel-card"
+        data-panel-id={panel.id}
         data-selected={String(selected)}
         data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
         data-beside={String(panel.beside)}
@@ -104,33 +113,7 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
         onClick={select}
         onKeyDown={onKeyDown}
       >
-        <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
-          {imagePath !== null && projectId !== null && <img src={assetUrl(projectId, imagePath)} alt={panel.description} draggable={false} />}
-          {panel.versions.length === 0 && <div className="panel-empty">No image yet</div>}
-          <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} />
-          {generating && (
-            <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">
-              <LoaderCircle size={14} className="spin" aria-hidden="true" />
-              Generating…
-            </div>
-          )}
-          {failed !== null && (
-            <div className="panel-status panel-status-failed" data-testid="panel-status" data-status="failed" role="status">
-              <span>{`Failed: ${failed.error ?? 'Unknown error'}`}</span>
-              {/* Retry is part of the status, but is its own control: a click on it must not select the panel. */}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  run(generatePanel(panel.id))
-                }}
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
+        <PanelArt panel={panel} />
         {error !== null && (
           <p role="alert" className="error panel-error">
             {error}
@@ -138,9 +121,6 @@ export function PanelCard({ panel, selected, slant, share = 1, onEdit }: PanelCa
         )}
         <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
           <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button type="button" className="icon-button" aria-label="Edit" title="Edit panel" onClick={onEdit}>
-            <Pencil size={15} aria-hidden="true" />
-          </button>
           <button
             type="button"
             className="icon-button"

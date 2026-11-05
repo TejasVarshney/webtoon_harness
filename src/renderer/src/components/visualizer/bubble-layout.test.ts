@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { DialogueLine, PanelCharacter } from '@shared/types'
-import { bubbleShape, layoutBubbles } from './bubble-layout'
+import { bubbleShape, layoutBubbles, sideOfPosition } from './bubble-layout'
 
-const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId })
+const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId, placement: null })
 const cast = (characterId: string, position: PanelCharacter['position']): Pick<PanelCharacter, 'characterId' | 'position'> => ({ characterId, position })
 
 describe('bubbleShape', () => {
@@ -78,5 +78,18 @@ describe('layoutBubbles', () => {
   it('keeps the lines in reading order and their ids', () => {
     const d = [line('narration', 'n', null, 'dlg_1'), line('thought', 't', 'chr_a', 'dlg_2'), line('sfx', 's', null, 'dlg_3')]
     expect(layoutBubbles(d, [cast('chr_a', 'right')]).map((b) => b.id)).toEqual(['dlg_1', 'dlg_2', 'dlg_3'])
+  })
+})
+
+describe('sideOfPosition', () => {
+  it('reads the side from a position in the user’s words', () => {
+    expect(sideOfPosition('left')).toBe('left')
+    expect(sideOfPosition('Far RIGHT, half in shadow')).toBe('right')
+    expect(sideOfPosition('center')).toBe('center')
+    expect(sideOfPosition('background')).toBe('center')
+    expect(sideOfPosition('')).toBe('center')
+    // Both sides, or a word that only contains one, say nothing about a side.
+    expect(sideOfPosition('left of the door, right by the window')).toBe('center')
+    expect(sideOfPosition('upright, bright light')).toBe('center')
   })
 })

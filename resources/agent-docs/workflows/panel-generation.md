@@ -40,7 +40,7 @@ The cast is the `characters` list. One entry per visible named character:
 - `characterId`, `variationId`: copy them from `<project_state>` or `list_characters`.
 - `action`: what this character does in this frame, a short phrase.
 - `expression`: their face in this frame: "wide-eyed", "smiling softly", "crying". This is where per-panel emotions go, not in a variation.
-- `position`: `left`, `center`, `right` or `background`. Default `center`. Give two characters different positions.
+- `position`: where they stand, in a few words: `left`, `center`, `right`, `background`, or something finer such as `far left, half in shadow`. Default `center`. Speech bubbles go to the side it names (`left` or `right`, else the centre). Give two characters different positions.
 - Write `action` and `expression` as short phrases without a final period: the app adds one.
 
 Rules:
@@ -234,7 +234,7 @@ When `"passed"` is `false`, decide by the issues:
 | The setting or composition | `update_panel` with a clearer description or setting, and `"regenerate": true`. |
 | Anything you cannot fix | Report it to the user, quoting the issues briefly. |
 
-Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can choose a version in the panel side chat, edit it there, or accept it.
+Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can open the panel (click its card) to choose a version with the ‹ vN / M › switcher in the editor's header, ask its panel chat for an edit, or accept it.
 
 ## Examples
 
@@ -357,7 +357,7 @@ The app already redrew it once. This is a local detail, so make one edit:
 edit_panel_image {"panelId": "pnl_0e9b3d61a7", "instruction": "Make Mina's hair black, matching her reference image"}
 ```
 
-An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can pick or edit a version in its side chat."
+An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can open the panel to pick another version, or ask its chat for an edit."
 
 ### Example 7: inserting a panel between two others
 

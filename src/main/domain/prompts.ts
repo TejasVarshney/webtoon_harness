@@ -31,7 +31,7 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
 // ---------------------------------------------------------------------------------------------
 
 /** Whose image a reference is. The checker matches references to cast and items by this, never by label. */
-export type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'previous' }
+export type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
 
 export interface PanelPromptReference {
   relPath: string
@@ -46,13 +46,15 @@ export interface PanelPromptInput {
   roster: Map<string, Character>
   itemRoster: Map<string, Item>
   previous: { panelId: string; imagePath: string } | null
+  /** The user's layout sketch, for a generation only (an edit keeps the image's own composition). */
+  sketch?: string | null
   /** The image model's reference-image cap. */
   maxReferences: number
 }
 
 export interface PanelPromptResult {
   prompt: string
-  /** In prompt order: ready cast variations (cast order), then ready item usages (panel order), then the previous panel. */
+  /** In prompt order: ready cast variations (cast order), then ready item usages (panel order), then the sketch, then the previous panel. */
   references: PanelPromptReference[]
 }
 
@@ -60,6 +62,10 @@ const TALL_NOTE = 'Tall panel: keep the top fifth and bottom fifth plain backgro
 const BORDERLESS_NOTE = 'Art runs to the edges, no frame.'
 
 const NO_REFERENCE = '(no reference image)'
+
+const LAYOUT_PREFIX = '[LAYOUT] Follow the rough composition of the sketch'
+const LAYOUT_NOTE =
+  ': where the figures and objects sit, their poses, the camera angle and the framing. It is a rough guide only: never copy its scribbled lines, flat colours or blank background, and draw everything in the style above.'
 
 /** Tall panels always fade out, so they never get the borderless line. */
 function shapeNote(panel: Pick<Panel, 'aspect' | 'frame'>): string {
@@ -72,8 +78,9 @@ const ITEMS_HEADER =
 
 /**
  * Builds the §9 panel prompt and its ordered reference list. References are the cast members'
- * variation images in cast order, then the panel items' usage images in panel order, then the previous
- * panel's image; over `maxReferences` the previous panel is dropped first, then items from the end,
+ * variation images in cast order, then the panel items' usage images in panel order, then the user's
+ * layout sketch (a [LAYOUT] line, left out with its image), then the previous panel's image; over
+ * `maxReferences` the previous panel is dropped first, then the sketch, then items from the end,
  * then cast members from the end, and a dropped entry reads "(no reference image)" (an item's lock
  * still applies). A cast member or item whose image is not ready reads the same way (validation
  * reports that separately). Throws if a cast entry names a character or variation that is not in
@@ -81,7 +88,7 @@ const ITEMS_HEADER =
  * first. Archived characters and items still compose, so existing panels can be regenerated.
  */
 export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
-  const { stylePreset, panel, roster, itemRoster, previous, maxReferences } = input
+  const { stylePreset, panel, roster, itemRoster, previous, sketch, maxReferences } = input
   const references: PanelPromptReference[] = []
 
   /** The "(reference image N)" marker if `file` fits under the cap (and is recorded as a reference), else "(no reference image)". */
@@ -104,7 +111,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
       `Look: ${look}.`,
       entry.action && `Action: ${entry.action}.`,
       entry.expression && `Expression: ${entry.expression}.`,
-      `Position: ${entry.position}.`
+      entry.position.trim() && `Position: ${entry.position.trim()}.`
     ]
     return `- ${character.name} ${marker}: ${details.filter(Boolean).join(' ')}`
   })
@@ -131,6 +138,11 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   ]
 
   if (itemLines.length > 0) lines.push(ITEMS_HEADER, ...itemLines)
+
+  if (sketch) {
+    const marker = refer(sketch, 'layout sketch', { kind: 'sketch' })
+    if (marker !== NO_REFERENCE) lines.push(`${LAYOUT_PREFIX} ${marker}${LAYOUT_NOTE}`)
+  }
 
   if (previous) {
     const marker = refer(previous.imagePath, 'previous panel', { kind: 'previous' })

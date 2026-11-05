@@ -361,6 +361,7 @@ kbd {
 }
 
 .sheet {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -371,6 +372,15 @@ kbd {
 
 .sheet-panes {
   height: 100%;
+}
+
+/* Editing mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
+   its episode bar, below menus and dialogs. */
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--surface);
 }
 
 .pane-chat {
@@ -414,15 +424,6 @@ kbd {
 .pane-separator-frame[data-separator='active'] {
   background: transparent;
   box-shadow: inset -2px 0 0 var(--accent);
-}
-
-.pane-separator-row {
-  width: auto;
-  height: 1px;
-}
-
-.pane-separator-row::after {
-  inset: -4px 0;
 }
 
 .placeholder {
@@ -839,16 +840,10 @@ kbd {
   cursor: not-allowed;
 }
 
-.chat-split {
-  flex: 1;
-  min-height: 0;
-}
-
-.main-chat,
-.panel-side-chat {
+.main-chat {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
 }
 
@@ -1282,51 +1277,403 @@ kbd {
   height: 22px;
 }
 
-/* The panel's own chat, below the main one. */
-.panel-side-chat {
-  background: var(--surface);
+/* Editing mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
+   the panel's own chat on the right. */
+.panel-workspace,
+.editing-columns {
+  height: 100%;
 }
 
-.side-chat-header {
+.editing-main,
+.editing-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editing-header,
+.editing-chat-header {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px 10px;
+  gap: 8px;
+  min-height: 53px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--rule);
 }
 
-.side-chat-header h2 {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
+/* The header, the error and the notice keep the body's insets, its scrollbar gutter included, so their edges line up
+   with the stage's and the tabs'. */
+.editing-header {
+  flex-wrap: wrap;
+  padding-inline: var(--pad);
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.editing-header h1 {
+  font-size: var(--fs-section);
+}
+
+.editing-chat-header h2 {
   font-size: var(--fs-body);
 }
 
-.side-chat-sub {
-  overflow: hidden;
-  font-size: var(--fs-small);
-  font-weight: 400;
+.editing-back {
+  padding: 0 10px 0 6px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.editing-back svg {
   color: var(--muted);
-  text-overflow: ellipsis;
+}
+
+.editing-steps {
+  display: flex;
+  gap: 2px;
+}
+
+.editing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Sketch, while the stage shows the sketch. */
+.editing-actions button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.editing-error {
+  flex: none;
+  margin: 8px 0 0;
+  padding: 0 var(--pad);
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.stale-notice-row {
+  flex: none;
+  padding: 12px var(--pad) 0;
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.stale-notice {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 4px 4px 4px 12px;
+  font-size: var(--fs-small);
+  color: var(--pill-warning-ink);
+  background: var(--pill-warning-bg);
+  border-radius: var(--radius-control);
+}
+
+/* A text button: the header's Regenerate is the only filled one. */
+.stale-notice button {
+  height: 26px;
+  padding: 0 8px;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border-color: transparent;
+}
+
+.stale-notice button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.editing-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* A scrollbar that comes and goes would change the stage's width, and so its scale, and so the height again. */
+  scrollbar-gutter: stable;
+  padding: var(--pad);
+  /* Its height is what the stage's cap is measured against (`cqh`). */
+  container-type: size;
+}
+
+/* The stage: the open panel on a field of its gutter colour, centred, as big as the column allows and at most 62vh
+   tall, and less when the column must keep its 240px of tabs under it (and their 16px margin); never less than 160px,
+   in a window too short for both, where the column scrolls. PanelStage fits the panel to this cap. The panel is laid
+   out in a row of the strip's reference width (`.stage-row`, whose width comes from STAGE_ROW_PX, and which is the
+   lettering's container), then scaled to fit from its top left corner. `.stage-fit` is the room the scaled panel
+   takes, since a transform takes none. */
+.panel-stage {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  max-height: max(160px, min(62vh, calc(100cqh - 256px)));
+  padding: var(--pad);
+  overflow: hidden;
+  background: var(--raised);
+  border-radius: var(--radius-card);
+}
+
+.panel-stage:focus {
+  outline: none;
+}
+
+/* The zoom bar, and in sketch mode the tool rail and actions, sit on the stage itself, over its scrolling viewport. */
+.panel-stage {
+  position: relative;
+}
+
+/* The panel scrolls inside the stage once it is zoomed past the fit. Margin auto centres it while it fits and lets
+   every edge be scrolled to once it does not. */
+.stage-viewport {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.stage-viewport > .stage-fit {
+  margin: auto;
+}
+
+/* A zoomed stage moves with a middle-button drag, or a drag with Space held (useStagePan). While it does, the hand is
+   the only cursor: nothing under it is pressed, so a bubble's grab or the sketch's crosshair would say otherwise. */
+.stage-viewport[data-pan='ready'],
+.stage-viewport[data-pan='ready'] * {
+  cursor: grab !important;
+}
+
+.stage-viewport[data-pan='panning'],
+.stage-viewport[data-pan='panning'] * {
+  cursor: grabbing !important;
+}
+
+.stage-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.stage-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  pointer-events: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.stage-zoom-controls .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-zoom-level {
+  min-width: 52px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border-color: transparent;
+}
+
+.stage-zoom-level:disabled {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.stage-fit {
+  flex: none;
+}
+
+.stage-row {
+  container-type: inline-size;
+  transform-origin: 0 0;
+}
+
+/* The tabs under the stage, in the strip's tab look, then the open tab's controls. They fill what the stage leaves of
+   the column, and the open tab scrolls on its own, so bringing a line's row into view never moves the stage. They
+   keep at least 240px: the stage gives way to them (see `.panel-stage`), and only in a window too short for both does
+   the column scroll. */
+.panel-inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 240px;
+  margin-top: 16px;
+}
+
+.inspector-tabs {
+  padding: 0;
+}
+
+/* The 4px either side, taken back by the margin, keep the fields' focus rings inside the scroll area's clip. */
+.inspector-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 0 -4px;
+  padding: 16px 4px 4px;
+  overflow: auto;
+}
+
+.lines-tab,
+.inspector-fields,
+.scene-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.line-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The row of the selected bubble is one tone step deeper; the accent stays on the bubble. */
+.line-row[aria-current='true'] {
+  background: var(--active);
+}
+
+/* A line on one row: who says it and how, as two narrow selects, then its text taking the rest and growing with what
+   is typed, then the row's buttons at its end. The labels stay for screen readers. In a narrow column the text wraps
+   under the selects. */
+.line-rows > .line-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.line-row .field > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 
-.side-chat-thumb {
+.line-row .field-row {
   flex: none;
-  width: 34px;
-  height: 46px;
-  object-fit: cover;
-  border: 1.5px solid var(--ink);
-  border-radius: 2px;
+  gap: 8px;
 }
 
-.panel-side-chat .thread {
+.line-row .field-row .field {
+  flex: none;
+}
+
+.line-row .field-row .field:first-child select {
+  width: 140px;
+}
+
+.line-row .field-row .field:last-child select {
+  width: 116px;
+}
+
+.line-row > .field {
+  flex: 1 1 180px;
+}
+
+.line-row textarea {
+  field-sizing: content;
+  resize: none;
+}
+
+.line-row > .form-actions {
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+/* The pickers' and the layout's groups sit in the tab without the dialog's frame. */
+.panel-inspector fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.panel-inspector legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+/* The tab already names the cast and the items: their legends stay for screen readers only. */
+.panel-inspector .cast-picker > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.panel-inspector .inline-label {
+  align-self: flex-start;
+}
+
+.inspector-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.inspector-alert p {
+  margin: 0;
+}
+
+/* A text button: Regenerate in the header is the only filled one. */
+.inspector-alert button {
+  height: 26px;
+  padding: 0 8px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border-color: transparent;
+}
+
+.inspector-alert button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.inspector-warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.editing-chat .thread {
   padding-top: 16px;
 }
 
-.panel-side-chat .thread-empty {
+.editing-chat .thread-empty {
   margin-top: 4vh;
 }
 
@@ -1482,12 +1829,14 @@ kbd {
   background: var(--raised);
 }
 
-.strip-band[data-gutter='black'] {
+.strip-band[data-gutter='black'],
+.panel-stage[data-gutter='black'] {
   background: #000;
 }
 
 /* The panels of a row share one height: each takes the row's width in proportion to its aspect (`--ar`, set by the
-   card). The row is also the size container the lettering is measured against. */
+   card). The row is also the size container the lettering is measured against. Its 440px (and the gap's) is
+   STRIP_CSS_WIDTH in src/shared/strip-width.ts, the width the export lays the strip out at: change them together. */
 .strip-row {
   display: flex;
   align-items: center;
@@ -1529,9 +1878,6 @@ kbd {
   /* Scaled up, since a lone portrait panel's ratio is under 1, and flex-grow under 1 leaves part of the row empty. */
   flex: calc(var(--ar) * 100) 1 0;
   min-width: 0;
-  background: var(--surface);
-  border: 2.5px solid var(--ink);
-  border-radius: 2px;
   cursor: pointer;
   transition:
     outline-color 0.15s var(--ease),
@@ -1567,18 +1913,25 @@ kbd {
   object-fit: cover;
 }
 
+/* The frame is the shape's, not the card's: the editing stage draws the same shape without a card. */
+.panel-shape {
+  background: var(--surface);
+  border: 2.5px solid var(--ink);
+  border-radius: 2px;
+}
+
 /* Without ink, the art meets the gutter: no frame, and nothing behind the image once there is one. */
-.panel-card:not([data-frame='bordered']) {
+.panel-shape:not([data-frame='bordered']) {
   background: transparent;
   border: 0;
 }
 
-.panel-card:is([data-frame='borderless'], [data-frame='fade']) .panel-media:has(> img) {
+.panel-shape:is([data-frame='borderless'], [data-frame='fade']) .panel-media:has(> img) {
   background: transparent;
 }
 
 /* Borderless: the image's edges fade into the gutter. */
-.panel-card[data-frame='borderless'] .panel-media img {
+.panel-shape[data-frame='borderless'] .panel-media img {
   mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent), linear-gradient(transparent, #000 6%, #000 94%, transparent);
   mask-composite: intersect;
 }
@@ -1588,24 +1941,24 @@ kbd {
  * leaning the way the layout says. The media is ink cut to the slope; the image and the lettering sit in it cut 2.5px
  * smaller, so the ink shows as the frame. Only the media is cut: the card's outline and toolbar stay whole.
  */
-.panel-card[data-frame='slanted'] {
+.panel-shape[data-frame='slanted'] {
   --slant: calc(4cqw * var(--share, 1));
   --cut: polygon(0 0, 100% var(--slant), 100% calc(100% - var(--slant)), 0 100%);
   --cut-inner: polygon(2.5px 2.5px, calc(100% - 2.5px) calc(var(--slant) + 2.5px), calc(100% - 2.5px) calc(100% - var(--slant) - 2.5px), 2.5px calc(100% - 2.5px));
 }
 
-.panel-card[data-frame='slanted'][data-slant='right'] {
+.panel-shape[data-frame='slanted'][data-slant='right'] {
   --cut: polygon(0 var(--slant), 100% 0, 100% 100%, 0 calc(100% - var(--slant)));
   --cut-inner: polygon(2.5px calc(var(--slant) + 2.5px), calc(100% - 2.5px) 2.5px, calc(100% - 2.5px) calc(100% - 2.5px), 2.5px calc(100% - var(--slant) - 2.5px));
 }
 
-.panel-card[data-frame='slanted'] .panel-media {
+.panel-shape[data-frame='slanted'] .panel-media {
   background: var(--ink);
   clip-path: var(--cut);
 }
 
 /* The paper inside the ink, for a panel still waiting for its image. */
-.panel-card[data-frame='slanted'] .panel-media::before {
+.panel-shape[data-frame='slanted'] .panel-media::before {
   position: absolute;
   inset: 0;
   content: '';
@@ -1613,26 +1966,26 @@ kbd {
   clip-path: var(--cut-inner);
 }
 
-.panel-card[data-frame='slanted'] .panel-media img {
+.panel-shape[data-frame='slanted'] .panel-media img {
   position: relative;
 }
 
-.panel-card[data-frame='slanted'] .panel-media img,
-.panel-card[data-frame='slanted'] .dialogue-overlay {
+.panel-shape[data-frame='slanted'] .panel-media img,
+.panel-shape[data-frame='slanted'] .dialogue-overlay {
   clip-path: var(--cut-inner);
 }
 
 /* The lettering keeps clear of the cut, on the side where it drops furthest into the panel. */
-.panel-card[data-frame='slanted'] .dialogue-flow {
+.panel-shape[data-frame='slanted'] .dialogue-flow {
   top: calc(var(--slant) + 2.5px + 4cqw * var(--lettering));
 }
 
-.panel-card[data-frame='slanted'] .dialogue-sfx {
+.panel-shape[data-frame='slanted'] .dialogue-sfx {
   inset: calc(var(--slant) + 2.5px) 0;
 }
 
 /* Tall (1:2, 1:3): drawn at 9:16, so the image fills the width, centred, and fades out at the top and bottom. */
-.panel-card[data-frame='fade'] .panel-media img {
+.panel-shape[data-frame='fade'] .panel-media img {
   position: absolute;
   top: 50%;
   left: 0;
@@ -1841,6 +2194,70 @@ kbd {
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
+}
+
+/* A placed line sits in a layer of its own, centred on the point the user chose (`left` and `top` come from the line).
+   `max-content` keeps a bubble near the right or bottom edge from being squeezed to the room left beside it. */
+.dialogue-placed {
+  position: absolute;
+  inset: 0;
+}
+
+.bubble-placed {
+  position: absolute;
+  width: max-content;
+  max-width: 62%;
+  translate: -50% -50%;
+}
+
+/* Editing: the bubbles take the pointer, and a dragged one lifts off the art. The selection is the only mark: a
+   focused bubble is the selected one, so it shows no focus ring of its own. */
+.dialogue-overlay[data-editing='true'] .bubble {
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.dialogue-overlay[data-editing='true'] .bubble:focus {
+  outline: none;
+}
+
+.dialogue-overlay[data-editing='true'] .bubble[data-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.dialogue-overlay[data-editing='true'] .bubble[data-dragging='true'] {
+  cursor: grabbing;
+  box-shadow: var(--float-shadow);
+}
+
+/* A bubble's text open for typing, in the bubble's own lettering. It grows with what is typed. */
+.bubble-editor,
+.bubble-editor:hover,
+.bubble-editor:focus-visible {
+  display: block;
+  min-width: 2ch;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: center;
+  text-transform: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  user-select: text;
+  cursor: text;
 }
 
 .bubble-side-left {
@@ -2507,16 +2924,10 @@ kbd {
 }
 
 .endpoint-form .inline-label,
-.model-form .inline-label,
-.panel-editor-form .inline-label {
+.model-form .inline-label {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-}
-
-/* A lone checkbox in the editor's column sits at the start of its line, not centred. */
-.panel-editor-form .inline-label {
-  align-self: flex-start;
 }
 
 .notice-info {
@@ -2608,35 +3019,10 @@ kbd {
   min-width: 0;
 }
 
-/* --- Panel editor ----------------------------------------------------------------------------------- */
-
-.panel-editor {
-  width: min(580px, 92vw);
-  max-height: 88vh;
-  overflow: auto;
-}
-
-.panel-editor-form fieldset {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.panel-editor-form .layout-group,
-.panel-editor-form .cast-picker,
-.panel-editor-form .item-picker,
-.panel-editor-form .dialogue-editor {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
+/* --- Cast and line rows ------------------------------------------------------------------------------ */
 
 .cast-row,
-.dialogue-row {
+.line-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2649,18 +3035,149 @@ kbd {
   margin: 0;
 }
 
-.panel-editor-error p {
+/* --- Sketch stage ------------------------------------------------------------------------------------ */
+
+/* The tool rail sits in the stage's own left padding, so the fit (which reads that padding) never puts the panel under it. */
+.sketch-stage {
+  position: relative;
+  padding-left: 56px;
+}
+
+.sketch-tools {
+  position: absolute;
+  top: var(--pad);
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* A short window scrolls the rail rather than cutting it off. */
+  max-height: calc(100% - 2 * var(--pad));
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.sketch-tools .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sketch-tools .icon-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sketch-tools-gap {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border);
+}
+
+.sketch-dot {
+  display: block;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.sketch-dot[data-size='fine'] {
+  width: 3px;
+  height: 3px;
+}
+
+.sketch-dot[data-size='medium'] {
+  width: 7px;
+  height: 7px;
+}
+
+.sketch-dot[data-size='bold'] {
+  width: 12px;
+  height: 12px;
+}
+
+.sketch-media {
+  background: #fff;
+}
+
+/* The panel's picture, faint, under the sketch's transparent canvas, to trace over. */
+.sketch-underlay {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.sketch-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.sketch-canvas[data-tool='eraser'] {
+  cursor: cell;
+}
+
+.sketch-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+.sketch-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.sketch-actions button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.sketch-status {
   margin: 0;
+  padding: 2px 6px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: var(--radius-control);
 }
 
-.panel-editor-outcome p {
-  margin: 0 0 4px;
+.sketch-status:empty {
+  display: none;
 }
 
-.panel-editor-warnings {
-  margin: 0 0 4px;
-  padding-left: 18px;
-  font-size: 13px;
+/* A panel with a sketch and no image yet shows the sketch, faintly, where the image will be. */
+.panel-sketch-preview {
+  position: absolute;
+  inset: 0;
+  background: #fff center / contain no-repeat;
+  opacity: 0.45;
+}
+
+.insert-panel {
+  flex-wrap: wrap;
+}
+
+.insert-panel-error {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: var(--fs-small);
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2671,4 +3188,38 @@ kbd {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* --- Export dialog ------------------------------------------------------------------------------------ */
+
+.export-dialog {
+  width: 420px;
+}
+
+.export-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.export-episode,
+.export-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }

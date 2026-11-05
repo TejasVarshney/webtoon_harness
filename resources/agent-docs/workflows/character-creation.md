@@ -142,7 +142,7 @@ Name every variation `Kind: Specific look`:
 - Unique per character. Do not make "Outfit: Uniform" and "Outfit: School uniform".
 - The base is always "Base"; you never create it.
 
-The name appears in every panel prompt ("Look: Outfit: School uniform — ...") and in the panel side chat, so it must say what the look is.
+The name appears in every panel prompt ("Look: Outfit: School uniform — ...") and in the panel chat, so it must say what the look is.
 
 ## When Not to Create a Variation
 
