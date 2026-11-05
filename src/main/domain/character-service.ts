@@ -12,6 +12,7 @@ import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors
 import type { ImageService } from './image-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import { baseReferencePrompt, sheetFixInstruction, variationPrompt } from './prompts'
+import { failureMessage, INTERRUPTED, NO_IMAGE_YET, now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 type CreatedBy = Variation['createdBy']
@@ -51,19 +52,11 @@ export interface CharacterServiceOptions {
   sheetChecker?: Pick<ConsistencyChecker, 'checkSheet'>
 }
 
-const INTERRUPTED = 'Interrupted: the app closed during generation'
-/** Ruling F4: a variation created without a generation has nothing that would ever move it out of `pending`. */
-const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
-
 /** `generate: false` means no generation follows, so the new variation is recorded `failed` (Ruling F4). Default true. */
 export interface CreateVariationOptions {
   generate?: boolean
 }
-const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
-type UploadExt = (typeof UPLOAD_EXTS)[number]
 const CHARACTER_FILE = /^chr_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /** The state a new variation starts in: `pending` when a generation follows, else failed with `NO_IMAGE_YET`. */
 function initialStatus(opts: CreateVariationOptions): Pick<Variation, 'status' | 'error'> {
@@ -446,11 +439,6 @@ function ownImage(ctx: ProjectContext, characterId: string, relPath: string): st
 
 function imageRelPath(characterId: string, variationId: string, ext: string): string {
   return `characters/${characterId}/${variationId}_${randomBytes(3).toString('hex')}.${ext}`
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.name === 'AbortError') return 'Cancelled'
-  return error instanceof Error && error.message ? error.message : String(error)
 }
 
 /** Drops `undefined` values so a patch never blanks a field it does not name. */

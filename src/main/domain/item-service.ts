@@ -12,6 +12,7 @@ import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors
 import type { ImageService } from './image-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import { itemReferencePrompt, itemUsagePrompt, sheetFixInstruction } from './prompts'
+import { failureMessage, INTERRUPTED, NO_IMAGE_YET, now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 type CreatedBy = ItemUsage['createdBy']
@@ -62,19 +63,11 @@ export interface ItemServiceOptions {
   sheetChecker?: Pick<ConsistencyChecker, 'checkSheet'>
 }
 
-const INTERRUPTED = 'Interrupted: the app closed during generation'
-/** Ruling F4: a usage created without a generation has nothing that would ever move it out of `pending`. */
-const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
-
 /** `generate: false` means no generation follows, so the new usage is recorded `failed` (Ruling F4). Default true. */
 export interface CreateUsageOptions {
   generate?: boolean
 }
-const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
-type UploadExt = (typeof UPLOAD_EXTS)[number]
 const ITEM_FILE = /^itm_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /** The state a new usage starts in: `pending` when a generation follows, else failed with `NO_IMAGE_YET`. */
 function initialStatus(opts: CreateUsageOptions): Pick<ItemUsage, 'status' | 'error'> {
@@ -464,9 +457,4 @@ function ownImage(ctx: ProjectContext, itemId: string, relPath: string): string 
 
 function imageRelPath(itemId: string, usageId: string, ext: string): string {
   return `items/${itemId}/${usageId}_${randomBytes(3).toString('hex')}.${ext}`
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.name === 'AbortError') return 'Cancelled'
-  return error instanceof Error && error.message ? error.message : String(error)
 }

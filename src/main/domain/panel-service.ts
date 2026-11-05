@@ -16,6 +16,7 @@ import type { ImageGenRequest, ImageGenResult, ImageService } from './image-serv
 import type { ItemService, ItemUsageLookup } from './item-service'
 import { hasReadyReference, hasReadyUsage, sheetCheckFailure, validatePanelDraft } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
+import { failureMessage, INTERRUPTED, now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
@@ -39,13 +40,8 @@ export interface PanelServiceOptions {
   checker?: Pick<ConsistencyChecker, 'check'>
 }
 
-const INTERRUPTED = 'Interrupted: the app closed during generation'
 const PANEL_DELETED = 'Panel was deleted'
-const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
-type UploadExt = (typeof UPLOAD_EXTS)[number]
 const PANEL_FILE = /^pnl_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /** What a version records about how it was made, before the image call runs. */
 interface Attempt {
@@ -765,9 +761,4 @@ function withId(line: Omit<DialogueLine, 'id' | 'placement'> & { placement?: Dia
 
 function imageRelPath(panelId: string, versionId: string, ext: string): string {
   return `panels/${panelId}/${versionId}.${ext}`
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.name === 'AbortError') return 'Cancelled'
-  return error instanceof Error && error.message ? error.message : String(error)
 }
