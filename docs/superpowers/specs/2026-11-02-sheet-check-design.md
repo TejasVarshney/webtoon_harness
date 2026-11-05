@@ -160,7 +160,8 @@ record the last candidate + its check (finish)
 - `strictSheets` is true for every agent create and update (`panel-tools.ts`, `panel-chat-tools.ts`), false in the IPC
   handlers (the editor).
 - **Grandfathering** (Ruling T18b): `grandfatherUnchangedCast` and `grandfatherUnchangedItems` also clear a failed check on
-  an unchanged pair, so editing a panel's description does not suddenly block a cast it already had.
+  an unchanged pair when `strictSheets` is true, so an agent editing a panel's description is not suddenly blocked by a
+  cast it already had. Without it the check stays, and the manual editor warns on every save while the sheet is failed.
 
 ## 9. Agent
 

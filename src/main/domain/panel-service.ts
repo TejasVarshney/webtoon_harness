@@ -167,8 +167,9 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
    * changed, so a panel that casts a since-archived character, or a variation whose regeneration
    * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
    * Items work the same way: an unchanged item and usage pair is grandfathered, and the unknown-item,
-   * foreign-usage and holder errors apply to every entry. Ruling T18b: it also clears a failed sheet check on
-   * an unchanged pair, so editing a panel never blocks a cast it already had.
+   * foreign-usage and holder errors apply to every entry. Ruling T18b: with `strictSheets` it also clears a failed
+   * sheet check on an unchanged pair, so an agent editing a panel is never blocked by a cast it already had. Without
+   * it the check stays: the person editing keeps seeing the warning on every save, since the sheet is still failed.
    */
   async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
@@ -192,7 +193,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), grandfatherUnchangedItems(itemRoster, current.items, merged.items), {
+      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters, opts.strictSheets), grandfatherUnchangedItems(itemRoster, current.items, merged.items, opts.strictSheets), {
         strictMentions: opts.strictMentions,
         strictSheets: opts.strictSheets
       })
@@ -708,7 +709,7 @@ function readyImage(panel: Panel | null): { panelId: string; imagePath: string }
  * archived. Names and variation ids are untouched, so unknown-character and foreign-variation
  * errors still apply to every entry.
  */
-function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[], next: PanelCharacter[]): Character[] {
+function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[], next: PanelCharacter[], strictSheets: boolean): Character[] {
   const pair = (entry: PanelCharacter): string => `${entry.characterId}/${entry.variationId}`
   const storedPairs = new Set(stored.map(pair))
   const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
@@ -717,7 +718,7 @@ function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[],
   const keptCharacters = new Set(unchanged.map((entry) => entry.characterId).filter((id) => !changedCharacters.has(id)))
   return roster.map((c) => {
     const archived = c.archived && !keptCharacters.has(c.id)
-    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && (!hasReadyReference(v) || sheetCheckFailure(v) !== null)
+    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && (!hasReadyReference(v) || (strictSheets && sheetCheckFailure(v) !== null))
     if (archived === c.archived && !c.variations.some(unusable)) return c
     return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged', check: null } : v)) }
   })
@@ -729,7 +730,7 @@ function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[],
  * for entries that are new or changed. An item that also has a changed entry stays archived. Ids and the
  * holder are untouched, so unknown-item, foreign-usage and holder errors still apply to every entry.
  */
-function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next: PanelItem[]): Item[] {
+function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next: PanelItem[], strictSheets: boolean): Item[] {
   const pair = (entry: PanelItem): string => `${entry.itemId}/${entry.usageId}`
   const storedPairs = new Set(stored.map(pair))
   const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
@@ -738,7 +739,7 @@ function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next
   const keptItems = new Set(unchanged.map((entry) => entry.itemId).filter((id) => !changedItems.has(id)))
   return itemRoster.map((i) => {
     const archived = i.archived && !keptItems.has(i.id)
-    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && (!hasReadyUsage(u) || sheetCheckFailure(u) !== null)
+    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && (!hasReadyUsage(u) || (strictSheets && sheetCheckFailure(u) !== null))
     if (archived === i.archived && !i.usages.some(unusable)) return i
     return { ...i, archived, usages: i.usages.map((u) => (unusable(u) ? { ...u, status: 'ready' as const, imagePath: u.imagePath || 'unchanged', check: null } : u)) }
   })

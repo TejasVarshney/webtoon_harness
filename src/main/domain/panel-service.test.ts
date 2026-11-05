@@ -578,6 +578,36 @@ describe('PanelService update', () => {
     })
   })
 
+  it('keeps warning a person about an unchanged cast entry whose sheet failed its check, on every save', async () => {
+    const { svc, characters, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), USER)).panel
+    const stored = await characters.get(ctx, m.id)
+    const bad = { passed: false, issues: ['hair is black'], skipped: false }
+    await writeJsonAtomic(ctx.paths.characterFile(m.id), { ...stored, variations: stored.variations.map((v) => ({ ...v, check: bad })) })
+
+    for (const description of ['Mina waits.', 'Mina still waits.']) {
+      const { panel, warnings } = await svc.update(ctx, p.id, { description }, USER)
+      expect(panel.description).toBe(description)
+      expect(warnings).toEqual([expect.stringContaining('failed its sheet check: hair is black')])
+    }
+  })
+
+  it('keeps warning a person about an unchanged item entry whose sheet failed its check, on every save', async () => {
+    const { svc, items, epi, ctx } = await setup()
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), USER)).panel
+    const stored = await items.get(ctx, b.id)
+    const bad = { passed: false, issues: ['wrong barrel'], skipped: false }
+    await writeJsonAtomic(ctx.paths.itemFile(b.id), { ...stored, usages: stored.usages.map((u) => ({ ...u, check: bad })) })
+
+    for (const description of ['A door opens.', 'A door stays open.']) {
+      const { panel, warnings } = await svc.update(ctx, p.id, { description }, USER)
+      expect(panel.description).toBe(description)
+      expect(warnings).toEqual([expect.stringContaining('failed its sheet check: wrong barrel')])
+    }
+  })
+
   it('still reports an unknown character or foreign variation in an unchanged cast entry', async () => {
     const { svc, episodes, epi, ctx } = await setup()
     const m = await mina(ctx)

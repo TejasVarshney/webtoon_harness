@@ -35,6 +35,11 @@ test('a sheet that fails its check is flagged and warns when cast', async () => 
   await workspace.getByLabel('Character').selectOption({ label: 'Mina' })
   await expect(workspace.locator('.inspector-warnings')).toContainText('failed its sheet check')
 
+  // A later save of the same cast keeps the warning: the sheet is still failed.
+  await workspace.getByLabel('Action').fill('looking over the edge')
+  await expect.poll(async () => (await readProjectJson(projectsRoot, 'panels'))[0].characters[0].action).toBe('looking over the edge')
+  await expect(workspace.locator('.inspector-warnings')).toContainText('failed its sheet check')
+
   const [character] = await readProjectJson(projectsRoot, 'characters')
   expect(character.variations[0].check.passed).toBe(false)
   await app.close()
