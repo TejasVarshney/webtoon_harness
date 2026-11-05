@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Panel } from '@shared/types'
-import { panel } from '../../test/panel-fixtures'
-import { aspectRatio, layoutStrip, rowShares } from './strip-layout'
+import { panel, panelVersion } from '../../test/panel-fixtures'
+import { aspectRatio, exportRows, layoutStrip, rowShares } from '@shared/strip-layout'
 
 const p = (id: string, o: Partial<Panel> = {}): Panel => panel({ id, ...o })
 const ids = (rows: ReturnType<typeof layoutStrip>): string[][] => rows.map((r) => r.panels.map((x) => x.id))
@@ -52,6 +52,36 @@ describe('layoutStrip', () => {
     expect(rows[0].slants).toEqual({})
     expect(rows[1].slants).toEqual({ b: 'left' })
     expect(rows[2].slants).toEqual({ c: 'right' })
+  })
+})
+
+const finished = (id: string, o: Partial<Panel> = {}): Panel =>
+  p(id, { versions: [panelVersion({ id: 'v_' + id, status: 'ready' })], currentVersionId: 'v_' + id, ...o })
+const unfinished = (id: string, o: Partial<Panel> = {}): Panel => p(id, { versions: [], currentVersionId: null, ...o })
+
+describe('exportRows', () => {
+  it('keeps a beside panel in its own row when its row-starter is unfinished', () => {
+    const rows = exportRows([finished('a'), unfinished('b'), finished('c', { beside: true }), finished('d')])
+    expect(ids(rows)).toEqual([['a'], ['c'], ['d']])
+  })
+
+  it('drops a row left empty', () => {
+    expect(ids(exportRows([finished('a'), unfinished('b'), finished('c')]))).toEqual([['a'], ['c']])
+  })
+
+  it("takes gapAfter and gutter from the row's new last panel", () => {
+    const rows = exportRows([
+      finished('a', { gutter: 'white', gapAfter: 'long' }),
+      unfinished('b', { beside: true, gutter: 'black', gapAfter: 'tight' })
+    ])
+    expect(ids(rows)).toEqual([['a']])
+    expect(rows[0].gutter).toBe('white')
+    expect(rows[0].gapAfter).toBe('long')
+  })
+
+  it('keeps the slant the full layout gave', () => {
+    const rows = exportRows([unfinished('a', { frame: 'slanted' }), finished('b', { frame: 'slanted' })])
+    expect(rows[0].slants).toEqual({ b: 'right' })
   })
 })
 

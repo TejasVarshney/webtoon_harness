@@ -2,7 +2,7 @@ import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { InsertPanelButton } from './InsertPanelButton'
 import { PanelCard } from './PanelCard'
-import { layoutStrip, rowShares } from './strip-layout'
+import { layoutStrip, rowShares } from '@shared/strip-layout'
 
 export interface WebtoonStripProps {
   episodeId: string

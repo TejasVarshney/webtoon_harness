@@ -6,7 +6,7 @@ import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { PanelArt } from './PanelArt'
-import { aspectRatio } from './strip-layout'
+import { aspectRatio } from '@shared/strip-layout'
 
 export interface PanelCardProps {
   panel: Panel
