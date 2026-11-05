@@ -106,6 +106,7 @@ describe('ExportView', () => {
     const fs = (await import(/* @vite-ignore */ specifier)) as { readFileSync(file: string, encoding: 'utf8'): string }
     const css = fs.readFileSync('src/renderer/src/export.css', 'utf8').replace(/\s+/g, ' ')
     expect(css).toMatch(/html, body \{[^}]*width: 800px[^}]*overflow: hidden[^}]*background: #fff/)
+    expect(css).toMatch(/html, body, #root \{ height: auto; \}/)
     expect(css).toMatch(/\.webtoon-strip \{[^}]*padding: 0[^}]*width: 800px/)
     expect(css).toMatch(/\.strip-band \{[^}]*padding: 0[^}]*background: #fff/)
     expect(css).toMatch(/\.strip-band\[data-gutter='black'\] \{[^}]*background: #000/)
@@ -128,11 +129,18 @@ describe('waitForPaintAndMeasure', () => {
     })
     // jsdom loads nothing: an <img> counts as still loading, so only decode() decides.
     root.querySelectorAll('img').forEach((img) => Object.defineProperty(img, 'complete', { value: false }))
-    Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 151.5 })
+    // The strip ends at 151.5 px. A short strip leaves the document as tall as the 1280 px viewport, which must not count.
+    Object.defineProperty(root, 'offsetTop', { value: 0 })
+    Object.defineProperty(root, 'offsetHeight', { value: 151.5 })
+    Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 1280 })
     return root
   }
 
-  it('measures each band, rounded up, after decoding every image', async () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document.documentElement, 'scrollHeight')
+  })
+
+  it('measures each band, rounded up, after decoding every image, and ends at the strip, not the viewport', async () => {
     const root = strip()
     for (const img of root.querySelectorAll('img')) img.decode = () => Promise.resolve()
     expect(await waitForPaintAndMeasure(root)).toEqual({

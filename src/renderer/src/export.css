@@ -7,6 +7,14 @@ body {
   background: #fff;
 }
 
+/* styles.css makes these as tall as the window. Here they hug the strip, so the page scrolls through all of it and
+   #root's bottom is the strip's bottom (measure.ts). */
+html,
+body,
+#root {
+  height: auto;
+}
+
 .webtoon-strip {
   padding: 0;
   width: 800px;

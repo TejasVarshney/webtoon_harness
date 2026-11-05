@@ -40,6 +40,10 @@ interface Job {
   id: string
   projectId: string
   cancelled: boolean
+  /** The job's capturer, once created. */
+  capturer: StripCapturer | null
+  /** Its one `close()`, shared by a cancel and the run's own clean-up, so it is closed once. */
+  closing: Promise<void> | null
   /** Resolves once the job has fully ended (files cleaned up, capturer closed, terminal event sent). Never rejects. */
   settled: Promise<void>
 }
@@ -117,7 +121,7 @@ export class ExportService {
     // Claimed before the first await, so two starts at once cannot both pass.
     if (this.job) throw new Error('An export is already running')
     let settle!: () => void
-    const job: Job = { id: `exp_${randomUUID().replaceAll('-', '').slice(0, 10)}`, projectId: req.projectId, cancelled: false, settled: new Promise((r) => (settle = r)) }
+    const job: Job = { id: `exp_${randomUUID().replaceAll('-', '').slice(0, 10)}`, projectId: req.projectId, cancelled: false, capturer: null, closing: null, settled: new Promise((r) => (settle = r)) }
     this.job = job
     let plan: JobPlan
     try {
@@ -133,9 +137,12 @@ export class ExportService {
     return { jobId: job.id }
   }
 
-  /** Ask the job to stop. It stops before its next slice, removes its files and reports `cancelled`. */
+  /**
+   * Ask the job to stop. Its capturer is closed at once, which ends a render or capture in progress; otherwise it
+   * stops before its next slice. It removes its files and reports `cancelled`.
+   */
   cancel(jobId: string): void {
-    if (this.job?.id === jobId) this.job.cancelled = true
+    if (this.job?.id === jobId) this.stop(this.job)
   }
 
   /**
@@ -150,10 +157,22 @@ export class ExportService {
   async shutdown(): Promise<void> {
     const job = this.job
     if (!job) return
-    job.cancelled = true
+    this.stop(job)
     let timer: NodeJS.Timeout | undefined
     await Promise.race([job.settled, new Promise<void>((r) => (timer = setTimeout(r, SHUTDOWN_WAIT_MS)))])
     clearTimeout(timer)
+  }
+
+  private stop(job: Job): void {
+    job.cancelled = true
+    void this.closeCapturer(job)
+  }
+
+  /** Close the job's capturer once, however many ask. Never rejects. */
+  private closeCapturer(job: Job): Promise<void> {
+    if (!job.capturer) return Promise.resolve()
+    job.closing ??= job.capturer.close().catch((error: unknown) => console.warn('Export: closing the capturer failed', error))
+    return job.closing
   }
 
   private async plan(req: ExportRequest, target: string): Promise<JobPlan> {
@@ -210,14 +229,15 @@ export class ExportService {
 
     const parts = new PartFiles()
     const writer = createPresetWriter({ ...plan.writer, codec: this.opts.codec, parts })
-    let capturer: StripCapturer | null = null
     /** The final paths already put in place: these stay even if a later output fails. */
     const committed: string[] = []
     let outcome: Partial<ExportProgress>
     try {
       try {
-        capturer = this.opts.createCapturer()
+        const capturer = (job.capturer = this.opts.createCapturer())
         await writing(plan.outputDir, () => fs.promises.mkdir(plan.outputDir, { recursive: true }))
+        // A cancel during the mkdir has already closed the capturer: do not open it after that.
+        stopIfCancelled()
         await capturer.open()
         for (const [i, snapshot] of plan.snapshots.entries()) {
           stopIfCancelled()
@@ -239,13 +259,14 @@ export class ExportService {
         await this.commit(writer, parts, committed)
         outcome = { stage: 'done', outputs: committed }
       } finally {
-        await capturer?.close().catch((error: unknown) => console.warn('Export: closing the capturer failed', error))
+        await this.closeCapturer(job)
       }
     } catch (error) {
       await writer.abort()
       await parts.removeAll()
+      // A cancel closes the capturer, so the render or capture it interrupted rejects: that is still a cancel.
       outcome =
-        error instanceof Cancelled
+        error instanceof Cancelled || job.cancelled
           ? { stage: 'cancelled' }
           : { stage: 'failed', message: error instanceof Error ? error.message : String(error), outputs: committed }
     }

@@ -59,6 +59,9 @@ class FakeCapturer implements StripCapturer {
   failAt: number | null = null
   /** What it throws. */
   failWith: Error | null = null
+  /** While set, every render waits for it, or for `close`, which rejects it as the real capturer does. */
+  renderGate: Promise<void> | null = null
+  private readonly aborts = new Set<(error: Error) => void>()
 
   async open(): Promise<void> {
     this.opened++
@@ -67,6 +70,16 @@ class FakeCapturer implements StripCapturer {
   async render(snapshot: ExportSnapshot, timeoutMs: number): Promise<ViewLayout> {
     // A copy, as the real capturer serializes it: a later change to the job's objects must not show up here.
     this.renders.push({ snapshot: structuredClone(snapshot), timeoutMs })
+    if (this.renderGate) {
+      let abort!: (error: Error) => void
+      const aborted = new Promise<never>((_, reject) => (abort = reject))
+      this.aborts.add(abort)
+      try {
+        await Promise.race([this.renderGate, aborted])
+      } finally {
+        this.aborts.delete(abort)
+      }
+    }
     const rows = exportRows(snapshot.panels).map((_, i) => ({ top: i * this.rowHeight, bottom: (i + 1) * this.rowHeight }))
     return { totalHeight: rows.length * this.rowHeight, rows }
   }
@@ -80,6 +93,7 @@ class FakeCapturer implements StripCapturer {
 
   async close(): Promise<void> {
     this.closed++
+    for (const abort of this.aborts) abort(new Error('Export cancelled'))
   }
 }
 
@@ -498,6 +512,34 @@ describe('ExportService', () => {
     expect(await readdir(target)).toEqual(['one.pdf'])
     expect(await fs.promises.readFile(file, 'utf8')).toBe('old')
     expect(trashed).toEqual([])
+  })
+
+  it('cancel while a render is pending closes the capturer, which ends the render, and reports cancelled', async () => {
+    const { svc, capturer, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready', 'ready'])
+    // Never released: only closing the capturer can end this render, well before the job's render timeout.
+    capturer.renderGate = deferred().promise
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'pdf-reading' }), target)
+    await vi.waitFor(() => expect(capturer.renders).toHaveLength(1))
+    svc.cancel(jobId)
+    expect(await finished(jobId)).toMatchObject({ stage: 'cancelled', message: null, outputs: [] })
+    expect(capturer.captures).toEqual([])
+    expect(capturer.closed).toBe(1)
+    expect(await readdir(target)).toEqual([])
+  })
+
+  it('shutdown while a render is pending closes the capturer and returns once the job has cleaned up', async () => {
+    const { svc, capturer, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready'])
+    capturer.renderGate = deferred().promise
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'webtoon' }), target)
+    await vi.waitFor(() => expect(capturer.renders).toHaveLength(1))
+    const started = Date.now()
+    await svc.shutdown()
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect((await finished(jobId)).stage).toBe('cancelled')
+    expect(capturer.closed).toBe(1)
+    expect(await readdir(target)).toEqual([])
   })
 
   it('a capturer failure emits failed with its message, removes parts and closes the capturer', async () => {

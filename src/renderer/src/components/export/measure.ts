@@ -13,7 +13,8 @@ function decodeFailure(img: HTMLImageElement): Error {
 /**
  * Waits until what `root` holds is painted, then measures it: fonts ready, every image decoded (the first failure
  * rejects, naming its panel by `data-position`), two animation frames, then each `.strip-band`'s top and bottom in
- * CSS px, rounded up, and the document's height. Call after React has committed.
+ * CSS px, rounded up, and the bottom of `root` itself. `root` must be as tall as its content (export.css). Call after
+ * React has committed.
  */
 export async function waitForPaintAndMeasure(root: HTMLElement): Promise<ViewLayout> {
   await document.fonts?.ready
@@ -34,5 +35,6 @@ export async function waitForPaintAndMeasure(root: HTMLElement): Promise<ViewLay
     top: Math.ceil(band.offsetTop),
     bottom: Math.ceil(band.offsetTop + band.offsetHeight)
   }))
-  return { totalHeight: Math.ceil(document.documentElement.scrollHeight), rows }
+  // The strip's own bottom: a short strip leaves the document as tall as the viewport, which would add blank space.
+  return { totalHeight: Math.ceil(root.offsetTop + root.offsetHeight), rows }
 }
