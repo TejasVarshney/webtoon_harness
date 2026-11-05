@@ -144,8 +144,9 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
    * changed, so a panel that casts a since-archived character, or a variation whose regeneration
    * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
    * Items work the same way: an unchanged item and usage pair is grandfathered, and the unknown-item,
-   * foreign-usage and holder errors apply to every entry. It also clears a failed sheet check on
-   * an unchanged pair, so editing a panel never blocks a cast it already had.
+   * foreign-usage and holder errors apply to every entry. With `strictSheets` it also clears a failed
+   * sheet check on an unchanged pair, so an agent editing a panel is never blocked by a cast it already had. Without
+   * it the check stays: the person editing keeps seeing the warning on every save, since the sheet is still failed.
    */
   async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
@@ -169,7 +170,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters), grandfatherUnchangedItems(itemRoster, current.items, merged.items), {
+      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters, opts.strictSheets), grandfatherUnchangedItems(itemRoster, current.items, merged.items, opts.strictSheets), {
         strictMentions: opts.strictMentions,
         strictSheets: opts.strictSheets
       })
