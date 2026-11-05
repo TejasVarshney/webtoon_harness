@@ -135,6 +135,7 @@ describe('ExportDialog', () => {
     await user.click(screen.getByTestId('export-start'))
     await screen.findByTestId('export-progress')
     act(() => emit(progress({ jobId: 'other', episodeIndex: 0, episodeCount: 9, slice: 5, sliceCount: 6 })))
+    expect(screen.getByTestId('export-progress')).not.toHaveTextContent('of 9')
     act(() => emit(progress({ episodeIndex: 1, episodeCount: 3, slice: 14, sliceCount: 31 })))
     expect(screen.getByTestId('export-progress')).toHaveTextContent('Episode 2 of 3, slice 14 of 31')
   })
