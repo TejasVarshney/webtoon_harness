@@ -1,6 +1,7 @@
 import type { Services } from '../services'
 import { agentHandlers } from './handlers/agent'
 import { charactersHandlers } from './handlers/characters'
+import { exportHandlers, type ChooseExportTarget } from './handlers/export'
 import { docsHandlers, type OpenPath } from './handlers/docs'
 import { itemsHandlers } from './handlers/items'
 import { modelsHandlers } from './handlers/models'
@@ -19,6 +20,10 @@ export interface IpcDeps {
   pickImageFiles?: PickFiles
   /** Opens a file in the system's default app (`shell.openPath`); resolves to an error message, '' on success. */
   openPath?: OpenPath
+  /** Shows the save dialog (a file or a folder) over the window that sent the event; resolves to the chosen absolute path, null on cancel. */
+  chooseExportTarget?: ChooseExportTarget
+  /** Shows a path in the system file manager (`shell.showItemInFolder`). */
+  showItemInFolder?: (absPath: string) => void
 }
 
 export interface IpcRegistrar {
@@ -39,6 +44,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...storyHandlers(services),
     ...docsHandlers(services, { openPath: deps.openPath }),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles }),
+    ...exportHandlers(services, { chooseExportTarget: deps.chooseExportTarget, showItemInFolder: deps.showItemInFolder }),
     ...pluginsHandlers(services)
   }
   for (const [channel, fn] of Object.entries(handlers)) {

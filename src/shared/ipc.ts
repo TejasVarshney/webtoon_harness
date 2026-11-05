@@ -10,6 +10,8 @@ import type {
   EndpointConfig,
   EndpointKind,
   Episode,
+  ExportInspection,
+  ExportRequest,
   Item,
   ItemInput,
   ItemPatch,
@@ -168,6 +170,13 @@ export interface IpcContract {
   'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
+  /** Per episode: its panel counts and the unfinished panels, for the export dialog. */
+  'export:inspect': { req: { projectId: string; episodeIds: string[] }; res: ExportInspection }
+  /** Asks where to save (a file or a folder, by preset), then starts the job. `{ cancelled: true }` when the dialog is dismissed. Rejects with a readable message when nothing can be exported or a job is running. */
+  'export:start': { req: ExportRequest; res: { jobId: string } | { cancelled: true } }
+  'export:cancel': { req: { jobId: string }; res: void }
+  /** Shows the job's first output in the file manager; does nothing when the job has none. Takes no path. */
+  'export:reveal': { req: { jobId: string }; res: void }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -247,7 +256,11 @@ const channelSet: Record<IpcChannel, true> = {
   'claudeCode:connectCommand': true,
   'claudeCode:regenerateToken': true,
   'claudeCode:detect': true,
-  'app:setActiveContext': true
+  'app:setActiveContext': true,
+  'export:inspect': true,
+  'export:start': true,
+  'export:cancel': true,
+  'export:reveal': true
 }
 
 export const IPC_CHANNELS = Object.keys(channelSet) as IpcChannel[]
