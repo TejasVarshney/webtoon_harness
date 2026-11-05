@@ -46,7 +46,7 @@ Two optional sentences end the `[STYLE]` line, each after a space. A panel gets 
 How the template bends:
 
 - **[CHARACTERS]** has one line per cast entry, in cast order. With an empty cast, nothing follows the [CHARACTERS] line.
-- **Empty parts are left out** of a cast line. A variation with no delta reads "Look: Base." (no dash). An empty `action` leaves out "Action: ...", an empty `expression` leaves out "Expression: ...". `Position:` is always there (default center).
+- **Empty parts are left out** of a cast line. A variation with no delta reads "Look: Base." (no dash). An empty `action` leaves out "Action: ...", An empty `expression` leaves out "Expression: ...", an empty `position` leaves out "Position: ..." (the default is center).
 - **No reference image:** when the variation has no ready image, or its image was dropped for the reference limit, "(reference image {n})" reads "(no reference image)".
 - **[CONTINUITY]** appears only when the previous panel in the episode has a ready image. Without it (first panel of an episode, or a previous panel with no ready image), your `continuityNotes` are not in the prompt at all. An empty `continuityNotes` leaves the line ending at "consistent."
 - **[FIX]** is added as a last line only when the app redraws a panel after a failed consistency check: "[FIX] Fix these consistency issues: {issue 1}; {issue 2}".
@@ -57,9 +57,10 @@ Reference images, in this order:
 
 1. each cast member's variation image, in cast order;
 2. the image of the usage each attached item uses, in panel order (only when the panel has items);
-3. the previous panel's current image.
+3. the user's layout sketch (only when the panel has one);
+4. the previous panel's current image.
 
-The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the previous panel's image is dropped first, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)". This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
+The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
 
 Worked example. The project style is the default, Jin wears his base variation (no delta) and Mina wears "Outfit: School uniform"; the previous panel has a ready image:
 
@@ -115,6 +116,18 @@ Worked example. Jin fires the Kestrel blaster (usage "Firing") while Mina ducks;
 ```
 
 Reference images sent: 1 = Jin's base image, 2 = Mina's school-uniform image, 3 = the blaster's "Firing" image, 4 = the previous panel's current image. With a cap of 3, the previous panel is dropped first: the [CONTINUITY] line then reads "the previous panel (no reference image)". With a cap of 2, the blaster is dropped too: its line reads "- Kestrel blaster (no reference image): ..." and keeps its lock, but its look and use can drift.
+
+### Panel Prompt with a layout sketch
+
+The user can scribble a rough layout of the panel in editing mode (Sketch). When the panel has a sketch, a [LAYOUT] line follows the [CHARACTERS] lines (and [ITEMS], when there are items) and comes before [CONTINUITY]:
+
+```
+[LAYOUT] Follow the rough composition of the sketch (reference image {s}): where the figures and objects sit, their poses, the camera angle and the framing. It is a rough guide only: never copy its scribbled lines, flat colours or blank background, and draw everything in the style above.
+```
+
+- **Only a generation sends it.** `edit_panel_image` keeps the image's own composition, so an edit gets no sketch and no [LAYOUT] line.
+- **The consistency check never sees it.** The checker compares the picture with the cast, the items and the previous panel; the sketch is a guide, not something to match.
+- **Write the description to agree with it.** The sketch says where things are; the description says what happens. When they disagree, the image model has to guess.
 
 ## Base Reference Prompt
 

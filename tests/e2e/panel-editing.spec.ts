@@ -275,3 +275,81 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   expect(dropped.y >= shown.top - 1 && dropped.y < Math.min(shown.bottom, height), 'the row came into view in the scroll area').toBe(true)
   await app.close()
 })
+
+// A zoomed stage moves with a middle-button drag, or with Space held and a left drag; the hand shows while Space is
+// held, Space presses no focused button, and neither drag touches the lines. Without Space a double-click still adds one.
+test('a zoomed panel moves with the middle button, or with Space and a drag', async () => {
+  const { app, page } = await launchApp()
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('img')).toHaveCount(1)
+
+  const zoom = workspace.getByRole('group', { name: 'Zoom' })
+  const level = zoom.getByRole('button', { name: /^Zoom \d+%/ })
+  for (let i = 0; i < 4; i++) await zoom.getByRole('button', { name: 'Zoom in' }).click()
+  await expect(level).toHaveText('244%')
+  const viewport = workspace.getByTestId('stage-viewport')
+  const scroll = (): Promise<[number, number]> => viewport.evaluate((el: any) => [el.scrollLeft, el.scrollTop])
+  const room: [number, number] = await viewport.evaluate((el: any) => [el.scrollWidth - el.clientWidth, el.scrollHeight - el.clientHeight])
+  expect(Math.max(...room), 'the zoomed panel overflows its stage').toBeGreaterThan(80)
+  const view = (await viewport.boundingBox())!
+  const cx = view.x + view.width / 2
+  const cy = view.y + view.height / 2
+  const big = room[0] >= room[1] ? 0 : 1
+  /** After a drag by (40, 40): each axis went back by 40, or as far as its edge, and the one with the most room moved. */
+  const movedBack = (from: [number, number], to: [number, number]): void => {
+    for (const axis of [0, 1]) expect(Math.abs(Math.min(room[axis], Math.max(0, from[axis] - 40)) - to[axis]), `axis ${axis} followed the pointer`).toBeLessThanOrEqual(1)
+    expect(to[big]).not.toBe(from[big])
+  }
+
+  // The middle button.
+  let before = await scroll()
+  await page.mouse.move(cx, cy)
+  await page.mouse.down({ button: 'middle' })
+  await page.mouse.move(cx + 40, cy + 40, { steps: 5 })
+  await page.mouse.up({ button: 'middle' })
+  movedBack(before, await scroll())
+
+  // The panel's edge stops it: a drag past the top left corner leaves it at the corner, still in sight.
+  await viewport.evaluate((el: any) => {
+    el.scrollLeft = 10
+    el.scrollTop = 10
+  })
+  await page.mouse.move(cx, cy)
+  await page.mouse.down({ button: 'middle' })
+  await page.mouse.move(cx + 200, cy + 200, { steps: 5 })
+  await page.mouse.up({ button: 'middle' })
+  expect(await scroll()).toEqual([0, 0])
+  await viewport.evaluate((el: any, [left, top]) => {
+    el.scrollLeft = left
+    el.scrollTop = top
+  }, [room[0] / 2, room[1] / 2])
+
+  // Space and the left button: the Zoom in button still has the focus, and Space does not press it.
+  before = await scroll()
+  await page.mouse.move(cx, cy)
+  await page.keyboard.down('Space')
+  await expect(viewport).toHaveAttribute('data-pan', 'ready')
+  expect(await stage.locator('.panel-media').evaluate((el: any) => (globalThis as any).getComputedStyle(el).cursor)).toBe('grab')
+  await page.mouse.down()
+  await expect(viewport).toHaveAttribute('data-pan', 'panning')
+  await page.mouse.move(cx + 40, cy + 40, { steps: 5 })
+  await page.mouse.up()
+  movedBack(before, await scroll())
+  // A double-click while Space is held is two pans, not a new line.
+  await page.mouse.dblclick(cx, cy)
+  await page.keyboard.up('Space')
+  await expect(viewport).not.toHaveAttribute('data-pan')
+  await expect(level).toHaveText('244%')
+  await expect(stage.getByRole('textbox', { name: 'Line text' })).toHaveCount(0)
+
+  // Without Space, a double-click on the panel adds a line, as before.
+  await page.mouse.dblclick(cx, cy)
+  await expect(stage.getByRole('textbox', { name: 'Line text' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await app.close()
+})

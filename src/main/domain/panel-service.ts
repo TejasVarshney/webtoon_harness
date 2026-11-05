@@ -259,12 +259,13 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const itemRoster = await this.itemRoster(ctx)
       const previous = readyImage(await this.previousOf(ctx, panel))
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, maxReferences })
+      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
-      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references, retries: meta.consistencyRetries }
+      // The checker compares the picture with the cast, items and previous panel; the sketch is only a layout guide.
+      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await this.record(ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -337,6 +338,50 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     })
     this.emit(ctx, id)
     return version
+  }
+
+  /**
+   * Stores the user's layout sketch (a PNG) under a new name, so versions drawn from an older sketch keep pointing at
+   * it, or forgets it with `null`. Generation sends it as a reference (see `composePanelPrompt`); edits do not.
+   */
+  async saveSketch(ctx: ProjectContext, id: string, png: Buffer | null): Promise<Panel> {
+    const file = ctx.paths.panelFile(id)
+    const next = await ctx.mutex.run(file, async () => {
+      const current = await this.get(ctx, id)
+      let sketchPath: string | null = null
+      if (png !== null) {
+        // Time first, so names sort by age; the random tail keeps two saves in one millisecond apart.
+        sketchPath = `panels/${id}/sketch-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`
+        await writeFileAtomic(ctx.paths.resolveAsset(sketchPath), png)
+      }
+      const valid = PanelSchema.parse({ ...current, sketchPath, updatedAt: now() })
+      try {
+        await writeJsonAtomic(file, valid)
+      } catch (error) {
+        if (sketchPath !== null) await fs.promises.rm(ctx.paths.resolveAsset(sketchPath), { force: true }).catch(() => undefined)
+        throw error
+      }
+      // The sketch it replaces goes, unless a version was drawn from it (its referenceImagePaths name it).
+      const old = current.sketchPath
+      if (old && old !== sketchPath && !current.versions.some((v) => v.referenceImagePaths.includes(old))) {
+        await fs.promises.rm(ctx.paths.resolveAsset(old), { force: true }).catch(() => undefined)
+      }
+      return valid
+    })
+    this.emit(ctx, id)
+    return next
+  }
+
+  /** The bytes of the panel's layout sketch, or `null` when it has none (or its file is gone). */
+  async readSketch(ctx: ProjectContext, id: string): Promise<Buffer | null> {
+    const { sketchPath } = await this.get(ctx, id)
+    if (!sketchPath) return null
+    try {
+      return await fs.promises.readFile(ctx.paths.resolveAsset(sketchPath))
+    } catch (error) {
+      if (isNotFound(error)) return null
+      throw error
+    }
   }
 
   /** Makes a ready version current. No version is deleted. */

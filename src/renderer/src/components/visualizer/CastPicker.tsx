@@ -1,8 +1,5 @@
-import { PanelPositionSchema } from '@shared/schemas'
 import type { Character, PanelCharacter, Variation } from '@shared/types'
 import { Field } from '../characters/controls'
-
-const POSITIONS = PanelPositionSchema.options
 
 /** Only a variation with an image on disk can stand in as a reference (the same rule the server applies). */
 function isReady(v: Variation): boolean {
@@ -84,15 +81,7 @@ export function CastPicker({ characters, value, onChange }: CastPickerProps) {
               <Field label="Action">{(id) => <input id={id} value={row.action} placeholder="e.g. turning" onChange={(e) => update(i, { action: e.target.value })} />}</Field>
               <Field label="Expression">{(id) => <input id={id} value={row.expression} placeholder="e.g. curious" onChange={(e) => update(i, { expression: e.target.value })} />}</Field>
               <Field label="Position">
-                {(id) => (
-                  <select id={id} value={row.position} onChange={(e) => update(i, { position: e.target.value as PanelCharacter['position'] })}>
-                    {POSITIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                {(id) => <input id={id} value={row.position} placeholder="e.g. left, background" onChange={(e) => update(i, { position: e.target.value })} />}
               </Field>
             </div>
             <button type="button" onClick={() => onChange(value.filter((_, j) => j !== i))}>

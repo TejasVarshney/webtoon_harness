@@ -1343,6 +1343,13 @@ kbd {
   margin-left: auto;
 }
 
+/* Sketch, while the stage shows the sketch. */
+.editing-actions button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 .editing-error {
   flex: none;
   margin: 8px 0 0;
@@ -1419,6 +1426,79 @@ kbd {
 
 .panel-stage:focus {
   outline: none;
+}
+
+/* The zoom bar, and in sketch mode the tool rail and actions, sit on the stage itself, over its scrolling viewport. */
+.panel-stage {
+  position: relative;
+}
+
+/* The panel scrolls inside the stage once it is zoomed past the fit. Margin auto centres it while it fits and lets
+   every edge be scrolled to once it does not. */
+.stage-viewport {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.stage-viewport > .stage-fit {
+  margin: auto;
+}
+
+/* A zoomed stage moves with a middle-button drag, or a drag with Space held (useStagePan). While it does, the hand is
+   the only cursor: nothing under it is pressed, so a bubble's grab or the sketch's crosshair would say otherwise. */
+.stage-viewport[data-pan='ready'],
+.stage-viewport[data-pan='ready'] * {
+  cursor: grab !important;
+}
+
+.stage-viewport[data-pan='panning'],
+.stage-viewport[data-pan='panning'] * {
+  cursor: grabbing !important;
+}
+
+.stage-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.stage-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  pointer-events: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.stage-zoom-controls .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-zoom-level {
+  min-width: 52px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border-color: transparent;
+}
+
+.stage-zoom-level:disabled {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .stage-fit {
@@ -2844,16 +2924,10 @@ kbd {
 }
 
 .endpoint-form .inline-label,
-.model-form .inline-label,
-.panel-editor-form .inline-label {
+.model-form .inline-label {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-}
-
-/* A lone checkbox in the editor's column sits at the start of its line, not centred. */
-.panel-editor-form .inline-label {
-  align-self: flex-start;
 }
 
 .notice-info {
@@ -2945,35 +3019,9 @@ kbd {
   min-width: 0;
 }
 
-/* --- Panel editor ----------------------------------------------------------------------------------- */
-
-.panel-editor {
-  width: min(580px, 92vw);
-  max-height: 88vh;
-  overflow: auto;
-}
-
-.panel-editor-form fieldset {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.panel-editor-form .layout-group,
-.panel-editor-form .cast-picker,
-.panel-editor-form .item-picker,
-.panel-editor-form .dialogue-editor {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
+/* --- Cast and line rows ------------------------------------------------------------------------------ */
 
 .cast-row,
-.dialogue-row,
 .line-row {
   display: flex;
   flex-direction: column;
@@ -2987,18 +3035,149 @@ kbd {
   margin: 0;
 }
 
-.panel-editor-error p {
+/* --- Sketch stage ------------------------------------------------------------------------------------ */
+
+/* The tool rail sits in the stage's own left padding, so the fit (which reads that padding) never puts the panel under it. */
+.sketch-stage {
+  position: relative;
+  padding-left: 56px;
+}
+
+.sketch-tools {
+  position: absolute;
+  top: var(--pad);
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* A short window scrolls the rail rather than cutting it off. */
+  max-height: calc(100% - 2 * var(--pad));
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.sketch-tools .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sketch-tools .icon-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sketch-tools-gap {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border);
+}
+
+.sketch-dot {
+  display: block;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.sketch-dot[data-size='fine'] {
+  width: 3px;
+  height: 3px;
+}
+
+.sketch-dot[data-size='medium'] {
+  width: 7px;
+  height: 7px;
+}
+
+.sketch-dot[data-size='bold'] {
+  width: 12px;
+  height: 12px;
+}
+
+.sketch-media {
+  background: #fff;
+}
+
+/* The panel's picture, faint, under the sketch's transparent canvas, to trace over. */
+.sketch-underlay {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.sketch-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.sketch-canvas[data-tool='eraser'] {
+  cursor: cell;
+}
+
+.sketch-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+.sketch-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.sketch-actions button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.sketch-status {
   margin: 0;
+  padding: 2px 6px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: var(--radius-control);
 }
 
-.panel-editor-outcome p {
-  margin: 0 0 4px;
+.sketch-status:empty {
+  display: none;
 }
 
-.panel-editor-warnings {
-  margin: 0 0 4px;
-  padding-left: 18px;
-  font-size: 13px;
+/* A panel with a sketch and no image yet shows the sketch, faintly, where the image will be. */
+.panel-sketch-preview {
+  position: absolute;
+  inset: 0;
+  background: #fff center / contain no-repeat;
+  opacity: 0.45;
+}
+
+.insert-panel {
+  flex-wrap: wrap;
+}
+
+.insert-panel-error {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: var(--fs-small);
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {

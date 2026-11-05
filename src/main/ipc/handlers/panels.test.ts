@@ -323,3 +323,27 @@ describe('panels:uploadImage', () => {
     expect(picker).not.toHaveBeenCalled()
   })
 })
+
+describe('panels:saveSketch and panels:readSketch', () => {
+  const dataUrl = (bytes: Buffer): string => `data:image/png;base64,${bytes.toString('base64')}`
+
+  it('stores a PNG data URL as the sketch, reads it back as one, and forgets it with null', async () => {
+    const { h, projectId, draft, get, ctx } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft({ description: '' }), generate: false })
+    expect(await h['panels:readSketch']({ projectId, panelId: panel.id })).toBeNull()
+    const saved = await h['panels:saveSketch']({ projectId, panelId: panel.id, png: dataUrl(PNG) })
+    expect(saved.sketchPath).toMatch(/^panels\/pnl_[0-9a-f]{10}\/sketch-[a-z0-9]+\.png$/)
+    expect(fs.readFileSync(ctx.paths.resolveAsset(saved.sketchPath!))).toEqual(PNG)
+    expect(await h['panels:readSketch']({ projectId, panelId: panel.id })).toBe(dataUrl(PNG))
+    expect((await h['panels:saveSketch']({ projectId, panelId: panel.id, png: null })).sketchPath).toBeNull()
+    expect((await get(panel.id)).versions).toEqual([])
+  })
+
+  it('refuses anything that is not a PNG data URL, and leaves the panel untouched', async () => {
+    const { h, projectId, draft, get } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: false })
+    await expect(h['panels:saveSketch']({ projectId, panelId: panel.id, png: 'data:image/jpeg;base64,AAAA' })).rejects.toThrow()
+    await expect(h['panels:saveSketch']({ projectId, panelId: panel.id, png: dataUrl(Buffer.from('not a png at all')) })).rejects.toThrow('Sketch is not a PNG image')
+    expect((await get(panel.id)).sketchPath ?? null).toBeNull()
+  })
+})

@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { DialogueLine } from '@shared/types'
 import { errorText } from '../characters/controls'
-import type { DialogueDraftLine } from '../visualizer/DialogueEditor'
+import type { DialogueDraftLine } from './dialogue-edits'
 import { queuePanelSave } from './panel-save-queue'
 
 /** What became of a save: sent and kept, not sent because the line changed, refused by the service, or not sent because the panel is gone (R2). */

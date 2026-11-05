@@ -40,7 +40,7 @@ The cast is the `characters` list. One entry per visible named character:
 - `characterId`, `variationId`: copy them from `<project_state>` or `list_characters`.
 - `action`: what this character does in this frame, a short phrase.
 - `expression`: their face in this frame: "wide-eyed", "smiling softly", "crying". This is where per-panel emotions go, not in a variation.
-- `position`: `left`, `center`, `right` or `background`. Default `center`. Give two characters different positions.
+- `position`: where they stand, in a few words: `left`, `center`, `right`, `background`, or something finer such as `far left, half in shadow`. Default `center`. Speech bubbles go to the side it names (`left` or `right`, else the centre). Give two characters different positions.
 - Write `action` and `expression` as short phrases without a final period: the app adds one.
 
 Rules:

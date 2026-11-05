@@ -14,7 +14,7 @@ import {
   type RefObject
 } from 'react'
 import type { BubblePlacement, DialogueLine, Panel } from '@shared/types'
-import type { DialogueDraftLine } from '../visualizer/DialogueEditor'
+import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
 import { DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, centreOf, nudgePlacement, placementFromPointer, type Box } from './bubble-placement'
 import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'

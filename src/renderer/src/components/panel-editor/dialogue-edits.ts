@@ -1,9 +1,11 @@
 import type { DialogueLine } from '@shared/types'
-import type { DialogueDraftLine } from '../visualizer/DialogueEditor'
 
 // Dialogue patches for the editing mode. Each is built from the panel's lines as the store has them when the save is
 // sent, and sends the whole array: line ids change on every dialogue save, so a line is found by its index, and
 // checked by what it says. Pure: no React, so the rules are easy to test.
+
+/** A dialogue line before it is stored; the server gives it its id. */
+export type DialogueDraftLine = Omit<DialogueLine, 'id'>
 
 /** What a line said when an edit of it began. If the line at its index says anything else now, the edit is not sent. */
 export type LineIdentity = Pick<DialogueLine, 'speakerId' | 'kind' | 'text'>

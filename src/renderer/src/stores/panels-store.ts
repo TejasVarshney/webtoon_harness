@@ -45,6 +45,10 @@ export interface PanelsActions {
   revertPanel(id: string, versionId: string): Promise<Panel>
   /** Opens the file dialog in main; resolves to `null` when it is cancelled. */
   uploadPanelImage(id: string): Promise<PanelVersion | null>
+  /** Stores the layout sketch (a PNG data URL), or forgets it with `null`, and reloads the panel's episode. */
+  saveSketch(id: string, png: string | null): Promise<Panel>
+  /** The stored sketch as a PNG data URL, or `null`. */
+  readSketch(id: string): Promise<string | null>
 }
 
 export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null }
@@ -201,6 +205,16 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       const stored = await api.invoke('panels:uploadImage', { projectId: requireProject(), panelId: id })
       if (stored !== null) await reload(episodeOf(id))
       return stored
+    },
+
+    async saveSketch(id, png) {
+      const panel = await api.invoke('panels:saveSketch', { projectId: requireProject(), panelId: id, png })
+      await reload(panel.episodeId)
+      return panel
+    },
+
+    readSketch(id) {
+      return api.invoke('panels:readSketch', { projectId: requireProject(), panelId: id })
     }
   }
 })

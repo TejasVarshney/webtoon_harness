@@ -506,4 +506,300 @@ describe('PanelWorkspace', () => {
     act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [second, first] } }))
     expect(within(workspace()).getByRole('heading', { level: 1 })).toHaveTextContent('Panel 1 of 2')
   })
+
+  describe('sketch mode', () => {
+    const blank = panel({ id: B, description: '', setting: '', characters: [], dialogue: [], versions: [], currentVersionId: null })
+    const PNG_URL = 'data:image/png;base64,SKETCH'
+
+    /** The shapes the sketch canvas was asked to draw, by kind. */
+    let drawn: string[] = []
+
+    /**
+     * jsdom has no 2D canvas: a stand-in for each canvas that knows only whether it holds ink. The sketch canvas starts
+     * transparent; the paper canvas a save draws on is filled white and gets the ink drawn onto it.
+     */
+    function fakeCanvas(): void {
+      drawn = []
+      const contexts = new WeakMap<HTMLCanvasElement, unknown>()
+      const make = (record: boolean) => {
+        let inked = false
+        const ctx = {
+          fillStyle: '',
+          strokeStyle: '',
+          globalCompositeOperation: 'source-over',
+          lineWidth: 1,
+          lineCap: '',
+          lineJoin: '',
+          clearRect: () => {
+            inked = false
+          },
+          fillRect: () => undefined,
+          beginPath: () => undefined,
+          arc: () => undefined,
+          moveTo: () => undefined,
+          lineTo: () => {
+            if (record) drawn.push('lineTo')
+          },
+          rect: () => {
+            if (record) drawn.push('rect')
+          },
+          ellipse: () => {
+            if (record) drawn.push('ellipse')
+          },
+          fill: () => {
+            if (ctx.globalCompositeOperation === 'source-over') inked = true
+          },
+          stroke: () => {
+            if (ctx.globalCompositeOperation === 'source-over') inked = true
+          },
+          drawImage: () => {
+            inked = true
+          },
+          putImageData: (d: { inked: boolean }) => {
+            inked = d.inked
+          },
+          getImageData: (_x: number, _y: number, w: number, h: number) => {
+            const data = new Uint8ClampedArray(w * h * 4)
+            if (inked) data[3] = 255
+            return { data, width: w, height: h, inked }
+          }
+        }
+        return ctx
+      }
+      let first = true
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+        if (!contexts.has(this)) {
+          // The first canvas asked is the sketch's own; any later one is the white paper of a save.
+          contexts.set(this, make(first))
+          first = false
+        }
+        return contexts.get(this) as never
+      })
+      vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(PNG_URL)
+    }
+    afterEach(() => vi.restoreAllMocks())
+
+    function stroke(): void {
+      const canvas = screen.getByTestId('sketch-canvas')
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 })
+      fireEvent.pointerMove(canvas, { clientX: 9, clientY: 12 })
+      fireEvent.pointerUp(canvas, { clientX: 9, clientY: 12 })
+    }
+
+    const withBlank = (): void => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, blank, third] } })
+
+    it('opens a panel never drawn on its sketch, with Generate, and a drawn one on its picture', () => {
+      withBlank()
+      mount({ 'panels:readSketch': () => null })
+      expect(screen.getByTestId('sketch-stage')).toBeInTheDocument()
+      expect(screen.queryByTestId('panel-stage')).toBeNull()
+      expect(within(header()).getByRole('button', { name: 'Sketch' })).toHaveAttribute('aria-pressed', 'true')
+      expect(within(header()).getByRole('button', { name: 'Generate' })).toBeInTheDocument()
+      // The inspector is there for the rest of the panel.
+      expect(within(workspace()).getByRole('tab', { name: 'Scene' })).toBeInTheDocument()
+      act(() => useAppStore.getState().selectPanel(C))
+      expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
+      expect(within(header()).getByRole('button', { name: 'Regenerate' })).toBeInTheDocument()
+    })
+
+    it('switches between the sketch and the picture with Sketch', async () => {
+      mount({ 'panels:readSketch': () => null })
+      expect(screen.queryByTestId('sketch-stage')).toBeNull()
+      await userEvent.click(within(header()).getByRole('button', { name: 'Sketch' }))
+      expect(screen.getByTestId('sketch-stage')).toBeInTheDocument()
+      await userEvent.click(within(header()).getByRole('button', { name: 'Sketch' }))
+      expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
+    })
+
+    it('stores each stroke, and Generate waits for it and then shows the attempt', async () => {
+      fakeCanvas()
+      withBlank()
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const { calls } = mount({
+        'panels:readSketch': () => null,
+        'panels:saveSketch': async () => {
+          await gate
+          return { ...blank, sketchPath: `panels/${B}/sketch-1.png` }
+        },
+        // As the service does: the attempt is on the panel, pending, by the time the strip reloads.
+        'panels:generate': () => {
+          const pending = panelVersion({ id: 'ver_00000000p1', status: 'pending', imagePath: null })
+          usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...blank, versions: [pending] }, third] } })
+        }
+      })
+      stroke()
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(1))
+      expect(calls.find((c) => c.channel === 'panels:saveSketch')?.req).toEqual({ projectId: P, panelId: B, png: PNG_URL })
+      await userEvent.click(within(header()).getByRole('button', { name: 'Generate' }))
+      // The redraw waits for the stroke to be stored.
+      expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+      release()
+      await waitFor(() => expect(calls.some((c) => c.channel === 'panels:generate')).toBe(true))
+      expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
+    })
+
+    it('forgets the sketch when it is cleared, and brings the last stroke back on Undo', async () => {
+      fakeCanvas()
+      withBlank()
+      const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: null }) })
+      const tools = within(screen.getByRole('toolbar', { name: 'Sketch tools' }))
+      expect(tools.getByRole('button', { name: 'Undo stroke' })).toBeDisabled()
+      stroke()
+      await userEvent.click(within(screen.getByTestId('sketch-stage')).getByRole('button', { name: 'New sketch' }))
+      await userEvent.click(tools.getByRole('button', { name: 'Undo stroke' }))
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(3))
+      expect(calls.filter((c) => c.channel === 'panels:saveSketch').map((c) => (c.req as { png: string | null }).png)).toEqual([PNG_URL, null, PNG_URL])
+    })
+
+    it('draws a shape the pointer drags out, and stores it; a click with a shape tool leaves nothing', async () => {
+      fakeCanvas()
+      withBlank()
+      const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: `panels/${B}/sketch-1.png` }) })
+      const tools = within(screen.getByRole('toolbar', { name: 'Sketch tools' }))
+      const canvas = screen.getByTestId('sketch-canvas')
+      fireEvent.click(tools.getByRole('button', { name: 'Ellipse' }))
+      expect(tools.getByRole('button', { name: 'Ellipse' })).toHaveAttribute('aria-pressed', 'true')
+      expect(tools.getByRole('button', { name: 'Pen' })).toHaveAttribute('aria-pressed', 'false')
+      // A click: no shape, no save, nothing to undo.
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 })
+      fireEvent.pointerUp(canvas, { clientX: 5, clientY: 5 })
+      expect(drawn).toEqual([])
+      expect(tools.getByRole('button', { name: 'Undo stroke' })).toBeDisabled()
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 })
+      fireEvent.pointerMove(canvas, { clientX: 20, clientY: 30 })
+      fireEvent.pointerMove(canvas, { clientX: 25, clientY: 40 })
+      fireEvent.pointerUp(canvas, { clientX: 25, clientY: 40 })
+      // Each move redraws the shape over the canvas from before it.
+      expect(drawn).toEqual(['ellipse', 'ellipse'])
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(1))
+      expect(tools.getByRole('button', { name: 'Undo stroke' })).toBeEnabled()
+      fireEvent.click(tools.getByRole('button', { name: 'Rectangle' }))
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 })
+      fireEvent.pointerMove(canvas, { clientX: 20, clientY: 30 })
+      fireEvent.pointerUp(canvas, { clientX: 20, clientY: 30 })
+      fireEvent.click(tools.getByRole('button', { name: 'Line' }))
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 5, clientY: 5 })
+      fireEvent.pointerMove(canvas, { clientX: 20, clientY: 30 })
+      fireEvent.pointerUp(canvas, { clientX: 20, clientY: 30 })
+      expect(drawn).toEqual(['ellipse', 'ellipse', 'rect', 'lineTo'])
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(3))
+    })
+
+    it('moves a zoomed sketch with a middle-button drag, and draws nothing', async () => {
+      fakeCanvas()
+      withBlank()
+      const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: `panels/${B}/sketch-1.png` }) })
+      const v = screen.getByTestId('sketch-viewport')
+      for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
+      Object.defineProperty(v, 'scrollLeft', { configurable: true, writable: true, value: 100 })
+      Object.defineProperty(v, 'scrollTop', { configurable: true, writable: true, value: 100 })
+      const canvas = screen.getByTestId('sketch-canvas')
+      fireEvent.pointerDown(canvas, { button: 1, buttons: 4, clientX: 50, clientY: 50 })
+      fireEvent.pointerMove(v, { buttons: 4, clientX: 80, clientY: 90 })
+      fireEvent.pointerUp(v, { button: 1, clientX: 80, clientY: 90 })
+      expect([v.scrollLeft, v.scrollTop]).toEqual([70, 60])
+      expect(drawn).toEqual([])
+      expect(within(screen.getByRole('toolbar', { name: 'Sketch tools' })).getByRole('button', { name: 'Undo stroke' })).toBeDisabled()
+      await act(async () => undefined)
+      expect(calls.some((c) => c.channel === 'panels:saveSketch')).toBe(false)
+      // A left drag still draws.
+      stroke()
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(1))
+      expect(within(screen.getByRole('toolbar', { name: 'Sketch tools' })).getByRole('button', { name: 'Undo stroke' })).toBeEnabled()
+    })
+
+    it('zooms in and out in steps, within its limits, and back to the fit', async () => {
+      withBlank()
+      mount({ 'panels:readSketch': () => null })
+      const zoom = within(screen.getByRole('group', { name: 'Zoom' }))
+      const level = (): HTMLElement => zoom.getByRole('button', { name: /^Zoom \d+%/ })
+      expect(level()).toHaveTextContent('100%')
+      expect(level()).toBeDisabled()
+      await userEvent.click(zoom.getByRole('button', { name: 'Zoom in' }))
+      await userEvent.click(zoom.getByRole('button', { name: 'Zoom in' }))
+      expect(level()).toHaveTextContent('156%')
+      await userEvent.click(level())
+      expect(level()).toHaveTextContent('100%')
+      for (let i = 0; i < 4; i++) await userEvent.click(zoom.getByRole('button', { name: 'Zoom out' }))
+      expect(level()).toHaveTextContent('50%')
+      expect(zoom.getByRole('button', { name: 'Zoom out' })).toBeDisabled()
+    })
+
+    it('zooms the panel stage too, and keeps the zoom when the stage switches to the sketch and back', async () => {
+      mount({ 'panels:readSketch': () => null })
+      const level = (): HTMLElement => within(screen.getByRole('group', { name: 'Zoom' })).getByRole('button', { name: /^Zoom \d+%/ })
+      expect(within(screen.getByTestId('panel-stage')).getByRole('group', { name: 'Zoom' })).toBeInTheDocument()
+      await userEvent.click(within(screen.getByRole('group', { name: 'Zoom' })).getByRole('button', { name: 'Zoom in' }))
+      expect(level()).toHaveTextContent('125%')
+      await userEvent.click(within(header()).getByRole('button', { name: 'Sketch' }))
+      expect(within(screen.getByTestId('sketch-stage')).getByRole('group', { name: 'Zoom' })).toBeInTheDocument()
+      expect(level()).toHaveTextContent('125%')
+      await userEvent.click(within(header()).getByRole('button', { name: 'Sketch' }))
+      expect(level()).toHaveTextContent('125%')
+      // The next panel starts at the fit.
+      await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+      expect(level()).toHaveTextContent('100%')
+    })
+
+    it('sketches over a drawn panel with its picture faintly under the canvas, which Picture hides', async () => {
+      fakeCanvas()
+      const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...second, sketchPath: `panels/${B}/sketch-1.png` }) })
+      await userEvent.click(within(header()).getByRole('button', { name: 'Sketch' }))
+      const underlay = screen.getByTestId('sketch-underlay')
+      expect(underlay.style.backgroundImage).toContain(`panels/${B}/ver.png`)
+      const stage = within(screen.getByTestId('sketch-stage'))
+      await userEvent.click(stage.getByRole('button', { name: 'Picture' }))
+      expect(screen.queryByTestId('sketch-underlay')).toBeNull()
+      await userEvent.click(stage.getByRole('button', { name: 'Picture' }))
+      expect(screen.getByTestId('sketch-underlay')).toBeInTheDocument()
+      // The stroke is stored as ink on paper, never with the picture.
+      stroke()
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(1))
+      expect(calls.find((c) => c.channel === 'panels:saveSketch')?.req).toEqual({ projectId: P, panelId: B, png: PNG_URL })
+    })
+
+    it('has no Picture toggle on a panel without a picture', () => {
+      withBlank()
+      mount({ 'panels:readSketch': () => null })
+      expect(within(screen.getByTestId('sketch-stage')).queryByRole('button', { name: 'Picture' })).toBeNull()
+      expect(screen.queryByTestId('sketch-underlay')).toBeNull()
+    })
+
+    it('offers New sketch once there is ink, and wipes it all', async () => {
+      fakeCanvas()
+      withBlank()
+      const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: null }) })
+      const fresh = (): HTMLElement => within(screen.getByTestId('sketch-stage')).getByRole('button', { name: 'New sketch' })
+      expect(fresh()).toBeDisabled()
+      stroke()
+      stroke()
+      await waitFor(() => expect(fresh()).toBeEnabled())
+      await userEvent.click(fresh())
+      await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(3))
+      expect((calls.filter((c) => c.channel === 'panels:saveSketch').at(-1)?.req as { png: string | null }).png).toBeNull()
+      expect(fresh()).toBeDisabled()
+    })
+
+    it('loads the stored sketch onto the canvas', async () => {
+      fakeCanvas()
+      withBlank()
+      const { calls } = mount({ 'panels:readSketch': () => PNG_URL })
+      await waitFor(() => expect(calls.some((c) => c.channel === 'panels:readSketch')).toBe(true))
+      expect(calls.find((c) => c.channel === 'panels:readSketch')?.req).toEqual({ projectId: P, panelId: B })
+    })
+
+    it('says when a stroke could not be stored', async () => {
+      fakeCanvas()
+      withBlank()
+      mount({
+        'panels:readSketch': () => null,
+        'panels:saveSketch': () => {
+          throw new Error('disk full')
+        }
+      })
+      stroke()
+      expect(await screen.findByText('Sketch not saved: disk full')).toBeInTheDocument()
+    })
+  })
 })

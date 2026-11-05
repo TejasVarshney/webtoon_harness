@@ -465,6 +465,39 @@ describe('PanelStage', () => {
     expect(bubble(1)).toBeInTheDocument()
   })
 
+  it('moves a zoomed panel with Space and a drag over a bubble, without selecting, dragging or adding one', async () => {
+    const { calls, onSelectLine } = mount()
+    const v = screen.getByTestId('stage-viewport')
+    // Zoomed past the fit: the viewport shows 300 by 200 of a 1000 by 1000 panel.
+    for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
+    Object.defineProperty(v, 'scrollLeft', { configurable: true, writable: true, value: 0 })
+    Object.defineProperty(v, 'scrollTop', { configurable: true, writable: true, value: 0 })
+    onSelectLine.mockClear()
+
+    fireEvent.pointerEnter(v)
+    fireEvent.keyDown(document.body, { key: ' ', code: 'Space' })
+    expect(v).toHaveAttribute('data-pan', 'ready')
+    fireEvent.pointerDown(bubble(0), { button: 0, clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(v, { clientX: 10, clientY: 5, buttons: 1 })
+    fireEvent.pointerUp(v, { button: 0, clientX: 10, clientY: 5 })
+    fireEvent.click(bubble(0))
+    expect([v.scrollLeft, v.scrollTop]).toEqual([40, 20])
+    // A double-click on the empty panel with Space held is two pans, not a new line.
+    fireEvent.pointerDown(media(), { button: 0, buttons: 1 })
+    fireEvent.pointerUp(v, { button: 0 })
+    fireEvent.doubleClick(media(), { clientX: 200, clientY: 300 })
+    fireEvent.keyUp(document.body, { key: ' ', code: 'Space' })
+    await act(async () => undefined)
+    expect(bubble(0)).toHaveAttribute('data-selected', 'false')
+    expect(within(stage()).queryByRole('textbox', { name: 'Line text' })).toBeNull()
+    expect(onSelectLine).not.toHaveBeenCalled()
+    expect(updates(calls)).toEqual([])
+
+    // Without Space a press is the bubble's again.
+    await userEvent.click(bubble(0))
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+  })
+
   it('never calls a model: selecting, dragging, nudging, retyping, adding and deleting only save the dialogue (No AI)', async () => {
     const { calls } = mount()
     await userEvent.click(bubble(1))

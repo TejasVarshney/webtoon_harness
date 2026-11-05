@@ -72,7 +72,12 @@ export function PanelArt({ panel, editing, mode = 'edit', lettering = true }: Pa
     <>
       <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
         {imagePath !== null && projectId !== null && <img src={assetUrl(projectId, imagePath)} alt={panel.description} draggable={false} />}
-        {panel.versions.length === 0 && <div className="panel-empty">No image yet</div>}
+        {/* Until there is an image, the layout sketch stands in for it, faintly. */}
+        {imagePath === null && panel.sketchPath && projectId !== null && (
+          // A background, not an <img>: everything that counts a card's images means its drawn picture.
+          <div className="panel-sketch-preview" data-testid="panel-sketch-preview" style={{ backgroundImage: `url("${assetUrl(projectId, panel.sketchPath)}")` }} />
+        )}
+        {panel.versions.length === 0 && <div className="panel-empty">{panel.sketchPath ? 'Sketch only' : 'No image yet'}</div>}
         <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} editing={editing} />
         {generating && (
           <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">

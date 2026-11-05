@@ -49,7 +49,8 @@ export const PanelAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16
 export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
 export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])
 export const PanelGutterSchema = z.enum(['white', 'black'])
-export const PanelPositionSchema = z.enum(['left', 'center', 'right', 'background'])
+/** Where a cast member stands, in the user's words ("left", "far right, half in shadow", "background"). */
+export const PanelPositionSchema = z.string()
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
 export const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
 export const BeatStatusSchema = z.enum(['planned', 'drawn', 'dropped'])
@@ -292,6 +293,8 @@ export const PanelSchema = z.object({
   offPanelMentions: z.array(z.string()).default([]),
   versions: z.array(PanelVersionSchema).default([]),
   currentVersionId: Id.nullable().default(null),
+  /** The user's rough layout sketch (`panels/<pnlId>/sketch-<n>.png`), a reference for generation only. Absent or null: none. */
+  sketchPath: z.string().nullable().optional(),
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
