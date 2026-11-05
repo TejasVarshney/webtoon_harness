@@ -5,8 +5,7 @@ const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
 
 /** Make text usable as a file name: no path or control characters, no trailing dots or spaces, no reserved names. */
 export function safeFileName(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  let name = text.replace(/[<>:"/\|?*\u0000-\u001f]/g, '').trim()
+  let name = text.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim()
   name = name.slice(0, MAX_NAME).replace(/[. ]+$/, '')
   if (!name) return 'Untitled'
   // Windows reserves these even with an extension (CON.txt), so test the part before the first dot.

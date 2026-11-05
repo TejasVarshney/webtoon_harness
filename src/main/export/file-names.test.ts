@@ -3,7 +3,11 @@ import { outputNames, safeFileName } from './file-names'
 
 describe('safeFileName', () => {
   it('strips <>:"/\|?* and control characters', () => {
-    expect(safeFileName('a<b>c:d"e/f\g|h?i*j\u0001k\u001fl')).toBe('abcdefghijkl')
+    expect(safeFileName('a<b>c:d"e/f\\g|h?i*j\u0001k\u001fl')).toBe('abcdefghijkl')
+  })
+
+  it('strips a backslash', () => {
+    expect(safeFileName('a\\b')).toBe('ab')
   })
 
   it('trims trailing dots and spaces', () => {
