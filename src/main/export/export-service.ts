@@ -231,6 +231,8 @@ export class ExportService {
     const writer = createPresetWriter({ ...plan.writer, codec: this.opts.codec, parts })
     /** The final paths already put in place: these stay even if a later output fails. */
     const committed: string[] = []
+    /** Past the last cancel check: a cancel can no longer stop the run, so it must not relabel how it ends. */
+    let committing = false
     let outcome: Partial<ExportProgress>
     try {
       try {
@@ -256,6 +258,7 @@ export class ExportService {
         await writer.finish()
         // The last chance to stop: past here the outputs replace what was there.
         stopIfCancelled()
+        committing = true
         await this.commit(writer, parts, committed)
         outcome = { stage: 'done', outputs: committed }
       } finally {
@@ -266,7 +269,7 @@ export class ExportService {
       await parts.removeAll()
       // A cancel closes the capturer, so the render or capture it interrupted rejects: that is still a cancel.
       outcome =
-        error instanceof Cancelled || job.cancelled
+        error instanceof Cancelled || (job.cancelled && !committing)
           ? { stage: 'cancelled' }
           : { stage: 'failed', message: error instanceof Error ? error.message : String(error), outputs: committed }
     }

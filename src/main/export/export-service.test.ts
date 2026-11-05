@@ -621,6 +621,26 @@ describe('ExportService', () => {
     expect(await readdir(target)).toEqual([path.basename(first), path.basename(second)])
   })
 
+  it('a cancel during the commit does not hide a later failure or the outputs already placed', async () => {
+    const { svc, addEpisode, req, finished, target, lockedFromTrash } = await setup()
+    const one = await addEpisode('The Rooftop', ['ready'])
+    const two = await addEpisode('The Fall', ['ready'])
+    const first = path.join(target, 'Moon Tower - 01 - The Rooftop.pdf')
+    const second = path.join(target, 'Moon Tower - 02 - The Fall.pdf')
+    await fs.promises.writeFile(second, 'old two')
+    lockedFromTrash.add(second)
+    let jobId = ''
+    const rename = fs.promises.rename
+    // Cancel is pressed as the first output is put in place: too late to stop, so the run carries on and fails.
+    vi.spyOn(fs.promises, 'rename').mockImplementationOnce(async (from, to) => {
+      svc.cancel(jobId)
+      return rename(from, to)
+    })
+    jobId = (await svc.start(req({ episodeIds: [one.episode.id, two.episode.id], preset: 'pdf-reading' }), target)).jobId
+    expect(await finished(jobId)).toMatchObject({ stage: 'failed', message: `Could not write ${second}: EBUSY: resource busy or locked`, outputs: [first] })
+    expect(svc.outputsOf(jobId)).toEqual([first])
+  })
+
   it('a rename failure on the second output keeps the first and removes the second part', async () => {
     const { svc, addEpisode, req, finished, target } = await setup()
     const one = await addEpisode('The Rooftop', ['ready'])
