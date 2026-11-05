@@ -19,7 +19,7 @@ async function exportActiveEpisode(page: Page, preset: string, expectUnfinished:
     await expect(anyway).toBeVisible()
     await anyway.click()
   } else {
-    await expect(dialog.getByTestId('export-progress')).toBeVisible()
+    // Not export-progress: it is gone again once a short job is done.
     await expect(anyway).toHaveCount(0)
   }
   await expect(dialog.getByText('Exported.')).toBeVisible({ timeout: 90_000 })
