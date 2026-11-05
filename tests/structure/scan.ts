@@ -112,8 +112,8 @@ export function missingDocRefs(markdown: string, exists: (repoPath: string) => b
   return missing
 }
 
-// The labels of finished plans and rulings: `Ruling T18f`, `Review Focus 2`, `spec §9`, `Task 25`, `(I4)`, `// R3:`.
-const PLAN_LABEL = /\b[Rr]uling [A-Z]\d|\bReview Focus\b|§\s?\d|\bTask \d+\b|\([CFIPRT]\d{1,2}[a-z]?[,)]|\/\/ [CFIPRT]\d{1,2}:/g
+// The labels of finished plans and rulings: `Ruling T18f`, `Ruling 3`, `Review Focus 2`, `spec §9`, `Task 25`, `(I4)`, `// R3:`, ` * I1:`.
+const PLAN_LABEL = /\b[Rr]uling [A-Z]?\d|\bReview Focus\b|§\s?\d|\bTask \d+\b|\([CFIPRT]\d{1,2}[a-z]?[,)]|(?:^\s*\*|\/\/|\/\*\*?)\s*[CFIPRT]\d{1,2}[a-z]?:/gm
 
 export function stalePointers(source: string): string[] {
   return source.match(PLAN_LABEL) ?? []

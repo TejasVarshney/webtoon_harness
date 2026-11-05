@@ -95,7 +95,7 @@ describe('missingDocRefs', () => {
 
 describe('stalePointers', () => {
   it('flags plan labels', () => {
-    for (const s of ['Ruling T18f: x', 'ruling R18', 'Review Focus 2', 'spec §9', '§ 6.1', '(Task 25)', '(I4)', '(R2)', '(C1, with a provider)', '// I6: requests', '// R3: events']) {
+    for (const s of ['Ruling T18f: x', 'ruling R18', 'Ruling 3', ' * I1: main records', '/** F4: x */', 'x() // R3: y', 'Review Focus 2', 'spec §9', '§ 6.1', '(Task 25)', '(I4)', '(R2)', '(C1, with a provider)', '// I6: requests', '// R3: events']) {
       expect(stalePointers(s), s).not.toEqual([])
     }
   })
