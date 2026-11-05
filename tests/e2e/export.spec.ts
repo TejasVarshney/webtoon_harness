@@ -5,8 +5,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { readZip } from '../../src/main/test/read-zip'
 import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat, writeProjectJson } from './helpers'
 
-/** Runs the export dialog for the active episode with one preset, confirms an "unfinished panels" warning if it shows, and waits for it to finish. */
-async function exportActiveEpisode(page: Page, preset: string): Promise<void> {
+/** Runs the export dialog for the active episode with one preset, confirms the "unfinished panels" warning when `expectUnfinished` (and asserts it is absent otherwise), and waits for it to finish. */
+async function exportActiveEpisode(page: Page, preset: string, expectUnfinished: boolean): Promise<void> {
   await page.getByTestId('export-open').click()
   const dialog = page.getByTestId('export-dialog')
   await expect(dialog).toBeVisible()
@@ -15,7 +15,13 @@ async function exportActiveEpisode(page: Page, preset: string): Promise<void> {
   await expect(start).toBeEnabled()
   await start.click()
   const anyway = dialog.getByTestId('export-anyway')
-  if (await anyway.isVisible()) await anyway.click()
+  if (expectUnfinished) {
+    await expect(anyway).toBeVisible()
+    await anyway.click()
+  } else {
+    await expect(dialog.getByTestId('export-progress')).toBeVisible()
+    await expect(anyway).toHaveCount(0)
+  }
   await expect(dialog.getByText('Exported.')).toBeVisible({ timeout: 90_000 })
   await expect(dialog.getByTestId('export-reveal')).toBeVisible()
   await dialog.getByRole('button', { name: 'Close' }).click()
@@ -80,7 +86,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   expect(episode.panelIds).toHaveLength(4)
   const thirdId: string = episode.panelIds[2]
 
-  await exportActiveEpisode(first.page, 'webtoon')
+  await exportActiveEpisode(first.page, 'webtoon', false)
   const folderA = (await readdir(targetA)).filter((n) => n.startsWith('Moon Diary - 01 - '))
   expect(folderA).toHaveLength(1)
   const slicesA = await slicesOf(first.app, join(targetA, folderA[0]))
@@ -116,14 +122,15 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   await expect(page.getByTestId('panel-card')).toHaveCount(4)
 
   // 3. Panel 3's row is gone from the webtoon export.
-  await exportActiveEpisode(page, 'webtoon')
+  await exportActiveEpisode(page, 'webtoon', true)
   const folderB = (await readdir(targetB)).filter((n) => n.startsWith('Moon Diary - 01 - ') && !n.endsWith('.cbz') && !n.endsWith('.pdf'))
   expect(folderB).toHaveLength(1)
   const slicesB = await slicesOf(app, join(targetB, folderB[0]))
+  expect(slicesB.length).toBeGreaterThan(0)
   expect(total(slicesB)).toBeLessThan(heightA)
 
   // 4. The CBZ holds numbered JPEGs and a ComicInfo.xml.
-  await exportActiveEpisode(page, 'cbz')
+  await exportActiveEpisode(page, 'cbz', true)
   const cbz = (await readdir(targetB)).filter((n) => n.endsWith('.cbz'))
   expect(cbz).toHaveLength(1)
   const entries = readZip(await readFile(join(targetB, cbz[0])))
@@ -135,7 +142,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   expect(entries.find((e) => e.name === 'ComicInfo.xml')!.data.toString('utf8')).toContain('<Number>1</Number>')
 
   // 5. The reading PDF has one page per slice.
-  await exportActiveEpisode(page, 'pdf-reading')
+  await exportActiveEpisode(page, 'pdf-reading', true)
   const pdf = (await readdir(targetB)).filter((n) => n.endsWith('.pdf'))
   expect(pdf).toHaveLength(1)
   const pdfText = (await readFile(join(targetB, pdf[0]))).toString('latin1')
