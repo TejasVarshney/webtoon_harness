@@ -137,6 +137,10 @@ export interface IpcContract {
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
   'panels:uploadImage': { req: { projectId: string; panelId: string }; res: PanelVersion | null }
+  /** Stores the layout sketch, a `data:image/png;base64,` URL, as a new file; `null` forgets it. It never touches the image. */
+  'panels:saveSketch': { req: { projectId: string; panelId: string; png: string | null }; res: Panel }
+  /** The layout sketch as a `data:image/png;base64,` URL (a canvas can read it back, unlike an asset URL), or `null`. */
+  'panels:readSketch': { req: { projectId: string; panelId: string }; res: string | null }
   /** A panel's chat thread, oldest first; empty until the first message. */
   'panelChat:load': { req: { projectId: string; panelId: string }; res: ChatMessage[] }
   /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
@@ -239,6 +243,8 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:move': true,
   'panels:revert': true,
   'panels:uploadImage': true,
+  'panels:saveSketch': true,
+  'panels:readSketch': true,
   'panelChat:load': true,
   'panelChat:send': true,
   'panelChat:cancel': true,

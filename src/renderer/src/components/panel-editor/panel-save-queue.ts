@@ -85,13 +85,7 @@ function caughtUp(stored: Panel | undefined, queue: Queue): boolean {
  * saves queued after it. `by` (a field's name, or `dialogue`) is what made the save: its warnings show there.
  */
 export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[], by: string): Promise<SaveResult | null> {
-  const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, runs: new Set(), latest: null }
-  queues.set(panelId, queue)
-  queue.waiting += 1
-  const run = queue.tail.then(async () => {
-    const stored = findPanel(panelId)
-    if (stored === undefined) return null
-    const panel = caughtUp(stored, queue) ? stored : queue.latest!
+  return enqueue(panelId, async (panel, queue) => {
     let result: SaveResult | null = null
     for (const patch of build(panel)) {
       result = await usePanelsStore.getState().updatePanel(panelId, patch)
@@ -99,6 +93,30 @@ export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPa
       recordWarnings(panelId, by, result.warnings)
     }
     return result
+  })
+}
+
+/**
+ * Stores the panel's layout sketch (a PNG data URL, or `null` to forget it) in turn with its other saves, so a redraw
+ * that waits on `whenSaved` is drawn from the last stroke. Resolves to `null` when the panel left the store.
+ */
+export function queueSketchSave(panelId: string, png: string | null): Promise<SaveResult | null> {
+  return enqueue(panelId, async (_panel, queue) => {
+    const panel = await usePanelsStore.getState().saveSketch(panelId, png)
+    queue.latest = panel
+    return { panel, warnings: [] }
+  })
+}
+
+/** Runs `work` once the panel's saves queued before it have settled, with the panel as the last of them left it. */
+function enqueue(panelId: string, work: (panel: Panel, queue: Queue) => Promise<SaveResult | null>): Promise<SaveResult | null> {
+  const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, runs: new Set(), latest: null }
+  queues.set(panelId, queue)
+  queue.waiting += 1
+  const run = queue.tail.then(async () => {
+    const stored = findPanel(panelId)
+    if (stored === undefined) return null
+    return work(caughtUp(stored, queue) ? stored : queue.latest!, queue)
   })
   queue.runs.add(run)
   const settle = (): void => {

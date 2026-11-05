@@ -381,6 +381,18 @@ describe('PanelInspector', () => {
       expect(updates(calls)).toHaveLength(1)
     })
 
+    it('takes a position as free text, saved trimmed', async () => {
+      fakeTimers()
+      const { calls } = mount()
+      open('Cast')
+      const position = within(tabPanel()).getByRole('textbox', { name: 'Position' })
+      fireEvent.change(position, { target: { value: ' far left, half in shadow ' } })
+      await wait(600)
+      vi.useRealTimers()
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)).toEqual([{ characters: [{ ...cast[0], position: 'far left, half in shadow' }] }])
+    })
+
     it('lets go of what a removed cast member held, in an items save sent before the cast', async () => {
       stored = { ...stored, items: [held] }
       usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })

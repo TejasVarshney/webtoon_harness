@@ -1635,6 +1635,61 @@ describe('PanelService uploadImage and revert', () => {
   })
 })
 
+describe('PanelService layout sketch', () => {
+  const sketchFiles = (ctx: ProjectContext, id: string): string[] => {
+    const dir = ctx.paths.resolveAsset(`panels/${id}`)
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith('sketch-')) : []
+  }
+
+  it('stores a sketch under a new name and forgets it with null, removing a file nothing was drawn from', async () => {
+    const { svc, epi, ctx, events } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { description: '' }), USER)).panel
+    events.length = 0
+    const first = await svc.saveSketch(ctx, p.id, PNG)
+    expect(first.sketchPath).toMatch(new RegExp(`^panels/${p.id}/sketch-[a-z0-9]+\.png$`))
+    expect(fs.readFileSync(ctx.paths.resolveAsset(first.sketchPath!))).toEqual(PNG)
+    expect(await svc.readSketch(ctx, p.id)).toEqual(PNG)
+    expect(events.some((e) => e.type === 'panel.changed')).toBe(true)
+    // A later sketch replaces it; the old file goes, as no version was drawn from it.
+    await new Promise((r) => setTimeout(r, 2))
+    const second = await svc.saveSketch(ctx, p.id, nextPng())
+    expect(second.sketchPath).not.toBe(first.sketchPath)
+    expect(sketchFiles(ctx, p.id)).toEqual([second.sketchPath!.split('/').at(-1)])
+    const cleared = await svc.saveSketch(ctx, p.id, null)
+    expect(cleared.sketchPath).toBeNull()
+    expect(sketchFiles(ctx, p.id)).toEqual([])
+    expect(await svc.readSketch(ctx, p.id)).toBeNull()
+    // Nothing else about the panel changed.
+    expect({ ...cleared, sketchPath: undefined, updatedAt: p.updatedAt }).toEqual({ ...p, sketchPath: undefined })
+  })
+
+  it('draws from the sketch, keeps a sketch a version was drawn from, and never shows it to the checker or to edits', async () => {
+    const { svc, epi, ctx, calls, vision, behavior } = await setup({ vision: true })
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), USER)).panel
+    const { sketchPath } = await svc.saveSketch(ctx, p.id, PNG)
+    vision.replies.push(PASS)
+    const v = await svc.generate(ctx, p.id)
+    expect(v.referenceImagePaths).toEqual([m.imagePath, sketchPath])
+    expect(v.prompt).toContain('[LAYOUT] Follow the rough composition of the sketch (reference image 2)')
+    expect(calls[0].req.references.map((r) => r.label)).toEqual(['Mina', 'layout sketch'])
+    expect((vision.requests[0].messages[0] as { imagePaths: string[] }).imagePaths).toEqual([m.imagePath, v.imagePath])
+    // The version names the sketch, so a new sketch leaves that file in place.
+    await new Promise((r) => setTimeout(r, 2))
+    await svc.saveSketch(ctx, p.id, nextPng())
+    expect(fs.existsSync(ctx.paths.resolveAsset(sketchPath!))).toBe(true)
+    behavior.edit = async () => ({ mime: 'image/png', data: nextPng() })
+    const edited = await svc.editImage(ctx, p.id, 'make it rain')
+    expect(edited.referenceImagePaths).toEqual([m.imagePath])
+    expect(edited.prompt).not.toContain('[LAYOUT]')
+  })
+
+  it('refuses an unknown panel', async () => {
+    const { svc, ctx } = await setup()
+    await expect(svc.saveSketch(ctx, 'pnl_ffffffffff', PNG)).rejects.toThrow()
+  })
+})
+
 describe('PanelService delete, move and usage', () => {
   it('delete trashes the JSON, image folder and side chat, and removes the panel from its episode', async () => {
     const { svc, episodes, epi, ctx, trashed, events } = await setup()

@@ -143,7 +143,7 @@ function normalizeField<K extends AutosaveField>(field: K, value: Panel[K]): Pan
     case 'setting':
       return (value as string).trim() as Panel[K]
     case 'characters':
-      return (value as PanelCharacter[]).map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position })) as Panel[K]
+      return (value as PanelCharacter[]).map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position.trim() })) as Panel[K]
     case 'items':
       return (value as PanelItem[]).map((i) => ({ itemId: i.itemId, usageId: i.usageId, heldBy: i.heldBy, action: i.action.trim() })) as Panel[K]
     default:

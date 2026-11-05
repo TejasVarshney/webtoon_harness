@@ -52,7 +52,13 @@ export function bubbleShape(line: Pick<DialogueLine, 'kind' | 'text'>): BubbleSh
   }
 }
 
-const SIDE_OF: Record<PanelCharacter['position'], BubbleSide> = { left: 'left', center: 'center', right: 'right', background: 'center' }
+/** The side a free-text position leans to: "left" or "right" when it says one of them alone, else the centre. */
+export function sideOfPosition(position: PanelCharacter['position']): BubbleSide {
+  const words = position.toLowerCase()
+  const left = /\bleft\b/.test(words)
+  const right = /\bright\b/.test(words)
+  return left === right ? 'center' : left ? 'left' : 'right'
+}
 const FLIP: Record<BubbleSide, BubbleSide> = { left: 'right', center: 'right', right: 'left' }
 
 /**
@@ -61,7 +67,7 @@ const FLIP: Record<BubbleSide, BubbleSide> = { left: 'right', center: 'right', r
  * takes a side nobody in the cast stands on and points its tail out of the frame.
  */
 export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): BubbleLayout[] {
-  const castSide = new Map(cast.map((c) => [c.characterId, SIDE_OF[c.position]]))
+  const castSide = new Map(cast.map((c) => [c.characterId, sideOfPosition(c.position)]))
   const occupied = new Set(castSide.values())
   const freeSide: BubbleSide = (['right', 'left', 'center'] as const).find((s) => !occupied.has(s)) ?? 'center'
   const speakerSide = new Map<string, BubbleSide>()

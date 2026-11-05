@@ -143,7 +143,7 @@ describe('Panel', () => {
   it('defaults panel character fields', () => {
     const pc = PanelCharacterSchema.parse({ characterId: 'chr_0000000001', variationId: 'var_0000000001' })
     expect(pc).toEqual({ characterId: 'chr_0000000001', variationId: 'var_0000000001', action: '', expression: '', position: 'center' })
-    expect(() => PanelCharacterSchema.parse({ ...pc, position: 'top' })).toThrow()
+    expect(PanelCharacterSchema.parse({ ...pc, position: 'far left, half in shadow' }).position).toBe('far left, half in shadow')
   })
 
   it('validates dialogue lines', () => {

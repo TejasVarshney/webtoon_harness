@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, PencilLine } from 'lucide-react'
 import { Group, Panel as Column, Separator } from 'react-resizable-panels'
 import { staleVisualFields } from '@shared/visual-fields'
 import { useAppStore } from '../../stores/app-store'
@@ -11,6 +11,7 @@ import { layoutStrip, rowShares } from '@shared/strip-layout'
 import { PanelInspector } from './PanelInspector'
 import { whenSaved } from './panel-save-queue'
 import { PanelStage } from './PanelStage'
+import { SketchStage } from './SketchStage'
 import { staleNotice } from './stale-notice'
 
 export interface PanelWorkspaceProps {
@@ -29,6 +30,8 @@ function backToStrip(): void {
 
 /**
  * Editing mode: one panel over the whole sheet, the panel and its controls on the left and its chat on the right.
+ * The stage shows the panel, or in sketch mode (Sketch, and a panel never drawn) a canvas for a rough layout sketch that
+ * the next generation follows.
  * The panel comes from the open episode's strip, so the agent's edits show here as they land. A panel that leaves the
  * episode keeps the frame and the way back (R2): nothing closes by itself, and nothing is saved for it.
  * Back, or Escape, returns to the strip.
@@ -45,6 +48,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   // The selected line, by index: a bubble on the stage or a row of Lines, each following the other. It belongs to the
   // panel it was chosen on, so stepping to another panel starts with none.
   const [lineSelection, setLineSelection] = useState<{ panelId: string; index: number | null } | null>(null)
+  // Sketch mode, as the user last chose it for this panel. Until they choose, a panel that was never drawn opens on its
+  // sketch, and one with an attempt (pending, failed or ready) shows that attempt.
+  const [sketchChoice, setSketchChoice] = useState<{ panelId: string; on: boolean } | null>(null)
+  // The stage's zoom, relative to the fit: one per open panel, kept when the stage switches between picture and sketch.
+  const [zoomState, setZoomState] = useState<{ panelId: string; zoom: number } | null>(null)
 
   // Panels of another project must never show here, whatever the store still holds.
   const loaded = storeProjectId === projectId && episodesLoaded && (activeEpisodeId === null || panels !== undefined)
@@ -57,6 +65,9 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const busy = action?.panelId === panelId && action.busy
   const error = action?.panelId === panelId ? action.error : null
   const selectedLine = lineSelection?.panelId === panelId ? lineSelection.index : null
+  const zoom = zoomState?.panelId === panelId ? zoomState.zoom : 1
+  const setZoom = (next: number): void => setZoomState({ panelId, zoom: next })
+  const sketching = panel !== undefined && (sketchChoice?.panelId === panelId ? sketchChoice.on : panel.versions.length === 0)
   // Laid out as in the strip: its share of its row, and the way it leans there.
   const row = panel === undefined ? undefined : layoutStrip(panels ?? []).find((r) => r.panels.some((p) => p.id === panel.id))
   const share = panel === undefined || row === undefined ? 1 : rowShares(row.panels)[panel.id]
@@ -101,7 +112,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
       )
   }
 
-  const regenerate = (id: string): void => run(id, () => usePanelsStore.getState().generatePanel(id))
+  // Drawing shows the attempt it starts, whichever mode the stage was in.
+  const regenerate = (id: string): void => {
+    setSketchChoice(null)
+    run(id, () => usePanelsStore.getState().generatePanel(id))
+  }
   const select = (id: string): void => useAppStore.getState().selectPanel(id)
   const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
 
@@ -129,11 +144,15 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                   <div className="editing-actions">
                     {/* Keyed, so a revert that failed or is still running stays with the panel it ran for. */}
                     <VersionSwitcher key={panel.id} panel={panel} />
+                    <button type="button" aria-pressed={sketching} title="Scribble the scene as a layout guide for the image" onClick={() => setSketchChoice({ panelId: panel.id, on: !sketching })}>
+                      <PencilLine size={14} aria-hidden="true" />
+                      Sketch
+                    </button>
                     <button type="button" disabled={busy} onClick={() => run(panel.id, () => usePanelsStore.getState().uploadPanelImage(panel.id))}>
                       Upload image…
                     </button>
                     <button type="button" className="btn-primary" disabled={busy || generating} onClick={() => regenerate(panel.id)}>
-                      Regenerate
+                      {panel.versions.length === 0 ? 'Generate' : 'Regenerate'}
                     </button>
                   </div>
                 </>
@@ -159,7 +178,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                 // Each panel gets its own stage and tabs, keyed together, so nothing of one panel's editing carries to the
                 // next, and what is still waiting to save is saved when the user steps away or goes back.
                 <Fragment key={panel.id}>
-                  <PanelStage panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} />
+                  {sketching ? (
+                    <SketchStage panel={panel} share={share} slant={slant} zoom={zoom} onZoom={setZoom} />
+                  ) : (
+                    <PanelStage panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} zoom={zoom} onZoom={setZoom} />
+                  )}
                   <PanelInspector panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} />
                 </Fragment>
               ) : loaded ? (
