@@ -119,37 +119,44 @@ describe('waitForPaintAndMeasure', () => {
     const root = document.createElement('div')
     root.innerHTML =
       '<div class="strip-band"><article data-position="1"><img></article></div><div class="strip-band"><article data-position="4"><img></article></div>'
+    // Document-relative [top, bottom] of each band, in fractional CSS px as layout gives them.
     const geometry = [
       [0, 100.2],
-      [101, 50.5]
+      [100.2, 151.5]
     ]
+    // The page is scrolled 20 px, so each rect is 20 px above its document position: measuring adds scrollY back.
+    const scrollY = 20
+    const rect = (top: number, bottom: number): DOMRect =>
+      ({ top: top - scrollY, bottom: bottom - scrollY, height: bottom - top, left: 0, right: 800, width: 800, x: 0, y: top - scrollY }) as DOMRect
     root.querySelectorAll<HTMLElement>('.strip-band').forEach((band, i) => {
-      Object.defineProperty(band, 'offsetTop', { value: geometry[i][0] })
-      Object.defineProperty(band, 'offsetHeight', { value: geometry[i][1] })
+      band.getBoundingClientRect = () => rect(geometry[i][0], geometry[i][1])
     })
     // jsdom loads nothing: an <img> counts as still loading, so only decode() decides.
     root.querySelectorAll('img').forEach((img) => Object.defineProperty(img, 'complete', { value: false }))
     // The strip ends at 151.5 px. A short strip leaves the document as tall as the 1280 px viewport, which must not count.
-    Object.defineProperty(root, 'offsetTop', { value: 0 })
-    Object.defineProperty(root, 'offsetHeight', { value: 151.5 })
+    root.getBoundingClientRect = () => rect(0, 151.5)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: scrollY })
     Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 1280 })
     return root
   }
 
   afterEach(() => {
     Reflect.deleteProperty(document.documentElement, 'scrollHeight')
+    Reflect.deleteProperty(window, 'scrollY')
   })
 
-  it('measures each band, rounded up, after decoding every image, and ends at the strip, not the viewport', async () => {
+  it('measures each band (top down, bottom up) after decoding every image, and ends at the strip, not the viewport', async () => {
     const root = strip()
     for (const img of root.querySelectorAll('img')) img.decode = () => Promise.resolve()
     expect(await waitForPaintAndMeasure(root)).toEqual({
       totalHeight: 152,
       rows: [
         { top: 0, bottom: 101 },
-        { top: 101, bottom: 152 }
+        { top: 100, bottom: 152 }
       ]
     })
+    // Padded to the whole pixel it reports, so the page scrolls all the way to the last slice's top.
+    expect(root.style.minHeight).toBe('152px')
   })
 
   it('rejects naming the panel whose image failed to decode', async () => {

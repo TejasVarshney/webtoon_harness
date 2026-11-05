@@ -12,9 +12,9 @@ function decodeFailure(img: HTMLImageElement): Error {
 
 /**
  * Waits until what `root` holds is painted, then measures it: fonts ready, every image decoded (the first failure
- * rejects, naming its panel by `data-position`), two animation frames, then each `.strip-band`'s top and bottom in
- * CSS px, rounded up, and the bottom of `root` itself. `root` must be as tall as its content (export.css). Call after
- * React has committed.
+ * rejects, naming its panel by `data-position`), two animation frames, then each `.strip-band`'s document top
+ * (rounded down) and bottom (rounded up) in CSS px, and the bottom of `root` itself, rounded up; `root` is then
+ * padded to that height. `root` must be as tall as its content (export.css). Call after React has committed.
  */
 export async function waitForPaintAndMeasure(root: HTMLElement): Promise<ViewLayout> {
   await document.fonts?.ready
@@ -31,10 +31,17 @@ export async function waitForPaintAndMeasure(root: HTMLElement): Promise<ViewLay
   )
   await frame()
   await frame()
-  const rows = [...root.querySelectorAll<HTMLElement>('.strip-band')].map((band) => ({
-    top: Math.ceil(band.offsetTop),
-    bottom: Math.ceil(band.offsetTop + band.offsetHeight)
-  }))
+  // The real fractional positions (offsetTop and offsetHeight come pre-rounded to the nearest pixel), made
+  // document-relative: a row starts on the pixel its top falls in and ends on the pixel past its bottom.
+  const scrollY = window.scrollY
+  const rows = [...root.querySelectorAll<HTMLElement>('.strip-band')].map((band) => {
+    const r = band.getBoundingClientRect()
+    return { top: Math.floor(r.top + scrollY), bottom: Math.ceil(r.bottom + scrollY) }
+  })
   // The strip's own bottom: a short strip leaves the document as tall as the viewport, which would add blank space.
-  return { totalHeight: Math.ceil(root.offsetTop + root.offsetHeight), rows }
+  const totalHeight = Math.ceil(root.getBoundingClientRect().bottom + scrollY)
+  // Pad the page up to that whole pixel. Otherwise it ends a fraction short, and Chromium stops the scroll to the
+  // last slice (whose top is totalHeight minus its height) a pixel early.
+  root.style.minHeight = `${totalHeight}px`
+  return { totalHeight, rows }
 }

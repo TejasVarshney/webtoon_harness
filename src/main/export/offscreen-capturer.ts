@@ -141,8 +141,9 @@ export function createOffscreenCapturer(opts: OffscreenCapturerOptions): StripCa
           const scrolled = (await wc.executeJavaScript(
             `scrollTo(0, ${slice.top}); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(scrollY))))`
           )) as number
-          // A scroll the page clamped would repeat an earlier part of the strip in this slice.
-          if (scrolled !== slice.top) throw new Error(`The export view could not scroll to ${slice.top} px (it stopped at ${scrolled} px)`)
+          // A scroll the page clamped would repeat an earlier part of the strip in this slice. The strip's height is
+          // rounded up to whole pixels, so the last slice may stop a fraction of a pixel short; that is fine.
+          if (Math.abs(scrolled - slice.top) >= 1) throw new Error(`The export view could not scroll to ${slice.top} px (it stopped at ${scrolled} px)`)
           const shot = (await wc.debugger.sendCommand('Page.captureScreenshot', format === 'jpeg' ? { format, quality: JPEG_QUALITY } : { format })) as {
             data: string
           }
