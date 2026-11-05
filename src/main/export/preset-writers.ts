@@ -14,6 +14,30 @@ import { ZipWriter } from './zip-writer'
 /** What a finished output is written under until the job succeeds. */
 export const PART = '.part'
 
+/** A failed write, already worded for the user: it names the output, never the `.part` path. */
+export class WriteError extends Error {}
+
+/**
+ * Run a file operation for the output `final`, rethrowing any failure as `Could not write <final>: <reason>`.
+ * The reason is the OS's (`EACCES: permission denied`) with the syscall and `.part` path Node appends left out.
+ * A `WriteError` passes through as it is.
+ */
+export async function writing<T>(final: string, op: () => Promise<T>): Promise<T> {
+  try {
+    return await op()
+  } catch (error) {
+    if (error instanceof WriteError) throw error
+    throw new WriteError(`Could not write ${final}: ${osReason(error)}`, { cause: error })
+  }
+}
+
+function osReason(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  const { syscall } = error as NodeJS.ErrnoException
+  const tail = syscall ? error.message.indexOf(`, ${syscall}`) : -1
+  return tail > 0 ? error.message.slice(0, tail) : error.message
+}
+
 /**
  * The `.part` files and folders one job created. Only these are ever removed: a path that already exists is
  * refused, so a clean-up can never delete something the job did not make.
@@ -52,7 +76,8 @@ export class PartFiles {
 
 function inTheWay(p: string): (error: unknown) => never {
   return (error) => {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`${p} is in the way: move or delete it and export again`)
+    // The one message that names a `.part` path: it is the thing the user has to remove.
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new WriteError(`${p} is in the way: move or delete it and export again`)
     throw error
   }
 }
@@ -125,13 +150,14 @@ class WebtoonSlices implements PresetWriter {
     const final = this.o.finals[index]
     this.current = { part: final + PART, final }
     this.count = 0
-    await this.o.parts.claimDir(this.current.part)
+    await writing(final, () => this.o.parts.claimDir(this.current.part))
     return planSlices({ ...layout, pageHeight: PAGE_HEIGHT.webtoon, breaks: 'anywhere' })
   }
 
   async addSlice(_slice: Slice, image: Buffer): Promise<void> {
     this.count += 1
-    await fs.promises.writeFile(path.join(this.current.part, `${pad3(this.count)}.${extOf(this.o.imageType)}`), image)
+    const file = path.join(this.current.part, `${pad3(this.count)}.${extOf(this.o.imageType)}`)
+    await writing(this.current.final, () => fs.promises.writeFile(file, image))
   }
 
   async endEpisode(): Promise<void> {
@@ -180,8 +206,10 @@ class LongImage implements PresetWriter {
     this.bitmaps = []
     this.pending.shift()
     const part = next.final + PART
-    await this.o.parts.claimFile(part)
-    await fs.promises.writeFile(part, data)
+    await writing(next.final, async () => {
+      await this.o.parts.claimFile(part)
+      await fs.promises.writeFile(part, data)
+    })
     this.outputs.push({ part, final: next.final })
   }
 
@@ -203,7 +231,7 @@ abstract class PagedOutput<W extends { close(): Promise<void>; abort(): Promise<
   protected pages = 0
   /** The episode being written. */
   protected episode = 0
-  private current = { part: '', final: '' }
+  protected current = { part: '', final: '' }
 
   constructor(protected readonly o: WriterOptions) {}
 
@@ -222,9 +250,12 @@ abstract class PagedOutput<W extends { close(): Promise<void>; abort(): Promise<
     this.episode = index
     if (!this.writer) {
       const final = this.o.finals[this.shared ? 0 : index]
-      this.current = { part: final + PART, final }
-      await this.o.parts.claimFile(this.current.part)
-      this.writer = await this.open(this.current.part)
+      const part = final + PART
+      this.current = { part, final }
+      this.writer = await writing(final, async () => {
+        await this.o.parts.claimFile(part)
+        return this.open(part)
+      })
       this.pages = 0
     }
     return this.plan(layout)
@@ -246,8 +277,10 @@ abstract class PagedOutput<W extends { close(): Promise<void>; abort(): Promise<
 
   private async close(): Promise<void> {
     const writer = this.writer!
-    await this.beforeClose(writer)
-    await writer.close()
+    await writing(this.current.final, async () => {
+      await this.beforeClose(writer)
+      await writer.close()
+    })
     this.writer = null
     this.outputs.push(this.current)
   }
@@ -276,7 +309,8 @@ class PdfOutput extends PagedOutput<PdfWriter> {
     const size = this.o.codec.size(jpeg)
     const px = { w: size.width, h: size.height }
     const page = this.o.preset === 'pdf-print' ? printPage(this.o.paper, { cssHeight: slice.height }, jpeg, px) : readingPage({ cssHeight: slice.height }, jpeg, px)
-    await this.writer!.addPage(page)
+    const pdf = this.writer!
+    await writing(this.current.final, () => pdf.addPage(page))
     this.pages += 1
   }
 }
@@ -300,7 +334,8 @@ class CbzOutput extends PagedOutput<ZipWriter> {
 
   async addSlice(_slice: Slice, jpeg: Buffer): Promise<void> {
     this.pages += 1
-    await this.writer!.add(`${pad3(this.pages)}.jpg`, jpeg)
+    const zip = this.writer!
+    await writing(this.current.final, () => zip.add(`${pad3(this.pages)}.jpg`, jpeg))
   }
 
   protected async beforeClose(zip: ZipWriter): Promise<void> {

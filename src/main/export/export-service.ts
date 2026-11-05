@@ -11,7 +11,7 @@ import type { EventBus } from '../events/bus'
 import { isNotFound } from '../storage/fs-errors'
 import type { ProjectStore } from '../storage/project-store'
 import { outputNames, safeFileName } from './file-names'
-import { createPresetWriter, PartFiles, type PresetWriter, type WriterOptions } from './preset-writers'
+import { createPresetWriter, PartFiles, writing, type PresetWriter, type WriterOptions } from './preset-writers'
 import type { ImageCodec, StripCapturer } from './types'
 
 export interface ExportServiceOptions {
@@ -138,7 +138,10 @@ export class ExportService {
     if (this.job?.id === jobId) this.job.cancelled = true
   }
 
-  /** The files and folders a finished job wrote; empty while it runs, and for a job that failed or was cancelled. */
+  /**
+   * The files and folders an ended job put in place: all of them after `done`, those placed before the failure after
+   * `failed`, none after `cancelled`. Empty while it runs.
+   */
   outputsOf(jobId: string): string[] {
     return [...(this.ended.get(jobId) ?? [])]
   }
@@ -208,11 +211,13 @@ export class ExportService {
     const parts = new PartFiles()
     const writer = createPresetWriter({ ...plan.writer, codec: this.opts.codec, parts })
     let capturer: StripCapturer | null = null
+    /** The final paths already put in place: these stay even if a later output fails. */
+    const committed: string[] = []
     let outcome: Partial<ExportProgress>
     try {
       try {
         capturer = this.opts.createCapturer()
-        await fs.promises.mkdir(plan.outputDir, { recursive: true })
+        await writing(plan.outputDir, () => fs.promises.mkdir(plan.outputDir, { recursive: true }))
         await capturer.open()
         for (const [i, snapshot] of plan.snapshots.entries()) {
           stopIfCancelled()
@@ -231,28 +236,38 @@ export class ExportService {
         await writer.finish()
         // The last chance to stop: past here the outputs replace what was there.
         stopIfCancelled()
-        outcome = { stage: 'done', outputs: await this.commit(writer, parts) }
+        await this.commit(writer, parts, committed)
+        outcome = { stage: 'done', outputs: committed }
       } finally {
         await capturer?.close().catch((error: unknown) => console.warn('Export: closing the capturer failed', error))
       }
     } catch (error) {
       await writer.abort()
       await parts.removeAll()
-      outcome = error instanceof Cancelled ? { stage: 'cancelled' } : { stage: 'failed', message: failureMessage(error, plan) }
+      outcome =
+        error instanceof Cancelled
+          ? { stage: 'cancelled' }
+          : { stage: 'failed', message: error instanceof Error ? error.message : String(error), outputs: committed }
     }
     this.ended.set(job.id, outcome.outputs ?? [])
     this.job = null
     emit(outcome)
   }
 
-  /** Trash what the outputs replace, then rename every part to its final name. Returns the final paths. */
-  private async commit(writer: PresetWriter, parts: PartFiles): Promise<string[]> {
-    for (const { final } of writer.outputs) if (await exists(final)) await this.opts.trash(final)
+  /**
+   * Put each output in place, one at a time: trash what it replaces, then rename its part. An output is never left
+   * with its old file trashed and its new one deleted because a later output failed; each one placed is added to
+   * `committed`. If the rename itself fails right after its trash, the old file is still in the OS trash.
+   */
+  private async commit(writer: PresetWriter, parts: PartFiles, committed: string[]): Promise<void> {
     for (const { part, final } of writer.outputs) {
-      await fs.promises.rename(part, final)
+      await writing(final, async () => {
+        if (await exists(final)) await this.opts.trash(final)
+        await fs.promises.rename(part, final)
+      })
       parts.release(part)
+      committed.push(final)
     }
-    return writer.outputs.map((o) => o.final)
   }
 }
 
@@ -269,19 +284,6 @@ function extension(req: ExportRequest): string {
     case 'cbz':
       return '.cbz'
   }
-}
-
-/**
- * The message of a failed job. A file-system error that names no path (a handle write on a full disk) gets the
- * output it was writing: the one final path, or the output folder when there are several. The `.part` name is
- * never shown, since the user has never seen it.
- */
-function failureMessage(error: unknown, plan: JobPlan): string {
-  if (!(error instanceof Error)) return String(error)
-  const fsError = error as NodeJS.ErrnoException
-  if (!fsError.code || fsError.path) return error.message
-  const output = plan.writer.finals.length === 1 ? plan.writer.finals[0] : plan.outputDir
-  return `Could not write ${output}: ${error.message}`
 }
 
 function unique(ids: string[]): string[] {

@@ -57,6 +57,8 @@ class FakeCapturer implements StripCapturer {
   gate: Promise<void> | null = null
   /** The 1-based capture that throws. */
   failAt: number | null = null
+  /** What it throws. */
+  failWith: Error | null = null
 
   async open(): Promise<void> {
     this.opened++
@@ -72,7 +74,7 @@ class FakeCapturer implements StripCapturer {
   async capture(slice: Slice, scale: 1 | 2, format: 'jpeg' | 'png'): Promise<Buffer> {
     this.captures.push({ slice, scale, format })
     if (this.gate) await this.gate
-    if (this.failAt === this.captures.length) throw new Error('Episode 1, panel 2: the image could not be loaded')
+    if (this.failAt === this.captures.length) throw this.failWith ?? new Error('Episode 1, panel 2: the image could not be loaded')
     return fakeImage(format, 800 * scale, slice.height * scale)
   }
 
@@ -91,7 +93,10 @@ interface Rig {
   progress: ExportProgress[]
   /** The `projectId` of every `export.progress` event, in order. */
   projectIds: string[]
+  /** Paths successfully trashed, in order. */
   trashed: string[]
+  /** Paths the trash refuses, as a locked file does. */
+  lockedFromTrash: Set<string>
   /** An empty folder to export into; its path contains a space. */
   target: string
   addEpisode(title: string, kinds: Kind[], synopsis?: string): Promise<{ episode: Episode; panels: Panel[] }>
@@ -136,8 +141,10 @@ async function setup(): Promise<Rig> {
   const target = path.join(path.dirname(s.projectsRoot), 'export target')
   await fs.promises.mkdir(target)
   const trashed: string[] = []
+  const lockedFromTrash = new Set<string>()
   // Moves the path out of the way like the OS trash does, so a replaced folder is really gone.
   const trash = async (p: string): Promise<void> => {
+    if (lockedFromTrash.has(p)) throw Object.assign(new Error(`EBUSY: resource busy or locked, unlink '${p}'`), { code: 'EBUSY', syscall: 'unlink', path: p })
     trashed.push(p)
     await fs.promises.rm(p, { recursive: true, force: true })
   }
@@ -202,6 +209,7 @@ async function setup(): Promise<Rig> {
     progress,
     projectIds,
     trashed,
+    lockedFromTrash,
     target,
     addEpisode,
     req: (o) => ExportRequestSchema.parse({ projectId: ctx.id, ...o }),
@@ -525,6 +533,68 @@ describe('ExportService', () => {
     expect(end.stage).toBe('failed')
     expect(end.message).toBe(`Could not write ${path.join(target, 'Moon Tower - 01 - The Rooftop')}: ENOSPC: no space left on device, write`)
     expect(await readdir(target)).toEqual([])
+  })
+
+  it('a write error that carries the .part path names the output instead', async () => {
+    const { svc, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready', 'ready', 'ready'])
+    const folder = path.join(target, 'Moon Tower - 01 - The Rooftop')
+    const file = path.join(`${folder}.part`, '001.jpg')
+    vi.spyOn(fs.promises, 'writeFile').mockRejectedValueOnce(
+      Object.assign(new Error(`EACCES: permission denied, open '${file}'`), { code: 'EACCES', syscall: 'open', path: file })
+    )
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'webtoon' }), target)
+    const end = await finished(jobId)
+    expect(end).toMatchObject({ stage: 'failed', message: `Could not write ${folder}: EACCES: permission denied`, outputs: [] })
+    expect(await readdir(target)).toEqual([])
+  })
+
+  it('a capturer error with a code passes through unchanged', async () => {
+    const { svc, capturer, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready'])
+    capturer.failAt = 1
+    capturer.failWith = Object.assign(new Error('ERR_FAILED (-2) loading export.html'), { code: 'ERR_FAILED' })
+    const { jobId } = await svc.start(req({ episodeIds: [episode.id], preset: 'pdf-reading' }), path.join(target, 'one.pdf'))
+    expect(await finished(jobId)).toMatchObject({ stage: 'failed', message: 'ERR_FAILED (-2) loading export.html' })
+    expect(await readdir(target)).toEqual([])
+  })
+
+  it('a trash failure on the second output keeps the first in place and leaves the second untouched', async () => {
+    const { svc, addEpisode, req, finished, target, trashed, lockedFromTrash } = await setup()
+    const one = await addEpisode('The Rooftop', ['ready'])
+    const two = await addEpisode('The Fall', ['ready'])
+    const first = path.join(target, 'Moon Tower - 01 - The Rooftop.pdf')
+    const second = path.join(target, 'Moon Tower - 02 - The Fall.pdf')
+    await fs.promises.writeFile(first, 'old one')
+    await fs.promises.writeFile(second, 'old two')
+    lockedFromTrash.add(second)
+    const { jobId } = await svc.start(req({ episodeIds: [one.episode.id, two.episode.id], preset: 'pdf-reading' }), target)
+    const end = await finished(jobId)
+    expect(end).toMatchObject({ stage: 'failed', message: `Could not write ${second}: EBUSY: resource busy or locked`, outputs: [first] })
+    expect(svc.outputsOf(jobId)).toEqual([first])
+    expect(trashed).toEqual([first])
+    // The first was replaced by its new PDF, not left trashed with nothing in its place.
+    expect((await fs.promises.readFile(first)).subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    expect(await fs.promises.readFile(second, 'utf8')).toBe('old two')
+    expect(await readdir(target)).toEqual([path.basename(first), path.basename(second)])
+  })
+
+  it('a rename failure on the second output keeps the first and removes the second part', async () => {
+    const { svc, addEpisode, req, finished, target } = await setup()
+    const one = await addEpisode('The Rooftop', ['ready'])
+    const two = await addEpisode('The Fall', ['ready'])
+    const first = path.join(target, 'Moon Tower - 01 - The Rooftop.pdf')
+    const second = path.join(target, 'Moon Tower - 02 - The Fall.pdf')
+    const realRename = fs.promises.rename.bind(fs.promises)
+    vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (to === second) throw Object.assign(new Error(`EPERM: operation not permitted, rename '${String(from)}' -> '${second}'`), { code: 'EPERM', syscall: 'rename', path: from, dest: to })
+      return realRename(from, to)
+    })
+    const { jobId } = await svc.start(req({ episodeIds: [one.episode.id, two.episode.id], preset: 'pdf-reading' }), target)
+    const end = await finished(jobId)
+    expect(end).toMatchObject({ stage: 'failed', message: `Could not write ${second}: EPERM: operation not permitted`, outputs: [first] })
+    expect(svc.outputsOf(jobId)).toEqual([first])
+    expect(await readdir(target)).toEqual([path.basename(first)])
   })
 
   it('refuses a second job while one runs', async () => {

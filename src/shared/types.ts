@@ -193,7 +193,8 @@ export interface ViewLayout {
 /**
  * Where an export job is. `episodeIndex` is 0-based among the episodes being exported (empty ones are skipped and
  * not counted in `episodeCount`). `slice` is 1-based within that episode's `sliceCount`, and 0 before its first
- * capture. `message` is the error on `failed`; `outputs` lists the written paths on `done` and is empty otherwise.
+ * capture. `message` is the error on `failed`. `outputs` lists the written paths on `done`, and on `failed` the ones
+ * already put in place before the failure (each replacing its old file); it is empty otherwise.
  */
 export interface ExportProgress {
   jobId: string
