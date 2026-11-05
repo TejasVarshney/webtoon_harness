@@ -30,17 +30,20 @@ Uses, all four chosen in brainstorming: uploading to webtoon sites, reading or s
   2. Per slice: `Emulation.setDeviceMetricsOverride({width, height: sliceHeight, deviceScaleFactor: scale, mobile: false})`, then `scrollTo(0, top)`, then wait for paint, then `Page.captureScreenshot({format})`.
   
   This gives exact 800×1280 slices (1600×2560 at scale 2), with the short last slice sized to fit. Three slices plus a PDF took under a second.
+- **Ruling R13 (final review):** the view is laid out at the strip's on-screen row width, **440 CSS px**, and captured at `deviceScaleFactor = 800 / 440 × scale`. A 704 CSS px viewport then gives exact 800×1280 slices (1600×2560 at High). `setDeviceMetricsOverride` refuses a fractional `height` ("Invalid parameters"), so every slice height is a whole number of CSS px. A slice whose CSS height is not a multiple of 11 comes out at its scaled height rounded to the nearest px (300 CSS px → 545 px).
 
 ## 4. Formats
 
-All sizes are in CSS px of the export view, which is always **800 CSS px wide**. Output pixels are CSS px × scale. Scale is 1 for **Standard** and 2 for **High**.
+The export view is **440 CSS px wide**, the width of the strip's rows on screen (`STRIP_CSS_WIDTH` in `src/shared/strip-width.ts`; styles.css's `min(100%, 440px)` is the source of truth). Every `cqw` lettering size and fixed px gap therefore resolves exactly as on screen, and the output is a scaled copy of the strip. Outputs are **800 px wide** at scale 1 (**Standard**) and 1600 px at scale 2 (**High**): a capture uses 800 / 440 × scale device px per CSS px.
+
+The heights below are in **output px at scale 1**. For planning and scrolling they become whole CSS px: `floor(px × 440 / 800)`, so 1280 → 704, A4 1177 → 647, Letter 1067 → 586, and a long-image part of 65,000 / scale px → 35,750 (Standard) or 17,875 (High) CSS px.
 
 | Preset | Output | Breaks | Page / slice height |
 |---|---|---|---|
 | `webtoon` | Folder per episode of `001.jpg`, `002.jpg`, … (or `.png`) | Anywhere | 1280 |
 | `long-image` | One `.jpg`/`.png` per episode. Parts `-1`, `-2`, … when it is taller than 65,000 output px. | Anywhere (parts only) | ≤ 65,000 / scale |
-| `pdf-reading` | One `.pdf`. Each page is the size of its slice at 0.75 pt per CSS px, with no margin. | Anywhere | 1280 |
-| `pdf-print` | One `.pdf`, A4 or Letter, 36 pt margins, image top-aligned. Always scale 2. | Between rows | A4: 1177, Letter: 1067 (the 800px width fitted to the printable width) |
+| `pdf-reading` | One `.pdf`. Each page is 600 pt wide and as tall as its image at that width (0.75 pt per output px at scale 1, so a 1280 px slice is 600×960 pt), with no margin. | Anywhere | 1280 |
+| `pdf-print` | One `.pdf`, A4 or Letter, 36 pt margins, image top-aligned at the printable width, its height from the image's own pixels. Always scale 2. | Between rows | A4: 1177, Letter: 1067 (the 800 px width fitted to the printable width) |
 | `cbz` | One `.cbz`: `001.jpg`, … plus `ComicInfo.xml` | Between rows | 1280 |
 
 - JPEG quality is 90. PNG is offered for `webtoon` and `long-image` only.
@@ -90,12 +93,12 @@ Pure units have no Electron and are tested with vitest, as with `ImageOps`:
   
   `slants` stay as the full layout assigned them, so a slanted panel leans the same way as in the strip. Filtering first would wrongly move a `beside` panel, whose row-starter was dropped, into the row above.
 - **`src/shared/export-status.ts`**: `isFinished(panel)` is true when the version `currentVersionId` points at has `status: 'ready'`, the same rule as `PanelArt`. A panel with a good image and a failed retry is finished. `unfinishedReason(panel)`.
-- **`src/main/export/slice-plan.ts`**: `planSlices({totalHeight, rows, pageHeight, breaks: 'anywhere' | 'rows'}) → {top, height}[]`, in CSS px. A part limit for `long-image` is just a larger page height.
+- **`src/main/export/slice-plan.ts`**: `planSlices({totalHeight, rows, pageHeight, breaks: 'anywhere' | 'rows'}) → {top, height}[]`, in CSS px of the 440 px view, with page heights converted from output px (§4). A part limit for `long-image` is just a larger page height.
 - **`src/main/export/zip-writer.ts`**: store-only ZIP (local headers, central directory, end record) with `zlib.crc32`, written as a stream to a file. Names are UTF-8 (general-purpose flag bit 11).
 - **`src/main/export/pdf-writer.ts`**: a PDF with one page per JPEG: an `/XObject` with `/DCTDecode`, its width and height, `/DeviceRGB`, drawn with a `cm` matrix. Pages can be sized to the image (reading) or to the paper with margins (print). Correct `xref` offsets. Written as a stream so pages are not all held in memory.
 - **`src/main/export/comic-info.ts`**: `comicInfoXml(meta)`, with escaping.
 - **`src/main/export/file-names.ts`**: `safeFileName(text)`. It strips `<>:"/\|?*` and control characters, trims trailing dots and spaces, avoids `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9` and `LPT1`–`9`, caps the length at 120, and falls back to `Untitled`. Also `outputName(project, episodes, preset)`.
-- **`src/main/export/long-image.ts`**: stitches captured slices through `toBitmap()` and `createFromBitmap()`. It holds at most one part in memory, at most 1600 × 65,000 × 4 bytes.
+- **`src/main/export/long-image.ts`**: builds each part in one buffer of width × part height × 4 bytes, copying in each slice decoded with `toBitmap()` as it arrives, then encodes it through `createFromBitmap()`. It holds at most one part in memory, at most 1600 × 65,000 × 4 bytes, plus the slice being added.
 - **`src/main/export/export-service.ts`**: the job: snapshot, progress, cancel, `.part` files renamed on success, clean-up. It depends on a `StripCapturer` interface (`open()`, `render(snapshot)`, `capture(top, height, scale, format)`, `close()`) and an `ImageEncoder` interface, so it is tested with fakes.
 
 Electron-specific, with e2e tests:
@@ -108,7 +111,7 @@ Renderer:
 - **`src/renderer/export.html`** and **`src/renderer/src/export-main.tsx`**: a second renderer entry (electron-vite `rollupOptions.input`), with the same CSP as `index.html`.
 - **`ExportView.tsx`**: puts the snapshot into the app, characters and panels stores. Then it renders `WebtoonStrip` with `mode="export"` over `exportRows`.
 - **`WebtoonStrip`** / **`PanelCard`** / **`PanelArt`** gain `mode: 'edit' | 'export'` (default `edit`). In `export` mode they draw no `InsertPanelButton`, empty placeholder, selection, toolbar, `panel-status`, Retry, "No image yet" or error line, and do not respond to clicks. Gap bands and gutter colours stay. `lettering: false` skips `DialogueOverlay`.
-- **`export.css`** (export entry only): the strip is exactly 800px wide with no padding, the page background is the first row's gutter colour, and there is no app chrome.
+- **`export.css`** (export entry only): the page and the strip are exactly 440 CSS px wide (`--export-strip-width`, set by `ExportView` from `STRIP_CSS_WIDTH`) with no padding, the page background is the first row's gutter colour, and there is no app chrome.
 - **`ExportDialog.tsx`** and an **Export** button in **`EpisodeBar.tsx`**.
 
 ### 6.3 When the view is ready
