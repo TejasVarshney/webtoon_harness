@@ -199,18 +199,18 @@ Press **Export** in the episode bar to open the **Export episodes** dialog. Tick
 | Format | What you get |
 | --- | --- |
 | **Webtoon upload (JPEG slices)** | 800 px wide slices, each at most 1280 px tall, as JPEG or PNG (**Image type**). |
-| **Long image** | One image per episode, JPEG or PNG. An episode taller than 65,000 px is split into numbered parts. |
+| **Long image** | One image per episode, JPEG or PNG. An episode taller than 65,000 px is split into numbered parts. **Image type** applies here too. |
 | **PDF for reading** | Pages of 800×1280 with no margin. |
-| **PDF for print** | **Paper** A4 or Letter with 36 pt margins, always at 2× resolution, and pages break between rows. |
+| **PDF for print** | **Paper** (A4 or Letter; shown for this format only) with 36 pt margins, always at 2× resolution, and pages break between rows. |
 | **CBZ (comic readers)** | Pages up to 1280 px tall that break between rows, with a `ComicInfo.xml` for the reader. |
 
-**Resolution: High** doubles the pixels, so slices are 1600 px wide. It is offered for the formats where it applies; PDF for print is always High.
+Set **Resolution** to **High** to double the pixels, so slices are 1600 px wide. **Resolution** is shown for every format except **PDF for print**, which is always High.
 
 **Without lettering** exports the art alone, with no dialogue or captions drawn over it.
 
 A panel counts as finished when its current version is ready. If a ticked episode has unfinished panels, the dialog lists them, and **Export anyway** leaves them out. If no ticked episode has a finished panel, there is nothing to export.
 
-**Combine into one file** appears for PDF and CBZ when you tick two or more episodes. Without it, each episode gets its own file.
+**Combine into one file** appears for **PDF for reading**, **PDF for print** and **CBZ** when you tick two or more episodes. Without it, each episode gets its own file.
 
 When you press **Export**, a save dialog asks where to put the result. It starts in the `Exports` folder next to the projects folder. You pick a file when the export is a single file and a folder when it is several, such as slices or one file per episode. If an output already exists, it is replaced only after the export succeeds, and the old one goes to the operating system's trash. **Cancel** stops the export and removes any partial files. When it finishes, **Show in folder** opens the result.
 
