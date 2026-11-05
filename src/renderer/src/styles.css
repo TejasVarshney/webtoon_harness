@@ -3009,3 +3009,37 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- Export dialog ------------------------------------------------------------------------------------ */
+
+.export-dialog {
+  width: 420px;
+}
+
+.export-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.export-episode,
+.export-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
