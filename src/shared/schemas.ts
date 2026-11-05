@@ -337,6 +337,31 @@ export const OutlineSchema = z.object({ beats: z.array(BeatSchema) })
 export const BeatPatchSchema = z.object({ summary: z.string().optional(), status: BeatStatusSchema.optional() })
 
 // ---------------------------------------------------------------------------------------------
+// Episode export (IPC input; nothing here is persisted)
+// ---------------------------------------------------------------------------------------------
+
+export const ExportPresetSchema = z.enum(['webtoon', 'long-image', 'pdf-reading', 'pdf-print', 'cbz'])
+
+/**
+ * One export job. Unfinished panels are always left out; the dialog's "Export anyway" is only a confirmation.
+ * `imageType` applies to `webtoon` and `long-image` (PDF and CBZ pages are always JPEG), `paper` to `pdf-print`
+ * (which is always high resolution), and `combine` to the PDF presets and CBZ with two or more episodes.
+ */
+export const ExportRequestSchema = z.object({
+  projectId: Id,
+  episodeIds: z.array(Id).min(1),
+  preset: ExportPresetSchema,
+  imageType: z.enum(['jpeg', 'png']).default('jpeg'),
+  paper: z.enum(['a4', 'letter']).default('a4'),
+  resolution: z.enum(['standard', 'high']).default('standard'),
+  combine: z.boolean().default(false),
+  lettering: z.boolean().default(true)
+})
+
+/** Which of a project's episodes the export dialog asks about. */
+export const ExportInspectRequestSchema = z.object({ projectId: Id, episodeIds: z.array(Id) })
+
+// ---------------------------------------------------------------------------------------------
 // Chat transcripts (discriminated on `role`)
 // ---------------------------------------------------------------------------------------------
 

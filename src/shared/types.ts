@@ -18,6 +18,8 @@ import type {
   EndpointConfigSchema,
   EndpointKindSchema,
   EpisodeSchema,
+  ExportPresetSchema,
+  ExportRequestSchema,
   ItemInputSchema,
   ItemPatchSchema,
   ItemSchema,
@@ -58,6 +60,9 @@ export type Variation = z.infer<typeof VariationSchema>
 export type Item = z.infer<typeof ItemSchema>
 export type ItemUsage = z.infer<typeof ItemUsageSchema>
 export type Episode = z.infer<typeof EpisodeSchema>
+export type ExportPreset = z.infer<typeof ExportPresetSchema>
+/** A parsed export request: every defaulted field is filled. */
+export type ExportRequest = z.infer<typeof ExportRequestSchema>
 export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
@@ -156,6 +161,51 @@ export type AgentEvent =
   | { kind: 'tool-started'; runId: string; toolCall: ToolCall }
   | { kind: 'run-finished'; runId: string; outcome: LoopOutcome; error: string | null }
 
+/** What the export dialog shows about each ticked episode before it starts. */
+export interface ExportInspection {
+  episodes: {
+    episodeId: string
+    number: number
+    title: string
+    panelCount: number
+    finishedCount: number
+    /** `position` is 1-based in strip order. */
+    unfinished: { panelId: string; position: number; reason: 'none' | 'generating' | 'failed' }[]
+  }[]
+}
+
+/** Everything the export view draws for one episode, taken when the job starts so later edits do not reach it. */
+export interface ExportSnapshot {
+  projectId: string
+  episode: Episode
+  /** The full panel list in strip order, unfinished panels included: the view lays it out with `exportRows`. */
+  panels: Panel[]
+  characters: Character[]
+  lettering: boolean
+}
+
+/** The export view's drawn layout in CSS px. Each row's `bottom` includes the gap below it. */
+export interface ViewLayout {
+  totalHeight: number
+  rows: { top: number; bottom: number }[]
+}
+
+/**
+ * Where an export job is. `episodeIndex` is 0-based among the episodes being exported (empty ones are skipped and
+ * not counted in `episodeCount`). `slice` is 1-based within that episode's `sliceCount`, and 0 before its first
+ * capture. `message` is the error on `failed`; `outputs` lists the written paths on `done` and is empty otherwise.
+ */
+export interface ExportProgress {
+  jobId: string
+  stage: 'rendering' | 'capturing' | 'writing' | 'done' | 'failed' | 'cancelled'
+  episodeIndex: number
+  episodeCount: number
+  slice: number
+  sliceCount: number
+  message: string | null
+  outputs: string[]
+}
+
 export type AppEvent =
   | { type: 'project.changed'; projectId: string }
   | { type: 'session.changed'; projectId: string; sessionId: string }
@@ -168,3 +218,4 @@ export type AppEvent =
   | { type: 'plugins.changed' }
   /** `threadKey` is a session id for the main chat, or `panel:<panelId>` for a panel side chat. */
   | { type: 'agent.event'; projectId: string; threadKey: string; event: AgentEvent }
+  | { type: 'export.progress'; projectId: string; progress: ExportProgress }
