@@ -49,6 +49,12 @@ function createWindow(): void {
     }
   })
 
+  // An export's hidden window keeps `window-all-closed` from firing, so closing the last visible window quits here
+  // (the quit gate then cancels the export) rather than leaving the app running with no window.
+  win.on('closed', () => {
+    if (process.platform !== 'darwin' && appWindows().length === 0) app.quit()
+  })
+
   // The window holds the privileged `window.api` bridge, so it must never leave the app's own page.
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.webContents.setWindowOpenHandler(({ url }) => {
