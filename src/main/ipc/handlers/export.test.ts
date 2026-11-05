@@ -1,8 +1,9 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { testServices, type TestServices } from '../../test/test-services'
 import { registerIpc } from '../register'
-import { exportHandlers } from './export'
+import { exportHandlers, fixedExportTarget } from './export'
 
 let services: TestServices | undefined
 afterEach(async () => {
@@ -37,6 +38,45 @@ describe('export handlers', () => {
       defaultPath: path.join(services.exports.exportsDir, 'Moon Diary - 01 - Pilot.cbz'),
       extension: 'cbz'
     })
+  })
+
+  it('export:start still shows the dialog, with no starting folder, when the Exports folder cannot be made', async () => {
+    services = await testServices()
+    const start = vi.spyOn(services.exports, 'start').mockResolvedValue({ jobId: 'exp_1' })
+    vi.spyOn(services.exports, 'suggestedName').mockResolvedValue('Moon Diary - 01 - Pilot.cbz')
+    const mkdir = fs.promises.mkdir
+    vi.spyOn(fs.promises, 'mkdir').mockImplementation(async (p, o) => {
+      if (p === services!.exports.exportsDir) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+      return mkdir(p, o)
+    })
+    const choose = vi.fn(async () => '/x/y.cbz')
+    const h = exportHandlers(services, { chooseExportTarget: choose })
+    expect(await h['export:start']!(req('cbz') as never)).toEqual({ jobId: 'exp_1' })
+    expect(choose).toHaveBeenCalledWith(undefined, { kind: 'file', extension: 'cbz' })
+    expect(await h['export:start']!(req('webtoon') as never)).toEqual({ jobId: 'exp_1' })
+    expect(choose).toHaveBeenLastCalledWith(undefined, { kind: 'folder', extension: null })
+    expect(start).toHaveBeenCalledTimes(2)
+  })
+
+  it('export:inspect parses its input', async () => {
+    services = await testServices()
+    const inspect = vi.spyOn(services.exports, 'inspect').mockResolvedValue({ episodes: [] })
+    const h = exportHandlers(services)
+    await expect(h['export:inspect']!({ projectId: 'proj_a', episodeIds: 'ep_1' } as never)).rejects.toThrow()
+    expect(inspect).not.toHaveBeenCalled()
+    await h['export:inspect']!({ projectId: 'proj_a', episodeIds: ['ep_1'] })
+    expect(inspect).toHaveBeenCalledWith('proj_a', ['ep_1'])
+  })
+
+  it('the WEBTOON_EXPORT_TARGET test hook works only in an unpackaged app', () => {
+    const file = { kind: 'file' as const, defaultPath: path.join('/exports', 'A - 01 - B.pdf'), extension: 'pdf' }
+    const folder = { kind: 'folder' as const, defaultPath: '/exports', extension: null }
+    expect(fixedExportTarget('/fixed', false, folder)).toBe('/fixed')
+    expect(fixedExportTarget('/fixed', false, file)).toBe(path.join('/fixed', 'A - 01 - B.pdf'))
+    expect(fixedExportTarget('/fixed', true, folder)).toBeNull()
+    expect(fixedExportTarget('/fixed', true, file)).toBeNull()
+    expect(fixedExportTarget(undefined, false, folder)).toBeNull()
+    expect(fixedExportTarget('', false, folder)).toBeNull()
   })
 
   it('export:start returns {cancelled:true} when the dialog is dismissed and starts nothing', async () => {
