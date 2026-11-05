@@ -200,7 +200,7 @@ Press **Export** in the episode bar to open the **Export episodes** dialog. Tick
 | --- | --- |
 | **Webtoon upload (JPEG slices)** | 800 px wide slices, each at most 1280 px tall, as JPEG or PNG (**Image type**). |
 | **Long image** | One image per episode, JPEG or PNG. An episode taller than 65,000 px is split into numbered parts. **Image type** applies here too. |
-| **PDF for reading** | Pages of 800×1280 with no margin. |
+| **PDF for reading** | 800×1280 px images on 600×960 pt pages, with no margin. |
 | **PDF for print** | **Paper** (A4 or Letter; shown for this format only) with 36 pt margins, always at 2× resolution, and pages break between rows. |
 | **CBZ (comic readers)** | Pages up to 1280 px tall that break between rows, with a `ComicInfo.xml` for the reader. |
 
