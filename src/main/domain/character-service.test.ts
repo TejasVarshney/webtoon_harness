@@ -90,7 +90,7 @@ describe('CharacterService', () => {
     await expect(svc.create(ctx, input('mina'), 'user')).resolves.toBeDefined()
   })
 
-  it('records a variation created without a generation as failed, not pending (Ruling F4)', async () => {
+  it('records a variation created without a generation as failed, not pending', async () => {
     const { svc, ctx, calls } = await setup()
     const c = await svc.create(ctx, input(), 'ai', { generate: false })
     expect(c.variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate', imagePath: null })
@@ -137,7 +137,7 @@ describe('CharacterService', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('generation errors mark failed without throwing and keep the previous image (Review Focus 2)', async () => {
+  it('generation errors mark failed without throwing and keep the previous image', async () => {
     let fail = false
     const { svc, ctx } = await setup(async () => {
       if (fail) throw new ProviderError('unknown', 'boom')
@@ -152,7 +152,7 @@ describe('CharacterService', () => {
     expect(fs.existsSync(ctx.paths.resolveAsset(first.imagePath!))).toBe(true)
   })
 
-  it('shows pending while generating and does not hold the mutex across the image call (Ruling T15a)', async () => {
+  it('shows pending while generating and does not hold the mutex across the image call', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -190,7 +190,7 @@ describe('CharacterService', () => {
     expect((await svc.get(ctx, ch.id)).variations[0]).toMatchObject({ status: 'failed', error: 'Interrupted: the app closed during generation' })
   })
 
-  it('refuses to delete a used character but archives (Review Focus 4)', async () => {
+  it('refuses to delete a used character but archives', async () => {
     const { svc, ctx, trashed } = await setup(undefined, ['pnl_1'])
     const c = await svc.create(ctx, input(), 'user')
     await expect(svc.delete(ctx, c.id)).rejects.toMatchObject({ name: 'CharacterInUseError', panelIds: ['pnl_1'] })
@@ -222,7 +222,7 @@ describe('CharacterService', () => {
     await expect(used.svc.deleteVariation(used.ctx, c2.id, v2.id)).rejects.toBeInstanceOf(CharacterInUseError)
   })
 
-  it("trashes a deleted variation's image only when it lies in the character's own folder (I4)", async () => {
+  it("trashes a deleted variation's image only when it lies in the character's own folder", async () => {
     const { svc, ctx, trashed } = await setup()
     const c = await svc.create(ctx, input(), 'user')
     const other = await svc.create(ctx, input('Zed'), 'user')
@@ -258,7 +258,7 @@ describe('CharacterService', () => {
     expect(same.character.appearance.hair).toBe('red')
   })
 
-  it('skips and reports a corrupt character file (Review Focus 5)', async () => {
+  it('skips and reports a corrupt character file', async () => {
     const { svc, ctx } = await setup()
     const c = await svc.create(ctx, input(), 'user')
     await fs.promises.writeFile(ctx.paths.characterFile('chr_ffffffffff'), '{oops')
@@ -354,7 +354,7 @@ describe('CharacterService sheet check', () => {
     expect(out).toMatchObject({ status: 'ready', check: fail('x') })
   })
 
-  it('stays pending while the check runs, and a concurrent update is not blocked (Ruling T15a)', async () => {
+  it('stays pending while the check runs, and a concurrent update is not blocked', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -545,7 +545,7 @@ describe('CharacterService recording failures', () => {
     expect(ctx.problems.map((p) => p.path)).toContain('characters/chr_ffffffffff.json')
   })
 
-  it('recoverInterrupted skips a character whose internal id is malformed and reports it by file name (Ruling T18f)', async () => {
+  it('recoverInterrupted skips a character whose internal id is malformed and reports it by file name', async () => {
     const { svc, ctx } = await setup()
     const pending = (id: string) => makeCharacter({ id, name: id, variations: [makeVariation({ characterId: id, status: 'pending' })] })
     await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), pending('chr_aaaaaaaaaa'))
@@ -557,7 +557,7 @@ describe('CharacterService recording failures', () => {
     expect(JSON.parse(fs.readFileSync(ctx.paths.characterFile('chr_bbbbbbbbbb'), 'utf8')).variations[0].status).toBe('pending')
   })
 
-  it('recoverInterrupted skips a file that holds another valid id instead of rewriting the wrong file (Ruling T18f)', async () => {
+  it('recoverInterrupted skips a file that holds another valid id instead of rewriting the wrong file', async () => {
     const { svc, ctx } = await setup()
     const pending = makeCharacter({ id: 'chr_bbbbbbbbbb', name: 'Bee', variations: [makeVariation({ id: 'var_bbbbbbbbbb', characterId: 'chr_bbbbbbbbbb', status: 'pending' })] })
     await writeJsonAtomic(ctx.paths.characterFile('chr_aaaaaaaaaa'), pending)
@@ -584,7 +584,7 @@ describe('CharacterService recording failures', () => {
 })
 
 describe('createServices wiring', () => {
-  it('opens a project whose character files hold a malformed or mismatched id, reporting them (Ruling T18f)', async () => {
+  it('opens a project whose character files hold a malformed or mismatched id, reporting them', async () => {
     const s1 = await testServices()
     let s2: Awaited<ReturnType<typeof testServices>> | undefined
     try {

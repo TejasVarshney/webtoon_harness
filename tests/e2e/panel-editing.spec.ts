@@ -25,7 +25,7 @@ async function setWindowSize(app: ElectronApplication, page: Page, width: number
   await expect.poll(() => viewport(page)).toEqual([w, h])
 }
 
-// Panel editing checkpoint (spec §1): click a card, retype its bubble and drag it to a new spot, change the panel's
+// Panel editing checkpoint: click a card, retype its bubble and drag it to a new spot, change the panel's
 // layout, add a character and an item, ask the panel chat to fix the line, go back. The strip shows the chat's text in
 // the user's spot, on the card the user left from, and none of it drew a new version.
 // The panel chat's state names no ids for the mock to resolve refs from, so a first launch makes the cast, the item

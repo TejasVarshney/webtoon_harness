@@ -74,7 +74,7 @@ const boxOf = (el: Element): Box => {
 }
 
 /**
- * Selecting, retyping, dragging, nudging, adding and deleting the bubbles of the panel on the stage (spec §5). Every
+ * Selecting, retyping, dragging, nudging, adding and deleting the bubbles of the panel on the stage. Every
  * bubble is known by its line's index, since the ids change on each save, and each change saves the whole dialogue
  * through `useDialogueSaver`, built from the store when it is sent; its conflicts and refusals show in the Lines tab.
  * Nothing here calls a model.

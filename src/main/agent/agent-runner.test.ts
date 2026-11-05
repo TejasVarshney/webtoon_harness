@@ -232,7 +232,7 @@ describe('AgentRunner', () => {
     await finished(events)
   })
 
-  it('reports a missing agent model (Review Focus 3)', async () => {
+  it('reports a missing agent model', async () => {
     const { s, runner, projectId, sessionId, events } = await setup([{ text: 'x' }])
     await s.registry.removeModel('mdl_000000000a')
     const { runId } = await runner.start(input(projectId, sessionId))
@@ -266,7 +266,7 @@ describe('AgentRunner', () => {
     expect(events.at(-1)).toMatchObject({ outcome: 'cancelled' })
   })
 
-  it('keeps a session usable after an attached image is deleted (C1, with a provider that loads images)', async () => {
+  it('keeps a session usable after an attached image is deleted (with a provider that loads images)', async () => {
     const { s, projectId, sessionId, events } = await setup([])
     const ctx = await s.projects.open(projectId)
     await fs.promises.writeFile(ctx.paths.resolveAsset('uploads/pic.png'), encodeSolidPng(2, 2, [1, 2, 3]))

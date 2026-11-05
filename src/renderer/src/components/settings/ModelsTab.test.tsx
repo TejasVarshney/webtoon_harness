@@ -88,7 +88,7 @@ describe('ModelsTab', () => {
     expect(await screen.findByText(/bad key/)).toBeInTheDocument()
   })
 
-  describe('editing an endpoint (I2)', () => {
+  describe('editing an endpoint', () => {
     const anthropic = { id: 'end_2222222222', name: 'Anthropic', kind: 'anthropic' as const, baseUrl: 'https://api.anthropic.com', options: {}, hasKey: true }
     const openai = { id: 'end_3333333333', name: 'OpenAI', kind: 'openai' as const, baseUrl: 'https://api.openai.com/v1', options: {}, hasKey: false }
 
@@ -119,7 +119,7 @@ describe('ModelsTab', () => {
       await waitFor(() => expect(screen.queryByRole('form', { name: 'Edit endpoint' })).not.toBeInTheDocument())
     })
 
-    it('tells the user when the key was cleared because the host changed (Ruling F3)', async () => {
+    it('tells the user when the key was cleared because the host changed', async () => {
       installFakeApi({
         'models:updateEndpoint': () => ({ endpoint: { ...anthropic, baseUrl: 'https://proxy.example.com' }, keyCleared: true }),
         'models:get': () => view({ endpoints: [{ ...anthropic, hasKey: false }] })

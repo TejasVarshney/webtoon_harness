@@ -106,7 +106,7 @@ describe('useItemsStore', () => {
       expect(calls).toEqual([])
       emit({ type: 'item.changed', projectId, itemId: 'itm_0000000001' })
       await new Promise((r) => setTimeout(r, 10))
-      // The reload, then the problems it may have found (I1).
+      // The reload, then the problems it may have found.
       expect(calls.map((c) => c.channel)).toEqual(['items:list', 'projects:open'])
       expect(useItemsStore.getState().items).toHaveLength(1)
     })

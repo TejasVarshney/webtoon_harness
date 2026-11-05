@@ -1,4 +1,4 @@
-// How a panel's image history is numbered for people (Ruling P7). Shared by the main process (tool
+// How a panel's image history is numbered for people. Shared by the main process (tool
 // results, `<panel_context>`) and the renderer (the version switcher), so both always agree.
 // Pure and type-only imports: no Node modules, no zod.
 

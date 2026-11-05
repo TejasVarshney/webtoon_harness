@@ -108,7 +108,7 @@ export class RunHost {
         resolved = this.services.registry.resolve(req.role)
         provider = this.createProvider(resolved)
       } catch (err) {
-        // A missing role (Review Focus 3) or an unsupported endpoint ends the run cleanly instead of throwing.
+        // A missing role or an unsupported endpoint ends the run cleanly instead of throwing.
         emit({ kind: 'run-finished', runId, outcome: 'error', error: err instanceof Error ? err.message : String(err) })
         if (!(err instanceof NoModelForRoleError)) console.error('agent run could not start:', err)
         this.release(threadKey, runId)

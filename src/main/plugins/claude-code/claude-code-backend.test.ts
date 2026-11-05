@@ -153,7 +153,7 @@ describe('ClaudeCodeBackend', () => {
     expect(events.at(-1)).toEqual({ kind: 'run-finished', runId, outcome: 'end', error: null })
 
     const rec = record()
-    // The snapshot goes with the user turn, not into a system prompt that --resume would replay frozen (R17).
+    // The snapshot goes with the user turn, not into a system prompt that --resume would replay frozen.
     expect(rec.stdin).toBe(`${user.stateSnapshot}\n\nSay hi`)
     expect(rec.argv).not.toContain('Say hi')
     expect(rec.argv.slice(0, 2)).toEqual(['-p', '--output-format'])

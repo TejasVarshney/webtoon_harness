@@ -1,6 +1,6 @@
 import type { Character, CheckResult, Item, ItemUsage, PanelDraft, Variation } from '@shared/types'
 
-// Pure panel-draft validation (spec §9, step 2). No I/O: the caller passes the whole roster
+// Pure panel-draft validation. No I/O: the caller passes the whole roster
 // (archived characters included, so an archived cast member is named as such rather than reported
 // as unknown). PanelService runs this before anything is written or generated.
 
@@ -55,7 +55,7 @@ export function sheetCheckState(check: CheckResult | null): 'passed' | 'failed' 
  * character is reported once and its variation is not checked further (the entry has to go anyway);
  * an item works the same way. Identical messages are reported once.
  * `strictMentions` turns the mention guard into an error (the agent); otherwise it is a warning
- * (the manual editor). `strictSheets` does the same for a ready sheet whose check failed (spec §8): an error for
+ * (the manual editor). `strictSheets` does the same for a ready sheet whose check failed: an error for
  * the agent, a warning in the editor; it is reported in the same place as the "no ready reference image" error.
  */
 export function validatePanelDraft(draft: PanelDraftFields, roster: Character[], itemRoster: Item[], opts: { strictMentions: boolean; strictSheets: boolean }): PanelDraftCheck {

@@ -63,7 +63,7 @@ export interface NativeImageFactory {
 }
 
 /**
- * `ImageOps` on a `nativeImage`-like decoder (Electron's in production). Ruling F1: what the decoder cannot read
+ * `ImageOps` on a `nativeImage`-like decoder (Electron's in production). What the decoder cannot read
  * is passed through with the MIME its magic bytes name, so a WebP never reaches a model as empty data.
  */
 export function createNativeImageOps(native: NativeImageFactory): ImageOps {
@@ -90,7 +90,7 @@ export function createNativeImageOps(native: NativeImageFactory): ImageOps {
 
 /**
  * Only formats the decoder cannot read at all (WebP, GIF) pass through. A PNG or JPEG it fails on is corrupt or
- * truncated, and sending it on would earn a 400 on every turn (Ruling F7).
+ * truncated, and sending it on would earn a 400 on every turn.
  */
 function passThrough(data: Buffer): { mime: string; data: Buffer } {
   const mime = data.length > 0 ? sniffImageMime(data) : null
@@ -129,7 +129,7 @@ function isGone(error: unknown): boolean {
 /**
  * Reads a project image (path validated by `resolveAsset`) and shrinks it for a text model (JPEG). Rejects with
  * `ImageUnavailableError` when the image is gone, outside the project, empty or undecodable, so a replayed history
- * that still names it can carry a note instead (C1). Other failures (a locked file, ...) propagate.
+ * that still names it can carry a note instead. Other failures (a locked file, ...) propagate.
  */
 export async function loadImageForTextModel(ctx: ProjectContext, imageOps: ImageOps, relPath: string): Promise<{ mime: string; base64: string }> {
   let data: Buffer

@@ -10,7 +10,7 @@ export interface VersionSwitcherProps {
 }
 
 /**
- * `‹ vN / M ›` for a panel's image history. Only ready versions are numbered (Ruling P7), so a failed or pending
+ * `‹ vN / M ›` for a panel's image history. Only ready versions are numbered, so a failed or pending
  * attempt is skipped over, and the buttons revert to the neighboring ready version. No version is ever deleted.
  */
 export function VersionSwitcher({ panel }: VersionSwitcherProps) {

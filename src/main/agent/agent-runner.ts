@@ -28,7 +28,7 @@ export interface StartRunInput {
 
 /**
  * Connects chat sessions to the agent loop: builds the prompt and state snapshot, persists, and relays events.
- * When a plugin is set to be the agent (`PluginManager.agentBackend()`), new runs go to it instead (spec §6.1);
+ * When a plugin is set to be the agent (`PluginManager.agentBackend()`), new runs go to it instead;
  * stopping and status cover both, so a run started before the switch changed can still be stopped.
  */
 export class AgentRunner {

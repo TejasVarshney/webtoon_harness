@@ -35,7 +35,7 @@ export function charactersHandlers(s: Services, deps: CharactersDeps = {}): Hand
 
     'characters:create': async ({ projectId, input, generateBase }) => {
       const ctx = await s.projects.open(projectId)
-      // `=== true`: a missing flag must not create a pending variation that nothing will ever generate (Ruling F8).
+      // `=== true`: a missing flag must not create a pending variation that nothing will ever generate.
       const generate = generateBase === true
       const created = await characters.create(ctx, CharacterInputSchema.parse(input), 'user', { generate })
       if (generate) inBackground(characters.generateVariationImage(ctx, created.id, created.variations[0].id), 'Base image generation')

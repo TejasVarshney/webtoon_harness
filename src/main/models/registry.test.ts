@@ -140,7 +140,7 @@ describe('ModelRegistry', () => {
     await expect(registry.removeModel('mdl_ffffffffff')).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
-  it('clears roles when a model is removed (Review Focus 3)', async () => {
+  it('clears roles when a model is removed', async () => {
     const { clearedRoles } = await registry.removeModel('mdl_000000000a')
     expect(clearedRoles).toEqual(['agent'])
     expect(() => registry.resolve('agent')).toThrow("No model assigned to role 'agent'. Open Settings → Models.")
@@ -196,7 +196,7 @@ describe('ModelRegistry', () => {
     expect(registry.view().endpoints[0]!.hasKey).toBe(false)
   })
 
-  it('clears a stored key when the base URL moves to another host, and says so (Ruling F3)', async () => {
+  it('clears a stored key when the base URL moves to another host, and says so', async () => {
     const e = await registry.addEndpoint({ name: 'O', kind: 'openai', baseUrl: 'https://api.openai.com/v1' })
     await registry.setApiKey(e.id, 'sk-old')
     const hasKey = (): boolean => registry.view().endpoints.find((x) => x.id === e.id)!.hasKey

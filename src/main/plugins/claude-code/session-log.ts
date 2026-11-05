@@ -12,7 +12,7 @@ const MODEL = { endpointId: 'plugin:claude-code', modelId: 'claude-code' }
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /**
- * Logs the tool calls Claude Code makes over MCP into a chat session of the active project (spec §5.4),
+ * Logs the tool calls Claude Code makes over MCP into a chat session of the active project,
  * so the chat pane shows them like the in-app agent's steps. A failed write never fails the call: the
  * first failure is kept for `lastError()`.
  */

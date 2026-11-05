@@ -10,7 +10,7 @@ import { ALL_TOOL_NAMES, buildAgentTools } from './tools'
 import { buildPanelChatTools } from './tools/panel-chat-tools'
 import type { ToolContext, ToolRegistry } from './tools/registry'
 
-// Lints the shipped workflow docs (spec §11) against the code they describe: required sections, the hard
+// Lints the shipped workflow docs against the code they describe: required sections, the hard
 // rules, the tool catalog, tool names, example tool calls and the prompt templates.
 
 const DOCS_DIR = path.resolve('resources', 'agent-docs')
@@ -257,7 +257,7 @@ describe('workflow docs lint', () => {
     expect(extractSection(checklist, 'Checklist')).toContain('**Items, per item.**')
   })
 
-  it('panel-editing says a layout change needs no redraw (spec §5.1), where the panel side chat reads it', () => {
+  it('panel-editing says a layout change needs no redraw, where the panel side chat reads it', () => {
     const table = extractSection(read('workflows/panel-editing'), 'Edit vs Regenerate')
     const row = table.split('\n').find((line) => line.includes('`frame`'))
     expect(row, 'a row for the layout fields').toBeDefined()

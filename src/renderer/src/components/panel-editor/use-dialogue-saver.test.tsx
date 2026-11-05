@@ -149,7 +149,7 @@ describe('useDialogueSaver', () => {
     expect(again.result.current.conflict).toBe(false)
   })
 
-  it('saves nothing for a panel that left the store (R2)', async () => {
+  it('saves nothing for a panel that left the store', async () => {
     const { calls } = installFakeApi({})
     const saver = renderHook(() => useDialogueSaver(A))
     act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [] } }))

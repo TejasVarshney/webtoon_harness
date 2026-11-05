@@ -396,7 +396,7 @@ describe('PanelWorkspace', () => {
     expect(shape).toHaveAttribute('data-slant', 'left')
   })
 
-  it('cancels the text of a bubble on Escape and stays open, and clears a selected bubble before going back (Review Focus 4)', async () => {
+  it('cancels the text of a bubble on Escape and stays open, and clears a selected bubble before going back', async () => {
     const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
     const { calls } = mount()
@@ -490,7 +490,7 @@ describe('PanelWorkspace', () => {
     vi.restoreAllMocks()
   })
 
-  it('saves what was typed in Scene when stepping to the next panel (Review Focus 3)', async () => {
+  it('saves what was typed in Scene when stepping to the next panel', async () => {
     const { calls } = mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
     fireEvent.click(within(workspace()).getByRole('tab', { name: 'Scene' }))
     fireEvent.change(within(workspace()).getByLabelText('Setting'), { target: { value: 'Roof ' } })

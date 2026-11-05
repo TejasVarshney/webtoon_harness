@@ -1,4 +1,4 @@
-// IDs are `<prefix>_<10 lowercase hex>` (spec §5). This file is imported by the renderer and
+// IDs are `<prefix>_<10 lowercase hex>`. This file is imported by the renderer and
 // preload too, so it must not import Node-only modules: it uses the web-standard `crypto`.
 
 export const ID_PREFIXES = ['prj', 'ses', 'chr', 'var', 'epi', 'pnl', 'ver', 'msg', 'run', 'end', 'mdl', 'bt', 'dlg', 'upl', 'itm', 'use', 'call'] as const

@@ -10,7 +10,7 @@ function describeZodError(error: z.ZodError): string {
 }
 
 /**
- * Parses a request at the main-process boundary (spec §4). A bad request rejects with a plain `Error` whose
+ * Parses a request at the main-process boundary. A bad request rejects with a plain `Error` whose
  * message the renderer can show as it is.
  */
 export function parseInput<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {

@@ -36,7 +36,7 @@ export interface PanelServiceOptions {
   images: ImageService
   /** Moves a path to the OS trash. */
   trash: (absPath: string) => Promise<void>
-  /** The vision consistency check (Task 25). Without one, `generate` never checks or retries. */
+  /** The vision consistency check. Without one, `generate` never checks or retries. */
   checker?: Pick<ConsistencyChecker, 'check'>
 }
 
@@ -77,7 +77,7 @@ interface Draw {
 
 /**
  * Panels and their version history (`panels/<pnlId>.json`, images in `panels/<pnlId>/<verId>.<ext>`).
- * Lock discipline (Ruling T18c): a panel's file lock is never held together with an episode lock, and
+ * Lock discipline: a panel's file lock is never held together with an episode lock, and
  * no lock is ever held across an image call.
  */
 export class PanelService implements PanelUsageLookup, ItemUsageLookup {
@@ -143,7 +143,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       updatedAt: at
     })
 
-    // Ruling T18c: the panel file first, then the episode, with no lock held across the two steps.
+    // The panel file first, then the episode, with no lock held across the two steps.
     const file = ctx.paths.panelFile(id)
     await ctx.mutex.run(file, () => writeJsonAtomic(file, panel))
     try {
@@ -158,12 +158,12 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   }
 
   /**
-   * Applies a patch to the stored panel and validates the merged result. Ruling T18b: the archived
+   * Applies a patch to the stored panel and validates the merged result. The archived
    * and "no ready reference image" checks apply only to cast entries that are new or whose variation
    * changed, so a panel that casts a since-archived character, or a variation whose regeneration
    * later failed, stays editable. Unknown-character and foreign-variation errors apply to every entry.
    * Items work the same way: an unchanged item and usage pair is grandfathered, and the unknown-item,
-   * foreign-usage and holder errors apply to every entry. Ruling T18b: it also clears a failed sheet check on
+   * foreign-usage and holder errors apply to every entry. It also clears a failed sheet check on
    * an unchanged pair, so editing a panel never blocks a cast it already had.
    */
   async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
@@ -203,15 +203,15 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
 
   /**
    * Draws the panel, checks the image when a vision model is assigned, and redraws up to the project's
-   * `consistencyRetries` times while the check fails (spec §9, step 5). Resolves to the version that
+   * `consistencyRetries` times while the check fails. Resolves to the version that
    * became current: the last attempt that landed, which is the passing one when any passed. A first
    * draw that fails is returned as it is (`failed`, never checked). When the user reverts or uploads
    * while a check runs, nothing more is redrawn and the version they made current is returned.
    *
-   * Ruling T18a: each draw prepares first (an unknown cast, no image model, ... becomes a `failed`
+   * Each draw prepares first (an unknown cast, no image model, ... becomes a `failed`
    * version and never a throw), appends the version under the panel lock, calls the model OUTSIDE it,
    * then re-reads and records the outcome under the lock. A ready attempt becomes current when it
-   * lands, a failed one never moves `currentVersionId`. Ruling T25a: the vision call runs outside the
+   * lands, a failed one never moves `currentVersionId`. The vision call runs outside the
    * lock too; its verdict is recorded on the version with the same re-read pattern. An abort of
    * `opts.signal` stops further checks and redraws and keeps what is recorded. Only an unknown panel throws.
    */
@@ -391,7 +391,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     })
   }
 
-  /** Removes the panel from its episode, then trashes its JSON, image folder and side chat (Ruling T18c: never both locks at once). */
+  /** Removes the panel from its episode, then trashes its JSON, image folder and side chat (never both locks at once). */
   async delete(ctx: ProjectContext, id: string): Promise<void> {
     const panel = await this.get(ctx, id)
     try {
@@ -405,7 +405,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       await this.opts.trash(file)
       const dir = ctx.paths.panelDir(id)
       if (fs.existsSync(dir)) await this.opts.trash(dir)
-      // Ruling T18d: the panel's chat thread goes with it.
+      // The panel's chat thread goes with it.
       const chat = ctx.paths.panelChatFile(id)
       if (fs.existsSync(chat)) await this.opts.trash(chat)
     })
@@ -518,10 +518,9 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
 
   /**
    * Stores the check on the version under the panel lock (re-reading the file, so edits made during the
-   * vision call survive). Never throws. Returns whether it was stored: false when the panel or the
+   * vision call survive). Never throws. Resolves to the panel as stored then, or null when the panel or the
    * version is gone, the file is unreadable (it is left alone) or the write failed.
    */
-  /** Records the verdict on the version; resolves to the panel as stored then, or null when it could not be recorded. */
   private async recordCheck(ctx: ProjectContext, panelId: string, versionId: string, check: CheckResult): Promise<Panel | null> {
     const file = ctx.paths.panelFile(panelId)
     let stored: Panel | null
@@ -659,7 +658,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       if (!PANEL_FILE.test(name)) continue
       const abs = path.join(ctx.paths.panelsDir(), name)
       try {
-        // Ruling T18f: the id comes from the file name; a file holding any other id is reported and skipped.
+        // The id comes from the file name; a file holding any other id is reported and skipped.
         panels.push(await readPanelFile(abs, name.slice(0, -'.json'.length)))
       } catch (error) {
         if (!isNotFound(error)) this.report(ctx, abs, error)
@@ -684,7 +683,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   }
 }
 
-/** Reads a panel file and checks that it holds the id its file name says (Ruling T18f). */
+/** Reads a panel file and checks that it holds the id its file name says. */
 async function readPanelFile(file: string, id: string): Promise<Panel> {
   const panel = await readJson(file, PanelSchema)
   if (panel.id !== id) throw new CorruptFileError(file, `holds panel id ${JSON.stringify(panel.id)}, which does not match its file name`)
@@ -698,7 +697,7 @@ function readyImage(panel: Panel | null): { panelId: string; imagePath: string }
 }
 
 /**
- * Ruling T18b: a roster in which the cast entries that are unchanged (same character and variation as
+ * A roster in which the cast entries that are unchanged (same character and variation as
  * stored) read as usable, so `validatePanelDraft` reports "is archived" and "has no ready reference
  * image" only for entries that are new or changed. A character that also has a changed entry stays
  * archived. Names and variation ids are untouched, so unknown-character and foreign-variation

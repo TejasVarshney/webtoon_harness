@@ -56,7 +56,7 @@ export class McpToolAdapter {
   }
 
   /**
-   * The project and episode a request acts on. A named project (the backend's `X-Webtoon-Project`, ruling R18) is
+   * The project and episode a request acts on. A named project (the backend's `X-Webtoon-Project`) is
    * opened and used with the named episode; if it does not open this throws, and never falls back to the window.
    * With none named, the project and episode the window shows: null when none is open (or it no longer opens).
    */

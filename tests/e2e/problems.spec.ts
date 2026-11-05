@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { createProjectAndSession, launchApp } from './helpers'
 
-// I1 / Review Focus 5: a hand-edited, corrupt project file is reported to the user and the project still opens.
+// A hand-edited, corrupt project file is reported to the user and the project still opens.
 // An episode file is only read when the episodes are listed, after the project has opened, so this also shows
 // that the problems are re-read once the lists have loaded.
 test('a corrupt project file is shown as a problem and the project still opens', async () => {

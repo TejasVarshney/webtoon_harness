@@ -5,7 +5,7 @@ import { useModelsStore } from '../../stores/models-store'
 
 export interface EndpointEditFormProps {
   endpoint: EndpointConfig & { hasKey: boolean }
-  /** `keyCleared`: the host changed, so main removed the stored key (Ruling F3). */
+  /** `keyCleared`: the host changed, so main removed the stored key. */
   onDone(result: { keyCleared: boolean }): void
   onCancel(): void
 }
@@ -16,7 +16,7 @@ function errorText(e: unknown): string {
 
 /**
  * Changes an endpoint's name, base URL and the timeout for its image draws and consistency checks, and for
- * `anthropic` the server-side refusal fallback (spec §3, T26a).
+ * `anthropic` the server-side refusal fallback.
  */
 export function EndpointEditForm({ endpoint, onDone, onCancel }: EndpointEditFormProps) {
   const [name, setName] = useState(endpoint.name)

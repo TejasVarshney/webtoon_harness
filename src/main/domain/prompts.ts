@@ -36,7 +36,7 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
 }
 
 // ---------------------------------------------------------------------------------------------
-// Panel prompts (spec §9). Dialogue never enters an image prompt: it is rendered as HTML over the
+// Panel prompts. Dialogue never enters an image prompt: it is rendered as HTML over the
 // panel, so `composePanelPrompt` does not even accept it.
 // ---------------------------------------------------------------------------------------------
 
@@ -87,7 +87,7 @@ const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
 
 /**
- * Builds the §9 panel prompt and its ordered reference list. References are the cast members'
+ * Builds the panel prompt and its ordered reference list. References are the cast members'
  * variation images in cast order, then the panel items' usage images in panel order, then the user's
  * layout sketch (a [LAYOUT] line, left out with its image), then the previous panel's image; over
  * `maxReferences` the previous panel is dropped first, then the sketch, then items from the end,

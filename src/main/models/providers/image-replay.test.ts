@@ -51,7 +51,7 @@ async function project(files: Record<string, Buffer>, ops: ImageOps = createIden
   return (rel) => loadImageForTextModel(ctx, ops, rel)
 }
 
-describe('replaying images that are gone (C1)', () => {
+describe('replaying images that are gone', () => {
   it('anthropic: a deleted attachment or tool image becomes a text note instead of failing the turn', async () => {
     const loadImage = await project({ 'uploads/kept.png': PNG })
     const history = [
@@ -118,7 +118,7 @@ describe('replaying images that are gone (C1)', () => {
   })
 })
 
-describe('WebP in a replayed history (C2, Ruling F1)', () => {
+describe('WebP in a replayed history', () => {
   // The decoder stands in for Electron's nativeImage, which cannot read WebP (verified on Electron 45).
   const webpProject = (): Promise<ImageLoader> => project({ 'uploads/w.webp': WEBP_BYTES }, createNativeImageOps(fakeNativeImage()))
 
@@ -135,7 +135,7 @@ describe('WebP in a replayed history (C2, Ruling F1)', () => {
   })
 })
 
-describe('bounded image replay (C3, Ruling F2)', () => {
+describe('bounded image replay', () => {
   /** Ten earlier turns with an attachment each, an earlier run's tool image, then the latest turn and the current run. */
   async function longHistory(): Promise<{ history: ChatMessage[]; loads: string[]; loadImage: ImageLoader }> {
     const files: Record<string, Buffer> = { 'uploads/now-a.png': PNG, 'uploads/now-b.png': PNG, 'panels/pnl_0000000002/run.png': PNG, 'panels/pnl_0000000001/earlier.png': PNG }

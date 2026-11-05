@@ -7,7 +7,7 @@ const ROOT = 'C:/x/My Projects/prj_0000000001'
 const paths = new ProjectPaths(ROOT)
 const abs = (...parts: string[]): string => path.join(path.resolve(ROOT), ...parts)
 
-describe('ProjectPaths layout (spec §5)', () => {
+describe('ProjectPaths layout', () => {
   it('maps every well-known file and directory', () => {
     expect(paths.projectFile()).toBe(abs('project.json'))
     expect(paths.storyBible()).toBe(abs('story', 'bible.md'))
@@ -31,7 +31,7 @@ describe('ProjectPaths layout (spec §5)', () => {
   })
 })
 
-describe('ProjectPaths id guard (ruling T3a)', () => {
+describe('ProjectPaths id guard', () => {
   const idMethods: [string, (id: string) => string][] = [
     ['characterFile', (id) => paths.characterFile(id)],
     ['characterDir', (id) => paths.characterDir(id)],
@@ -80,7 +80,7 @@ describe('ProjectPaths.resolveAsset / toRelative', () => {
     }
   })
 
-  it('rejects paths that resolve to the project root itself (I4)', () => {
+  it('rejects paths that resolve to the project root itself', () => {
     for (const bad of ['', '.', './', 'characters/..', 'panels/../.', 'uploads/../']) {
       expect(() => paths.resolveAsset(bad), JSON.stringify(bad)).toThrow(PathEscapeError)
     }

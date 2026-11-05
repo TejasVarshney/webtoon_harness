@@ -47,7 +47,7 @@ afterEach(() => {
   stop = null
 })
 
-describe('project problems refresh (I1)', () => {
+describe('project problems refresh', () => {
   it('shows a problem found by the first panel load after the project opened', async () => {
     mainThatFindsProblemsWhileListing()
     stop = startEventSync()

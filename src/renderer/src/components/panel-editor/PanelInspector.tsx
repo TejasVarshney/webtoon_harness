@@ -54,7 +54,7 @@ function SaveStatus({ fields, warnings }: { fields: FieldAutosave<unknown>[]; wa
 
 /**
  * The open panel's controls under the stage, in tabs: Lines (the default), Cast, Items and Scene. Every change saves
- * on its own, sending only the field that changed, and the agent's edits show as they land (spec §6). The fields'
+ * on its own, sending only the field that changed, and the agent's edits show as they land. The fields'
  * drafts live here, not in the tabs, so switching tabs keeps them, and the cast can let go of what a leaving member
  * held. Selecting a bubble on the stage opens Lines; so does a line that changed under an edit, or a refused dialogue
  * save, so its message is seen. Keyed by panel in the workspace: stepping to another panel or going Back saves what

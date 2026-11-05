@@ -23,7 +23,7 @@ export interface OffscreenCapturerOptions {
 }
 
 /**
- * The `StripCapturer` of spec §3: an offscreen window with no preload, driven over the DevTools protocol. The view is
+ * The `StripCapturer`: an offscreen window with no preload, driven over the DevTools protocol. The view is
  * 440 CSS px wide; each slice sets the viewport to the slice's (whole) CSS height at 800 / 440 × scale device px per
  * CSS px, so the image is 800 × scale px wide, scrolls to its top, waits two frames and takes a screenshot.
  * `close()` (or a crash) rejects whatever call is in flight at once.

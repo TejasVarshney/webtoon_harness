@@ -33,7 +33,7 @@ interface LastWarnings {
 
 /**
  * Each panel's last save's warnings. The service checks the whole panel on every save, so the last save's warnings
- * replace the ones before, whoever made them (spec §6: they show until the next save). Kept only while a tab shows them.
+ * replace the ones before, whoever made them (they show until the next save). Kept only while a tab shows them.
  */
 const lastWarnings = new Map<string, { last: LastWarnings | null; listeners: Set<() => void> }>()
 
@@ -81,7 +81,7 @@ function caughtUp(stored: Panel | undefined, queue: Queue): boolean {
 /**
  * Sends the patches `build` makes of the panel, in order, once the saves queued before them have settled. A refused
  * patch stops the ones after it. Resolves to the last result, or `null` when nothing was sent: `build` made no patch,
- * or the panel left the store (R2). Rejects when the service refuses a patch or `build` throws; neither holds up the
+ * or the panel left the store. Rejects when the service refuses a patch or `build` throws; neither holds up the
  * saves queued after it. `by` (a field's name, or `dialogue`) is what made the save: its warnings show there.
  */
 export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[], by: string): Promise<SaveResult | null> {

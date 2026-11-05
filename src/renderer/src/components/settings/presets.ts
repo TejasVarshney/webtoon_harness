@@ -7,7 +7,7 @@ export interface EndpointPreset {
   suggestedModels: { modelId: string; capabilities: Capability[] }[]
 }
 
-/** Spec §7 "Presets": editable starting points for the Add endpoint form. Nothing beyond these suggestions is hardcoded. */
+/** Editable starting points for the Add endpoint form. Nothing beyond these suggestions is hardcoded. */
 export const presets: EndpointPreset[] = [
   {
     label: 'Anthropic',

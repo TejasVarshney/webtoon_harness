@@ -77,7 +77,7 @@ describe('item tools', () => {
     expect(stored).toMatchObject({ aliases: ['the blaster'], notes: 'Her late father sidearm', ownerId: mina.id })
   })
 
-  it('create_item without a base image makes no image call and records the base failed (Ruling F4)', async () => {
+  it('create_item without a base image makes no image call and records the base failed', async () => {
     const { run, s, ctx } = await setup()
     await s.registry.assignRole('image', null) // would fail if the tool tried to generate
     const r = await run('create_item', { ...blaster, generateBaseImage: false })
@@ -162,7 +162,7 @@ describe('item tools', () => {
     expect(r.content).toMatch(/^Invalid input for create_item_usage: kind: /)
   })
 
-  it('create_item_usage with generateImage false records the usage failed, not pending, and calls no model (Ruling F4)', async () => {
+  it('create_item_usage with generateImage false records the usage failed, not pending, and calls no model', async () => {
     const { run, s, ctx } = await setup()
     const { itemId } = json(await run('create_item', blaster))
     await s.registry.assignRole('image', null)

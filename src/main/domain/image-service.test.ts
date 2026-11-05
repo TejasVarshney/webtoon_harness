@@ -65,7 +65,7 @@ describe('ImageService', () => {
     expect(svc.maxReferences('image')).toBe(5)
   })
 
-  it('passes a WebP reference the decoder cannot read through with its MIME (Ruling F1)', async () => {
+  it('passes a WebP reference the decoder cannot read through with its MIME', async () => {
     const { tp, svc, seen } = await setup({ generate: ok }, undefined, createNativeImageOps(fakeNativeImage()))
     cleanup = tp.cleanup
     await fs.promises.writeFile(tp.ctx.paths.resolveAsset('uploads/w.webp'), WEBP_BYTES)

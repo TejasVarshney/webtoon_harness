@@ -19,7 +19,7 @@ export interface PanelWorkspaceProps {
 }
 
 /**
- * Leaves editing mode for the strip, and focuses again the card of the panel that was open (R4). The strip is inert
+ * Leaves editing mode for the strip, and focuses again the card of the panel that was open. The strip is inert
  * until the overlay is gone, so the focus waits a frame.
  */
 function backToStrip(): void {
@@ -33,7 +33,7 @@ function backToStrip(): void {
  * The stage shows the panel, or in sketch mode (Sketch, and a panel never drawn) a canvas for a rough layout sketch that
  * the next generation follows.
  * The panel comes from the open episode's strip, so the agent's edits show here as they land. A panel that leaves the
- * episode keeps the frame and the way back (R2): nothing closes by itself, and nothing is saved for it.
+ * episode keeps the frame and the way back: nothing closes by itself, and nothing is saved for it.
  * Back, or Escape, returns to the strip.
  */
 export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {

@@ -1,4 +1,4 @@
-// Zod schemas for every persisted record, IPC input and tool input (spec §6). These are the
+// Zod schemas for every persisted record, IPC input and tool input. These are the
 // single source of truth: `types.ts` derives every type from them with `z.infer`.
 //
 // Rules used throughout:

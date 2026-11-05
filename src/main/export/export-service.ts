@@ -60,7 +60,7 @@ interface JobPlan {
 }
 
 /**
- * Episode export jobs (spec §6.1): one at a time, each from a snapshot of the project taken at start. A run renders
+ * Episode export jobs: one at a time, each from a snapshot of the project taken at start. A run renders
  * every episode in one `StripCapturer`, captures its slices and feeds them to the preset's writer, which writes to
  * `.part` paths. Only when every output is complete are existing targets trashed and the parts renamed; a failure
  * or cancel removes every part. Progress goes out on the bus as `export.progress`.
