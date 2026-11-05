@@ -659,6 +659,53 @@ describe('ExportService', () => {
     expect(await readdir(target)).toEqual([path.basename(first)])
   })
 
+  it('retries a commit rename that a scanner briefly locks (EPERM, then EACCES on a folder)', async () => {
+    const { svc, addEpisode, req, finished, target } = await setup()
+    const { episode } = await addEpisode('The Rooftop', ['ready'])
+    const file = path.join(target, 'one.pdf')
+    const folder = path.join(target, 'Moon Tower - 01 - The Rooftop')
+    const realRename = fs.promises.rename.bind(fs.promises)
+    const failures = new Map([
+      [file, ['EPERM', 'EPERM']],
+      [folder, ['EACCES']]
+    ])
+    const rename = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      const code = failures.get(String(to))?.shift()
+      if (code) throw Object.assign(new Error(`${code}: locked, rename '${String(from)}' -> '${String(to)}'`), { code, syscall: 'rename' })
+      return realRename(from, to)
+    })
+    const pdf = await svc.start(req({ episodeIds: [episode.id], preset: 'pdf-reading' }), file)
+    expect(await finished(pdf.jobId)).toMatchObject({ stage: 'done', outputs: [file] })
+    expect(rename.mock.calls.filter(([, to]) => to === file)).toHaveLength(3)
+    expect((await fs.promises.readFile(file)).subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    const slices = await svc.start(req({ episodeIds: [episode.id], preset: 'webtoon' }), target)
+    expect(await finished(slices.jobId)).toMatchObject({ stage: 'done', outputs: [folder] })
+    expect(await readdir(folder)).toEqual(['001.jpg'])
+  })
+
+  it('a rename that keeps failing after the old output was trashed keeps the new part and names it', async () => {
+    const { svc, addEpisode, req, finished, target, trashed } = await setup()
+    const one = await addEpisode('The Rooftop', ['ready'])
+    const two = await addEpisode('The Fall', ['ready'])
+    const first = path.join(target, 'Moon Tower - 01 - The Rooftop.pdf')
+    const second = path.join(target, 'Moon Tower - 02 - The Fall.pdf')
+    await fs.promises.writeFile(second, 'old two')
+    const realRename = fs.promises.rename.bind(fs.promises)
+    vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (to === second) throw Object.assign(new Error(`EPERM: operation not permitted, rename '${String(from)}' -> '${second}'`), { code: 'EPERM', syscall: 'rename', path: from, dest: to })
+      return realRename(from, to)
+    })
+    const { jobId } = await svc.start(req({ episodeIds: [one.episode.id, two.episode.id], preset: 'pdf-reading' }), target)
+    const end = await finished(jobId)
+    expect(end).toMatchObject({ stage: 'failed', outputs: [first] })
+    expect(end.message).toBe(
+      `Could not write ${second}: EPERM: operation not permitted. The old one is in the trash, and the new one is kept at ${second}.part`
+    )
+    expect(trashed).toEqual([second])
+    expect((await fs.promises.readFile(`${second}.part`)).subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    expect(await readdir(target)).toEqual([path.basename(first), `${path.basename(second)}.part`])
+  })
+
   it('refuses a second job while one runs', async () => {
     const { svc, capturer, addEpisode, req, finished, target } = await setup()
     const { episode } = await addEpisode('The Rooftop', ['ready'])

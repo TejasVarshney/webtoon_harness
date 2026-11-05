@@ -8,10 +8,11 @@ import type { CharacterService } from '../domain/character-service'
 import type { EpisodeService } from '../domain/episode-service'
 import type { PanelService } from '../domain/panel-service'
 import type { EventBus } from '../events/bus'
+import { RETRYABLE_RENAME_CODES, renameWithRetry } from '../storage/atomic'
 import { isNotFound } from '../storage/fs-errors'
 import type { ProjectStore } from '../storage/project-store'
 import { outputNames, safeFileName } from './file-names'
-import { createPresetWriter, PartFiles, writing, type PresetWriter, type WriterOptions } from './preset-writers'
+import { createPresetWriter, osReason, PartFiles, writing, WriteError, type PresetWriter, type WriterOptions } from './preset-writers'
 import type { ImageCodec, StripCapturer } from './types'
 
 export interface ExportServiceOptions {
@@ -32,6 +33,8 @@ export interface ExportServiceOptions {
 const NOTHING_TO_EXPORT = 'Nothing to export: no episode has a finished panel'
 /** How long `shutdown` waits for a cancelled job to clean up, like the plugins. */
 const SHUTDOWN_WAIT_MS = 5000
+/** A scanner or indexer may briefly hold a fresh output; renaming a whole `.part` folder can also give EACCES. */
+const COMMIT_RETRYABLE = new Set([...RETRYABLE_RENAME_CODES, 'EACCES'])
 
 /** Thrown inside a run when its cancel flag is seen; it ends the run as `cancelled`, not `failed`. */
 class Cancelled extends Error {}
@@ -281,13 +284,21 @@ export class ExportService {
   /**
    * Put each output in place, one at a time: trash what it replaces, then rename its part. An output is never left
    * with its old file trashed and its new one deleted because a later output failed; each one placed is added to
-   * `committed`. If the rename itself fails right after its trash, the old file is still in the OS trash.
+   * `committed`. A rename a scanner briefly blocks is retried. If it still fails after the old output was trashed,
+   * the part is kept (not removed with the others) and the error names it, so the new export can be recovered.
    */
   private async commit(writer: PresetWriter, parts: PartFiles, committed: string[]): Promise<void> {
     for (const { part, final } of writer.outputs) {
       await writing(final, async () => {
-        if (await exists(final)) await this.opts.trash(final)
-        await fs.promises.rename(part, final)
+        const replacing = await exists(final)
+        if (replacing) await this.opts.trash(final)
+        try {
+          await renameWithRetry(fs.promises, part, final, COMMIT_RETRYABLE)
+        } catch (error) {
+          if (!replacing) throw error
+          parts.release(part)
+          throw new WriteError(`Could not write ${final}: ${osReason(error)}. The old one is in the trash, and the new one is kept at ${part}`, { cause: error })
+        }
       })
       parts.release(part)
       committed.push(final)

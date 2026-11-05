@@ -31,7 +31,8 @@ export async function writing<T>(final: string, op: () => Promise<T>): Promise<T
   }
 }
 
-function osReason(error: unknown): string {
+/** An error's message without the syscall and paths Node appends (`EACCES: permission denied`). */
+export function osReason(error: unknown): string {
   if (!(error instanceof Error)) return String(error)
   const { syscall } = error as NodeJS.ErrnoException
   const tail = syscall ? error.message.indexOf(`, ${syscall}`) : -1

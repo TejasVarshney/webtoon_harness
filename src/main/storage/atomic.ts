@@ -7,7 +7,7 @@ import { CorruptFileError } from '../domain/errors'
 type AtomicFs = Pick<typeof fs.promises, 'writeFile' | 'rename' | 'rm' | 'mkdir'>
 
 /** Antivirus scanners and indexers briefly lock freshly written files on Windows. */
-const RETRYABLE_CODES = new Set(['EPERM', 'EBUSY'])
+export const RETRYABLE_RENAME_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY'])
 const RENAME_RETRIES = 5
 const RENAME_BACKOFF_MS = 25
 
@@ -17,14 +17,23 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined
 }
 
-async function renameWithRetry(fsImpl: AtomicFs, from: string, to: string): Promise<void> {
+/**
+ * Renames `from` to `to`, retrying a few times (25 ms apart) while the error's code is in `retryable`. Calls
+ * `fsImpl.rename` afresh each time. The last error propagates as it is.
+ */
+export async function renameWithRetry(
+  fsImpl: Pick<typeof fs.promises, 'rename'>,
+  from: string,
+  to: string,
+  retryable: ReadonlySet<string> = RETRYABLE_RENAME_CODES
+): Promise<void> {
   for (let retry = 0; ; retry++) {
     try {
       await fsImpl.rename(from, to)
       return
     } catch (error) {
       const code = errorCode(error)
-      if (retry >= RENAME_RETRIES || code === undefined || !RETRYABLE_CODES.has(code)) throw error
+      if (retry >= RENAME_RETRIES || code === undefined || !retryable.has(code)) throw error
       await sleep(RENAME_BACKOFF_MS)
     }
   }
