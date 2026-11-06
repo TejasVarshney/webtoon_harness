@@ -7,6 +7,7 @@ import type {
   BeatPatchSchema,
   BeatSchema,
   BubblePlacementSchema,
+  BubbleShapeSchema,
   CapabilitySchema,
   CharacterInputSchema,
   CharacterPatchSchema,
@@ -65,6 +66,7 @@ export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>
+export type BubbleShape = z.infer<typeof BubbleShapeSchema>
 export type PanelVersion = z.infer<typeof PanelVersionSchema>
 export type VisualFields = z.infer<typeof VisualFieldsSchema>
 export type VisualField = keyof VisualFields

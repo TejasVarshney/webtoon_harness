@@ -242,7 +242,7 @@ export const PanelItemSchema = z.object({
 /** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
 export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
 
-const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
+export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
 const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
 const HexColor = z.string().regex(/^#[0-9a-f]{6}$/i)
 
