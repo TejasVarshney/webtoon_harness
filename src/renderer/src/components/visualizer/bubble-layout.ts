@@ -1,19 +1,18 @@
-import type { DialogueLine, PanelCharacter } from '@shared/types'
+import type { BubbleShape, BubbleStyle, DialogueLine, PanelCharacter } from '@shared/types'
 
 // Pure placement rules for the dialogue overlay: which shape each line is drawn as, which side of the panel it sits
 // on, and where its tail points. The panel data stays as it is; everything here is read from the line's kind and
 // text and from the cast's positions, the way a letterer reads a script.
 
-export type BubbleShape = 'speech' | 'shout' | 'whisper' | 'thought' | 'caption' | 'sfx'
 export type BubbleSide = 'left' | 'center' | 'right'
 /** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it. */
-type BubbleTail = 'down' | 'edge' | 'none'
+type TailDrawing = 'down' | 'edge' | 'none'
 
 export interface BubbleLayout {
   id: string
   shape: BubbleShape
   side: BubbleSide
-  tail: BubbleTail
+  tail: TailDrawing
   /** The speaker is not in the panel's cast (or the line has no speaker). */
   offPanel: boolean
   /** A sound effect drawn big: it has a "!" or is mostly capitals. */
@@ -38,7 +37,8 @@ function shortExclamation(text: string): boolean {
 
 const trailsOff = (text: string): boolean => /^\s*(\.\.\.|…)|(\.\.\.|…)\s*$/u.test(text)
 
-export function bubbleShape(line: Pick<DialogueLine, 'kind' | 'text'>): BubbleShape {
+export function bubbleShape(line: Pick<DialogueLine, 'kind' | 'text'> & { style?: BubbleStyle | null }): BubbleShape {
+  if (line.style?.shape) return line.style.shape
   switch (line.kind) {
     case 'narration':
       return 'caption'

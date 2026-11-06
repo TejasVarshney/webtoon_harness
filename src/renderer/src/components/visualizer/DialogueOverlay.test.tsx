@@ -96,4 +96,30 @@ describe('DialogueOverlay', () => {
     for (const bubble of container.querySelectorAll('.bubble')) expect(bubble).not.toHaveAttribute('tabindex')
     expect(container.querySelector('.dialogue-overlay')).not.toHaveAttribute('data-editing')
   })
+
+  it('gives an unstyled bubble no inline style, as before', () => {
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Plain.')]} />)
+    expect(bubbleOf(container, 'Plain.').getAttribute('style')).toBeNull()
+  })
+
+  it("keeps a placed bubble's position beside its look", () => {
+    const dialogue = [line('dlg_0000000001', 'Here.', { placement: at(0.25, 0.75), style: { fill: '#ff0000' } })]
+    const { container } = render(<DialogueOverlay dialogue={dialogue} />)
+    const { style } = bubbleOf(container, 'Here.')
+    expect(style.left).toBe('25%')
+    expect(style.getPropertyValue('--bubble-fill')).toBe('#ff0000')
+  })
+
+  it('draws shouts and thoughts from inline SVG', () => {
+    const dialogue = [line('dlg_0000000001', 'LOOK OUT!'), line('dlg_0000000002', 'Hmm.', { kind: 'thought' }), line('dlg_0000000003', 'Plain.')]
+    const { container } = render(<DialogueOverlay dialogue={dialogue} />)
+    expect(container.querySelector('.bubble-shout .bubble-body polygon')).not.toBeNull()
+    expect(container.querySelector('.bubble-thought .bubble-body circle')).not.toBeNull()
+    expect(bubbleOf(container, 'Plain.').querySelector('.bubble-body')).toBeNull()
+  })
+
+  it('puts a line shaped as a sound effect in the sound-effect layer', () => {
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Thud.', { kind: 'speech', style: { shape: 'sfx' } })]} />)
+    expect(bubbleOf(container, 'Thud.').parentElement).toHaveClass('dialogue-sfx')
+  })
 })

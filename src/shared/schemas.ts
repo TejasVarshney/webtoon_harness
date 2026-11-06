@@ -243,11 +243,11 @@ export const PanelItemSchema = z.object({
 export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
 
 export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
-const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
+export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
 const HexColor = z.string().regex(/^#[0-9a-f]{6}$/i)
 
 /** How one bubble looks. Every key is optional: only what differs from the shape's default is stored. */
-const BubbleStyleSchema = z.object({
+export const BubbleStyleSchema = z.object({
   shape: BubbleShapeSchema.optional(),
   font: BubbleFontSchema.optional(),
   /** A multiplier of the lettering's size. */

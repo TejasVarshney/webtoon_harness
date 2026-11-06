@@ -93,3 +93,10 @@ describe('sideOfPosition', () => {
     expect(sideOfPosition('upright, bright light')).toBe('center')
   })
 })
+
+describe('bubbleShape with a style', () => {
+  it('draws the chosen shape whatever the words say', () => {
+    expect(bubbleShape({ kind: 'speech', text: 'Hello.', style: { shape: 'shout' } })).toBe('shout')
+    expect(bubbleShape({ kind: 'speech', text: 'STOP!', style: { shape: 'speech' } })).toBe('speech')
+  })
+})
