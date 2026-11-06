@@ -279,6 +279,79 @@ describe('PanelInspector', () => {
       await waitFor(() => expect(within(rows()[1]).queryByRole('button', { name: 'Reset to auto' })).toBeNull())
     })
 
+    describe('the style block', () => {
+      const shape = (i: number, name: string): HTMLElement => within(within(rows()[i]).getByRole('group', { name: 'Shape' })).getByRole('button', { name })
+      const tailButton = (name: string): HTMLElement => within(within(rows()[0]).getByRole('group', { name: 'Tail' })).getByRole('button', { name })
+
+      it('shows the style block only under the selected row', () => {
+        mount({ selectedLine: 1 })
+        expect(within(rows()[0]).queryByRole('group', { name: 'Shape' })).toBeNull()
+        expect(within(rows()[1]).getByRole('group', { name: 'Shape' })).toBeInTheDocument()
+      })
+
+      it('saves a style after the wait, with the rest of the dialogue untouched', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(599)
+        expect(updates(calls)).toEqual([])
+        await wait(1)
+        vi.useRealTimers()
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], style: { shape: 'shout' } }, toDrafts([night])[0]] })
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'true')
+      })
+
+      it('saves a waiting style when the row is left', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        act(() => shape(0, 'Shout').focus())
+        fireEvent.click(shape(0, 'Shout'))
+        expect(updates(calls)).toEqual([])
+        vi.useRealTimers()
+        act(() => shape(0, 'Shout').blur())
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0].dialogue?.[0].style).toEqual({ shape: 'shout' })
+      })
+
+      it('a style and typed text in the same row both land', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+      })
+
+      it('a refused style save says so, and Undo my change drops it', async () => {
+        refusal = 'Dialogue is too long'
+        const { calls } = mount({ selectedLine: 0 })
+        act(() => shape(0, 'Shout').focus())
+        fireEvent.click(shape(0, 'Shout'))
+        act(() => shape(0, 'Shout').blur())
+        const alert = await within(tabPanel()).findByRole('alert')
+        expect(alert).toHaveTextContent('Dialogue is too long')
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'true')
+        fireEvent.click(within(alert).getByRole('button', { name: 'Undo my change' }))
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'false')
+        expect(shape(0, 'Auto')).toHaveAttribute('aria-pressed', 'true')
+        await act(async () => undefined)
+        expect(updates(calls)).toHaveLength(1)
+      })
+
+      it('Tail buttons save at once', async () => {
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(tailButton('None'))
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: 'none' }, toDrafts([night])[0]] })
+        await waitFor(() => expect(tailButton('None')).toHaveAttribute('aria-pressed', 'true'))
+      })
+    })
+
     it('removes a line', async () => {
       const { calls } = mount()
       fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Remove' }))

@@ -457,6 +457,37 @@ describe('PanelWorkspace', () => {
     expect(row).toHaveAttribute('aria-current', 'true')
   })
 
+  describe('a style picked in Lines', () => {
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
+    const withLine = (dialogue: Panel['dialogue']): Panel => ({ ...second, dialogue })
+    const bubble = (): HTMLElement => within(within(workspace()).getByTestId('panel-stage')).getByLabelText('Line 1')
+    const pick = (): void => {
+      const row = within(within(workspace()).getByRole('tabpanel')).getByRole('listitem')
+      focus(within(row).getByLabelText('Text'))
+      fireEvent.change(within(row).getByLabelText('Fill'), { target: { value: '#00ff00' } })
+    }
+
+    it('shows on the stage as soon as it is picked, before it is saved', () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      const { calls } = mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
+    })
+
+    it('ends once the save lands, and the stored look shows from then on', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      const saved = withLine([{ ...line, style: { fill: '#00ff00' } }])
+      mount({ 'panels:update': () => ({ panel: saved, warnings: [] }), 'panels:list': () => [first, saved, third] })
+      pick()
+      await waitFor(() => expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]?.[1].dialogue[0].style).toEqual({ fill: '#00ff00' }))
+      // The agent restyles the line afterwards: the stage follows the store, not the finished preview.
+      act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([{ ...line, style: { fill: '#ff0000' } }]), third] } }))
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#ff0000')
+    })
+  })
+
   it('keeps one stage when stepping, and saves what was typed in a bubble and a nudge still waiting', async () => {
     const keyWarnings = vi.spyOn(console, 'error')
     // jsdom has no layout: the panel is 400x600 at the origin, and every bubble is 100x50 at its top left corner.

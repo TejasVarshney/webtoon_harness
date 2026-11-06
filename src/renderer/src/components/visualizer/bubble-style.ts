@@ -8,7 +8,7 @@ type Defaults = Required<Omit<BubbleStyle, 'shape'>>
 
 const FALLBACK = "'Comic Neue', var(--font)"
 
-const FONTS: { id: BubbleFont; label: string; family: string }[] = [
+export const FONTS: { id: BubbleFont; label: string; family: string }[] = [
   { id: 'comic', label: 'Comic Neue', family: `'Comic Neue', var(--font)` },
   { id: 'bangers', label: 'Bangers', family: `'Bangers', ${FALLBACK}` },
   { id: 'hand', label: 'Patrick Hand', family: `'Patrick Hand', ${FALLBACK}` },

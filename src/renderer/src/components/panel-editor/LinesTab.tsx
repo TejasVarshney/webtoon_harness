@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type RefObject } from 'react'
 import { DialogueKindSchema } from '@shared/schemas'
-import type { Character, DialogueLine, Panel } from '@shared/types'
+import type { BubbleStyle, Character, DialogueLine, Panel } from '@shared/types'
 import { Field } from '../characters/controls'
+import { bubbleShape } from '../visualizer/bubble-layout'
+import { BubbleStyleBlock } from './BubbleStyleBlock'
 import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'
 import { useLastWarnings } from './panel-save-queue'
+import type { StylePreview } from './PanelStage'
 import { useDialogueSaver, type DialogueSaver } from './use-dialogue-saver'
 import { useAutosave } from './use-field-autosave'
 
@@ -59,6 +62,8 @@ export interface LinesTabProps {
   onSelectLine(i: number | null): void
   /** The inspector's scroll area the rows are in, which the selected row is scrolled inside. */
   scrollArea: RefObject<HTMLElement | null>
+  /** Shows the style being picked on the stage until it is saved; null ends it. */
+  onPreviewStyle?(preview: StylePreview | null): void
 }
 
 /** Who says a line: Narration, or a non-archived character, plus the line's own speaker if they were archived since. */
@@ -112,15 +117,18 @@ interface LineRowProps {
   error: string | null
   onSelect(): void
   rowRef(el: HTMLLIElement | null): void
+  onPreviewStyle?(preview: StylePreview | null): void
 }
 
 /**
  * One stored line. Its speaker, kind and text are one draft, saved `AUTOSAVE_MS` after the last change, when the row is
  * left and on unmount, as the whole dialogue built at send time with this line changed. Each save expects the line as
  * the edit found it, or as this row's last save left it: an agent's change in between makes it a conflict, not an
- * overwrite. A text left empty keeps the old text (Remove deletes).
+ * overwrite. A text left empty keeps the old text (Remove deletes). The style is a draft of its own, saved the same
+ * way, so a pick and typed text both land. The tail is not in it: a tail dragged on the stage must never be
+ * overwritten by a style that was waiting.
  */
-function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef }: LineRowProps) {
+function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle }: LineRowProps) {
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
@@ -140,15 +148,37 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
     }
   })
 
+  /** The line as a change made now must find it. */
+  const expectNow = (): LineIdentity => (inFlight.current > 0 && base.current !== null ? base.current : identityOf(line))
+
+  const style = useAutosave<BubbleStyle | null>(line.style, {
+    normalize: (v) => v,
+    send: (v) => save((current) => editLine(current, index, expectNow(), { style: v })).then((outcome) => (outcome === 'saved' ? 'saved' : outcome === 'refused' ? 'refused' : 'dropped'))
+  })
+
   // A refused draft with no message left would be unsaved text nobody is told about: it gives way to the stored line.
   const orphaned = draft.refused && error === null
   const { undo } = draft
   useEffect(() => {
     if (orphaned) undo()
   }, [orphaned, undo])
+  const styleOrphaned = style.refused && error === null
+  const { undo: undoStyle } = style
+  useEffect(() => {
+    if (styleOrphaned) undoStyle()
+  }, [styleOrphaned, undoStyle])
 
-  /** The line as a change made now must find it. */
-  const expectNow = (): LineIdentity => (inFlight.current > 0 && base.current !== null ? base.current : identityOf(line))
+  // The stage draws the style as picked while it waits to be saved, and goes back to the store's once it is.
+  const previewTo = useRef(onPreviewStyle)
+  useLayoutEffect(() => {
+    previewTo.current = onPreviewStyle
+  })
+  const { pending: stylePending, value: styleValue } = style
+  useLayoutEffect(() => {
+    if (!stylePending) return
+    previewTo.current?.({ index, style: styleValue })
+    return () => previewTo.current?.(null)
+  }, [stylePending, styleValue, index])
 
   function change(patch: Partial<LineIdentity>): void {
     // An edit begins from the line as shown, the store's, unless this row still has a change of its own going.
@@ -159,6 +189,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
   function leave(): void {
     if (draft.value.text.trim() === '') draft.undo()
     else draft.flush()
+    style.flush()
+  }
+
+  /** The tail saves at once, after whatever of the row is still waiting. */
+  function setTail(next: 'none' | null): void {
+    draft.flush()
+    style.flush()
+    const expect = expectNow()
+    void save((current) => editLine(current, index, expect, { tail: next }))
   }
 
   function resetPlacement(): void {
@@ -188,6 +227,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
       }}
     >
       <LineFields characters={characters} value={draft.value} onChange={change} />
+      {selected && (
+        <BubbleStyleBlock
+          autoShape={bubbleShape({ kind: draft.value.kind, text: draft.value.text })}
+          style={style.value}
+          tail={line.tail}
+          onStyle={style.set}
+          onTail={setTail}
+        />
+      )}
       <div className="form-actions">
         {line.placement !== null && (
           <button type="button" onClick={resetPlacement}>
@@ -306,7 +354,7 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
  * the inspector's scroll area only, and going into a row selects its bubble. A line that changed under an edit, here or
  * on the stage, and a dialogue save the service refused, are said here, once.
  */
-export function LinesTab({ panel, characters, selectedLine, onSelectLine, scrollArea }: LinesTabProps) {
+export function LinesTab({ panel, characters, selectedLine, onSelectLine, scrollArea, onPreviewStyle }: LinesTabProps) {
   const { save, conflict, error, clear } = useDialogueSaver(panel.id)
   const warnings = useLastWarnings(panel.id, DIALOGUE)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
@@ -356,6 +404,7 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
               save={save}
               error={error}
               onSelect={() => onSelectLine(i)}
+              onPreviewStyle={onPreviewStyle}
               rowRef={(el) => {
                 rows.current[i] = el
               }}

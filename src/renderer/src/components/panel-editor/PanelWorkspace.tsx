@@ -10,7 +10,7 @@ import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 import { layoutStrip, rowShares } from '@shared/strip-layout'
 import { PanelInspector } from './PanelInspector'
 import { whenSaved } from './panel-save-queue'
-import { PanelStage } from './PanelStage'
+import { PanelStage, type StylePreview } from './PanelStage'
 import { SketchStage } from './SketchStage'
 import { staleNotice } from './stale-notice'
 
@@ -48,6 +48,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   // The selected line, by index: a bubble on the stage or a row of Lines, each following the other. It belongs to the
   // panel it was chosen on, so stepping to another panel starts with none.
   const [lineSelection, setLineSelection] = useState<{ panelId: string; index: number | null } | null>(null)
+  // A style picked in Lines and not saved yet, which the stage draws meanwhile. It too belongs to the panel it was picked on.
+  const [previewState, setPreviewState] = useState<{ panelId: string; preview: StylePreview | null } | null>(null)
   // Sketch mode, as the user last chose it for this panel. Until they choose, a panel that was never drawn opens on its
   // sketch, and one with an attempt (pending, failed or ready) shows that attempt.
   const [sketchChoice, setSketchChoice] = useState<{ panelId: string; on: boolean } | null>(null)
@@ -65,6 +67,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const busy = action?.panelId === panelId && action.busy
   const error = action?.panelId === panelId ? action.error : null
   const selectedLine = lineSelection?.panelId === panelId ? lineSelection.index : null
+  const stylePreview = previewState?.panelId === panelId ? previewState.preview : null
   const zoom = zoomState?.panelId === panelId ? zoomState.zoom : 1
   const setZoom = (next: number): void => setZoomState({ panelId, zoom: next })
   const sketching = panel !== undefined && (sketchChoice?.panelId === panelId ? sketchChoice.on : panel.versions.length === 0)
@@ -119,6 +122,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   }
   const select = (id: string): void => useAppStore.getState().selectPanel(id)
   const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
+  const previewStyle = (preview: StylePreview | null): void => setPreviewState({ panelId, preview })
 
   return (
     <section className="panel-workspace" data-testid="panel-workspace" aria-label="Panel editor">
@@ -181,9 +185,9 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                   {sketching ? (
                     <SketchStage panel={panel} share={share} slant={slant} zoom={zoom} onZoom={setZoom} />
                   ) : (
-                    <PanelStage panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} zoom={zoom} onZoom={setZoom} />
+                    <PanelStage panel={panel} share={share} slant={slant} selectedLine={selectedLine} onSelectLine={selectLine} zoom={zoom} onZoom={setZoom} stylePreview={stylePreview} />
                   )}
-                  <PanelInspector panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} />
+                  <PanelInspector panel={panel} selectedLine={selectedLine} onSelectLine={selectLine} onPreviewStyle={previewStyle} />
                 </Fragment>
               ) : loaded ? (
                 <p className="placeholder">Panel not in the current episode</p>

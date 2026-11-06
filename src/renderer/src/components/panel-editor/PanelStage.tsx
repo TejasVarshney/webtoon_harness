@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
-import type { Panel } from '@shared/types'
+import type { BubbleStyle, Panel } from '@shared/types'
 import { PanelArt } from '../visualizer/PanelArt'
 import { STAGE_ROW_PX, fitScale } from './bubble-placement'
 import { useBubbleEditing } from './use-bubble-editing'
@@ -12,6 +12,12 @@ import { useStageZoom, ZoomBar } from './use-stage-zoom'
  * the column must keep room for the tabs; the fit reads that cap, and falls back to this when there is none to read.
  */
 const STAGE_MAX_HEIGHT = 0.62
+
+/** A style picked in Lines and not saved yet, for the line at `index`. */
+export interface StylePreview {
+  index: number
+  style: BubbleStyle | null
+}
 
 export interface PanelStageProps {
   panel: Panel
@@ -26,6 +32,8 @@ export interface PanelStageProps {
   /** The zoom, relative to the fit, and how to change it. The workspace keeps one per panel; without them the stage keeps its own. */
   zoom?: number
   onZoom?(zoom: number): void
+  /** A style being picked in Lines, drawn on its line until it is saved. */
+  stylePreview?: StylePreview | null
 }
 
 export interface Fit {
@@ -84,7 +92,7 @@ export function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObjec
  * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone,
  * and a line that changed under an edit, or a refused save, is said in the Lines tab.
  */
-export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zoom: heldZoom, onZoom }: PanelStageProps) {
+export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zoom: heldZoom, onZoom, stylePreview }: PanelStageProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const shapeRef = useRef<HTMLDivElement>(null)
@@ -106,7 +114,8 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   }, [selectedLine, select])
 
   const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
-  const drawn = lines === panel.dialogue ? panel : { ...panel, dialogue: lines }
+  const shown = stylePreview ? lines.map((line, i) => (i === stylePreview.index ? { ...line, style: stylePreview.style } : line)) : lines
+  const drawn = shown === panel.dialogue ? panel : { ...panel, dialogue: shown }
 
   const scale = fit === null ? null : fit.scale * zoom
   // The tail's dot is drawn at one size on screen at any zoom, so its size is divided by the scale.

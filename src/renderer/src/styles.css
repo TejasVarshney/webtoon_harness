@@ -1606,6 +1606,101 @@ kbd {
   margin-left: auto;
 }
 
+/* The selected line's look, full width under its fields: three lines (shape and tail; font, size, lettering; colours),
+   each wrapping on its own when the column is narrow. */
+.bubble-style {
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble-style-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.bubble-style-group,
+.bubble-style .field,
+.bubble-style-slider {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.bubble-style-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.bubble-style-label,
+.line-row .bubble-style .field > label,
+.bubble-style-hint {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+/* The row hides every field label for screen readers; the block shows its own. */
+.line-row .bubble-style .field > label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+}
+
+.bubble-style .icon-button {
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.bubble-style .icon-button svg {
+  flex: none;
+}
+
+.bubble-style-buttons > button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.bubble-style-buttons > button:not(.icon-button) {
+  padding: 0 10px;
+}
+
+.bubble-style .field select {
+  width: 140px;
+}
+
+.bubble-style input[type='color'] {
+  width: var(--control-height);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.bubble-style input[type='range'] {
+  width: 110px;
+  min-height: var(--control-height);
+  padding: 0;
+  accent-color: var(--accent);
+  background: transparent;
+  border: 0;
+}
+
+.bubble-style output {
+  min-width: 3.5em;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bubble-style-reset {
+  margin-left: auto;
+}
+
 /* The pickers' and the layout's groups sit in the tab without the dialog's frame. */
 .panel-inspector fieldset {
   display: flex;
