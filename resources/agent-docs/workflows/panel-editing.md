@@ -150,6 +150,13 @@ Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18
 - **`placement: null` clears a spot** and hands the bubble back to the app. Use it when the user asks to reset a bubble, not otherwise.
 - A placement is layout, like `frame` or `gutter`: it needs no redraw.
 
+A bubble's look is data too, and needs no redraw.
+
+- `style` holds only what differs from the app's default: `shape` (`speech`, `shout`, `whisper`, `thought`, `caption`, `sfx`), `font` (`comic`, `bangers`, `hand`, `impact`, `serif`, `typewriter`), `size` (0.5 to 3), `bold`, `italic`, `caps`, `align` (`left`, `center`, `right`), `color`, `fill`, `stroke` (`#rrggbb`), `strokeWidth` (0 to 6).
+- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
+- **Keep the user's looks.** A line you send without `style` or `tail` keeps those of the line at the same position, so changing words never changes a look. If you reorder, add or remove lines, send them on each line you keep.
+- **Set them only when the user asks**, for example "make Mina's line red" or "point the bubble at Jun".
+
 ## Reporting Changes
 
 After each change, tell the user in 1 to 3 sentences:
