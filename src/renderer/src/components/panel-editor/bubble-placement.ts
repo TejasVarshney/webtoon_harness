@@ -15,6 +15,14 @@ export const STAGE_ROW_PX = 560
 
 export type Box = { left: number; top: number; width: number; height: number }
 
+export const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const
+export type Arrow = (typeof ARROWS)[number]
+
+export const boxOf = (el: Element): Box => {
+  const r = el.getBoundingClientRect()
+  return { left: r.left, top: r.top, width: r.width, height: r.height }
+}
+
 const round = (n: number): number => Math.round(n * 10000) / 10000
 
 /** Keeps a bubble's centre where the whole bubble stays inside the panel; an axis it overflows is centred. */
