@@ -2493,17 +2493,35 @@ kbd {
   stroke-dasharray: 4 3;
 }
 
-/* The dot at a tail's tip, drawn only when the stage gives the tail a handle. */
+/* The dot at a tail's tip, drawn only when the stage gives the tail a handle: 14px on screen at any zoom, with a 24px hit area. */
 .bubble-tail-handle {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
-  border: 2px solid var(--bubble-stroke, #111);
+  width: calc(14px / var(--stage-scale, 1));
+  height: calc(14px / var(--stage-scale, 1));
+  translate: -50% -50%;
+  cursor: grab;
+  background: var(--accent);
+  border: calc(2px / var(--stage-scale, 1)) solid #fff;
   border-radius: 50%;
-  background: var(--bubble-fill, #fff);
+}
+
+.bubble-tail-handle::before {
+  position: absolute;
+  inset: calc(-5px / var(--stage-scale, 1));
+  content: '';
+  border-radius: 50%;
+}
+
+.bubble-tail-handle[data-state='resting'] {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+.bubble-tail-handle:focus-visible {
+  outline: calc(2px / var(--stage-scale, 1)) solid var(--accent);
+  outline-offset: calc(2px / var(--stage-scale, 1));
 }
 
 /* A caption box: square corners and a hard offset shadow, in the top corner. */

@@ -19,9 +19,13 @@ export interface OverlayEditing {
   textEditor: ReactNode
   /** Shown instead of the stored placement while a drag or nudge is in progress. */
   preview: { index: number; placement: BubblePlacement } | null
+  /** Shown instead of the stored tail's tip while its dot is dragged or nudged. */
+  tailPreview: { index: number; tip: BubblePlacement } | null
   dragging: number | null
   /** Handlers, tabIndex and aria-label for the bubble of line `index`. */
   bind(index: number): HTMLAttributes<HTMLDivElement>
+  /** Handlers and aria-label for the dot at the tip of that bubble's tail. */
+  bindTail(index: number): HTMLAttributes<HTMLDivElement>
 }
 
 export interface DialogueOverlayProps {
@@ -50,16 +54,20 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
     const placement = placementOf(line, i)
     const look = bubbleStyleProps(line.style)
     const style = placement ? { ...look, left: `${placement.x * 100}%`, top: `${placement.y * 100}%` } : look
-    const tip = line.tail !== null && line.tail !== 'none' ? line.tail : null
+    const previewTip = editing?.tailPreview?.index === i ? editing.tailPreview.tip : null
+    const tip = previewTip ?? (line.tail !== null && line.tail !== 'none' ? line.tail : null)
+    // A tail being dragged is drawn pointed, whatever the layout would have drawn.
+    const tail = previewTip === null ? b.tail : 'point'
+    const dot = editing !== undefined && editing.selected === i && editing.textEditing !== i && hasTail(b.shape)
     const speaker = line.speakerId === null ? undefined : roster.find((c) => c.id === line.speakerId)?.name
     return (
       <div
         key={line.id}
-        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${b.tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${extra}`}
+        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${extra}`}
         data-kind={line.kind}
         data-shape={b.shape}
         data-side={b.side}
-        data-tail={b.tail}
+        data-tail={tail}
         data-selected={editing ? String(editing.selected === i) : undefined}
         data-dragging={editing?.dragging === i ? 'true' : undefined}
         title={speaker}
@@ -67,7 +75,9 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
         {...editing?.bind(i)}
       >
         <BubbleBody shape={b.shape} />
-        {hasTail(b.shape) && b.tail === 'point' && <BubbleTailArt shape={b.shape} side={b.side} drawing={b.tail} tip={tip} stroke={line.style?.strokeWidth ?? 2} />}
+        {hasTail(b.shape) && (tail === 'point' || dot) && (
+          <BubbleTailArt shape={b.shape} side={b.side} drawing={tail} tip={tip} stroke={line.style?.strokeWidth ?? 2} handle={dot ? editing.bindTail(i) : undefined} />
+        )}
         {editing?.textEditing === i ? editing.textEditor : <span className="bubble-text">{line.text}</span>}
       </div>
     )

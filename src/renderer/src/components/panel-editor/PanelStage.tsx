@@ -109,12 +109,14 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   const drawn = lines === panel.dialogue ? panel : { ...panel, dialogue: lines }
 
   const scale = fit === null ? null : fit.scale * zoom
+  // The tail's dot is drawn at one size on screen at any zoom, so its size is divided by the scale.
+  const rowStyle = { width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})`, '--stage-scale': scale ?? undefined } as CSSProperties
 
   return (
     <div ref={stageRef} className="panel-stage" data-testid="panel-stage" data-gutter={panel.gutter} tabIndex={-1} {...stage}>
       <div ref={viewportRef} className="stage-viewport" data-testid="stage-viewport" data-pan={pan ?? undefined}>
         <div className="stage-fit" style={fit === null || scale === null ? undefined : { width: fit.width * scale, height: fit.height * scale }}>
-          <div className="stage-row" style={{ width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})` }}>
+          <div className="stage-row" style={rowStyle}>
             <div ref={shapeRef} className="panel-shape" data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame} data-slant={slant} style={shape}>
               <PanelArt panel={drawn} editing={editing} />
             </div>

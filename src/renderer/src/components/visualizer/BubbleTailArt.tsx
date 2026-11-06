@@ -83,7 +83,8 @@ export function BubbleTailArt({ shape, side, drawing, tip, stroke, handle }: Bub
       : restingTip({ box: m.box, em: m.em, side, drawing: drawing === 'point' ? 'down' : drawing })
   }
   let art = null
-  if (m !== null && local !== null) {
+  // An automatic tail is the stylesheet's; only a stored tip is drawn here, and the dot may sit by one that is not.
+  if (m !== null && local !== null && drawing === 'point') {
     if (shape === 'thought') {
       art = thoughtPuffs({ box: m.box, tip: local, em: m.em }).map((p, i) => <ellipse key={i} cx={num(p.cx)} cy={num(p.cy)} rx={num(p.rx)} ry={num(p.ry)} />)
     } else {

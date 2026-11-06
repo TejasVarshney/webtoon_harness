@@ -8,6 +8,7 @@ import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
+import { NUDGE_COMMIT_MS } from './bubble-placement'
 import { toDrafts } from './dialogue-edits'
 import { PanelStage } from './PanelStage'
 import { useDialogueSaver } from './use-dialogue-saver'
@@ -545,5 +546,149 @@ describe('PanelStage', () => {
 
     expect([...new Set(calls.map((c) => c.channel))].sort()).toEqual(['panels:list', 'panels:update'])
     for (const { channel } of calls) expect(channel).not.toMatch(/^(panelChat|agent):|^panels:(generate|editImage|upload)/)
+  })
+})
+
+describe("the tail's dot", () => {
+  const dot = (): HTMLElement => within(stage()).getByLabelText('Point of line 1')
+  const dots = (): HTMLElement[] => within(stage()).queryAllByLabelText(/^Point of line/)
+  const withTail = (tail: DialogueLine['tail']): void => {
+    stored = { ...stored, dialogue: [{ ...hello, tail }, night] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+  }
+  /** Presses the dot and drags it to (x, y), releasing there unless told not to. */
+  function dragDot(x: number, y: number, release = true): void {
+    fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: x, clientY: y, buttons: 1 })
+    if (release) fireEvent.pointerUp(stage(), { clientX: x, clientY: y })
+  }
+
+  it('shows only on the selected bubble that can have a tail', async () => {
+    mount()
+    expect(dots()).toHaveLength(0)
+    await userEvent.click(bubble(0))
+    expect(dots()).toHaveLength(1)
+    await userEvent.click(bubble(1))
+    expect(dots()).toHaveLength(0)
+  })
+
+  it('saves the tip as fractions of the panel when it is dragged, and nothing else', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: { x: 0.25, y: 0.5 } }, toDrafts([night])[0]] })
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('neither drags the bubble nor clears the selection when it is pressed', async () => {
+    const { calls, onSelectLine } = mount()
+    await userEvent.click(bubble(0))
+    onSelectLine.mockClear()
+    dragDot(100, 300, false)
+    expect(bubble(0)).not.toHaveAttribute('data-dragging')
+    expect(bubble(0)).not.toHaveClass('bubble-placed')
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+    fireEvent.pointerUp(stage(), { clientX: 100, clientY: 300 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].placement).toBeNull()
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+    expect(onSelectLine).not.toHaveBeenCalledWith(null)
+  })
+
+  it('saves nothing for a press on it that does not move', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 50, clientY: 100 })
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+  })
+
+  it("keeps the tip inside the panel when it is dragged past the panel's edge", async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(900, -50)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 1, y: 0 })
+  })
+
+  it('shows the tip while it is dragged, before anything is saved', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    expect(stage().querySelector('.bubble-tail path')).toBeNull()
+    dragDot(100, 300, false)
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    // The tip (100, 300) is (50, 275) from the bubble's centre.
+    expect(stage().querySelector('.bubble-tail path')?.getAttribute('d')).toContain('L50 275')
+    expect(bubble(0)).toHaveClass('bubble-tail-point')
+  })
+
+  it('leaves the tip where it is when the bubble is moved', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], tail: { x: 0.5, y: 0.9 }, placement: { x: 0.75, y: 0.25 } })
+  })
+
+  it('nudges the tip with the arrow keys, saved once, with the focus kept on the dot', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS - 1))
+    expect(updates(calls)).toEqual([])
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.52, y: 0.9 })
+    await waitFor(() => expect(stored.dialogue[0].id).not.toBe(hello.id))
+    await waitFor(() => expect(dot()).toHaveFocus())
+  })
+
+  it('gives the tail back to the app on a double-click, without opening the text or adding a line', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    fireEvent.doubleClick(dot(), { clientX: 200, clientY: 540 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: null }, toDrafts([night])[0]] })
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+    expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
+  })
+
+  it('goes while the text is open', async () => {
+    mount()
+    await userEvent.click(bubble(0))
+    expect(dots()).toHaveLength(1)
+    await userEvent.dblClick(bubble(0))
+    expect(textBox()).toBeInTheDocument()
+    expect(dots()).toHaveLength(0)
+  })
+
+  it('creates a tail when it is dragged from a bubble with none', async () => {
+    withTail('none')
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    expect(dot()).toHaveAttribute('data-state', 'resting')
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.25, y: 0.5 })
+  })
+
+  it('draws no tail for a tip inside the bubble, and keeps the dot', async () => {
+    withTail({ x: 0.125, y: 0.04 })
+    mount()
+    await userEvent.click(bubble(0))
+    expect(stage().querySelector('.bubble-tail path')).toBeNull()
+    expect(dot()).toHaveAttribute('data-state', 'pointed')
   })
 })

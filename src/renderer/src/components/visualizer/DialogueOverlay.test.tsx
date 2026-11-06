@@ -11,7 +11,7 @@ const at = (x: number, y: number): BubblePlacement => ({ x, y })
 
 /** An `editing` prop with nothing selected, which the tests override one field at a time. */
 function editing(o: Partial<OverlayEditing> = {}): OverlayEditing {
-  return { selected: null, textEditing: null, textEditor: null, preview: null, dragging: null, bind: () => ({ tabIndex: 0 }), ...o }
+  return { selected: null, textEditing: null, textEditor: null, preview: null, tailPreview: null, dragging: null, bind: () => ({ tabIndex: 0 }), bindTail: () => ({}), ...o }
 }
 
 function bubbleOf(container: HTMLElement, text: string): HTMLElement {
