@@ -1469,6 +1469,25 @@ kbd {
   pointer-events: none;
 }
 
+/* The Add bubble button sits left of the zoom controls; its menu opens upward, inside the stage's own corner. */
+.stage-add {
+  position: relative;
+  pointer-events: auto;
+}
+
+.stage-add > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.stage-add .context-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+}
+
 .stage-zoom-controls {
   display: flex;
   align-items: center;

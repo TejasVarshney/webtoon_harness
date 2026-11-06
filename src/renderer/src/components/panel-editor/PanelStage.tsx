@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { isTallAspect } from '@shared/draw-aspect'
 import type { BubbleStyle, Panel } from '@shared/types'
 import { PanelArt } from '../visualizer/PanelArt'
+import { AddBubbleMenu } from './AddBubbleMenu'
 import { STAGE_ROW_PX, fitScale } from './bubble-placement'
 import { useBubbleEditing } from './use-bubble-editing'
 import { useStagePan } from './use-stage-pan'
@@ -100,7 +101,7 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   const zoom = heldZoom ?? ownZoom
   const zoomControl = useStageZoom(viewportRef, shapeRef, zoom, onZoom ?? setOwnZoom)
   const pan = useStagePan(viewportRef)
-  const { editing, selected, select, lines, stage } = useBubbleEditing(panel, stageRef)
+  const { editing, selected, select, lines, stage, add, adding } = useBubbleEditing(panel, stageRef)
   const fit = useStageFit(stageRef, shapeRef)
 
   // The workspace keeps the selected line, so the Lines tab can follow it, and a row selected there selects its bubble.
@@ -132,7 +133,9 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
           </div>
         </div>
       </div>
-      <ZoomBar zoom={zoom} control={zoomControl} />
+      <ZoomBar zoom={zoom} control={zoomControl}>
+        <AddBubbleMenu disabled={adding} onAdd={add} />
+      </ZoomBar>
     </div>
   )
 }

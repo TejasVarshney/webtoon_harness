@@ -13,11 +13,11 @@ import {
   type PointerEvent,
   type RefObject
 } from 'react'
-import type { BubblePlacement, DialogueLine, Panel } from '@shared/types'
+import type { BubblePlacement, BubbleShape, DialogueLine, Panel } from '@shared/types'
 import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
 import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, boxOf, centreOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
-import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'
+import { appendLine, editLine, identityOf, newBubble, removeLine, type LineIdentity } from './dialogue-edits'
 import type { Nudge, Press } from './bubble-press'
 import { useDialogueSaver } from './use-dialogue-saver'
 import { inTailHandle, useTailEditing } from './use-tail-editing'
@@ -34,6 +34,9 @@ export interface BubbleEditing {
   lines: DialogueLine[]
   /** For the stage element: a press on the empty stage, the drag that follows a press on a bubble, and Escape. */
   stage: HTMLAttributes<HTMLElement>
+  /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
+  add(shape: BubbleShape): void
+  adding: boolean
 }
 
 /** The text open for typing: a stored line's (by index), or the new line's (`index: null`). */
@@ -206,13 +209,20 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     setText({ index: i, draft: line.text, expect: identityOf(line) })
   }
 
-  function addAt(placement: BubblePlacement): void {
+  /** A double-click adds a spoken line (narration without a cast); the Add bubble menu adds the `shape` it names. */
+  function addAt(placement: BubblePlacement, shape?: BubbleShape): void {
     flushNudge()
-    const speakerId = panel.characters[0]?.characterId ?? null
+    const first = panel.characters[0]?.characterId ?? null
+    const made = shape === undefined ? { speakerId: first, kind: first === null ? ('narration' as const) : ('speech' as const), style: null } : newBubble(shape, first)
     select(null)
     textClosed.current = false
-    setAdding({ id: newLineId(), speakerId, kind: speakerId === null ? 'narration' : 'speech', text: '', placement, style: null, tail: null })
+    setAdding({ id: newLineId(), ...made, text: '', placement, tail: null })
     setText({ index: null, draft: '', expect: null })
+  }
+
+  /** Each new bubble from the menu is a little lower than the last, so they do not stack. */
+  function add(shape: BubbleShape): void {
+    addAt({ x: 0.5, y: Math.min(0.2 + 0.12 * base.length, 0.8) }, shape)
   }
 
   /** Enter or blur. Empty text keeps the old text (deleting is the Delete key); a new line left empty is dropped. */
@@ -232,7 +242,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
         panelB !== null && el !== null
           ? placementFromPointer({ pointer: { x: panelB.left + line.placement.x * panelB.width, y: panelB.top + line.placement.y * panelB.height }, grab: { dx: 0, dy: 0 }, panel: panelB, bubble: boxOf(el) })
           : line.placement
-      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement, style: null, tail: null }
+      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement, style: line.style, tail: null }
       select(base.length)
       send(
         (lines) => [...lines, { ...line, text: value, placement }],
@@ -475,6 +485,8 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     selected,
     select,
     lines,
-    stage
+    stage,
+    add,
+    adding: adding !== null
   }
 }

@@ -15,6 +15,25 @@ async function boxOf(locator: Locator): Promise<{ x: number; y: number; width: n
   return box!
 }
 
+/** Drags the selected bubble's tail dot, by its centre on screen, to a fraction of the panel. */
+async function dragDot(page: Page, stage: Locator, x: number, y: number): Promise<void> {
+  // The bubble remounts and re-lays out after each save, so the dot is read once it has stopped moving.
+  let dot = await boxOf(stage.locator('.bubble-tail-handle'))
+  await expect
+    .poll(async () => {
+      const next = await boxOf(stage.locator('.bubble-tail-handle'))
+      const still = next.x === dot.x && next.y === dot.y
+      dot = next
+      return still
+    })
+    .toBe(true)
+  const media = await boxOf(stage.locator('.panel-media'))
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(media.x + media.width * x, media.y + media.height * y, { steps: 12 })
+  await page.mouse.up()
+}
+
 /** Sets the window's outer size, and waits until the page has its new content size. */
 async function setWindowSize(app: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
   const [w, h] = await app.evaluate(({ BrowserWindow }, [w, h]) => {
@@ -147,12 +166,23 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   await expect.poll(async () => (await stored()).items.map((i: { itemId: string }) => i.itemId)).toEqual([item.id])
   expect((await stored()).versions).toHaveLength(versions)
 
+  // 5b. The line is styled and pointed, so the chat's fix lands on a styled line.
+  await bubble.click()
+  await workspace.getByRole('tab', { name: 'Lines' }).click()
+  await workspace.getByLabel('Fill', { exact: true }).fill('#ffe066')
+  await expect.poll(async () => (await stored()).dialogue[0].style?.fill).toBe('#ffe066')
+  await dragDot(page, stage, 0.7, 0.92)
+  await expect.poll(async () => (await stored()).dialogue[0].tail).not.toBeNull()
+  const pointed = (await stored()).dialogue[0].tail
+
   // 6. The panel chat fixes the line: its text changes, the user's spot stays, and nothing is redrawn.
   await workspace.getByTestId('composer-input').fill('Make her line say it is so huge')
   await workspace.getByTestId('composer-send').click()
   await expect(workspace.getByTestId('message-assistant').last()).toContainText('Fixed the line.')
   await expect.poll(async () => (await stored()).dialogue[0].text).toBe(fixed)
   expect(near((await stored()).dialogue[0].placement)).toBe(true)
+  expect((await stored()).dialogue[0].style.fill, 'the look survives the chat').toBe('#ffe066')
+  expect((await stored()).dialogue[0].tail, 'the tail survives the chat').toEqual(pointed)
   expect((await stored()).versions).toHaveLength(versions)
   await expect(stage.locator('.dialogue-placed .bubble')).toHaveText(fixed)
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
@@ -351,5 +381,46 @@ test('a zoomed panel moves with the middle button, or with Space and a drag', as
   await page.mouse.dblclick(cx, cy)
   await expect(stage.getByRole('textbox', { name: 'Line text' })).toBeFocused()
   await page.keyboard.press('Escape')
+  await app.close()
+})
+
+// Add a Shout bubble from the stage, give it a font and a fill, point its tail with the dot, and find all of it on the
+// strip: the card draws the shout in that fill with a tail, and the panel's JSON holds the look and the tail.
+test('add, style and point a bubble, and find it on the strip', async () => {
+  const { app, page, projectsRoot } = await launchApp()
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('img')).toHaveCount(1)
+  await setWindowSize(app, page, 1440, 900)
+  const stored = async () => (await readProjectJson(projectsRoot, 'panels'))[0]
+
+  await workspace.getByRole('button', { name: 'Add bubble', exact: true }).click()
+  await workspace.getByRole('menuitem', { name: 'Shout' }).click()
+  await expect(stage.locator('.bubble-editor')).toBeFocused()
+  await page.keyboard.type('BOOM!')
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => (await stored()).dialogue[0]?.style).toEqual({ shape: 'shout' })
+
+  await workspace.getByLabel('Font', { exact: true }).selectOption({ label: 'Anton' })
+  await workspace.getByLabel('Fill', { exact: true }).fill('#ff8800')
+  await expect.poll(async () => (await stored()).dialogue[0].style).toMatchObject({ shape: 'shout', font: 'impact', fill: '#ff8800' })
+
+  await dragDot(page, stage, 0.75, 0.9)
+  await expect.poll(async () => (await stored()).dialogue[0].tail).not.toBeNull()
+  await expect(stage.locator('.bubble-tail path')).toHaveCount(1)
+
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+  const card = page.getByTestId('panel-card').first()
+  const shout = card.locator('.bubble-shout')
+  await expect(shout).toHaveText('BOOM!')
+  expect(await shout.evaluate((el: any) => el.style.getPropertyValue('--bubble-fill'))).toBe('#ff8800')
+  await expect(card.locator('.bubble-tail path')).toHaveCount(1)
+  const line = (await stored()).dialogue[0]
+  expect(line.style).toBeTruthy()
+  expect(line.tail).toMatchObject({ x: expect.any(Number), y: expect.any(Number) })
   await app.close()
 })

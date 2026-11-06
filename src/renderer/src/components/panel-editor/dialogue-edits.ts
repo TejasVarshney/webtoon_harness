@@ -1,4 +1,4 @@
-import type { DialogueLine } from '@shared/types'
+import type { BubbleShape, DialogueLine } from '@shared/types'
 
 // Dialogue patches for the editing mode. Each is built from the panel's lines as the store has them when the save is
 // sent, and sends the whole array: line ids change on every dialogue save, so a line is found by its index, and
@@ -33,6 +33,14 @@ export function editLine(current: DialogueLine[], index: number, expect: LineIde
 export function removeLine(current: DialogueLine[], index: number, expect: LineIdentity): DialogueDraftLine[] | null {
   if (!matches(current[index], expect)) return null
   return toDrafts(current).filter((_, i) => i !== index)
+}
+
+/** What the Add bubble menu's choice makes of a new line: its kind, its speaker (the first of the cast, for the spoken ones) and its stored style. */
+export function newBubble(shape: BubbleShape, firstSpeaker: string | null): Pick<DialogueDraftLine, 'speakerId' | 'kind' | 'style'> {
+  if (shape === 'caption') return { speakerId: null, kind: 'narration', style: null }
+  if (shape === 'sfx') return { speakerId: null, kind: 'sfx', style: null }
+  if (shape === 'thought') return { speakerId: firstSpeaker, kind: 'thought', style: null }
+  return { speakerId: firstSpeaker, kind: 'speech', style: shape === 'speech' ? null : { shape } }
 }
 
 /** Adds a line after the others: the reading order's last. */

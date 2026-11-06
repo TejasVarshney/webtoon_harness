@@ -792,4 +792,76 @@ describe("the tail's dot", () => {
     await waitFor(() => expect(stored.dialogue).toHaveLength(3))
     await waitFor(() => expect(bubble(2)).toHaveFocus())
   })
+
+  describe('Add bubble', () => {
+    const addButton = (): HTMLElement => within(stage()).getByRole('button', { name: 'Add bubble' })
+    async function choose(name: string): Promise<void> {
+      await userEvent.click(addButton())
+      await userEvent.click(within(stage()).getByRole('menuitem', { name }))
+    }
+
+    it("opens the new bubble's text", async () => {
+      const { calls } = mount()
+      await choose('Shout')
+      expect(stage().querySelector('.bubble-editor')).toHaveFocus()
+      await userEvent.type(textBox(), 'Hey{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      const line = updates(calls)[0].dialogue!.at(-1)!
+      expect(line).toMatchObject({ kind: 'speech', text: 'Hey', speakerId: MINA, style: { shape: 'shout' }, tail: null })
+      expect(line.placement).not.toBeNull()
+    })
+
+    it('a caption has no speaker and no stored style', async () => {
+      const { calls } = mount()
+      await choose('Caption')
+      await userEvent.type(textBox(), 'Later.{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)[0].dialogue!.at(-1)).toMatchObject({ kind: 'narration', speakerId: null, style: null })
+    })
+
+    it('stores each choice as the table says', async () => {
+      const { calls } = mount()
+      const want: [string, object][] = [
+        ['Speech', { kind: 'speech', speakerId: MINA, style: null }],
+        ['Whisper', { kind: 'speech', speakerId: MINA, style: { shape: 'whisper' } }],
+        ['Thought', { kind: 'thought', speakerId: MINA, style: null }],
+        ['Sound effect', { kind: 'sfx', speakerId: null, style: null }]
+      ]
+      for (const [i, [name, line]] of want.entries()) {
+        await choose(name)
+        await userEvent.type(textBox(), `Text ${i}{Enter}`)
+        await waitFor(() => expect(updates(calls)).toHaveLength(i + 1))
+        expect(updates(calls)[i].dialogue!.at(-1)).toMatchObject(line)
+        await waitFor(() => expect(stored.dialogue).toHaveLength(3 + i))
+      }
+    })
+
+    it('a bubble left empty is dropped', async () => {
+      const { calls } = mount()
+      await choose('Shout')
+      await userEvent.type(textBox(), '{Enter}')
+      expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
+      expect(updates(calls)).toHaveLength(0)
+    })
+
+    it('two new bubbles do not land on the same spot', async () => {
+      const { calls } = mount()
+      await choose('Speech')
+      await userEvent.type(textBox(), 'One{Enter}')
+      await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+      await choose('Speech')
+      await userEvent.type(textBox(), 'Two{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      const [first, second] = updates(calls).map((p) => p.dialogue!.at(-1)!.placement)
+      expect(first).not.toEqual(second)
+    })
+
+    it('is disabled while a new bubble is being typed', async () => {
+      mount()
+      await choose('Shout')
+      expect(addButton()).toBeDisabled()
+      await userEvent.type(textBox(), '{Escape}')
+      expect(addButton()).toBeEnabled()
+    })
+  })
 })
