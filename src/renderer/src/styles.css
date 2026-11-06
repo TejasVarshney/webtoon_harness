@@ -1469,7 +1469,7 @@ kbd {
   pointer-events: none;
 }
 
-/* The Add bubble button sits left of the zoom controls; its menu opens upward, inside the stage's own corner. */
+/* The Add bubble button sits left of the zoom controls; its menu is fixed to the window and opens upward from the button (left and bottom are set when it opens), so the stage's clip cannot cut it. */
 .stage-add {
   position: relative;
   pointer-events: auto;
@@ -1480,12 +1480,6 @@ kbd {
   align-items: center;
   gap: 6px;
   background: var(--surface);
-}
-
-.stage-add .context-menu {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 0;
 }
 
 .stage-zoom-controls {

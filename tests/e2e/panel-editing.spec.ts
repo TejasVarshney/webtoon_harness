@@ -17,7 +17,7 @@ async function boxOf(locator: Locator): Promise<{ x: number; y: number; width: n
 
 /** Drags the selected bubble's tail dot, by its centre on screen, to a fraction of the panel. */
 async function dragDot(page: Page, stage: Locator, x: number, y: number): Promise<void> {
-  // The bubble remounts and re-lays out after each save, so the dot is read once it has stopped moving.
+  // Waits until the dot's position is the same on two reads in a row.
   let dot = await boxOf(stage.locator('.bubble-tail-handle'))
   await expect
     .poll(async () => {
@@ -32,6 +32,14 @@ async function dragDot(page: Page, stage: Locator, x: number, y: number): Promis
   await page.mouse.down()
   await page.mouse.move(media.x + media.width * x, media.y + media.height * y, { steps: 12 })
   await page.mouse.up()
+}
+
+/** Drags the dot until `saved` says the tail is stored: a press that lands as the bubble remounts after a save does nothing, so it is made again. */
+async function pointDot(page: Page, stage: Locator, x: number, y: number, saved: () => Promise<boolean>): Promise<void> {
+  await expect(async () => {
+    await dragDot(page, stage, x, y)
+    await expect.poll(saved, { timeout: 2500 }).toBe(true)
+  }).toPass({ timeout: 20000 })
 }
 
 /** Sets the window's outer size, and waits until the page has its new content size. */
@@ -171,8 +179,7 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   await workspace.getByRole('tab', { name: 'Lines' }).click()
   await workspace.getByLabel('Fill', { exact: true }).fill('#ffe066')
   await expect.poll(async () => (await stored()).dialogue[0].style?.fill).toBe('#ffe066')
-  await dragDot(page, stage, 0.7, 0.92)
-  await expect.poll(async () => (await stored()).dialogue[0].tail).not.toBeNull()
+  await pointDot(page, stage, 0.7, 0.92, async () => (await stored()).dialogue[0].tail !== null)
   const pointed = (await stored()).dialogue[0].tail
 
   // 6. The panel chat fixes the line: its text changes, the user's spot stays, and nothing is redrawn.
@@ -409,8 +416,7 @@ test('add, style and point a bubble, and find it on the strip', async () => {
   await workspace.getByLabel('Fill', { exact: true }).fill('#ff8800')
   await expect.poll(async () => (await stored()).dialogue[0].style).toMatchObject({ shape: 'shout', font: 'impact', fill: '#ff8800' })
 
-  await dragDot(page, stage, 0.75, 0.9)
-  await expect.poll(async () => (await stored()).dialogue[0].tail).not.toBeNull()
+  await pointDot(page, stage, 0.75, 0.9, async () => (await stored()).dialogue[0].tail !== null)
   await expect(stage.locator('.bubble-tail path')).toHaveCount(1)
 
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
@@ -422,5 +428,34 @@ test('add, style and point a bubble, and find it on the strip', async () => {
   const line = (await stored()).dialogue[0]
   expect(line.style).toBeTruthy()
   expect(line.tail).toMatchObject({ x: expect.any(Number), y: expect.any(Number) })
+  await app.close()
+})
+
+// In the smallest window the stage is short, and the menu must still show all six choices: each one is what a click at
+// its centre reaches, and a real click on Speech opens the new bubble's text.
+test('the Add bubble menu shows all six choices in the smallest window', async () => {
+  const { app, page } = await launchApp()
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('img')).toHaveCount(1)
+  await setWindowSize(app, page, 960, 600)
+
+  await workspace.getByRole('button', { name: 'Add bubble', exact: true }).click()
+  const names = ['Speech', 'Shout', 'Whisper', 'Thought', 'Caption', 'Sound effect']
+  for (const name of names) {
+    const box = await boxOf(page.getByRole('menuitem', { name, exact: true }))
+    const hit = await page.evaluate(([x, y]) => {
+      const el = (globalThis as any).document.elementFromPoint(x, y)
+      return el?.closest('[role="menuitem"]')?.textContent ?? null
+    }, [box.x + box.width / 2, box.y + box.height / 2])
+    expect(hit, `${name} is what a click at its centre reaches`).toBe(name)
+  }
+  await page.getByRole('menuitem', { name: 'Speech', exact: true }).click()
+  await expect(stage.locator('.bubble-editor')).toBeFocused()
+  await page.keyboard.press('Escape')
   await app.close()
 })

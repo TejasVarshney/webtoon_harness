@@ -22,26 +22,45 @@ export function AddBubbleMenu({ disabled, onAdd }: AddBubbleMenuProps) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  /** Where the open menu sits: fixed to the window, its bottom edge just above the button, so the stage's clip cannot cut it. */
+  const [spot, setSpot] = useState<{ left: number; bottom: number } | null>(null)
 
-  // A press anywhere else closes it. Native and in the capture phase, since the zoom bar stops React's presses.
+  function toggle(): void {
+    const rect = button.current?.getBoundingClientRect()
+    if (!open && rect) setSpot({ left: rect.left, bottom: window.innerHeight - rect.top + 4 })
+    setOpen(!open)
+  }
+
+  // A press anywhere else closes it. Native and in the capture phase, since the zoom bar stops React's presses. The
+  // menu stays where the button was when it opened, so a resize closes it rather than tracking the button.
   useEffect(() => {
     if (!open) return
     function onPress(e: PointerEvent): void {
       if (!(e.target instanceof Node) || !root.current?.contains(e.target)) setOpen(false)
     }
+    const close = (): void => setOpen(false)
     document.addEventListener('pointerdown', onPress, true)
-    return () => document.removeEventListener('pointerdown', onPress, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('pointerdown', onPress, true)
+      window.removeEventListener('resize', close)
+    }
   }, [open])
 
-  // The menu is closed when the button goes off, so a choice never lands while a bubble is being typed.
+  // The first choice takes the focus when the menu opens, and only then.
   useEffect(() => {
-    if (disabled) setOpen(false)
-  }, [disabled])
+    if (open) menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true })
+  }, [open])
 
   return (
     <div
       ref={root}
       className="stage-add"
+      onBlur={(e) => {
+        // Focus leaving the button and its menu closes it, so a later Escape is the workspace's.
+        if (!(e.relatedTarget instanceof Node && root.current?.contains(e.relatedTarget))) setOpen(false)
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape' || !open) return
         // Closing the menu is all Escape does here: the workspace would otherwise take it as "go back".
@@ -51,18 +70,17 @@ export function AddBubbleMenu({ disabled, onAdd }: AddBubbleMenuProps) {
         button.current?.focus()
       }}
     >
-      <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen((o) => !o)}>
+      <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={toggle}>
         <MessageSquarePlus size={16} aria-hidden="true" />
         Add bubble
       </button>
       {open && (
-        <div className="context-menu" role="menu" aria-label="Add bubble">
-          {CHOICES.map(({ shape, label }, i) => (
+        <div ref={menu} className="context-menu" role="menu" aria-label="Add bubble" style={spot ?? undefined}>
+          {CHOICES.map(({ shape, label }) => (
             <button
               key={shape}
               type="button"
               role="menuitem"
-              ref={i === 0 ? (el) => el?.focus({ preventScroll: true }) : undefined}
               onClick={() => {
                 setOpen(false)
                 onAdd(shape)

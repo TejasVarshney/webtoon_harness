@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AddBubbleMenu } from './AddBubbleMenu'
@@ -52,5 +52,35 @@ describe('AddBubbleMenu', () => {
   it('does not open while disabled', async () => {
     render(<AddBubbleMenu disabled onAdd={vi.fn()} />)
     expect(button()).toBeDisabled()
+  })
+
+  it('keeps focus where it is when the menu re-renders', async () => {
+    const { rerender } = render(<AddBubbleMenu disabled={false} onAdd={vi.fn()} />)
+    await userEvent.click(button())
+    await userEvent.tab()
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(screen.getByRole('menuitem', { name: 'Thought' })).toHaveFocus()
+    rerender(<AddBubbleMenu disabled={false} onAdd={vi.fn()} />)
+    expect(screen.getByRole('menuitem', { name: 'Thought' })).toHaveFocus()
+  })
+
+  it('closes when focus leaves it', async () => {
+    render(
+      <>
+        <AddBubbleMenu disabled={false} onAdd={vi.fn()} />
+        <button type="button">Elsewhere</button>
+      </>
+    )
+    await userEvent.click(button())
+    act(() => screen.getByRole('button', { name: 'Elsewhere' }).focus())
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('closes on window resize', async () => {
+    render(<AddBubbleMenu disabled={false} onAdd={vi.fn()} />)
+    await userEvent.click(button())
+    fireEvent(window, new Event('resize'))
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })
