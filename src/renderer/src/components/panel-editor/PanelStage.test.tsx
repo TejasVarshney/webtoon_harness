@@ -691,4 +691,105 @@ describe("the tail's dot", () => {
     expect(stage().querySelector('.bubble-tail path')).toBeNull()
     expect(dot()).toHaveAttribute('data-state', 'pointed')
   })
+
+  /** A double-click on the empty panel, as a user makes it: it opens the text of a new line. */
+  function addLineOnEmptyPanel(): void {
+    const overlay = stage().querySelector<HTMLElement>('.dialogue-overlay')!
+    fireEvent.pointerDown(overlay, { clientX: 200, clientY: 300, buttons: 1 })
+    fireEvent.pointerUp(overlay, { clientX: 200, clientY: 300 })
+    fireEvent.doubleClick(overlay, { clientX: 200, clientY: 300 })
+  }
+
+  it('saves a tail nudge still waiting when the bubble is pressed', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.51, y: 0.9 })
+  })
+
+  it('saves a tail nudge still waiting when the stage goes away', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls, unmount } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    unmount()
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.51, y: 0.9 })
+  })
+
+  it('saves a bubble nudge still waiting when the dot is pressed, then the tip on top of it', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => bubble(0).focus())
+    fireEvent.keyDown(bubble(0), { key: 'ArrowRight' })
+    vi.useRealTimers()
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[0].dialogue?.[0].placement).not.toBeNull()
+    expect(updates(calls)[1].dialogue?.[0].placement).toEqual(updates(calls)[0].dialogue?.[0].placement)
+    expect(updates(calls)[1].dialogue?.[0].tail).toEqual({ x: 0.25, y: 0.5 })
+    expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('builds a tip dragged while a retype is still saving on the new text', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    await userEvent.dblClick(bubble(0))
+    let open: () => void = () => undefined
+    gate = new Promise((resolve) => (open = resolve))
+    await userEvent.clear(textBox())
+    await userEvent.type(textBox(), 'Bye{Enter}')
+    await waitFor(() => expect(within(stage()).queryByRole('textbox')).toBeNull())
+    dragDot(100, 300)
+    open()
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[1].dialogue?.[0]).toMatchObject({ text: 'Bye', tail: { x: 0.25, y: 0.5 } })
+    await waitFor(() => expect(stored.dialogue[0].tail).toEqual({ x: 0.25, y: 0.5 }))
+    expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('does nothing for a double-click that follows a drag of the dot', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(100, 300)
+    await waitFor(() => expect(stored.dialogue[0].tail).toEqual({ x: 0.25, y: 0.5 }))
+    fireEvent.doubleClick(dot(), { clientX: 100, clientY: 300 })
+    fireEvent.doubleClick(stage().querySelector('.dialogue-overlay')!, { clientX: 100, clientY: 300 })
+    await act(async () => undefined)
+    expect(updates(calls)).toHaveLength(1)
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+  })
+
+  it('gives the focus to the new line, not the dot, after the dot had it and a speech line is added', async () => {
+    mount()
+    await userEvent.click(bubble(0))
+    act(() => dot().focus())
+    addLineOnEmptyPanel()
+    await userEvent.type(textBox(), 'Hey{Enter}')
+    await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+    await waitFor(() => expect(bubble(2)).toHaveFocus())
+  })
+
+  it('gives the focus to the new line after the dot had it and a caption is added, though a caption has no dot', async () => {
+    stored = { ...stored, characters: [] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    await userEvent.click(bubble(0))
+    act(() => dot().focus())
+    addLineOnEmptyPanel()
+    await userEvent.type(textBox(), 'Hey{Enter}')
+    await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+    await waitFor(() => expect(bubble(2)).toHaveFocus())
+  })
 })

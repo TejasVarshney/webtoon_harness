@@ -2501,6 +2501,8 @@ kbd {
   width: calc(14px / var(--stage-scale, 1));
   height: calc(14px / var(--stage-scale, 1));
   translate: -50% -50%;
+  /* Over the bubble's text, which is positioned and comes after it. */
+  z-index: 1;
   cursor: grab;
   background: var(--accent);
   border: calc(2px / var(--stage-scale, 1)) solid #fff;
@@ -2509,7 +2511,7 @@ kbd {
 
 .bubble-tail-handle::before {
   position: absolute;
-  inset: calc(-5px / var(--stage-scale, 1));
+  inset: calc(-7px / var(--stage-scale, 1));
   content: '';
   border-radius: 50%;
 }

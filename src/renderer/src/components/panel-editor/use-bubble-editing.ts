@@ -361,7 +361,8 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => onBubbleKeyDown(e, i),
       onFocus: (e: FocusEvent<HTMLDivElement>) => {
         keepFocus.current = true
-        if (e.target === e.currentTarget) tail.tailFocus.current = false
+        // Any focus but the dot's (the bubble's, or its text's) takes the focus from the dot.
+        if (!inTailHandle(e.target)) tail.tailFocus.current = false
         // Tabbing to a bubble selects it, as a click does. The new line is selected once it is saved.
         if (e.target === e.currentTarget && i < base.length) select(i)
       }
@@ -389,6 +390,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     onPointerDown: (e) => {
       dragEnded.current = false
       if (e.button !== 0 || inBubble(e.target)) return
+      tail.tailFocus.current = false
       dropPress()
       flushNudge()
       select(null)
