@@ -406,6 +406,40 @@ describe('PanelInspector', () => {
         expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
       })
 
+      /** Types text and lets its save be sent and held, then picks a style: the pick is made while the text is saving. */
+      async function pickWhileTextSaves(): Promise<{ release(): void; calls: { channel: string; req: unknown }[] }> {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        let release = (): void => undefined
+        hold = new Promise<void>((resolve) => (release = resolve))
+        await wait(600)
+        expect(updates(calls)).toHaveLength(1)
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(600)
+        return { release, calls }
+      }
+
+      it('a style picked while the text is saving still saves when the text lands', async () => {
+        const { release, calls } = await pickWhileTextSaves()
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      it('a style picked while the text is saving still saves when the text is refused', async () => {
+        refuseOnce = 'Dialogue is too long'
+        const { release, calls } = await pickWhileTextSaves()
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(stored.dialogue[0].text).toBe('Hello.')
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
       it('style first, then text, both land', async () => {
         fakeTimers()
         const { calls } = mount({ selectedLine: 0 })

@@ -173,7 +173,8 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
 
   /** Picks a style; a pick that begins a new one notes the line it is for. */
   function setStyle(next: BubbleStyle | null): void {
-    if (!style.pending) styleExpect.current = [identityOf(line)]
+    // A text save of this row still in flight may land or be refused: the line then says the new text or the old, so both count.
+    if (!style.pending) styleExpect.current = inFlight.current > 0 && base.current !== null ? [identityOf(line), base.current] : [identityOf(line)]
     style.set(next)
   }
 
