@@ -462,7 +462,7 @@ describe('PanelWorkspace', () => {
     const withLine = (dialogue: Panel['dialogue']): Panel => ({ ...second, dialogue })
     const bubble = (): HTMLElement => within(within(workspace()).getByTestId('panel-stage')).getByLabelText('Line 1')
     const pick = (): void => {
-      const row = within(within(workspace()).getByRole('tabpanel')).getByRole('listitem')
+      const row = within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')[0]
       focus(within(row).getByLabelText('Text'))
       fireEvent.change(within(row).getByLabelText('Fill'), { target: { value: '#00ff00' } })
     }
@@ -474,6 +474,47 @@ describe('PanelWorkspace', () => {
       pick()
       expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
       expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
+    })
+
+    it('the preview ends when the row is removed', async () => {
+      const other = { ...line, id: 'dlg_0000000002', text: 'Dawn broke.' }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line, other]), third] } })
+      const left = withLine([other])
+      mount({ 'panels:update': () => ({ panel: left, warnings: [] }), 'panels:list': () => [first, left, third] })
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      const row = within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')[0]
+      fireEvent.click(within(row).getByRole('button', { name: 'Remove' }))
+      await waitFor(() => expect(within(within(workspace()).getByTestId('panel-stage')).getAllByLabelText(/^Line \d/)).toHaveLength(1))
+      expect(bubble()).toHaveTextContent('Dawn broke.')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+    })
+
+    it('the preview ends on Undo my change', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      mount({
+        'panels:update': () => {
+          throw new Error('Dialogue is too long')
+        }
+      })
+      pick()
+      const row = within(within(workspace()).getByRole('tabpanel')).getByRole('listitem')
+      act(() => within(row).getByLabelText('Text').blur())
+      const alert = await within(workspace()).findByRole('alert')
+      expect(alert).toHaveTextContent('Dialogue is too long')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      fireEvent.click(within(alert).getByRole('button', { name: 'Undo my change' }))
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+    })
+
+    it('the preview does not follow the user to another panel', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), { ...third, dialogue: [{ ...line, id: 'dlg_0000000005' }] }] } })
+      mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+      expect(within(workspace()).getByRole('heading', { level: 1 })).toHaveTextContent('Panel 3 of 3')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
     })
 
     it('ends once the save lands, and the stored look shows from then on', async () => {

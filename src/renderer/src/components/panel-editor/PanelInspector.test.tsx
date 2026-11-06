@@ -32,6 +32,10 @@ let stored: Panel
 let ids = 0
 /** While set, `panels:update` refuses with it. */
 let refusal: string | null = null
+/** The next `panels:update` refuses with it, and the ones after it do not. */
+let refuseOnce: string | null = null
+/** While set, `panels:update` waits for it before answering: a save still in flight. */
+let hold: Promise<void> | null = null
 /** What the next `panels:update` warns about (the service checks the whole panel on every save). */
 let warnings: string[] = []
 const originalScroll = Element.prototype.scrollIntoView
@@ -40,6 +44,8 @@ beforeEach(() => {
   stored = panel({ id: A, characters: cast, dialogue: [hello, night] })
   ids = 100
   refusal = null
+  refuseOnce = null
+  hold = null
   warnings = []
   useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, selectedPanelId: A })
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [stored] } })
@@ -60,7 +66,13 @@ function replaceStored(next: Panel): void {
 
 function installApi() {
   return installFakeApi({
-    'panels:update': (req: { panelId: string; patch: PanelPatch }) => {
+    'panels:update': async (req: { panelId: string; patch: PanelPatch }) => {
+      if (hold !== null) await hold
+      if (refuseOnce !== null) {
+        const message = refuseOnce
+        refuseOnce = null
+        throw new Error(message)
+      }
       if (refusal !== null) throw new Error(refusal)
       const { dialogue, ...rest } = req.patch
       // Like the service: a dialogue save gives every line a new id.
@@ -341,6 +353,71 @@ describe('PanelInspector', () => {
         expect(shape(0, 'Auto')).toHaveAttribute('aria-pressed', 'true')
         await act(async () => undefined)
         expect(updates(calls)).toHaveLength(1)
+      })
+
+      const dawn: DialogueLine = { id: 'dlg_0000000003', speakerId: null, kind: 'narration', text: 'Dawn broke.', placement: null, style: null, tail: null }
+
+      it('a style picked before Remove does not land on the next line', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Remove' }))
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(rows()).toHaveLength(1))
+        expect(text(0)).toHaveValue('Night fell.')
+        expect(stored.dialogue.map((l) => l.style)).toEqual([null])
+        expect(updates(calls)).toHaveLength(1)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+      })
+
+      it('a style picked before a line above it is deleted does not land on the wrong line', async () => {
+        fakeTimers()
+        stored = { ...stored, dialogue: [hello, night, dawn] }
+        usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+        const { calls } = mount({ selectedLine: 1 })
+        fireEvent.click(shape(1, 'Shout'))
+        // The line above is deleted elsewhere (the stage, or the agent): the styled row now shows the third line.
+        replaceStored({ ...stored, dialogue: [{ ...night, id: 'dlg_0000000011' }, { ...dawn, id: 'dlg_0000000012' }] })
+        await wait(1200)
+        vi.useRealTimers()
+        expect(await within(tabPanel()).findByText('This line changed while you were editing it.')).toBeInTheDocument()
+        expect(updates(calls)).toEqual([])
+        expect(stored.dialogue.map((l) => l.style)).toEqual([null, null])
+        expect(shape(1, 'Shout')).toHaveAttribute('aria-pressed', 'false')
+      })
+
+      it('a style pending while the text is refused still saves', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        await wait(100)
+        fireEvent.click(shape(0, 'Shout'))
+        let release = (): void => undefined
+        hold = new Promise<void>((resolve) => (release = resolve))
+        refuseOnce = 'Dialogue is too long'
+        // The text save is sent at 600 ms and held; the style is sent at 700 ms behind it.
+        await wait(700)
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(stored.dialogue[0].text).toBe('Hello.')
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      it('style first, then text, both land', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(100)
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
       })
 
       it('Tail buttons save at once', async () => {

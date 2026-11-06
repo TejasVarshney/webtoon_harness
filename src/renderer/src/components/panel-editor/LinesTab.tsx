@@ -132,12 +132,20 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
+  /**
+   * The lines the waiting style may be saved onto: the line as it was when the style was picked, and each text this
+   * row has sent since. A style never depends on the text, so it saves whether a text save landed (the line now says
+   * the new text) or was refused (it still says the old), and never onto a different line that moved into this row.
+   */
+  const styleExpect = useRef<LineIdentity[]>([])
   const draft = useAutosave<LineIdentity>(identityOf(line), {
     normalize: (v) => ({ speakerId: v.speakerId, kind: v.kind, text: v.text.trim() }),
     sendable: (v) => v.text !== '',
     send: (v) => {
       const expect = base.current ?? identityOf(line)
       base.current = v
+      // A style waiting on this row may find the line either way once this save is decided.
+      styleExpect.current.push(v)
       inFlight.current += 1
       return save((current) => editLine(current, index, expect, v)).then((outcome) => {
         inFlight.current -= 1
@@ -153,8 +161,30 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
 
   const style = useAutosave<BubbleStyle | null>(line.style, {
     normalize: (v) => v,
-    send: (v) => save((current) => editLine(current, index, expectNow(), { style: v })).then((outcome) => (outcome === 'saved' ? 'saved' : outcome === 'refused' ? 'refused' : 'dropped'))
+    send: (v) =>
+      save((current) => {
+        for (const expect of styleExpect.current) {
+          const built = editLine(current, index, expect, { style: v })
+          if (built !== null) return built
+        }
+        return null
+      }).then((outcome) => (outcome === 'saved' ? 'saved' : outcome === 'refused' ? 'refused' : 'dropped'))
   })
+
+  /** Picks a style; a pick that begins a new one notes the line it is for. */
+  function setStyle(next: BubbleStyle | null): void {
+    if (!style.pending) styleExpect.current = [identityOf(line)]
+    style.set(next)
+  }
+
+  // The line in this row is not the one the style was picked on (it was removed or moved, or an agent changed it): the
+  // style is sent now, so it is dropped with the usual notice, or, if it was refused, given up.
+  const { pending: styleWaiting, refused: styleRefused, flush: flushStyle, undo: dropStyle } = style
+  useEffect(() => {
+    if (!styleWaiting || styleExpect.current.some((e) => e.speakerId === line.speakerId && e.kind === line.kind && e.text === line.text)) return
+    if (styleRefused) dropStyle()
+    else flushStyle()
+  }, [styleWaiting, styleRefused, line.speakerId, line.kind, line.text, flushStyle, dropStyle])
 
   // A refused draft with no message left would be unsaved text nobody is told about: it gives way to the stored line.
   const orphaned = draft.refused && error === null
@@ -208,6 +238,7 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
 
   function remove(): void {
     draft.undo()
+    style.undo()
     const expect = expectNow()
     base.current = null
     void save((current) => removeLine(current, index, expect))
@@ -232,7 +263,7 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
           autoShape={bubbleShape({ kind: draft.value.kind, text: draft.value.text })}
           style={style.value}
           tail={line.tail}
-          onStyle={style.set}
+          onStyle={setStyle}
           onTail={setTail}
         />
       )}
