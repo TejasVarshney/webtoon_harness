@@ -55,7 +55,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // R3: events can arrive before `export:start` resolves, so every one is recorded and the job's latest is applied
+  // Events can arrive before `export:start` resolves, so every one is recorded and the job's latest is applied
   // once its id is known.
   const latest = useRef(new Map<string, ExportProgress>())
   const jobRef = useRef<string | null>(null)
@@ -89,7 +89,6 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
       stale = true
     }
     // `orderedTicked` is derived from `tickedKey`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, tickedKey])
 
   const terminal = progress !== null && (progress.stage === 'done' || progress.stage === 'failed' || progress.stage === 'cancelled')

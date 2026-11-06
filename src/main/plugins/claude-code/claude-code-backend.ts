@@ -15,8 +15,8 @@ import { locateClaude } from './locate-claude'
 import { StreamJsonParser, type ClaudeStreamEvent } from './stream-json'
 
 export const LINK_OFF = "Turn on the Claude Code plugin's link first."
-export const CLAUDE_NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
-export const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
+const CLAUDE_NOT_FOUND = 'Claude Code was not found. Set its path in Settings → Plugins.'
+const NO_IMAGES = "Claude Code can't see attached images yet. Remove them, or switch the agent off Claude Code in Settings → Plugins."
 
 /** What assistant messages written by this backend name as their model. */
 const MODEL = { endpointId: 'plugin:claude-code', modelId: 'claude-code' }
@@ -27,7 +27,7 @@ const STDERR_LINES = 5
 /** Enough stderr to hold those lines; older output is dropped. */
 const STDERR_KEEP = 16_384
 
-/** What the backend needs from the plugin (spec §6.2). */
+/** What the backend needs from the plugin. */
 export interface ClaudeCodeLink {
   /** The MCP endpoint while the link is listening, else null. */
   linkUrl(): string | null
@@ -130,8 +130,8 @@ function endOf(result: Extract<ClaudeStreamEvent, { kind: 'result' }>): RunEnd {
 }
 
 /**
- * Runs the main chat on Claude Code (spec §6.2): one `claude -p` process per message, talking to the app only
- * through the MCP link (no built-in tools). Its tool calls are logged into the session by the link (§5.4), so
+ * Runs the main chat on Claude Code: one `claude -p` process per message, talking to the app only
+ * through the MCP link (no built-in tools). Its tool calls are logged into the session by the link, so
  * this side only appends the user message, Claude's text replies and the outcome.
  */
 export class ClaudeCodeBackend implements AgentBackend {
@@ -178,7 +178,7 @@ export class ClaudeCodeBackend implements AgentBackend {
 
   async start(input: StartRunInput): Promise<{ runId: string }> {
     const { sessionId } = input
-    // Ruling R16: the images cannot be handed to Claude Code yet, and dropping them silently would mislead.
+    // The images cannot be handed to Claude Code yet, and dropping them silently would mislead.
     if (input.imagePaths.length > 0) throw new Error(NO_IMAGES)
     // Check and register with no await in between, so two quick calls cannot both pass.
     if (this.running.has(sessionId)) throw new SessionBusyError(`session ${sessionId}`)
@@ -240,15 +240,15 @@ export class ClaudeCodeBackend implements AgentBackend {
       const headers = {
         Authorization: `Bearer ${this.plugin.token()}`,
         'X-Webtoon-Session': input.sessionId,
-        // The run's own project and episode: the window may switch to another project while it runs (ruling R18).
+        // The run's own project and episode: the window may switch to another project while it runs.
         'X-Webtoon-Project': ctx.id,
         'X-Webtoon-Episode': input.activeEpisodeId ?? ''
       }
       await fs.promises.writeFile(configFile, JSON.stringify({ mcpServers: { webtoon: { type: 'http', url, headers } } }), { mode: 0o600 })
       if (run.cancelled) return { outcome: 'cancelled', error: null }
-      // The prompt goes on stdin (ruling R12): as an argument, a message starting with `-` or naming a subcommand
+      // The prompt goes on stdin: as an argument, a message starting with `-` or naming a subcommand
       // ("update") would be read by the CLI, and Windows caps the command line at about 32K characters.
-      // The snapshot leads it, as the model loop attaches it to the user turn (ruling R17): in a system prompt
+      // The snapshot leads it, as the model loop attaches it to the user turn: in a system prompt
       // Claude Code would record it with the session and replay it, frozen, on every --resume.
       const prompt = `${snapshot}\n\n${input.text}`
       const args = [
@@ -260,7 +260,7 @@ export class ClaudeCodeBackend implements AgentBackend {
         '--mcp-config',
         configFile,
         '--strict-mcp-config',
-        // The project folder is the cwd: its `.claude/settings*.json` (hooks run shell commands) must not apply (R13).
+        // The project folder is the cwd: its `.claude/settings*.json` (hooks run shell commands) must not apply.
         '--setting-sources',
         'user',
         '--tools',

@@ -74,10 +74,10 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const registry = new ModelRegistry({ file: join(opts.userDataDir, 'models.json'), secrets, bus })
   await registry.load()
   const docs = new WorkflowDocs(opts.templatesDir)
-  // Ruling T12a: install on create and on open, so projects made before a template existed get it too.
+  // Install on create and on open, so projects made before a template existed get it too.
   projects.addHooks({ onCreate: (ctx) => docs.install(ctx), onOpen: (ctx) => docs.install(ctx) })
   const images = new ImageService({ registry, imageOps: opts.imageOps })
-  // Ruling P6: the usage lookup is lazy so CharacterService can be built before PanelService exists.
+  // The usage lookup is lazy so CharacterService can be built before PanelService exists.
   const usage: PanelUsageLookup = {
     panelsUsingCharacter: (ctx, characterId) => services.panels.panelsUsingCharacter(ctx, characterId),
     panelsUsingVariation: (ctx, variationId) => services.panels.panelsUsingVariation(ctx, variationId)

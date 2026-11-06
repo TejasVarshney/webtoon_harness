@@ -14,3 +14,7 @@ if (typeof window.ResizeObserver === 'undefined') {
   }
   window.ResizeObserver = ResizeObserverStub
 }
+
+// jsdom has no canvas: its own getContext returns null too, but logs "Not implemented" on every call.
+// A test that needs a context spies on this itself.
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext

@@ -13,7 +13,7 @@ import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinit
 /*
  * The tools of a panel's side chat. Every one closes over the id of the panel the chat is bound to and
  * takes no panel id as input, so a model cannot reach another panel however it is prompted. Version
- * labels follow Ruling P7: `vN` is the position among the panel's ready versions, and a version that is
+ * labels count ready versions only: `vN` is the position among the panel's ready versions, and a version that is
  * not ready has no label (its status says why).
  */
 
@@ -144,7 +144,7 @@ function versionResult(v: PanelVersion, label: string | null): ToolOutput {
 
 /**
  * A new version's label counts the ready versions after the attempt was recorded, so the panel is read back.
- * A ready result always carries its label (Ruling P7): if the panel cannot be read back (it was deleted, or the
+ * A ready result always carries its label: if the panel cannot be read back (it was deleted, or the
  * read failed) or no longer lists the version as ready, the call fails with that reason instead.
  */
 async function recordedResult(ctx: ToolContext, panelId: string, v: PanelVersion): Promise<ToolOutput> {
@@ -216,7 +216,7 @@ const updatePanelFields = (panelId: string): ToolDefinition =>
     handler: async (patch, ctx) => {
       let updated: { panel: Panel; warnings: string[] }
       try {
-        // Ruling T21b (as T19a): strict only for a description edit, so a panel saved with an unattached-mention warning
+        // Strict only for a description edit, so a panel saved with an unattached-mention warning
         // (the manual editor allows it) stays editable here; the warning is passed on instead.
         updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
       } catch (error) {

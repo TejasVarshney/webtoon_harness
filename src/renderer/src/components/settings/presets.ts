@@ -7,7 +7,7 @@ export interface EndpointPreset {
   suggestedModels: { modelId: string; capabilities: Capability[] }[]
 }
 
-/** Spec §7 "Presets": editable starting points for the Add endpoint form. Nothing beyond these suggestions is hardcoded. */
+/** Editable starting points for the Add endpoint form. Nothing beyond these suggestions is hardcoded. */
 export const presets: EndpointPreset[] = [
   {
     label: 'Anthropic',
@@ -49,5 +49,3 @@ export const KIND_CAPABILITIES: Record<EndpointKind, Capability[]> = {
   openai: ['text', 'vision', 'image-gen', 'image-edit'],
   mock: ['text', 'vision', 'image-gen', 'image-edit']
 }
-
-export const ALL_CAPABILITIES: Capability[] = ['text', 'vision', 'image-gen', 'image-edit']

@@ -1,6 +1,6 @@
 // Section editing for the story bible. A section is a `## Heading` line (column 0, one hash pair and a
 // space) and everything up to the next such line. `###` and deeper headings are ordinary body text.
-// Line endings are `\n`: project files are LF (Ruling P2), and nothing here converts anything.
+// Line endings are `\n`: project files are LF, and nothing here converts anything.
 
 /** The heading text of a `## ` line, or null when the line is not a section heading (indented, `###`, or nothing after the hashes). */
 function headingOf(line: string): string | null {

@@ -108,7 +108,7 @@ export class PluginManager {
 
   /**
    * Merges `patch` into the plugin's config and saves it (unless the plugin's `validateConfig` refuses it). A running
-   * plugin is restarted to apply it, unless its `restartOnConfig` says the patch needs no restart (ruling R19).
+   * plugin is restarted to apply it, unless its `restartOnConfig` says the patch needs no restart.
    */
   async setConfig(id: string, patch: Record<string, unknown>): Promise<PluginView> {
     const plugin = this.require(id)

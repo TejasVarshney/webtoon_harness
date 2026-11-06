@@ -3,7 +3,7 @@ import type { AppEvent } from '@shared/types'
 export type AppEventListener = (event: AppEvent) => void
 
 /**
- * In-process publish/subscribe for `AppEvent`s (spec §4). Services emit after a mutation has been
+ * In-process publish/subscribe for `AppEvent`s. Services emit after a mutation has been
  * written; the IPC layer subscribes once and broadcasts to every window.
  *
  * Delivery is synchronous, in subscription order, over a snapshot of the subscribers. A listener

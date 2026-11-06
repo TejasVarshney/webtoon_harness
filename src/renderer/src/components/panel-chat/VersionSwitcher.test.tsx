@@ -12,7 +12,7 @@ import { VersionSwitcher } from './VersionSwitcher'
 const A = 'pnl_00000000aa'
 const B = 'pnl_00000000bb'
 
-/** Three attempts, the middle one failed: the ready ones are the only ones with a number (Ruling P7). */
+/** Three attempts, the middle one failed: the ready ones are the only ones with a number. */
 const v1 = panelVersion({ id: 'ver_00000000a1', imagePath: `panels/${A}/ver_00000000a1.png` })
 const v2 = panelVersion({ id: 'ver_00000000a2', status: 'failed', error: 'boom', imagePath: null })
 const v3 = panelVersion({ id: 'ver_00000000a3', imagePath: `panels/${A}/ver_00000000a3.png` })

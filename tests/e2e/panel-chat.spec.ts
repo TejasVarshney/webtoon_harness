@@ -46,7 +46,7 @@ test('open a panel, edit it from the panel chat, revert', async () => {
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v2 / 2')
   await expect(workspace.getByTestId('message-assistant').last()).toContainText('Updated.')
 
-  // Editing mode covers the main chat (R1): the user goes back to the strip to use it, and its helper still talks to
+  // Editing mode covers the main chat: the user goes back to the strip to use it, and its helper still talks to
   // the main chat only.
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await expect(workspace).toHaveCount(0)

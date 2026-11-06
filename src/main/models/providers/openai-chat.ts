@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import type { ChatCompletionContentPart, ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 import type { ChatMessage, ToolCall } from '@shared/types'
 import type { ResolvedModel } from '../registry'
+import { isAbort, mapError } from './openai-errors'
 import { planImageReplay, type ReplayImage } from './image-replay'
 import { ProviderError } from './types'
 import type { ImageLoader, TextProvider, TextTurnRequest, TextTurnResult } from './types'
@@ -38,10 +39,6 @@ export interface OpenAIClientLike {
       stream(params: OpenAIRequestParams, opts: { signal: AbortSignal }): OpenAIStreamLike
     }
   }
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
 }
 
 /** An image as a content part; a note (no vision, image gone, earlier image left out) as a text part. */
@@ -105,21 +102,6 @@ function mapFinishReason(s: string | null | undefined): TextTurnResult['stopReas
     default:
       return 'end'
   }
-}
-
-function isAbort(err: unknown, signal: AbortSignal): boolean {
-  return signal.aborted || err instanceof OpenAI.APIUserAbortError || (isRecord(err) && err.name === 'AbortError')
-}
-
-function mapError(err: unknown): ProviderError {
-  if (err instanceof ProviderError) return err
-  const message = err instanceof Error ? err.message : String(err)
-  if (err instanceof OpenAI.APIConnectionTimeoutError) return new ProviderError('timeout', message)
-  if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) return new ProviderError('auth', message)
-  if (err instanceof OpenAI.RateLimitError) return new ProviderError('rate_limit', message)
-  if (err instanceof OpenAI.BadRequestError) return new ProviderError('bad_request', message)
-  if (err instanceof OpenAI.APIConnectionError) return new ProviderError('network', message)
-  return new ProviderError('unknown', message)
 }
 
 function parseArguments(raw: string): unknown {

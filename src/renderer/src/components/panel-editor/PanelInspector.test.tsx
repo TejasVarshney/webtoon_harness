@@ -216,7 +216,7 @@ describe('PanelInspector', () => {
       expect(within(tabPanel()).queryByRole('alert')).toBeNull()
     })
 
-    it('saves a line typed just before the editor closes (Review Focus 3)', async () => {
+    it('saves a line typed just before the editor closes', async () => {
       fakeTimers()
       const { calls, unmount } = mount()
       fireEvent.change(text(1), { target: { value: 'Dawn.' } })
@@ -505,7 +505,7 @@ describe('PanelInspector', () => {
       await waitFor(() => expect(updates(calls)).toEqual([{ aspect: '1:3' }]))
     })
 
-    it('saves the description typed just before the editor closes, trimmed (Review Focus 3)', async () => {
+    it('saves the description typed just before the editor closes, trimmed', async () => {
       fakeTimers()
       const { calls, unmount } = mount()
       open('Scene')
@@ -550,7 +550,7 @@ describe('PanelInspector', () => {
       expect(updates(calls)).toHaveLength(1)
     })
 
-    it('saves nothing for a panel that left the episode (R2)', async () => {
+    it('saves nothing for a panel that left the episode', async () => {
       const onSelectLine = vi.fn()
       const { calls } = installApi()
       // The workspace passes the panel it last had, and the store no longer has it.

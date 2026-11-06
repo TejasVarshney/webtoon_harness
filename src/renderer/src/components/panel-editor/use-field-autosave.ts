@@ -4,13 +4,13 @@ import { errorText } from '../characters/controls'
 import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 
 /** How long a field waits after the last change before it saves. */
-export const AUTOSAVE_MS = 600
+const AUTOSAVE_MS = 600
 
 /** The panel's fields the editing mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
 export type AutosaveField = 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'beside' | 'gapAfter' | 'gutter' | 'characters' | 'items'
 
 /** What became of a sent value: stored, refused by the service, or not sent after all (the line changed, the panel is gone). */
-export type AutosaveOutcome = 'saved' | 'refused' | 'dropped'
+type AutosaveOutcome = 'saved' | 'refused' | 'dropped'
 
 export interface Autosave<T> {
   /** The draft while it is waiting, being saved or refused; otherwise the stored value. */
@@ -46,7 +46,7 @@ interface Draft<T> {
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
 /**
- * A local draft of one stored value, saved on its own (spec §6): `AUTOSAVE_MS` after the last change, at once on
+ * A local draft of one stored value, saved on its own: `AUTOSAVE_MS` after the last change, at once on
  * `flush`, and on unmount (Back, ‹ ›, another tab). While nothing is pending it shows the stored value, so an agent's
  * edit appears; while a change waits or is being saved, the draft stays. A refused save keeps the draft until the next
  * change or `undo`. Timers and the unmount read the latest stored value and options through refs: their closures may
@@ -177,7 +177,7 @@ export interface FieldAutosave<T> extends Autosave<T> {
 /**
  * One field of the panel, saved as `{ [field]: value }` (text trimmed) through the panel's save queue, after the saves
  * made before it. Setting `characters` also clears `heldBy` for anyone who left the cast, through a second, `items`
- * save, sent first (the old dialog's rule). A panel that left the store (R2) saves nothing.
+ * save, sent first (the old dialog's rule). A panel that left the store saves nothing.
  */
 export function useFieldAutosave<K extends AutosaveField>(panel: Panel, field: K): FieldAutosave<Panel[K]> {
   const [error, setError] = useState<string | null>(null)

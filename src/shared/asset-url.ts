@@ -1,4 +1,4 @@
-// URLs for project files served by the privileged `webtoon-asset` protocol (spec §4):
+// URLs for project files served by the privileged `webtoon-asset` protocol:
 //   webtoon-asset://<projectId>/<project-relative POSIX path>
 // This file is imported by the renderer and the main process, so it uses only the web-standard
 // `URL` and no Node modules.
@@ -13,7 +13,7 @@ export interface ParsedAssetUrl {
 
 /**
  * `encodeURI` leaves `#` and `?` raw, so a name containing one would not round-trip (it would parse
- * as a fragment or query). That cannot happen: every asset is named after ids (spec §5).
+ * as a fragment or query). That cannot happen: every asset is named after ids.
  */
 export function assetUrl(projectId: string, relPath: string): string {
   return `${ASSET_SCHEME}://${projectId}/${encodeURI(relPath)}`

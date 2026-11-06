@@ -339,7 +339,7 @@ describe('ConsistencyChecker', () => {
   })
 })
 
-describe('ConsistencyChecker timeout (Ruling T25c)', () => {
+describe('ConsistencyChecker timeout', () => {
   const never = (): Promise<never> => new Promise(() => undefined)
   /** Answers only when its signal fires, the way the real adapters do. */
   const rejectOnAbort = (req: TextTurnRequest): Promise<never> =>
@@ -613,7 +613,7 @@ describe('ConsistencyChecker.checkSheet', () => {
     expect(await slow.checker.checkSheet(slow.ctx, sheetInput())).toEqual({ passed: true, issues: ['Consistency check timed out after 0.04s'], skipped: true })
   })
 
-  describe('an unusable candidate (spec §5)', () => {
+  describe('an unusable candidate', () => {
     /**
      * A provider that loads user-message images the way openai-chat and anthropic do: through `planImageReplay`, which
      * turns an `ImageUnavailableError` into a text note and goes on. `turns` counts the turns that ran, `notes` the

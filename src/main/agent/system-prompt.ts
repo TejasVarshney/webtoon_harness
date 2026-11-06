@@ -34,7 +34,7 @@ export interface StateSnapshotInput {
   recentPanels: Panel[]
 }
 
-/** A sheet's status for the snapshot; a ready sheet that failed its check says so (spec §9). */
+/** A sheet's status for the snapshot; a ready sheet that failed its check says so. */
 function statusLabel(sheet: { status: string; check: Parameters<typeof sheetCheckFailure>[0]['check'] }): string {
   return sheet.status === 'ready' && sheetCheckFailure(sheet) ? 'ready, check failed' : sheet.status
 }

@@ -14,7 +14,7 @@ interface Point {
 }
 
 /** The sketch's longer edge in canvas pixels: plenty for a layout guide, small enough to send as a reference. */
-export const SKETCH_LONG_EDGE = 1024
+const SKETCH_LONG_EDGE = 1024
 /** Brush widths in canvas pixels. The eraser is wider, as erasing is coarser work; shapes draw with the pen's. */
 const PEN_WIDTHS: Record<SketchSize, number> = { fine: 3, medium: 8, bold: 18 }
 const ERASER_WIDTHS: Record<SketchSize, number> = { fine: 12, medium: 32, bold: 72 }

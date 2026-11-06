@@ -254,7 +254,7 @@ describe('PanelChatRunner', () => {
     expect(resolved).toEqual(['mdl_000000000a', other.id])
   })
 
-  it('reports a missing model instead of crashing (Review Focus 3)', async () => {
+  it('reports a missing model instead of crashing', async () => {
     const { s, runner, ctx, start, events, p2 } = await setup([{ text: 'x' }])
     await s.registry.removeModel('mdl_000000000a')
     const { runId } = await start(p2.id)
@@ -334,7 +334,7 @@ describe('PanelChatRunner', () => {
       expect(tool.results[0].images).toHaveLength(1)
     })
 
-    it('answers every tool call of a run that is stopped, and leaves no version pending (Review Focus 1 and 2)', async () => {
+    it('answers every tool call of a run that is stopped, and leaves no version pending', async () => {
       const { s, runner, ctx, start, eventsOf, p2 } = await setup([
         {
           toolCalls: [
@@ -366,7 +366,7 @@ describe('PanelChatRunner', () => {
     })
   })
 
-  describe('a panel deleted while its chat is running (Ruling T21a)', () => {
+  describe('a panel deleted while its chat is running', () => {
     it('ends the run with the error "Panel was deleted" and does not recreate the chat file', async () => {
       const deleter: Provider = () => {
         let ctx: Awaited<ReturnType<TestServices['projects']['open']>> | undefined

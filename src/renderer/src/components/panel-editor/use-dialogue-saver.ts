@@ -4,8 +4,8 @@ import { errorText } from '../characters/controls'
 import type { DialogueDraftLine } from './dialogue-edits'
 import { queuePanelSave } from './panel-save-queue'
 
-/** What became of a save: sent and kept, not sent because the line changed, refused by the service, or not sent because the panel is gone (R2). */
-export type DialogueSaveOutcome = 'saved' | 'conflict' | 'refused' | 'skipped'
+/** What became of a save: sent and kept, not sent because the line changed, refused by the service, or not sent because the panel is gone. */
+type DialogueSaveOutcome = 'saved' | 'conflict' | 'refused' | 'skipped'
 
 export interface DialogueSaver {
   /**
@@ -59,10 +59,10 @@ function report(panelId: string, change: Partial<Omit<Notice, 'reported'>>, coun
 }
 
 /**
- * Saves a panel's dialogue as a whole array, built at send time (spec §6). The saves of a panel wait for the ones
+ * Saves a panel's dialogue as a whole array, built at send time. The saves of a panel wait for the ones
  * before them, whichever saver made them (`queuePanelSave`), so each is built from the lines the last one left: two
  * quick edits never send the same stale array, and the second never undoes the first. A panel that left the store
- * (R2) saves nothing.
+ * saves nothing.
  */
 export function useDialogueSaver(panelId: string): DialogueSaver {
   const notice = useSyncExternalStore(

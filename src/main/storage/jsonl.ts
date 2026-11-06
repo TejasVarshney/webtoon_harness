@@ -24,7 +24,7 @@ async function endsMidLine(absPath: string): Promise<boolean> {
 }
 
 /**
- * Appends one JSON line per record. This is a plain append, not an atomic rewrite (ruling P4):
+ * Appends one JSON line per record. This is a plain append, not an atomic rewrite:
  * callers run it inside the project's `KeyedMutex`, and `readJsonl` tolerates a line a crash cut
  * short. If the file ends mid-line, a newline is written first so the new records are not glued
  * onto the truncated one.

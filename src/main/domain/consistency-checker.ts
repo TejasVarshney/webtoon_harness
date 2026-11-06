@@ -9,16 +9,16 @@ import { loadImageForTextModel, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError,
 import type { PanelPromptReference } from './prompts'
 
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
-export const CHECKLIST_DOC = 'reference/consistency-checklist'
+const CHECKLIST_DOC = 'reference/consistency-checklist'
 
 /** The project doc that is the system prompt of a sheet check (`checkSheet`). */
-export const SHEET_CHECKLIST_DOC = 'reference/sheet-checklist'
+const SHEET_CHECKLIST_DOC = 'reference/sheet-checklist'
 
 /** The reserved image key under which the not-yet-saved candidate sheet is served to the vision model. */
 export const CANDIDATE_IMAGE_KEY = 'candidate://sheet'
 
 /**
- * How long the vision call may take before the check is given up (Ruling T25c), unless the vision model's endpoint
+ * How long the vision call may take before the check is given up, unless the vision model's endpoint
  * sets `timeoutSeconds`; the image call has the same default.
  */
 export const CHECK_TIMEOUT_MS = 180_000
@@ -48,7 +48,7 @@ export interface ConsistencyCheckerOptions {
 }
 
 /** What a sheet check judges: a character variation or an item usage, with its owner (which holds the lock). */
-export type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
+type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
 
 export interface SheetCheckInput {
   /** The candidate sheet, not yet on disk. */
@@ -218,7 +218,7 @@ function failureMessage(error: unknown, signal: AbortSignal | undefined): string
 }
 
 /**
- * Asks the `vision` model whether a generated panel matches its references (spec §9, step 5). The
+ * Asks the `vision` model whether a generated panel matches its references. The
  * checklist doc is the system prompt; the references and the generated image go as downscaled images
  * on one user message. `check` never throws: a model, image or doc problem is a skipped pass.
  */
@@ -233,7 +233,7 @@ export class ConsistencyChecker {
 
   /**
    * The verdict, or null when no model is assigned to the `vision` role (the check is optional).
-   * Ruling T25c: the call is cut off after the timeout (a skipped pass, so the panel is not held up);
+   * The call is cut off after the timeout (a skipped pass, so the panel is not held up);
    * a caller abort is told apart from it and reads "Cancelled".
    */
   async check(ctx: ProjectContext, input: ConsistencyCheckInput): Promise<CheckResult | null> {
@@ -249,12 +249,12 @@ export class ConsistencyChecker {
   /**
    * The verdict on a sheet that is not on disk yet, judged against its lock (and its base sheet, for a
    * non-base one), or null when no model is assigned to the `vision` role. Same contract as `check`:
-   * never throws, Ruling T25c timeout, a caller abort reads "Cancelled". An empty or undecodable
+   * never throws, a timeout is a skipped pass, a caller abort reads "Cancelled". An empty or undecodable
    * candidate is a skipped pass.
    */
   async checkSheet(ctx: ProjectContext, input: SheetCheckInput): Promise<CheckResult | null> {
     // The candidate is prepared before the turn: the adapters turn an ImageUnavailableError from `loadImage` into a
-    // text note and carry on, so a failure there would leave the model judging a sheet it never saw (spec §5).
+    // text note and carry on, so a failure there would leave the model judging a sheet it never saw.
     let candidate: { mime: string; base64: string } | undefined
     return this.runVision(ctx, {
       doc: SHEET_CHECKLIST_DOC,

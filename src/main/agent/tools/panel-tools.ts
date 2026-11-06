@@ -187,7 +187,7 @@ const updatePanel = defineTool({
     const { panels } = ctx.services
     let updated: { panel: Panel; warnings: string[] }
     try {
-      // Ruling T19a: the guard is strict only for a description edit. A panel saved with an unattached-mention
+      // The guard is strict only for a description edit. A panel saved with an unattached-mention
       // warning (the manual editor allows it) must stay editable by the agent; the warning is passed on instead.
       updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
     } catch (error) {

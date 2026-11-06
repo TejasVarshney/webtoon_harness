@@ -38,7 +38,7 @@ function checkPort(port: unknown): number {
 const readPort = (config: Record<string, unknown>): number => (config.port === undefined ? DEFAULT_PORT : checkPort(config.port))
 
 /**
- * The `claude-code` plugin (spec §4.2): an MCP link on 127.0.0.1 that lets Claude Code drive the open project.
+ * The `claude-code` plugin: an MCP link on 127.0.0.1 that lets Claude Code drive the open project.
  * `serverFactory` swaps the server in tests.
  */
 export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkServerOptions) => McpLinkServer } = {}): ClaudeCodePlugin {
@@ -80,7 +80,7 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
     name: 'Claude Code',
     description: 'Lets Claude Code drive this app through an MCP link, and (optionally) act as the agent.',
 
-    /** Runs the main chat when the config has `useAsAgent` (spec §6). */
+    /** Runs the main chat when the config has `useAsAgent`. */
     get agentBackend() {
       return backend
     },
@@ -126,7 +126,7 @@ export function createClaudeCodePlugin(opts: { serverFactory?: (options: LinkSer
       if ('claudePath' in patch && typeof patch.claudePath !== 'string') throw new Error('claudePath must be text')
     },
 
-    /** Only the port needs the server rebound; the agent settings are read at run time (ruling R19). */
+    /** Only the port needs the server rebound; the agent settings are read at run time. */
     restartOnConfig: (patch) => 'port' in patch,
 
     connectCommand() {

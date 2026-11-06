@@ -37,7 +37,7 @@ function message(err: unknown): string {
 }
 
 /**
- * Provider-agnostic agent loop. Invariant (Review Focus 1): every persisted assistant `tool_use`
+ * Provider-agnostic agent loop. Invariant: every persisted assistant `tool_use`
  * is followed by a tool message holding a result for each of its calls, even when the run is
  * cancelled halfway through them.
  */

@@ -48,7 +48,7 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
   return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null, claudeSessionId }
 }
 
-/** Chat transcripts, one JSONL file per session under `sessions/` (spec §5). */
+/** Chat transcripts, one JSONL file per session under `sessions/`. */
 export class SessionStore {
   constructor(
     private readonly bus: EventBus,

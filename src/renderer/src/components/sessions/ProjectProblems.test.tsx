@@ -8,7 +8,7 @@ beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId: 'prj_aaaaaaaaaa' })
 })
 
-describe('ProjectProblems (I1)', () => {
+describe('ProjectProblems', () => {
   it('shows nothing while the project has no problems', () => {
     render(<ProjectProblems />)
     expect(screen.queryByTestId('project-problems')).not.toBeInTheDocument()

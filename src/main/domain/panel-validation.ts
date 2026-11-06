@@ -1,6 +1,6 @@
-import type { Character, CheckResult, Item, ItemUsage, PanelDraft, Variation } from '@shared/types'
+import type { Character, CheckResult, Item, ItemUsage, PanelCharacter, PanelDraft, PanelItem, Variation } from '@shared/types'
 
-// Pure panel-draft validation (spec §9, step 2). No I/O: the caller passes the whole roster
+// Pure panel-draft validation. No I/O: the caller passes the whole roster
 // (archived characters included, so an archived cast member is named as such rather than reported
 // as unknown). PanelService runs this before anything is written or generated.
 
@@ -35,7 +35,7 @@ export function sheetCheckFailure(sheet: { check: CheckResult | null }): string[
 }
 
 /** What stands in for the issues of a failed check that named none, so a message never reads "failed its check: .". */
-export const NO_ISSUES_NAMED = 'no issues named'
+const NO_ISSUES_NAMED = 'no issues named'
 
 /** The issues of a failed check as one line for a message: joined by "; ", or `NO_ISSUES_NAMED` when there are none. */
 export function joinIssues(issues: readonly string[]): string {
@@ -55,7 +55,7 @@ export function sheetCheckState(check: CheckResult | null): 'passed' | 'failed' 
  * character is reported once and its variation is not checked further (the entry has to go anyway);
  * an item works the same way. Identical messages are reported once.
  * `strictMentions` turns the mention guard into an error (the agent); otherwise it is a warning
- * (the manual editor). `strictSheets` does the same for a ready sheet whose check failed (spec §8): an error for
+ * (the manual editor). `strictSheets` does the same for a ready sheet whose check failed: an error for
  * the agent, a warning in the editor; it is reported in the same place as the "no ready reference image" error.
  */
 export function validatePanelDraft(draft: PanelDraftFields, roster: Character[], itemRoster: Item[], opts: { strictMentions: boolean; strictSheets: boolean }): PanelDraftCheck {
@@ -174,4 +174,47 @@ export function findUnattachedMentions(text: string, roster: Mentionable[], atta
     if (terms.some((t) => wholeWord(t)?.test(text))) found.push(character.name)
   }
   return found
+}
+
+/**
+ * A roster in which the cast entries that are unchanged (same character and variation as
+ * stored) read as usable, so `validatePanelDraft` reports "is archived" and "has no ready reference
+ * image" only for entries that are new or changed. A character that also has a changed entry stays
+ * archived. Names and variation ids are untouched, so unknown-character and foreign-variation
+ * errors still apply to every entry.
+ */
+export function grandfatherUnchangedCast(roster: Character[], stored: PanelCharacter[], next: PanelCharacter[], strictSheets: boolean): Character[] {
+  const pair = (entry: PanelCharacter): string => `${entry.characterId}/${entry.variationId}`
+  const storedPairs = new Set(stored.map(pair))
+  const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
+  const keptPairs = new Set(unchanged.map(pair))
+  const changedCharacters = new Set(next.filter((entry) => !storedPairs.has(pair(entry))).map((entry) => entry.characterId))
+  const keptCharacters = new Set(unchanged.map((entry) => entry.characterId).filter((id) => !changedCharacters.has(id)))
+  return roster.map((c) => {
+    const archived = c.archived && !keptCharacters.has(c.id)
+    const unusable = (v: Variation): boolean => keptPairs.has(`${c.id}/${v.id}`) && (!hasReadyReference(v) || (strictSheets && sheetCheckFailure(v) !== null))
+    if (archived === c.archived && !c.variations.some(unusable)) return c
+    return { ...c, archived, variations: c.variations.map((v) => (unusable(v) ? { ...v, status: 'ready' as const, imagePath: v.imagePath || 'unchanged', check: null } : v)) }
+  })
+}
+
+/**
+ * The item twin of `grandfatherUnchangedCast`: an item and usage pair that is unchanged from the stored
+ * panel reads as active and ready, so "is archived" and "has no ready reference image" are reported only
+ * for entries that are new or changed. An item that also has a changed entry stays archived. Ids and the
+ * holder are untouched, so unknown-item, foreign-usage and holder errors still apply to every entry.
+ */
+export function grandfatherUnchangedItems(itemRoster: Item[], stored: PanelItem[], next: PanelItem[], strictSheets: boolean): Item[] {
+  const pair = (entry: PanelItem): string => `${entry.itemId}/${entry.usageId}`
+  const storedPairs = new Set(stored.map(pair))
+  const unchanged = next.filter((entry) => storedPairs.has(pair(entry)))
+  const keptPairs = new Set(unchanged.map(pair))
+  const changedItems = new Set(next.filter((entry) => !storedPairs.has(pair(entry))).map((entry) => entry.itemId))
+  const keptItems = new Set(unchanged.map((entry) => entry.itemId).filter((id) => !changedItems.has(id)))
+  return itemRoster.map((i) => {
+    const archived = i.archived && !keptItems.has(i.id)
+    const unusable = (u: ItemUsage): boolean => keptPairs.has(`${i.id}/${u.id}`) && (!hasReadyUsage(u) || (strictSheets && sheetCheckFailure(u) !== null))
+    if (archived === i.archived && !i.usages.some(unusable)) return i
+    return { ...i, archived, usages: i.usages.map((u) => (unusable(u) ? { ...u, status: 'ready' as const, imagePath: u.imagePath || 'unchanged', check: null } : u)) }
+  })
 }

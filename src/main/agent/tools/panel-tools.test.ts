@@ -145,7 +145,7 @@ describe('panel tools: the tool set', () => {
 })
 
 describe('create_panel', () => {
-  it('create_panel waits for the consistency check and its automatic redraw, and reports the version that is current (Task 25)', async () => {
+  it('create_panel waits for the consistency check and its automatic redraw, and reports the version that is current', async () => {
     const { run, s, character, draft, panel } = await setup()
     const mina = await character('Mina')
     vi.spyOn(s.checker, 'check')
@@ -240,7 +240,7 @@ describe('create_panel', () => {
     expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
   })
 
-  it('rejects an archived character and a variation that is not ready (Review Focus 4)', async () => {
+  it('rejects an archived character and a variation that is not ready', async () => {
     const { run, s, ctx, character, draft } = await setup()
     const jin = await character('Jin')
     await s.characters.archive(ctx, jin.id)
@@ -283,7 +283,7 @@ describe('create_panel', () => {
     expect(stored.versions).toMatchObject([{ id: out.versionId, status: 'failed' }])
   })
 
-  it('passes the run signal to the image call, so Stop ends a generation that is under way (Review Focus 1)', async () => {
+  it('passes the run signal to the image call, so Stop ends a generation that is under way', async () => {
     const controller = new AbortController()
     const { run, s, draft, panel } = await setup({ signal: controller.signal })
     const generate = vi.spyOn(s.images, 'generate').mockImplementation(hangOnAbort())
@@ -343,7 +343,7 @@ describe('list_panels and get_panel', () => {
     expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
   })
 
-  it('reports no current version for a panel with no ready image, and keeps naming an archived cast member (Review Focus 4)', async () => {
+  it('reports no current version for a panel with no ready image, and keeps naming an archived cast member', async () => {
     const { run, s, ctx, episode, character, cast } = await setup()
     const mina = await character('Mina')
     await s.panels.create(ctx, { episodeId: episode.id, description: 'Mina waits.', setting: 'Hall', shot: 'wide', characters: [cast(mina)], dialogue: [] }, { createdBy: 'ai', strictMentions: true, strictSheets: false })
@@ -437,8 +437,8 @@ describe('update_panel', () => {
     expect((await panel(made.panelId)).description).toBe('Mina opens the door.')
   })
 
-  // Ruling T19a: the mention guard is strict only when the agent edits the description.
-  describe('a panel saved with an unattached-mention warning (Ruling T19a)', () => {
+  // The mention guard is strict only when the agent edits the description.
+  describe('a panel saved with an unattached-mention warning', () => {
     async function warned() {
       const h = await setup()
       const mina = await h.character('Mina')
@@ -517,7 +517,7 @@ describe('update_panel', () => {
 })
 
 describe('regenerate_panel', () => {
-  it('reports the version that became current with its check after an automatic redraw (Task 25)', async () => {
+  it('reports the version that became current with its check after an automatic redraw', async () => {
     const { run, s, created, panel } = await setup()
     const made = await created([])
     vi.spyOn(s.checker, 'check')
@@ -547,7 +547,7 @@ describe('regenerate_panel', () => {
     expect((await panel(made.panelId)).currentVersionId).toBe(out.versionId)
   })
 
-  it('keeps the previous good image current when the new one fails (Review Focus 2)', async () => {
+  it('keeps the previous good image current when the new one fails', async () => {
     const { run, s, created, panel } = await setup()
     const made = await created([])
     await s.registry.assignRole('image', null)
@@ -562,7 +562,7 @@ describe('regenerate_panel', () => {
     expect(stored.versions.map((v) => v.status)).toEqual(['ready', 'failed'])
   })
 
-  it('still regenerates a panel whose character was archived afterwards (Review Focus 4)', async () => {
+  it('still regenerates a panel whose character was archived afterwards', async () => {
     const { run, s, ctx, character, created } = await setup()
     const mina = await character('Mina')
     const made = await created([mina])
@@ -617,7 +617,7 @@ describe('edit_panel_image', () => {
   })
 })
 
-describe('the run signal reaches every image call (Review Focus 1)', () => {
+describe('the run signal reaches every image call', () => {
   const cases: { name: string; spy: 'generate' | 'edit'; start: (run: (n: string, i: unknown) => Promise<ToolResult>, panelId: string) => Promise<ToolResult> }[] = [
     { name: 'regenerate_panel', spy: 'generate', start: (run, panelId) => run('regenerate_panel', { panelId }) },
     { name: 'update_panel with regenerate', spy: 'generate', start: (run, panelId) => run('update_panel', { panelId, patch: { description: 'New' }, regenerate: true }) },

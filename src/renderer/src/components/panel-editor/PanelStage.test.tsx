@@ -416,7 +416,7 @@ describe('PanelStage', () => {
     expect(saver()).toBeEmptyDOMElement()
   })
 
-  it('sends nothing when the line changed under a drag, and reports it (Review Focus 2)', async () => {
+  it('sends nothing when the line changed under a drag, and reports it', async () => {
     const { calls } = mount()
     fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
     fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })

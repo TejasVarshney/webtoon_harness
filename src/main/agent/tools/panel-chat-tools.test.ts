@@ -141,7 +141,7 @@ describe('edit_image and regenerate_image', () => {
     expect((await panel(p1.id)).versions).toHaveLength(1)
   })
 
-  it('regenerate_image reports the version that became current, with its check, after an automatic redraw (Task 25)', async () => {
+  it('regenerate_image reports the version that became current, with its check, after an automatic redraw', async () => {
     const { run, s, p2, panel } = await setup()
     const check = vi
       .spyOn(s.checker, 'check')
@@ -160,7 +160,7 @@ describe('edit_image and regenerate_image', () => {
     expect(r.images).toEqual([stored.versions[2].imagePath])
   })
 
-  it('regenerate_image reports the last attempt and its failed check when the redraw does not pass either (Task 25)', async () => {
+  it('regenerate_image reports the last attempt and its failed check when the redraw does not pass either', async () => {
     const { run, s, p2, panel } = await setup()
     vi.spyOn(s.checker, 'check')
       .mockResolvedValueOnce({ passed: false, issues: ['Mina hair is black'], skipped: false })
@@ -172,7 +172,7 @@ describe('edit_image and regenerate_image', () => {
     expect(out).toMatchObject({ versionId: stored.versions[2].id, label: 'v3', status: 'ready', check: { passed: false, issues: ['Mina hair is still black'] } })
   })
 
-  it('counts ready versions only (Ruling P7): a failed attempt has no label and the next ready one takes the next number', async () => {
+  it('counts ready versions only: a failed attempt has no label and the next ready one takes the next number', async () => {
     const { run, s, p2, panel } = await setup()
     await s.registry.assignRole('image', null)
     const failed = await run('edit_image', { instruction: 'make her smile' })
@@ -182,7 +182,7 @@ describe('edit_image and regenerate_image', () => {
     // An edit runs on the imageEdit role, which falls back to the image role.
     expect(out.error).toContain("No model assigned to role 'imageEdit'")
     expect(failed.images).toEqual([])
-    // Review Focus 2: the image that was good stays current.
+    // The image that was good stays current.
     const after = await panel(p2.id)
     expect(after.currentVersionId).toBe(p2.currentVersionId)
     expect(after.versions).toMatchObject([{ status: 'ready' }, { id: out.versionId, status: 'failed' }])
@@ -202,7 +202,7 @@ describe('edit_image and regenerate_image', () => {
     expect((await panel(p2.id)).currentVersionId).toBe(p2.currentVersionId)
   })
 
-  it('passes the run signal to the image call, so Stop ends an edit that is under way (Review Focus 1 and 2)', async () => {
+  it('passes the run signal to the image call, so Stop ends an edit that is under way', async () => {
     const controller = new AbortController()
     const { run, s, p2, panel } = await setup({ signal: controller.signal })
     const edit = vi.spyOn(s.images, 'edit').mockImplementation(hangOnAbort())
@@ -350,8 +350,8 @@ describe('update_panel_fields', () => {
     expect(json(ok).warnings).toEqual([])
   })
 
-  // Ruling T21b (same as T19a for the main agent): the mention guard is strict only when the description changes.
-  describe('a panel saved with an unattached-mention warning (Ruling T21b)', () => {
+  // As for the main agent, the mention guard is strict only when the description changes.
+  describe('a panel saved with an unattached-mention warning', () => {
     async function warned() {
       const h = await setup()
       const jin = await h.s.characters.create(h.ctx, { name: 'Jin', role: 'supporting', appearanceLock: 'Jin LOCK' }, 'user')
@@ -563,7 +563,7 @@ describe('get_panel_context: neighbors that cannot be shown', () => {
   })
 })
 
-describe('image results never claim a ready version without its label (Ruling P7)', () => {
+describe('image results never claim a ready version without its label', () => {
   /** Lets the image call finish and be recorded, then makes the service's next read of the panel go wrong. */
   function breakReadAfter(services: TestServices, method: 'generate' | 'editImage', fail: () => Promise<never>) {
     let armed = false

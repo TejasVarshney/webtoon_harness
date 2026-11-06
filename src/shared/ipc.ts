@@ -34,7 +34,7 @@ import type {
 } from './types'
 
 /** The `project.json` fields a caller may change. */
-export type ProjectPatch = Partial<
+type ProjectPatch = Partial<
   Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'storyMode' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
 >
 

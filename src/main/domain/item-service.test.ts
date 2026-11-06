@@ -95,7 +95,7 @@ describe('ItemService', () => {
     expect((await svc.get(ctx, item.id)).usages[0].status).toBe('ready')
   })
 
-  it('records an item created without a generation as failed, not pending (Ruling F4)', async () => {
+  it('records an item created without a generation as failed, not pending', async () => {
     const { svc, ctx, calls } = await setup()
     const item = await svc.create(ctx, input(), 'ai', { generate: false })
     expect(item.usages[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate', imagePath: null })
@@ -166,7 +166,7 @@ describe('ItemService', () => {
     expect(fs.existsSync(ctx.paths.resolveAsset(first.imagePath!))).toBe(true)
   })
 
-  it('shows pending while generating and does not hold the lock across the image call (Ruling T15a)', async () => {
+  it('shows pending while generating and does not hold the lock across the image call', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -230,7 +230,7 @@ describe('ItemService', () => {
     expect((await svc.get(ctx, item.id)).usages).toHaveLength(1)
   })
 
-  it("trashes a deleted usage's image only when it lies in the item's own folder (I4)", async () => {
+  it("trashes a deleted usage's image only when it lies in the item's own folder", async () => {
     const { svc, ctx, trashed } = await setup()
     const item = await svc.create(ctx, input(), 'user')
     const other = await svc.create(ctx, input('Zed lantern'), 'user')
@@ -309,7 +309,7 @@ describe('ItemService', () => {
     ])
   })
 
-  it('skips and reports a corrupt item file (Review Focus 5)', async () => {
+  it('skips and reports a corrupt item file', async () => {
     const { svc, ctx } = await setup()
     const item = await svc.create(ctx, input(), 'user')
     await fs.promises.writeFile(ctx.paths.itemFile('itm_ffffffffff'), '{oops')
@@ -422,7 +422,7 @@ describe('ItemService sheet check', () => {
     expect(out).toMatchObject({ status: 'ready', check: fail('x') })
   })
 
-  it('stays pending while the check runs, and a concurrent update is not blocked (Ruling T15a)', async () => {
+  it('stays pending while the check runs, and a concurrent update is not blocked', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -604,7 +604,7 @@ describe('ItemService recording failures', () => {
     expect(ctx.problems.map((p) => p.path)).toContain('items/itm_ffffffffff.json')
   })
 
-  it('recoverInterrupted skips a file that holds another valid id instead of rewriting the wrong file (Ruling T18f)', async () => {
+  it('recoverInterrupted skips a file that holds another valid id instead of rewriting the wrong file', async () => {
     const { svc, ctx } = await setup()
     const pending = makeItem({ id: 'itm_bbbbbbbbbb', name: 'Bee', usages: [makeItemUsage({ id: 'use_bbbbbbbbbb', itemId: 'itm_bbbbbbbbbb', status: 'pending' })] })
     await writeJsonAtomic(ctx.paths.itemFile('itm_aaaaaaaaaa'), pending)

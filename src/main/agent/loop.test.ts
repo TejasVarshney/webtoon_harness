@@ -93,7 +93,7 @@ describe('runAgentLoop', () => {
     expect(persisted.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant', 'tool'])
   })
 
-  it('cancel during tool execution leaves a result for every tool call (Review Focus 1)', async () => {
+  it('cancel during tool execution leaves a result for every tool call', async () => {
     const ctrl = new AbortController()
     const aborter = defineTool({
       name: 'abort',

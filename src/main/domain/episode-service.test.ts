@@ -144,7 +144,7 @@ describe('EpisodeService', () => {
     await expect(svc.movePanel(ctx, ep.id, 'pnl_ffffffffff', 0)).rejects.toThrow('Unknown panel: pnl_ffffffffff')
   })
 
-  it('skips and reports a corrupt episode file (Review Focus 5)', async () => {
+  it('skips and reports a corrupt episode file', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)
     await fs.promises.writeFile(ctx.paths.episodeFile('epi_ffffffffff'), '{oops')

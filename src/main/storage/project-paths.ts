@@ -5,7 +5,7 @@ import { PathEscapeError } from '../domain/errors'
 const ID_PATTERN = /^[a-z]+_[A-Za-z0-9]+$/
 
 /**
- * Every location inside one project folder (spec §5). Ids reach this class from AI tool input and
+ * Every location inside one project folder. Ids reach this class from AI tool input and
  * become file names, so each id-taking method validates its id; `resolveAsset` is the equivalent
  * guard for relative paths stored in project JSON. All returned paths are absolute.
  */
@@ -96,7 +96,7 @@ export class ProjectPaths {
    * Resolves a project-relative path (as stored in JSON) to an absolute one. Throws
    * `PathEscapeError` for absolute paths, drive-letter or UNC paths, NUL bytes, anything that
    * resolves outside the project root, and the root itself (`''`, `.`, `characters/..`): no stored
-   * path may name the whole project, which a delete would then trash (I4).
+   * path may name the whole project, which a delete would then trash.
    */
   resolveAsset(relPath: string): string {
     // ':' covers drive letters (`C:\x`, drive-relative `C:x`) and NTFS alternate data streams;

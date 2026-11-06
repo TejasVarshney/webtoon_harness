@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import { createServer } from 'vite'
 import { describe, expect, it } from 'vitest'
 
-// I3: the renderer's CSP (`script-src 'self'`, a <meta> in index.html) does not block the inline React Refresh
+// The renderer's CSP (`script-src 'self'`, a <meta> in index.html) does not block the inline React Refresh
 // preamble that @vitejs/plugin-react injects in `npm run dev`, because Vite puts that script at the top of <head>,
 // before the <meta>, and a <meta> policy only governs what comes after it. Verified by running `npm run dev`: the
 // renderer mounts with no "can't detect preamble" error and no CSP violation. This test keeps that order, so the

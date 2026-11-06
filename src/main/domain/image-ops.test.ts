@@ -34,7 +34,7 @@ describe('sniffImageMime', () => {
   })
 })
 
-describe('createNativeImageOps (Ruling F1)', () => {
+describe('createNativeImageOps', () => {
   it('downscales a decodable image and encodes PNG by default, JPEG on request', async () => {
     const native = fakeNativeImage()
     const ops = createNativeImageOps(native)
@@ -51,7 +51,7 @@ describe('createNativeImageOps (Ruling F1)', () => {
     expect(await ops.downscale(GIF, 1536)).toEqual({ mime: 'image/gif', data: GIF })
   })
 
-  it('rejects a corrupt PNG or JPEG the decoder cannot read instead of passing it through (Ruling F7)', async () => {
+  it('rejects a corrupt PNG or JPEG the decoder cannot read instead of passing it through', async () => {
     const ops = createNativeImageOps(fakeNativeImage(() => false))
     await expect(ops.downscale(JPEG, 1568, { format: 'jpeg' })).rejects.toThrow('The image is corrupt or truncated')
     await expect(ops.downscale(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]), 1536)).rejects.toBeInstanceOf(UnreadableImageError)

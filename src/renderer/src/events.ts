@@ -65,7 +65,7 @@ function handleEvent(event: AppEvent): void {
 }
 
 /**
- * I1: main records an unreadable project file in the project's problems while it lists, after `projects:open` has
+ * Main records an unreadable project file in the project's problems while it lists, after `projects:open` has
  * answered. So the problems are re-read whenever a list has loaded (the first load after opening included, which no
  * event announces), at most once per tick.
  */

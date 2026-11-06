@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow } from 'electron'
 import { captureScaleFactor, STRIP_CSS_WIDTH } from '@shared/strip-width'
-import type { ExportSnapshot, ViewLayout } from '@shared/types'
+import type { ViewLayout } from '@shared/types'
 import { pageHeightCss, type Slice } from './slice-plan'
 import { snapshotScript } from './snapshot-script'
 import type { StripCapturer } from './types'
@@ -23,7 +23,7 @@ export interface OffscreenCapturerOptions {
 }
 
 /**
- * The `StripCapturer` of spec §3: an offscreen window with no preload, driven over the DevTools protocol. The view is
+ * The `StripCapturer`: an offscreen window with no preload, driven over the DevTools protocol. The view is
  * 440 CSS px wide; each slice sets the viewport to the slice's (whole) CSS height at 800 / 440 × scale device px per
  * CSS px, so the image is 800 × scale px wide, scrolls to its top, waits two frames and takes a screenshot.
  * `close()` (or a crash) rejects whatever call is in flight at once.

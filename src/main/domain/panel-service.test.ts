@@ -372,7 +372,7 @@ describe('PanelService create and list', () => {
     await expect(svc.get(ctx, 'pnl_ffffffffff')).rejects.toThrow('Unknown panel: pnl_ffffffffff')
   })
 
-  it('list skips and reports a corrupt panel file, and skips a missing one (Review Focus 5)', async () => {
+  it('list skips and reports a corrupt panel file, and skips a missing one', async () => {
     const { svc, epi, episodes, ctx } = await setup()
     const a = (await svc.create(ctx, draft(epi.id, { description: 'a' }), USER)).panel
     const b = (await svc.create(ctx, draft(epi.id, { description: 'b' }), USER)).panel
@@ -504,7 +504,7 @@ describe('PanelService update', () => {
     await expect(svc.update(ctx, p.id, { characters: [castOf(m), castOf(m, { variationId: m.varId2 })] }, USER)).rejects.toMatchObject({ issues: ['Mina is cast twice'] })
   })
 
-  it('keeps a since-archived character editable and regenerable, but rejects archived casts that are new or changed (Review Focus 4)', async () => {
+  it('keeps a since-archived character editable and regenerable, but rejects archived casts that are new or changed', async () => {
     const { svc, characters, epi, ctx, calls } = await setup()
     const m = await mina(ctx)
     const z = await zed(ctx)
@@ -528,7 +528,7 @@ describe('PanelService update', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('accepts an update of a panel whose unchanged cast variation later went failed, but still checks new or changed entries (Ruling T18b)', async () => {
+  it('accepts an update of a panel whose unchanged cast variation later went failed, but still checks new or changed entries', async () => {
     const { svc, characters, epi, ctx } = await setup()
     const m = await mina(ctx)
     const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), AGENT)).panel
@@ -576,6 +576,36 @@ describe('PanelService update', () => {
     await expect(svc.update(ctx, p.id, { items: [itemOf(b, { usageId: b.useId2 })] }, STRICT)).rejects.toMatchObject({
       issues: ['Usage "Charged" of Kestrel blaster failed its sheet check: wrong barrel. Regenerate it or ask the user.']
     })
+  })
+
+  it('keeps warning a person about an unchanged cast entry whose sheet failed its check, on every save', async () => {
+    const { svc, characters, epi, ctx } = await setup()
+    const m = await mina(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m)] }), USER)).panel
+    const stored = await characters.get(ctx, m.id)
+    const bad = { passed: false, issues: ['hair is black'], skipped: false }
+    await writeJsonAtomic(ctx.paths.characterFile(m.id), { ...stored, variations: stored.variations.map((v) => ({ ...v, check: bad })) })
+
+    for (const description of ['Mina waits.', 'Mina still waits.']) {
+      const { panel, warnings } = await svc.update(ctx, p.id, { description }, USER)
+      expect(panel.description).toBe(description)
+      expect(warnings).toEqual([expect.stringContaining('failed its sheet check: hair is black')])
+    }
+  })
+
+  it('keeps warning a person about an unchanged item entry whose sheet failed its check, on every save', async () => {
+    const { svc, items, epi, ctx } = await setup()
+    const b = await blaster(ctx)
+    const p = (await svc.create(ctx, draft(epi.id, { items: [itemOf(b)] }), USER)).panel
+    const stored = await items.get(ctx, b.id)
+    const bad = { passed: false, issues: ['wrong barrel'], skipped: false }
+    await writeJsonAtomic(ctx.paths.itemFile(b.id), { ...stored, usages: stored.usages.map((u) => ({ ...u, check: bad })) })
+
+    for (const description of ['A door opens.', 'A door stays open.']) {
+      const { panel, warnings } = await svc.update(ctx, p.id, { description }, USER)
+      expect(panel.description).toBe(description)
+      expect(warnings).toEqual([expect.stringContaining('failed its sheet check: wrong barrel')])
+    }
   })
 
   it('still reports an unknown character or foreign variation in an unchanged cast entry', async () => {
@@ -705,7 +735,7 @@ describe('PanelService generate', () => {
     expect(blank.prompt).toBe(plain.prompt)
   })
 
-  it('a failed generation keeps the previous good version current (Review Focus 2)', async () => {
+  it('a failed generation keeps the previous good version current', async () => {
     const { svc, epi, ctx, behavior, events } = await setup()
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
     const v1 = await svc.generate(ctx, p.id)
@@ -754,7 +784,7 @@ describe('PanelService generate', () => {
     expect(await svc.get(ctx, p.id)).toMatchObject({ description: 'Edited meanwhile', versions: [{ status: 'ready' }] })
   })
 
-  it('an unknown or foreign variation becomes a failed version without calling the model (Ruling T18a)', async () => {
+  it('an unknown or foreign variation becomes a failed version without calling the model', async () => {
     const { svc, episodes, epi, ctx, calls } = await setup()
     const m = await mina(ctx)
     await plant(ctx, episodes, makePanel({ id: 'pnl_1111111111', episodeId: epi.id, characters: [{ characterId: 'chr_ffffffffff', variationId: 'var_ffffffffff' }] }))
@@ -853,7 +883,7 @@ describe('PanelService generate', () => {
 })
 
 
-describe('PanelService generate with a vision consistency check (Task 25)', () => {
+describe('PanelService generate with a vision consistency check', () => {
   /** A panel with Mina in the cast, ready to generate. */
   async function withPanel(opts: { vision?: boolean; visionTimeoutMs?: number } = { vision: true }) {
     const t = await setup(opts)
@@ -980,7 +1010,7 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
     expect(vision.requests).toHaveLength(0)
   })
 
-  it('each ready attempt becomes current as it lands (Ruling T18a)', async () => {
+  it('each ready attempt becomes current as it lands', async () => {
     const { svc, ctx, p, vision, behavior } = await withPanel()
     const seen: { stage: string; current: string | null; statuses: string[] }[] = []
     const snap = async (stage: string): Promise<void> => {
@@ -1006,7 +1036,7 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
     expect(v.id).toBe(second.id)
   })
 
-  it('runs the check outside the panel lock, and records its result on top of edits made meanwhile (Ruling T25a)', async () => {
+  it('runs the check outside the panel lock, and records its result on top of edits made meanwhile', async () => {
     const { svc, ctx, p, vision } = await withPanel()
     vision.replies.push(fail('x'), PASS)
     vision.onTurn = async (n) => {
@@ -1139,7 +1169,7 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
     expect(vision.requests[0].signal.aborted).toBe(true)
   })
 
-  it('a hung check times out into a skipped pass: generate resolves, the image stays current and nothing is redrawn (Ruling T25c)', async () => {
+  it('a hung check times out into a skipped pass: generate resolves, the image stays current and nothing is redrawn', async () => {
     const { svc, ctx, p, vision, calls } = await withPanel({ vision: true, visionTimeoutMs: 40 })
     vision.replies.push(fail('x'), PASS)
     vision.onTurn = () => new Promise<never>(() => undefined)
@@ -1282,7 +1312,7 @@ describe('PanelService generate with a vision consistency check (Task 25)', () =
   })
 })
 
-describe('PanelService recording failures (Review Focus 2)', () => {
+describe('PanelService recording failures', () => {
   it('records failed and removes the orphan image when the success write fails', async () => {
     const { svc, epi, ctx, behavior } = await setup()
     behavior.generate = async () => {
@@ -1777,7 +1807,7 @@ describe('PanelService delete, move and usage', () => {
     expect(await svc.panelsUsingVariation(ctx, 'var_ffffffffff')).toEqual([])
   })
 
-  it('a character or variation used by a panel cannot be deleted, only archived (Review Focus 4)', async () => {
+  it('a character or variation used by a panel cannot be deleted, only archived', async () => {
     const { svc, characters, epi, ctx, trashed } = await setup()
     const m = await mina(ctx)
     const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m, { variationId: m.varId2 })] }), USER)).panel
@@ -1833,7 +1863,7 @@ describe('PanelService recoverInterrupted', () => {
     expect(ctx.problems).toHaveLength(1)
   })
 
-  it('skips a panel whose internal id is malformed, reports it by file name, and still recovers the others (Ruling T18f)', async () => {
+  it('skips a panel whose internal id is malformed, reports it by file name, and still recovers the others', async () => {
     const { svc, epi, ctx } = await setup()
     await writeJsonAtomic(ctx.paths.panelFile('pnl_aaaaaaaaaa'), pendingPanel('pnl_aaaaaaaaaa', epi.id))
     await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), { ...pendingPanel('pnl_bbbbbbbbbb', epi.id), id: '../escape' })
@@ -1844,7 +1874,7 @@ describe('PanelService recoverInterrupted', () => {
     expect(JSON.parse(fs.readFileSync(ctx.paths.panelFile('pnl_bbbbbbbbbb'), 'utf8')).versions[1].status).toBe('pending')
   })
 
-  it('skips a panel file that holds another valid id instead of rewriting the wrong file (Ruling T18f)', async () => {
+  it('skips a panel file that holds another valid id instead of rewriting the wrong file', async () => {
     const { svc, epi, ctx } = await setup()
     await writeJsonAtomic(ctx.paths.panelFile('pnl_aaaaaaaaaa'), pendingPanel('pnl_bbbbbbbbbb', epi.id))
     await writeJsonAtomic(ctx.paths.panelFile('pnl_bbbbbbbbbb'), pendingPanel('pnl_bbbbbbbbbb', epi.id))
@@ -1854,7 +1884,7 @@ describe('PanelService recoverInterrupted', () => {
     expect(ctx.problems.map((p) => p.path)).toEqual(['panels/pnl_aaaaaaaaaa.json'])
   })
 
-  it('reads, lists and counts usage by file-derived ids only (Ruling T18f)', async () => {
+  it('reads, lists and counts usage by file-derived ids only', async () => {
     const { svc, episodes, epi, ctx } = await setup()
     const m = await mina(ctx)
     await plant(ctx, episodes, makePanel({ id: 'pnl_aaaaaaaaaa', episodeId: epi.id, characters: [castOf(m)] }))
@@ -1880,7 +1910,7 @@ describe('PanelService recoverInterrupted', () => {
 describe('createServices wiring', () => {
   const input = { name: 'Mina', role: 'protagonist' as const, appearanceLock: 'LOCK' }
 
-  it('wires panels into character deletion and the full generate flow (Review Focus 4)', async () => {
+  it('wires panels into character deletion and the full generate flow', async () => {
     const trashed: string[] = []
     const s = await testServices({
       trash: async (p) => {
@@ -1907,7 +1937,7 @@ describe('createServices wiring', () => {
     }
   })
 
-  it('wires the consistency checker: with a vision model assigned, a failed check redraws and the redraw is checked again (Task 25)', async () => {
+  it('wires the consistency checker: with a vision model assigned, a failed check redraws and the redraw is checked again', async () => {
     const s = await testServices()
     try {
       const script = path.join(s.userDataDir, 'vision-script.json')
@@ -1944,7 +1974,7 @@ describe('createServices wiring', () => {
   })
 
 
-  it('opens a project whose panel files hold a malformed or mismatched id, reporting them (Ruling T18f)', async () => {
+  it('opens a project whose panel files hold a malformed or mismatched id, reporting them', async () => {
     const s1 = await testServices()
     let s2: Awaited<ReturnType<typeof testServices>> | undefined
     try {

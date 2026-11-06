@@ -71,7 +71,7 @@ describe('characters IPC handlers', () => {
     expect(done.variations[0]).toMatchObject({ status: 'ready', error: null, imagePath: expect.stringMatching(/\.png$/) })
   })
 
-  it('create without generateBase makes no image call and records the base failed (Ruling F4)', async () => {
+  it('create without generateBase makes no image call and records the base failed', async () => {
     const { s, h, projectId, get } = await setup()
     const spy = vi.spyOn(s.images, 'generate')
     const created = await h['characters:create']({ projectId, input: mina, generateBase: false })
@@ -81,7 +81,7 @@ describe('characters IPC handlers', () => {
     expect((await get(created.id)).variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
   })
 
-  it('a missing generate flag from the renderer never leaves a variation pending (Ruling F8)', async () => {
+  it('a missing generate flag from the renderer never leaves a variation pending', async () => {
     const { h, projectId, get } = await setup()
     const created = await h['characters:create']({ projectId, input: mina } as never)
     expect((await get(created.id)).variations[0]).toMatchObject({ status: 'failed', error: 'No image yet: upload one or regenerate' })
@@ -135,7 +135,7 @@ describe('characters IPC handlers', () => {
     expect((await get(c.id)).variations).toHaveLength(2)
   })
 
-  it('addVariation without generate makes no image call and records the variation failed (Ruling F4)', async () => {
+  it('addVariation without generate makes no image call and records the variation failed', async () => {
     const { s, h, projectId } = await setup()
     const c = await s.characters.create(await s.projects.open(projectId), mina, 'user')
     const spy = vi.spyOn(s.images, 'generate')

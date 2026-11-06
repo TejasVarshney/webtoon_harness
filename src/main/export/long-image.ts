@@ -8,7 +8,7 @@ export type Bitmap = { width: number; height: number; data: Buffer }
 /**
  * One long-image part, filled top to bottom as its slices arrive. It holds a single buffer of width × `capacity`
  * rows × 4 bytes (allocated with the first slice, which gives the width), and each slice is copied in and can then
- * be dropped, so a part never needs more than that one buffer plus the slice being added (spec §6.2: at most
+ * be dropped, so a part never needs more than that one buffer plus the slice being added (at most
  * 1600 × 65,000 × 4 bytes).
  */
 export class PartCanvas {

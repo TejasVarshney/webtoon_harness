@@ -1,6 +1,7 @@
 import OpenAI, { toFile } from 'openai'
 import type { DrawAspect } from '@shared/types'
 import type { ResolvedModel } from '../registry'
+import { isAbort, mapError } from './openai-errors'
 import { ProviderError } from './types'
 import type { ImageEditRequest, ImageProvider, ImageRef, ImageRequest, ImageResult } from './types'
 
@@ -36,21 +37,6 @@ export interface OpenAIImagesClientLike {
 
 const MIME_BY_FORMAT: Record<string, ImageResult['mime']> = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' }
 const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
-
-function isAbort(err: unknown, signal: AbortSignal): boolean {
-  return signal.aborted || err instanceof OpenAI.APIUserAbortError || (typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError')
-}
-
-function mapError(err: unknown): ProviderError {
-  if (err instanceof ProviderError) return err
-  const message = err instanceof Error ? err.message : String(err)
-  if (err instanceof OpenAI.APIConnectionTimeoutError) return new ProviderError('timeout', message)
-  if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) return new ProviderError('auth', message)
-  if (err instanceof OpenAI.RateLimitError) return new ProviderError('rate_limit', message)
-  if (err instanceof OpenAI.BadRequestError) return new ProviderError('bad_request', message)
-  if (err instanceof OpenAI.APIConnectionError) return new ProviderError('network', message)
-  return new ProviderError('unknown', message)
-}
 
 export class OpenAIImageProvider implements ImageProvider {
   private readonly client: OpenAIImagesClientLike

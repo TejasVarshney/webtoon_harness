@@ -8,11 +8,12 @@ import { isNotFound } from '../storage/fs-errors'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import { checkedHeading, listSections, upsertMarkdownSection } from './markdown-sections'
+import { now } from './records'
 
-/** The sections a new story bible starts with (spec §10). */
-export const BIBLE_SECTIONS = ['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'] as const
+/** The sections a new story bible starts with. */
+const BIBLE_SECTIONS = ['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'] as const
 
-export const BIBLE_TEMPLATE = `# Story Bible\n\n${BIBLE_SECTIONS.map((name) => `## ${name}\n`).join('\n')}`
+const BIBLE_TEMPLATE = `# Story Bible\n\n${BIBLE_SECTIONS.map((name) => `## ${name}\n`).join('\n')}`
 
 export interface StoryServiceOptions {
   bus: EventBus
@@ -30,8 +31,6 @@ interface OutlineRead {
   beats: Beat[]
   corrupt: CorruptFileError | null
 }
-
-const now = (): string => new Date().toISOString()
 
 /**
  * The story bible (`story/bible.md`), the beat outline (`story/outline.json`) and the story mode (a

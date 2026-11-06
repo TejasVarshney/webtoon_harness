@@ -22,7 +22,7 @@ const panel = {
   versions: [version('ver_1', 'ready'), version('ver_2', 'failed'), version('ver_3', 'pending'), version('ver_4', 'ready'), version('ver_5', 'ready')]
 }
 
-describe('versionPosition (Ruling P7)', () => {
+describe('versionPosition', () => {
   it('counts ready versions only: failed and pending attempts never use up a number', () => {
     expect(versionPosition(panel, 'ver_1')).toEqual({ label: 'v1', index: 1, readyCount: 3 })
     expect(versionPosition(panel, 'ver_4')).toEqual({ label: 'v2', index: 2, readyCount: 3 })

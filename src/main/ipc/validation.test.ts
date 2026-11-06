@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { testServices, type TestServices } from '../test/test-services'
 import { registerIpc } from './register'
 
-// I6: requests are validated at the main boundary. Every invalid request rejects with a plain Error whose
+// Requests are validated at the main boundary. Every invalid request rejects with a plain Error whose
 // message is readable (no ZodError dump), and nothing is written.
 
 let services: TestServices | undefined
@@ -42,7 +42,7 @@ async function rejection(p: Promise<unknown>): Promise<Error> {
   return error as Error
 }
 
-describe('IPC input validation (I6)', () => {
+describe('IPC input validation', () => {
   it('agent:send checks text, image paths and the active episode id', async () => {
     const { s, invoke, projectId, sessionId } = await setup()
     const ok = { projectId, sessionId, text: 'hi', imagePaths: [], activeEpisodeId: null }

@@ -7,7 +7,7 @@ export interface VisibleOptions {
   combine: boolean
 }
 
-/** Which of the dialog's options apply to a preset (spec §5). `combine` also needs two or more episodes ticked. */
+/** Which of the dialog's options apply to a preset. `combine` also needs two or more episodes ticked. */
 export function visibleOptions(preset: ExportPreset, episodeCount: number): VisibleOptions {
   return {
     imageType: preset === 'webtoon' || preset === 'long-image',

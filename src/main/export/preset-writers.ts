@@ -13,7 +13,7 @@ import type { ImageCodec } from './types'
 import { ZipWriter } from './zip-writer'
 
 /** What a finished output is written under until the job succeeds. */
-export const PART = '.part'
+const PART = '.part'
 
 /** A failed write, already worded for the user: it names the output, never the `.part` path. */
 export class WriteError extends Error {}
@@ -357,7 +357,7 @@ class CbzOutput extends PagedOutput<ZipWriter> {
     await writing(this.current.final, () => zip.add(`${pad3(this.pages)}.jpg`, jpeg))
   }
 
-  protected async beforeClose(zip: ZipWriter): Promise<void> {
+  protected override async beforeClose(zip: ZipWriter): Promise<void> {
     const { series, episodes } = this.o
     let xml: string
     if (this.shared) {

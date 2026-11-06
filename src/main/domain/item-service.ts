@@ -12,6 +12,7 @@ import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors
 import type { ImageService } from './image-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import { itemReferencePrompt, itemUsagePrompt, sheetFixInstruction } from './prompts'
+import { failureMessage, INTERRUPTED, NO_IMAGE_YET, now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 type CreatedBy = ItemUsage['createdBy']
@@ -62,19 +63,11 @@ export interface ItemServiceOptions {
   sheetChecker?: Pick<ConsistencyChecker, 'checkSheet'>
 }
 
-const INTERRUPTED = 'Interrupted: the app closed during generation'
-/** Ruling F4: a usage created without a generation has nothing that would ever move it out of `pending`. */
-export const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
-
-/** `generate: false` means no generation follows, so the new usage is recorded `failed` (Ruling F4). Default true. */
+/** `generate: false` means no generation follows, so the new usage is recorded `failed`. Default true. */
 export interface CreateUsageOptions {
   generate?: boolean
 }
-const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
-type UploadExt = (typeof UPLOAD_EXTS)[number]
 const ITEM_FILE = /^itm_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /** The state a new usage starts in: `pending` when a generation follows, else failed with `NO_IMAGE_YET`. */
 function initialStatus(opts: CreateUsageOptions): Pick<ItemUsage, 'status' | 'error'> {
@@ -97,7 +90,7 @@ export class ItemService {
       if (!ITEM_FILE.test(name)) continue
       const abs = path.join(ctx.paths.itemsDir(), name)
       try {
-        // Ruling T18f: the id comes from the file name; a file holding any other id is reported and skipped.
+        // The id comes from the file name; a file holding any other id is reported and skipped.
         out.push(await readItemFile(abs, name.slice(0, -'.json'.length)))
       } catch (error) {
         if (isNotFound(error)) continue
@@ -217,10 +210,10 @@ export class ItemService {
   }
 
   /**
-   * Ruling T15a: mark pending under the lock, generate OUTSIDE it, then re-read and record the
+   * Mark pending under the lock, generate OUTSIDE it so a slow image call never holds the lock, then re-read and record the
    * outcome under the lock. Never throws for generation failures; the previous image is kept.
    *
-   * Sheet check (spec §7): draw, check, and redraw with the issues up to `consistencyRetries` times while the
+   * Sheet check: draw, check, and redraw with the issues up to `consistencyRetries` times while the
    * check fails. Candidates stay in memory; only the last one is written, together with its check, so the
    * usage stays `pending` until both are recorded.
    */
@@ -354,7 +347,7 @@ export class ItemService {
   }
 
   /**
-   * Step 3 of Ruling T15a: under the lock, record the outcome (the image with its check) if the usage
+   * The last step of a generation: under the lock, record the outcome (the image with its check) if the usage
    * still exists. A failure keeps the stored image and check. Never throws: if recording fails, the usage
    * is marked `failed` (best effort; `recoverInterrupted` is the backstop for a file that cannot be
    * written) and a `failed` usage is returned.
@@ -434,7 +427,7 @@ export class ItemService {
   }
 }
 
-/** Reads an item file and checks that it holds the id its file name says (Ruling T18f). */
+/** Reads an item file and checks that it holds the id its file name says. */
 async function readItemFile(file: string, id: string): Promise<Item> {
   const item = await readJson(file, ItemSchema)
   if (item.id !== id) throw new CorruptFileError(file, `holds item id ${JSON.stringify(item.id)}, which does not match its file name`)
@@ -450,7 +443,7 @@ function findUsage(i: Item, usageId: string): ItemUsage {
 /**
  * The image's absolute path when it lies inside the item's own folder, else null. A hand-edited path can
  * name anything in the project (another item's image, an upload, a folder): deleting a usage must
- * never trash that (I4).
+ * never trash that.
  */
 function ownImage(ctx: ProjectContext, itemId: string, relPath: string): string | null {
   try {
@@ -464,9 +457,4 @@ function ownImage(ctx: ProjectContext, itemId: string, relPath: string): string 
 
 function imageRelPath(itemId: string, usageId: string, ext: string): string {
   return `items/${itemId}/${usageId}_${randomBytes(3).toString('hex')}.${ext}`
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.name === 'AbortError') return 'Cancelled'
-  return error instanceof Error && error.message ? error.message : String(error)
 }

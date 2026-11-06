@@ -43,7 +43,7 @@ function header(headers: Headers, name: string): string | null {
   return first === undefined || first === '' ? null : first
 }
 
-/** The project and episode a backend run names (ruling R18); external clients name none. */
+/** The project and episode a backend run names; external clients name none. */
 const namedTarget = (headers: Headers) => ({ projectId: header(headers, 'x-webtoon-project'), episodeId: header(headers, 'x-webtoon-episode') })
 
 /** The Host values this server answers to; Origin, when sent, is one of these with `http://`. */
@@ -52,7 +52,7 @@ const localHosts = (port: number): string[] => [`127.0.0.1:${port}`, `localhost:
 const jsonRpcError = (code: number, message: string) => JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null })
 
 /**
- * The MCP link (spec §5.1): Streamable HTTP on 127.0.0.1, one SDK `Server` and transport per MCP session.
+ * The MCP link: Streamable HTTP on 127.0.0.1, one SDK `Server` and transport per MCP session.
  * Every request is checked for Host/Origin (DNS rebinding) and the bearer token before the SDK sees it.
  */
 export class McpLinkServer {
@@ -238,7 +238,7 @@ export class McpLinkServer {
   }
 
   /**
-   * Spec §5.4 order: project, log session, call message, run, result message. The project is the one the request
+   * Order: project, log session, call message, run, result message. The project is the one the request
    * names (a backend run), else the window's; with none, or one that does not open, nothing is logged.
    */
   private async callTool(name: string, args: unknown, extra: Extra, closing: AbortSignal): Promise<CallToolResult> {

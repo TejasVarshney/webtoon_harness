@@ -106,7 +106,7 @@ describe('useCharactersStore', () => {
       expect(calls).toEqual([])
       emit({ type: 'character.changed', projectId, characterId: 'chr_0000000001' })
       await new Promise((r) => setTimeout(r, 10))
-      // The reload, then the problems it may have found (I1).
+      // The reload, then the problems it may have found.
       expect(calls.map((c) => c.channel)).toEqual(['characters:list', 'projects:open'])
       expect(useCharactersStore.getState().characters).toHaveLength(1)
     })

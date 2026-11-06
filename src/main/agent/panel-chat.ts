@@ -99,7 +99,7 @@ export class PanelChatRunner {
   }
 
   /**
-   * Ruling T21a. Appends under the chat file's lock, but only while the panel still exists: once it is gone the
+   * Appends under the chat file's lock, but only while the panel still exists: once it is gone the
    * write is refused (the loop then ends the run with this error) instead of recreating a chat file for a deleted panel.
    * `PanelService.delete` trashes the chat file while holding the PANEL file's lock, so the check and the append also
    * hold that lock: they cannot interleave with a delete. Lock order is always chat file, then panel file, and

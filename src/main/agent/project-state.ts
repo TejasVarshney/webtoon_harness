@@ -9,7 +9,7 @@ const RECENT_PANELS = 3
  * What the state snapshot is built from. The current episode is the one the app has open (`activeEpisodeId`),
  * or the first episode when that id is absent or no longer exists: a stale id from the renderer must not fail a run.
  */
-export async function gatherProjectState(services: Services, ctx: ProjectContext, activeEpisodeId: string | null): Promise<StateSnapshotInput> {
+async function gatherProjectState(services: Services, ctx: ProjectContext, activeEpisodeId: string | null): Promise<StateSnapshotInput> {
   // Archived characters are included on purpose: the snapshot drops them from the roster but still uses them to name panel speakers.
   const characters = await services.characters.list(ctx, { includeArchived: true })
   // Archived items too, for the same reason: they still name the items of existing panels.

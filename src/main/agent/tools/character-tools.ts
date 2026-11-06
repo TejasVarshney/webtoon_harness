@@ -8,7 +8,7 @@ import { ToolError, defineTool, type ToolContext, type ToolDefinition, type Tool
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and variations so new panels stay consistent.'
 
-/** What the model is told when a generated sheet failed its check after the redraws (spec §9). */
+/** What the model is told when a generated sheet failed its check after the redraws. */
 const SHEET_FAILED_NOTE = 'The sheet failed its check after the redraws. It cannot be cast until it passes: regenerate it, fix the lock, or ask the user.'
 
 const characterId = z.string().describe('Character id, e.g. chr_0123456789')
@@ -31,7 +31,7 @@ function findVariation(character: Character, id: string): Variation {
 }
 
 /**
- * Variations copy the base's face, so none is created or redrawn while the base sheet has failed its check (spec §9).
+ * Variations copy the base's face, so none is created or redrawn while the base sheet has failed its check.
  * Redrawing the base itself stays allowed: pass `target` and the base is let through.
  */
 function refuseWhileBaseFailed(character: Character, target?: Variation): void {

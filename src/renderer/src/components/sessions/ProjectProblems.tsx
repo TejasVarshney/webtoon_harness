@@ -1,7 +1,7 @@
 import { useAppStore } from '../../stores/app-store'
 
 /**
- * The open project's problems (spec §12): files that could not be read, such as a hand-edited JSON file that is no
+ * The open project's problems: files that could not be read, such as a hand-edited JSON file that is no
  * longer valid. The project still works without them; each entry names the file and what is wrong, so the user can
  * repair it. Hidden while there is none.
  */

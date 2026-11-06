@@ -68,7 +68,7 @@ describe('validatePanelDraft', () => {
     ])
   })
 
-  it('rejects archived characters (Review Focus 4)', () => {
+  it('rejects archived characters', () => {
     expect(validatePanelDraft(d({ characters: [cast(oldMan, 'var_o0')] }), roster, [], strict).errors).toEqual(['Character Old Man is archived'])
   })
 

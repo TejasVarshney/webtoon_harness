@@ -153,7 +153,7 @@ export class ModelRegistry {
   }
 
   /**
-   * Ruling F3: when the base URL moves to another host, the stored key is cleared (`keyCleared`), so a key is
+   * When the base URL moves to another host, the stored key is cleared (`keyCleared`), so a key is
    * never sent to a server it was not given for. It is cleared before the new URL is written: no failure in
    * between can pair the old key with the new host.
    */

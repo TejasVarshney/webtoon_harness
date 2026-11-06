@@ -39,7 +39,7 @@ const updates = (calls: { channel: string; req: unknown }[]): PanelPatch[] =>
   calls.filter((c) => c.channel === 'panels:update').map((c) => (c.req as { patch: PanelPatch }).patch)
 
 describe('useDialogueSaver', () => {
-  it('builds a save from a second saver of the panel on what the first one saved, even when the store has not reloaded (Ruling 3)', async () => {
+  it('builds a save from a second saver of the panel on what the first one saved, even when the store has not reloaded', async () => {
     const before = stored
     let saves = 0
     let release: () => void = () => undefined
@@ -149,7 +149,7 @@ describe('useDialogueSaver', () => {
     expect(again.result.current.conflict).toBe(false)
   })
 
-  it('saves nothing for a panel that left the store (R2)', async () => {
+  it('saves nothing for a panel that left the store', async () => {
     const { calls } = installFakeApi({})
     const saver = renderHook(() => useDialogueSaver(A))
     act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [] } }))

@@ -9,7 +9,7 @@ const SILENT_OUTCOME_NOTICES: Partial<Record<LoopOutcome, string>> = {
 }
 
 /** A local, non-persisted message shown in the thread (a failed run or a rejected send). */
-export interface ChatNotice {
+interface ChatNotice {
   id: string
   text: string
 }

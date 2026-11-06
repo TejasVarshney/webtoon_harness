@@ -51,7 +51,7 @@ const PATCHABLE_FIELDS = ['title', 'logline', 'stylePreset', 'storyMode', 'defau
 
 export type ProjectMetaPatch = Partial<Pick<ProjectMeta, (typeof PATCHABLE_FIELDS)[number]>>
 
-/** Subfolders created with every project (spec §5); `project.json` is written separately. */
+/** Subfolders created with every project; `project.json` is written separately. */
 const PROJECT_SUBDIRS = ['story', 'characters', 'episodes', 'panels', 'sessions', 'uploads', 'agent'] as const
 
 const PROJECT_FILE = 'project.json'
@@ -63,8 +63,8 @@ const PROJECT_FILE = 'project.json'
 const PROJECT_ID = /^prj_[a-z0-9]+$/
 
 /**
- * The set of projects under one projects root. Each project lives in `<projectsRoot>/<projectId>/`
- * (spec §5). The store owns project creation, discovery, per-project contexts and `project.json`.
+ * The set of projects under one projects root. Each project lives in `<projectsRoot>/<projectId>/`.
+ * The store owns project creation, discovery, per-project contexts and `project.json`.
  */
 export class ProjectStore {
   private readonly projectsRoot: string

@@ -11,9 +11,9 @@ import { ModelPicker } from './ModelPicker'
 import { sendUserMessage } from './send-message'
 
 /** Shown above a session that Claude Code drives. */
-export const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
-/** The Attach tooltip while Claude Code runs the chat: its runs refuse images (ruling R16). */
-export const NO_IMAGES_TEXT = "Claude Code can't see attached images yet"
+const DRIVER_BANNER_TEXT = 'Driven by Claude Code'
+/** The Attach tooltip while Claude Code runs the chat: its runs refuse images. */
+const NO_IMAGES_TEXT = "Claude Code can't see attached images yet"
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)

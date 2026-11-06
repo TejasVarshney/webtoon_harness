@@ -7,11 +7,10 @@ import type { EventBus } from '../events/bus'
 import { readJson, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
 import { EntityNotFoundError } from './errors'
+import { now } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 const EPISODE_FILE = /^epi_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /**
  * Episodes and their ordered panel ids (`episodes/<epiId>.json`). Locking: creating an episode (and

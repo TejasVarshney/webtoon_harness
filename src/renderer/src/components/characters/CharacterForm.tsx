@@ -35,7 +35,7 @@ const LOCK_HINT = { min: 40, max: 90 }
 
 // --- the "Draft with AI" prompt ------------------------------------------------------------------
 
-export function characterDraftPrompt(name: string): string {
+function characterDraftPrompt(name: string): string {
   const who = name.trim() === '' ? 'a new character' : name.trim()
   return `Help me design the character "${who}": interview me briefly if needed, then fill characterization, appearance and appearanceLock, create the character and generate its base reference image.`
 }

@@ -1,4 +1,4 @@
-// Zod schemas for every persisted record, IPC input and tool input (spec §6). These are the
+// Zod schemas for every persisted record, IPC input and tool input. These are the
 // single source of truth: `types.ts` derives every type from them with `z.infer`.
 //
 // Rules used throughout:
@@ -27,11 +27,11 @@ function withoutDefaults<S extends z.ZodRawShape>(shape: S): WithoutDefaults<S> 
 // ---------------------------------------------------------------------------------------------
 
 export const StoryModeSchema = z.enum(['user', 'ai'])
-export const CreatedBySchema = z.enum(['user', 'ai'])
+const CreatedBySchema = z.enum(['user', 'ai'])
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
-export const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
-export const ImageStatusSchema = z.enum(['pending', 'ready', 'failed'])
+const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
+const ImageStatusSchema = z.enum(['pending', 'ready', 'failed'])
 export const ShotTypeSchema = z.enum([
   'establishing',
   'wide',
@@ -50,11 +50,11 @@ export const PanelFrameSchema = z.enum(['bordered', 'borderless', 'slanted'])
 export const PanelGapSchema = z.enum(['tight', 'normal', 'long'])
 export const PanelGutterSchema = z.enum(['white', 'black'])
 /** Where a cast member stands, in the user's words ("left", "far right, half in shadow", "background"). */
-export const PanelPositionSchema = z.string()
+const PanelPositionSchema = z.string()
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
-export const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
-export const BeatStatusSchema = z.enum(['planned', 'drawn', 'dropped'])
-export const StopReasonSchema = z.enum(['end', 'tool_use', 'max_tokens', 'refusal'])
+const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
+const BeatStatusSchema = z.enum(['planned', 'drawn', 'dropped'])
+const StopReasonSchema = z.enum(['end', 'tool_use', 'max_tokens', 'refusal'])
 export const EndpointKindSchema = z.enum(['anthropic', 'openai', 'gemini', 'mock'])
 export const CapabilitySchema = z.enum(['text', 'vision', 'image-gen', 'image-edit'])
 export const RoleSchema = z.enum(['agent', 'panelChat', 'vision', 'image', 'imageEdit'])
@@ -63,7 +63,7 @@ export const RoleSchema = z.enum(['agent', 'panelChat', 'vision', 'image', 'imag
 // Project
 // ---------------------------------------------------------------------------------------------
 
-export const DEFAULT_STYLE_PRESET = 'Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces'
+const DEFAULT_STYLE_PRESET = 'Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces'
 
 export const ProjectMetaSchema = z.object({
   id: Id,
@@ -90,7 +90,7 @@ export const CheckResultSchema = z.object({
   skipped: z.boolean().default(false)
 })
 
-export const CharacterizationSchema = z.object({
+const CharacterizationSchema = z.object({
   personality: text(),
   backstory: text(),
   motivation: text(),
@@ -99,7 +99,7 @@ export const CharacterizationSchema = z.object({
   notes: text()
 })
 
-export const AppearanceSchema = z.object({
+const AppearanceSchema = z.object({
   age: text(),
   gender: text(),
   build: text(),

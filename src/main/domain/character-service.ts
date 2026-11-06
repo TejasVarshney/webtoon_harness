@@ -12,6 +12,7 @@ import { CorruptFileError, EntityNotFoundError, PathEscapeError } from './errors
 import type { ImageService } from './image-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import { baseReferencePrompt, sheetFixInstruction, variationPrompt } from './prompts'
+import { failureMessage, INTERRUPTED, NO_IMAGE_YET, now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 type CreatedBy = Variation['createdBy']
@@ -34,7 +35,7 @@ export class CharacterInUseError extends Error {
   }
 }
 
-/** Which panels reference a character or variation. Task 18 backs this with PanelService. */
+/** Which panels reference a character or variation. PanelService backs this. */
 export interface PanelUsageLookup {
   panelsUsingCharacter(ctx: ProjectContext, characterId: string): Promise<string[]>
   panelsUsingVariation(ctx: ProjectContext, variationId: string): Promise<string[]>
@@ -51,19 +52,11 @@ export interface CharacterServiceOptions {
   sheetChecker?: Pick<ConsistencyChecker, 'checkSheet'>
 }
 
-const INTERRUPTED = 'Interrupted: the app closed during generation'
-/** Ruling F4: a variation created without a generation has nothing that would ever move it out of `pending`. */
-export const NO_IMAGE_YET = 'No image yet: upload one or regenerate'
-
-/** `generate: false` means no generation follows, so the new variation is recorded `failed` (Ruling F4). Default true. */
+/** `generate: false` means no generation follows, so the new variation is recorded `failed`. Default true. */
 export interface CreateVariationOptions {
   generate?: boolean
 }
-const UPLOAD_EXTS = ['png', 'jpg', 'webp'] as const
-type UploadExt = (typeof UPLOAD_EXTS)[number]
 const CHARACTER_FILE = /^chr_[A-Za-z0-9]+\.json$/
-
-const now = (): string => new Date().toISOString()
 
 /** The state a new variation starts in: `pending` when a generation follows, else failed with `NO_IMAGE_YET`. */
 function initialStatus(opts: CreateVariationOptions): Pick<Variation, 'status' | 'error'> {
@@ -86,7 +79,7 @@ export class CharacterService {
       if (!CHARACTER_FILE.test(name)) continue
       const abs = path.join(ctx.paths.charactersDir(), name)
       try {
-        // Ruling T18f: the id comes from the file name; a file holding any other id is reported and skipped.
+        // The id comes from the file name; a file holding any other id is reported and skipped.
         out.push(await readCharacterFile(abs, name.slice(0, -'.json'.length)))
       } catch (error) {
         if (isNotFound(error)) continue
@@ -200,10 +193,10 @@ export class CharacterService {
   }
 
   /**
-   * Ruling T15a: mark pending under the lock, generate OUTSIDE it, then re-read and record the
+   * Mark pending under the lock, generate OUTSIDE it so a slow image call never holds the lock, then re-read and record the
    * outcome under the lock. Never throws for generation failures; the previous image is kept.
    *
-   * Sheet check (spec §7): draw, check, and redraw with the issues up to `consistencyRetries` times while the
+   * Sheet check: draw, check, and redraw with the issues up to `consistencyRetries` times while the
    * check fails. Candidates stay in memory; only the last one is written, together with its check, so the
    * variation stays `pending` until both are recorded.
    */
@@ -337,7 +330,7 @@ export class CharacterService {
   }
 
   /**
-   * Step 3 of Ruling T15a: under the lock, record the outcome (the image with its check) if the variation still exists. A failure keeps the stored image and check. Never
+   * The last step of a generation: under the lock, record the outcome (the image with its check) if the variation still exists. A failure keeps the stored image and check. Never
    * throws: if recording fails, the variation is marked `failed` (best effort; `recoverInterrupted`
    * is the backstop for a file that cannot be written) and a `failed` variation is returned.
    */
@@ -416,7 +409,7 @@ export class CharacterService {
   }
 }
 
-/** Reads a character file and checks that it holds the id its file name says (Ruling T18f). */
+/** Reads a character file and checks that it holds the id its file name says. */
 async function readCharacterFile(file: string, id: string): Promise<Character> {
   const character = await readJson(file, CharacterSchema)
   if (character.id !== id) throw new CorruptFileError(file, `holds character id ${JSON.stringify(character.id)}, which does not match its file name`)
@@ -432,7 +425,7 @@ function findVariation(c: Character, variationId: string): Variation {
 /**
  * The image's absolute path when it lies inside the character's own folder, else null. A hand-edited path can
  * name anything in the project (another character's image, an upload, a folder): deleting a variation must
- * never trash that (I4).
+ * never trash that.
  */
 function ownImage(ctx: ProjectContext, characterId: string, relPath: string): string | null {
   try {
@@ -446,11 +439,6 @@ function ownImage(ctx: ProjectContext, characterId: string, relPath: string): st
 
 function imageRelPath(characterId: string, variationId: string, ext: string): string {
   return `characters/${characterId}/${variationId}_${randomBytes(3).toString('hex')}.${ext}`
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof Error && error.name === 'AbortError') return 'Cancelled'
-  return error instanceof Error && error.message ? error.message : String(error)
 }
 
 /** Drops `undefined` values so a patch never blanks a field it does not name. */

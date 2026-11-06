@@ -7,7 +7,7 @@ import type { ActiveContext } from './active-context'
 
 export type { PluginStatus }
 
-/** A built-in plugin (spec §4.1). Nothing is loaded from outside the app. */
+/** A built-in plugin. Nothing is loaded from outside the app. */
 export interface HarnessPlugin {
   id: string
   name: string
@@ -38,7 +38,7 @@ export interface PluginHost {
   setConfig(patch: Record<string, unknown>): Promise<void>
 }
 
-/** Runs the main chat in place of the model loop (spec §6.1). */
+/** Runs the main chat in place of the model loop. */
 export interface AgentBackend {
   /** Same shape as AgentRunner.start: appends the user message, streams AgentEvents for `threadKey`, persists the outcome. */
   start(input: StartRunInput): Promise<{ runId: string }>

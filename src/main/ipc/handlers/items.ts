@@ -35,7 +35,7 @@ export function itemsHandlers(s: Services, deps: ItemsDeps = {}): HandlerMap {
 
     'items:create': async ({ projectId, input, generateBase }) => {
       const ctx = await s.projects.open(projectId)
-      // `=== true`: a missing flag must not create a pending usage that nothing will ever generate (Ruling F8).
+      // `=== true`: a missing flag must not create a pending usage that nothing will ever generate.
       const generate = generateBase === true
       const created = await items.create(ctx, ItemInputSchema.parse(input), 'user', { generate })
       if (generate) inBackground(items.generateUsageImage(ctx, created.id, created.usages[0].id), 'Base image generation')

@@ -7,7 +7,7 @@ import type { ModelRegistry } from '../models/registry'
 import type { ProjectContext } from '../storage/project-store'
 import { MAX_REFERENCE_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 
-export const IMAGE_TIMEOUT_MS = 180_000
+const IMAGE_TIMEOUT_MS = 180_000
 
 export interface ImageReferenceInput {
   relPath: string

@@ -6,3 +6,9 @@ playwright-report
 
 # local-models sandbox (tools/local-models/start-local.ps1)
 .local-env
+
+# agent run files and checkouts; .claude/settings.json and .claude/rules/ are tracked
+.claude/worktrees/
+.superpowers/
+.taste-skill/
+tests/e2e/zz-*.spec.ts

@@ -111,7 +111,7 @@ describe('character tools', () => {
     expect(stored.variations[0]).toMatchObject({ status: 'failed', error: expect.stringContaining("No model assigned to role 'image'") })
   })
 
-  it('create_character without a base image makes no image call and records the base failed (Ruling F4)', async () => {
+  it('create_character without a base image makes no image call and records the base failed', async () => {
     const { run, ctx, s } = await setup()
     await s.registry.assignRole('image', null) // would fail if the tool tried to generate
     const r = await run('create_character', { ...mina, generateBaseImage: false })
@@ -184,7 +184,7 @@ describe('character tools', () => {
     expect(r.content).toMatch(/^Invalid input for create_variation: kind: /)
   })
 
-  it('create_variation with generateImage false records the variation failed, not pending, and calls no model (Ruling F4)', async () => {
+  it('create_variation with generateImage false records the variation failed, not pending, and calls no model', async () => {
     const { run, s, ctx } = await setup()
     const { characterId } = json(await run('create_character', mina))
     await s.registry.assignRole('image', null)

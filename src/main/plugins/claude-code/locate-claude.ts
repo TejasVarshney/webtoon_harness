@@ -23,7 +23,7 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** The Claude Code executable (spec §6.2): the configured path, then PATH, then the newest desktop-app install. */
+/** The Claude Code executable: the configured path, then PATH, then the newest desktop-app install. */
 export function locateClaude(opts: LocateClaudeOptions): string | null {
   if (opts.configured && opts.exists(opts.configured)) return opts.configured
   const onPath = opts.pathLookup('claude')
