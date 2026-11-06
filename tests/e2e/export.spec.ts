@@ -6,11 +6,12 @@ import { readZip } from '../../src/main/test/read-zip'
 import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat, writeProjectJson } from './helpers'
 
 /** Runs the export dialog for the active episode with one preset, confirms the "unfinished panels" warning when `expectUnfinished` (and asserts it is absent otherwise), and waits for it to finish. */
-async function exportActiveEpisode(page: Page, preset: string, expectUnfinished: boolean): Promise<void> {
+async function exportActiveEpisode(page: Page, preset: string, expectUnfinished: boolean, withoutLettering = false): Promise<void> {
   await page.getByTestId('export-open').click()
   const dialog = page.getByTestId('export-dialog')
   await expect(dialog).toBeVisible()
   await dialog.getByTestId('export-preset').selectOption(preset)
+  if (withoutLettering) await dialog.getByLabel('Without lettering').check()
   const start = dialog.getByTestId('export-start')
   await expect(start).toBeEnabled()
   await start.click()
@@ -42,8 +43,8 @@ async function slicesOf(app: ElectronApplication, dir: string): Promise<{ path: 
 
 const total = (slices: { height: number }[]): number => slices.reduce((sum, s) => sum + s.height, 0)
 
-/** The strip's first row width, and its first bubble's height, font size and panel height, in CSS px. */
-type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number }
+/** The strip's first row width, and its first bubble's height, font size and panel height, in CSS px; the first tail's path, and whether the Anton face the styled line asks for has loaded. */
+type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number; tail: string | null; anton: boolean }
 
 /** Run in a page (the main window or the export window): measures the strip as it is drawn there. */
 const MEASURE_STRIP = `(() => {
@@ -54,15 +55,19 @@ const MEASURE_STRIP = `(() => {
     rowWidth: document.querySelector('.strip-row').getBoundingClientRect().width,
     bubbleHeight: bubble.getBoundingClientRect().height,
     panelHeight: media.getBoundingClientRect().height,
-    fontSize: parseFloat(getComputedStyle(bubble.querySelector('.bubble-text')).fontSize)
+    fontSize: parseFloat(getComputedStyle(bubble.querySelector('.bubble-text')).fontSize),
+    tail: document.querySelector('.bubble-tail path')?.getAttribute('d') ?? null,
+    // Not document.fonts.check, which also says true when no such face is registered.
+    anton: [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Anton' && f.status === 'loaded')
   }
 })()`
 
 /**
  * Measures the next export window's strip as soon as it has drawn its first episode, before any capture: it wraps
- * that window's `executeJavaScript`, so `exportGeometry` can read the result after the export.
+ * that window's `executeJavaScript`, so `exportGeometry` can read the result after the export. `measure` is the script to
+ * run there, `MEASURE_STRIP` unless a test measures something else.
  */
-async function recordExportGeometry(app: ElectronApplication): Promise<void> {
+async function recordExportGeometry(app: ElectronApplication, measure: string = MEASURE_STRIP): Promise<void> {
   await app.evaluate(({ app }, measure) => {
     const g = globalThis as { __exportGeometry?: unknown }
     g.__exportGeometry = null
@@ -75,11 +80,11 @@ async function recordExportGeometry(app: ElectronApplication): Promise<void> {
         return result
       }) as typeof wc.executeJavaScript
     })
-  }, MEASURE_STRIP)
+  }, measure)
 }
 
-const exportGeometry = (app: ElectronApplication): Promise<Geometry | null> =>
-  app.evaluate(() => (globalThis as { __exportGeometry?: Geometry | null }).__exportGeometry ?? null)
+const exportGeometry = <T = Geometry>(app: ElectronApplication): Promise<T | null> =>
+  app.evaluate(() => (globalThis as { __exportGeometry?: unknown }).__exportGeometry ?? null) as Promise<T | null>
 
 test('exports webtoon slices, a cbz and a reading pdf that match the strip', async () => {
   const mina = { $character: 'Mina' }
@@ -103,7 +108,10 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
         toolCalls: [
           panel('Mina looks up.', { dialogue: [{ speakerId: mina, kind: 'speech', text: 'We made it to the roof. Can you see the city lights from up here?' }] }),
           panel('Mina runs.', { frame: 'slanted' }),
-          panel('Mina stops.', { beside: false }),
+          panel('Mina stops.', {
+            beside: false,
+            dialogue: [{ speakerId: mina, kind: 'speech', text: 'Over here!', style: { font: 'impact', fill: '#fff4c2' }, tail: { x: 0.2, y: 0.9 } }]
+          }),
           panel('Mina is in the dark.', { gutter: 'black' })
         ]
       },
@@ -114,7 +122,8 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   const targetB = await mkdtemp(join(tmpdir(), 'webtoon-export-b-'))
 
   // 1. Four panels, then a webtoon export to folder A.
-  const first = await launchApp({ script, exportTarget: targetA })
+  // At scale 1 so the strip's panels are as wide as in the export window, which the tail comparison below needs.
+  const first = await launchApp({ script, exportTarget: targetA, deviceScaleFactor: 1 })
   const { projectsRoot, userDataDir } = first
   await createProjectAndSession(first.page, 'Moon Diary')
   await sendChat(first.page, 'Create Mina', 'Created Mina.')
@@ -138,6 +147,10 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   expect(onScreen!.rowWidth).toBe(440)
   expect(inExport!.fontSize).toBe(onScreen!.fontSize)
   expect(inExport!.bubbleHeight / inExport!.panelHeight).toBeCloseTo(onScreen!.bubbleHeight / onScreen!.panelHeight, 2)
+  // Both lay out at 440 px, so a tail measured before the fonts settled would differ from the one on screen.
+  expect(inExport!.tail).not.toBeNull()
+  expect(inExport!.tail).toBe(onScreen!.tail)
+  expect(inExport!.anton).toBe(true)
   const folderA = (await readdir(targetA)).filter((n) => n.startsWith('Moon Diary - 01 - '))
   expect(folderA).toHaveLength(1)
   const slicesA = await slicesOf(first.app, join(targetA, folderA[0]))
@@ -204,5 +217,47 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   const pdfText = (await readFile(join(targetB, pdf[0]))).toString('latin1')
   expect(pdfText.startsWith('%PDF-')).toBe(true)
   expect((pdfText.match(/\/Type \/Page\b/g) ?? []).length).toBe(slicesB.length)
+  await app.close()
+})
+
+test('Without lettering draws no bubble and no tail', async () => {
+  const mina = { $character: 'Mina' }
+  const script = {
+    turns: [
+      { toolCalls: [{ name: 'create_character', input: { name: 'Mina', role: 'protagonist', appearanceLock: 'Teenage girl, silver bob haircut, amber eyes, red bomber jacket.' } }] },
+      { text: 'Created Mina.' },
+      {
+        toolCalls: [
+          {
+            name: 'create_panel',
+            input: {
+              episodeId: { $episode: 'current' },
+              description: 'Mina stops.',
+              setting: 'Rooftop at night',
+              shot: 'medium',
+              characters: [{ characterId: mina, variationId: { $variation: ['Mina', 'Base'] } }],
+              dialogue: [{ speakerId: mina, kind: 'speech', text: 'Over here!', style: { font: 'impact', fill: '#fff4c2' }, tail: { x: 0.2, y: 0.9 } }]
+            }
+          }
+        ]
+      },
+      { text: 'Drew a panel.' }
+    ]
+  }
+  const target = await mkdtemp(join(tmpdir(), 'webtoon-export-bare-'))
+  const { app, page } = await launchApp({ script, exportTarget: target })
+  await createProjectAndSession(page, 'Moon Diary')
+  await sendChat(page, 'Create Mina', 'Created Mina.')
+  await sendChat(page, 'Draw a panel', 'Drew a panel.')
+  await openTab(page, 'webtoon')
+  await expect(page.getByTestId('panel-card').locator('img')).toHaveCount(1)
+
+  await recordExportGeometry(
+    app,
+    `({ panels: document.querySelectorAll('.panel-media').length, bubbles: document.querySelectorAll('.bubble').length, tails: document.querySelectorAll('.bubble-tail').length })`
+  )
+  await exportActiveEpisode(page, 'webtoon', false, true)
+  // Counting the panel keeps this from passing when nothing was drawn at all.
+  expect(await exportGeometry<{ panels: number; bubbles: number; tails: number }>(app)).toEqual({ panels: 1, bubbles: 0, tails: 0 })
   await app.close()
 })

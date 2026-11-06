@@ -1,8 +1,10 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 import type { BubblePlacement, DialogueLine, PanelCharacter } from '@shared/types'
 import { BubbleBody } from './BubbleBody'
+import { BubbleTailArt } from './BubbleTailArt'
 import { layoutBubbles } from './bubble-layout'
 import { bubbleStyleProps } from './bubble-style'
+import { hasTail } from './bubble-tail'
 import { useRoster } from './use-roster'
 
 /**
@@ -35,8 +37,8 @@ export interface DialogueOverlayProps {
  * picks each line's shape (balloon, shout, whisper, thought cloud, caption box, sound effect), side and tail; there
  * are no name labels, only a tooltip with the speaker's name. Sound effects sit over the middle of the art.
  * A line with a placement is drawn there instead, centred on that point, in a layer of its own; its shape and tail are
- * still the layout's. A line's `style` is drawn as inline variables, and a line shaped as a sound effect sits in the
- * sound-effect layer whatever its kind.
+ * still the layout's. A stored tail tip is drawn by `BubbleTailArt`, measured from the page. A line's `style` is drawn
+ * as inline variables, and a line shaped as a sound effect sits in the sound-effect layer whatever its kind.
  */
 export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverlayProps) {
   const roster = useRoster(dialogue.some((line) => line.speakerId !== null))
@@ -48,6 +50,7 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
     const placement = placementOf(line, i)
     const look = bubbleStyleProps(line.style)
     const style = placement ? { ...look, left: `${placement.x * 100}%`, top: `${placement.y * 100}%` } : look
+    const tip = line.tail !== null && line.tail !== 'none' ? line.tail : null
     const speaker = line.speakerId === null ? undefined : roster.find((c) => c.id === line.speakerId)?.name
     return (
       <div
@@ -64,6 +67,7 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
         {...editing?.bind(i)}
       >
         <BubbleBody shape={b.shape} />
+        {hasTail(b.shape) && b.tail === 'point' && <BubbleTailArt shape={b.shape} side={b.side} drawing={b.tail} tip={tip} stroke={line.style?.strokeWidth ?? 2} />}
         {editing?.textEditing === i ? editing.textEditor : <span className="bubble-text">{line.text}</span>}
       </div>
     )

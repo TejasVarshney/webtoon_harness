@@ -75,6 +75,20 @@ describe('layoutBubbles', () => {
     ])
   })
 
+  it("a line's tail decides how it is drawn", () => {
+    const cast1 = [cast('chr_a', 'left')]
+    const withTail = (tail: DialogueLine['tail']): DialogueLine => ({ ...line('speech', 'Hi there.', 'chr_a'), tail })
+    expect(layoutBubbles([withTail('none')], cast1)[0].tail).toBe('none')
+    expect(layoutBubbles([withTail({ x: 0.2, y: 0.9 })], cast1)[0].tail).toBe('point')
+    expect(layoutBubbles([withTail(null)], cast1)[0].tail).toBe('down')
+    expect(layoutBubbles([withTail(null)], [])[0].tail).toBe('edge')
+  })
+
+  it('a caption or sound effect never draws a tail, whatever is stored', () => {
+    const [b] = layoutBubbles([{ ...line('narration', 'Midnight.'), tail: { x: 0.2, y: 0.9 } }], [])
+    expect(b.tail).toBe('none')
+  })
+
   it('keeps the lines in reading order and their ids', () => {
     const d = [line('narration', 'n', null, 'dlg_1'), line('thought', 't', 'chr_a', 'dlg_2'), line('sfx', 's', null, 'dlg_3')]
     expect(layoutBubbles(d, [cast('chr_a', 'right')]).map((b) => b.id)).toEqual(['dlg_1', 'dlg_2', 'dlg_3'])

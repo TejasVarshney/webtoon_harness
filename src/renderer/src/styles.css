@@ -2428,8 +2428,9 @@ kbd {
   font-weight: 400;
 }
 
-.bubble-thought::before,
-.bubble-thought::after {
+/* Only an automatic tail has these puffs: a stored tip draws its own (`.bubble-tail`), and `none` draws nothing. */
+.bubble-thought:not(.bubble-tail-none, .bubble-tail-point)::before,
+.bubble-thought:not(.bubble-tail-none, .bubble-tail-point)::after {
   position: absolute;
   left: 22%;
   content: '';
@@ -2467,6 +2468,42 @@ kbd {
 
 .bubble-thought.bubble-side-center::after {
   left: calc(50% - 0.8em);
+}
+
+/* 1 x 1: Chromium paints nothing for a 0 x 0 svg, even with overflow visible. Coordinates are px from the bubble's centre. */
+.bubble-tail {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bubble-tail path,
+.bubble-tail ellipse {
+  fill: var(--bubble-fill, #fff);
+  stroke: var(--bubble-stroke, #111);
+  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-linejoin: round;
+}
+
+.bubble-whisper .bubble-tail path {
+  stroke-dasharray: 4 3;
+}
+
+/* The dot at a tail's tip, drawn only when the stage gives the tail a handle. */
+.bubble-tail-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--bubble-stroke, #111);
+  border-radius: 50%;
+  background: var(--bubble-fill, #fff);
 }
 
 /* A caption box: square corners and a hard offset shadow, in the top corner. */

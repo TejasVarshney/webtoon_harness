@@ -17,6 +17,8 @@ function decodeFailure(img: HTMLImageElement): Error {
  * padded to that height. `root` must be as tall as its content (export.css). Call after React has committed.
  */
 export async function waitForPaintAndMeasure(root: HTMLElement): Promise<ViewLayout> {
+  // A new face starts loading only once layout asks for it, so without this `ready` can resolve before it has begun.
+  void root.offsetHeight
   await document.fonts?.ready
   const images = [...root.querySelectorAll('img')]
   await Promise.all(

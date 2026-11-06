@@ -5,8 +5,8 @@ import type { BubbleShape, BubbleStyle, DialogueLine, PanelCharacter } from '@sh
 // text and from the cast's positions, the way a letterer reads a script.
 
 export type BubbleSide = 'left' | 'center' | 'right'
-/** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it. */
-type TailDrawing = 'down' | 'edge' | 'none'
+/** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it; `point`: to the tip the line stores. */
+export type TailDrawing = 'down' | 'edge' | 'none' | 'point'
 
 export interface BubbleLayout {
   id: string
@@ -79,8 +79,10 @@ export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): B
     if (shape === 'caption') return { ...base, side: 'left', tail: 'none', offPanel: line.speakerId === null }
     if (shape === 'sfx') return { ...base, side: 'center', tail: 'none', offPanel: true, loud: line.text.includes('!') || mostlyCapitals(line.text) }
 
+    // A stored tail wins over the automatic one: 'none' draws nothing, a point is drawn to that point.
+    const stored: TailDrawing | null = line.tail === null ? null : line.tail === 'none' ? 'none' : 'point'
     const inCast = line.speakerId !== null ? castSide.get(line.speakerId) : undefined
-    if (inCast === undefined) return { ...base, side: freeSide, tail: 'edge', offPanel: true }
+    if (inCast === undefined) return { ...base, side: freeSide, tail: stored ?? 'edge', offPanel: true }
 
     const speaker = line.speakerId as string
     let side = speakerSide.get(speaker)
@@ -91,6 +93,6 @@ export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): B
       speakerSide.set(speaker, side)
       if (!sideOwner.has(side)) sideOwner.set(side, speaker)
     }
-    return { ...base, side, tail: 'down', offPanel: false }
+    return { ...base, side, tail: stored ?? 'down', offPanel: false }
   })
 }
