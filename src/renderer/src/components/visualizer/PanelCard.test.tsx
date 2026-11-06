@@ -146,10 +146,10 @@ describe('PanelCard', () => {
     installFakeApi({})
     const p = panel({
       dialogue: [
-        { id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'We should go.', placement: null },
-        { id: 'dlg_0000000002', speakerId: mina.id, kind: 'thought', text: 'Is he lying?', placement: null },
-        { id: 'dlg_0000000003', speakerId: null, kind: 'narration', text: 'The city never slept.', placement: null },
-        { id: 'dlg_0000000004', speakerId: null, kind: 'sfx', text: 'BOOM', placement: null }
+        { id: 'dlg_0000000001', speakerId: mina.id, kind: 'speech', text: 'We should go.', placement: null, style: null, tail: null },
+        { id: 'dlg_0000000002', speakerId: mina.id, kind: 'thought', text: 'Is he lying?', placement: null, style: null, tail: null },
+        { id: 'dlg_0000000003', speakerId: null, kind: 'narration', text: 'The city never slept.', placement: null, style: null, tail: null },
+        { id: 'dlg_0000000004', speakerId: null, kind: 'sfx', text: 'BOOM', placement: null, style: null, tail: null }
       ]
     })
     render(<PanelCard panel={p} selected={false} />)
@@ -178,7 +178,7 @@ describe('PanelCard', () => {
 
   it('renders dialogue as text, never as markup', () => {
     installFakeApi({})
-    const p = panel({ dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: '<img src=x onerror=alert(1)><b>bold</b>', placement: null }] })
+    const p = panel({ dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: '<img src=x onerror=alert(1)><b>bold</b>', placement: null, style: null, tail: null }] })
     render(<PanelCard panel={p} selected={false} />)
     const card = screen.getByTestId('panel-card')
     expect(card.querySelectorAll('img')).toHaveLength(1)

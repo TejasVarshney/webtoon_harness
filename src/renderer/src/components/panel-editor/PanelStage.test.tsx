@@ -15,8 +15,8 @@ import { useDialogueSaver } from './use-dialogue-saver'
 const A = 'pnl_00000000aa'
 const MINA = 'chr_0000000001'
 const cast: PanelCharacter[] = [{ characterId: MINA, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }]
-const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null }
-const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 } }
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null, style: null, tail: null }
+const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 }, style: null, tail: null }
 
 /** The panel as the main process holds it: what `panels:list` returns, and what `panels:update` changes. */
 let stored: Panel
@@ -76,7 +76,14 @@ function mount(props: { share?: number; slant?: 'left' | 'right' } = {}) {
       gate = null
       if (wait !== null) await wait
       // Like the service: a dialogue save gives every line a new id.
-      const dialogue = (req.patch.dialogue ?? []).map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null }))
+      // A line sent without a look takes the stored line's at its index, so a test can catch a look moving between lines.
+      const dialogue = (req.patch.dialogue ?? []).map((line, i) => ({
+        ...line,
+        id: `dlg_${String((ids += 1)).padStart(10, '0')}`,
+        placement: line.placement ?? null,
+        style: line.style === undefined ? (stored.dialogue[i]?.style ?? null) : line.style,
+        tail: line.tail === undefined ? (stored.dialogue[i]?.tail ?? null) : line.tail
+      }))
       stored = { ...stored, dialogue }
       return { panel: stored, warnings: [] }
     },
@@ -323,6 +330,17 @@ describe('PanelStage', () => {
     expect(bubble(0)).toHaveTextContent('Night fell.')
   })
 
+  it('deleting a middle bubble leaves each look on its own line', async () => {
+    const line = (n: number, fill: string | null): DialogueLine => ({ id: `dlg_000000000${n}`, speakerId: null, kind: 'narration', text: `Line ${n}`, placement: null, style: fill === null ? null : { fill }, tail: null })
+    replaceStored({ ...stored, dialogue: [line(1, '#aa0000'), line(2, null), line(3, '#0000cc')] })
+    const { calls } = mount()
+    act(() => bubble(1).focus())
+    await userEvent.keyboard('{Delete}')
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    await waitFor(() => expect(stored.dialogue).toHaveLength(2))
+    expect(stored.dialogue.map((d) => d.style?.fill)).toEqual(['#aa0000', '#0000cc'])
+  })
+
   it('adds a line where the empty panel is double-clicked, spoken by the first of the cast', async () => {
     const { calls } = mount()
     fireEvent.doubleClick(stage().querySelector('.dialogue-overlay')!, { clientX: 200, clientY: 300 })
@@ -331,7 +349,7 @@ describe('PanelStage', () => {
     await userEvent.type(textBox(), 'Hey{Enter}')
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
     expect(updates(calls)[0]).toEqual({
-      dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Hey', placement: { x: 0.5, y: 0.5 } }]
+      dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Hey', placement: { x: 0.5, y: 0.5 }, style: null, tail: null }]
     })
     await waitFor(() => expect(stored.dialogue).toHaveLength(3))
     expect(bubble(2)).toHaveTextContent('Hey')
@@ -348,7 +366,7 @@ describe('PanelStage', () => {
     fireEvent.doubleClick(media(), { clientX: 100, clientY: 150 })
     await userEvent.type(textBox(), 'Later.{Enter}')
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
-    expect(updates(calls)[0]).toEqual({ dialogue: [{ speakerId: null, kind: 'narration', text: 'Later.', placement: { x: 0.25, y: 0.25 } }] })
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ speakerId: null, kind: 'narration', text: 'Later.', placement: { x: 0.25, y: 0.25 }, style: null, tail: null }] })
   })
 
   it('adds no line on a double-click on the panel status, or on its Retry', () => {

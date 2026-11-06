@@ -24,8 +24,8 @@ const sora = character({ id: SORA, name: 'Sora', variations: [variation({ id: 'v
 const lantern = item({ id: LANTERN, name: 'Lantern', ownerId: MINA, usages: [usage({ id: 'use_00000000l1', itemId: LANTERN, name: 'Lit' })] })
 const cast: PanelCharacter[] = [{ characterId: MINA, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }]
 const held: PanelItem = { itemId: LANTERN, usageId: 'use_00000000l1', heldBy: MINA, action: 'lit' }
-const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null }
-const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 } }
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null, style: null, tail: null }
+const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 }, style: null, tail: null }
 
 /** The panel as the main process holds it: what `panels:list` returns, and what `panels:update` changes. */
 let stored: Panel
@@ -64,7 +64,7 @@ function installApi() {
       if (refusal !== null) throw new Error(refusal)
       const { dialogue, ...rest } = req.patch
       // Like the service: a dialogue save gives every line a new id.
-      const lines = dialogue?.map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null }))
+      const lines = dialogue?.map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null, style: line.style ?? null, tail: line.tail ?? null }))
       stored = { ...stored, ...rest, ...(lines !== undefined ? { dialogue: lines } : {}) } as Panel
       return { panel: stored, warnings }
     },
@@ -303,7 +303,7 @@ describe('PanelInspector', () => {
       fireEvent.change(text(2), { target: { value: ' Later. ' } })
       act(() => text(2).blur())
       await waitFor(() => expect(updates(calls)).toHaveLength(1))
-      expect(updates(calls)[0]).toEqual({ dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Later.', placement: null }] })
+      expect(updates(calls)[0]).toEqual({ dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Later.', placement: null, style: null, tail: null }] })
       await waitFor(() => expect(stored.dialogue).toHaveLength(3))
       expect(rows()).toHaveLength(3)
       expect(text(2)).toHaveValue('Later.')

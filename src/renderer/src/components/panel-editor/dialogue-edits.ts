@@ -14,9 +14,9 @@ export function identityOf(line: DialogueLine): LineIdentity {
   return { speakerId: line.speakerId, kind: line.kind, text: line.text }
 }
 
-/** The lines as a patch sends them: without their ids, and each with its placement, so none falls back to inheriting. */
+/** The lines as a patch sends them: without their ids, and each with its placement, style and tail, so none falls back to inheriting. */
 export function toDrafts(lines: DialogueLine[]): DialogueDraftLine[] {
-  return lines.map(({ speakerId, kind, text, placement }) => ({ speakerId, kind, text, placement }))
+  return lines.map(({ speakerId, kind, text, placement, style, tail }) => ({ speakerId, kind, text, placement, style, tail }))
 }
 
 function matches(line: DialogueLine | undefined, expect: LineIdentity): boolean {

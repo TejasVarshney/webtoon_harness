@@ -12,8 +12,8 @@ import { useDialogueSaver } from './use-dialogue-saver'
 // Each test has a panel of its own: the savers keep what the last save of a panel returned until the store catches up.
 let n = 0
 let A: string
-const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Hello.', placement: null }
-const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 } }
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Hello.', placement: null, style: null, tail: null }
+const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 }, style: null, tail: null }
 
 /** The panel as the main process holds it. */
 let stored: Panel
@@ -49,7 +49,7 @@ describe('useDialogueSaver', () => {
         if (saves === 0) await gate
         saves += 1
         // Like the service: new ids, and a newer updatedAt.
-        const dialogue = (req.patch.dialogue ?? []).map((line, i) => ({ ...line, id: `dlg_00000${saves}000${i}`, placement: line.placement ?? null }))
+        const dialogue = (req.patch.dialogue ?? []).map((line, i) => ({ ...line, id: `dlg_00000${saves}000${i}`, placement: line.placement ?? null, style: line.style ?? null, tail: line.tail ?? null }))
         stored = { ...stored, dialogue, updatedAt: `2026-10-21T10:00:0${saves}.000Z` }
         return { panel: stored, warnings: [] }
       },
@@ -88,7 +88,7 @@ describe('useDialogueSaver', () => {
     const { calls } = installFakeApi({
       'panels:update': (req: { patch: PanelPatch }) => {
         saves += 1
-        stored = { ...stored, dialogue: (req.patch.dialogue ?? []).map((line, i) => ({ ...line, id: `dlg_00000${saves}000${i}`, placement: line.placement ?? null })), updatedAt: `2026-10-21T10:00:0${saves}.000Z` }
+        stored = { ...stored, dialogue: (req.patch.dialogue ?? []).map((line, i) => ({ ...line, id: `dlg_00000${saves}000${i}`, placement: line.placement ?? null, style: line.style ?? null, tail: line.tail ?? null })), updatedAt: `2026-10-21T10:00:0${saves}.000Z` }
         return { panel: stored, warnings: [] }
       },
       'panels:list': () => [stored]

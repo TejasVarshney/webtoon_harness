@@ -240,7 +240,7 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
     }
     settled.current = true
     setState('saving')
-    void save((current) => appendLine(current, { ...value, text, placement: null })).then((outcome) => {
+    void save((current) => appendLine(current, { ...value, text, placement: null, style: null, tail: null })).then((outcome) => {
       if (outcome !== 'refused') onDone()
       else {
         settled.current = false

@@ -149,7 +149,7 @@ describe('Panel', () => {
 
   it('validates dialogue lines', () => {
     const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Night fell.' }
-    expect(DialogueLineSchema.parse(line)).toEqual({ ...line, placement: null })
+    expect(DialogueLineSchema.parse(line)).toEqual({ ...line, placement: null, style: null, tail: null })
     expect(() => DialogueLineSchema.parse({ ...line, kind: 'yell' })).toThrow()
     expect(() => DialogueLineSchema.parse({ ...line, speakerId: undefined })).toThrow()
   })
@@ -165,6 +165,44 @@ describe('Panel', () => {
     expect(() => BubblePlacementSchema.parse({ x: 1.2, y: 0 })).toThrow()
     expect(() => BubblePlacementSchema.parse({ x: 0.5, y: -0.1 })).toThrow()
     expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: 1.2, y: 0 } })).toThrow()
+  })
+})
+
+describe('bubble look', () => {
+  const base = { id: 'dlg_0000000001', speakerId: null, kind: 'speech', text: 'A' }
+
+  it('loads a line saved before bubbles had a look', () => {
+    const line = DialogueLineSchema.parse(base)
+    expect(line.style).toBeNull()
+    expect(line.tail).toBeNull()
+  })
+
+  it('accepts a bubble style and every form of tail', () => {
+    const style = { shape: 'shout', font: 'impact', size: 1.5, bold: false, italic: true, caps: false, align: 'left', color: '#ff0000', fill: '#00FF00', stroke: '#000000', strokeWidth: 6 }
+    expect(DialogueLineSchema.parse({ ...base, style }).style).toEqual(style)
+    expect(DialogueLineSchema.parse({ ...base, tail: 'none' }).tail).toBe('none')
+    expect(DialogueLineSchema.parse({ ...base, tail: { x: 0.2, y: 1 } }).tail).toEqual({ x: 0.2, y: 1 })
+  })
+
+  it.each([
+    { style: { color: 'red' } },
+    { style: { fill: 'url(x)' } },
+    { style: { font: 'Arial' } },
+    { style: { size: 4 } },
+    { style: { strokeWidth: 7 } },
+    { tail: { x: 1.2, y: 0 } },
+    { tail: 'down' }
+  ])('refuses what the app cannot draw: %j', (bad) => {
+    expect(() => DialogueLineSchema.parse({ ...base, ...bad })).toThrow()
+  })
+
+  it('keeps "inherit" apart from "clear" in a patch', () => {
+    const [bare] = PanelPatchSchema.parse({ dialogue: [{ speakerId: null, kind: 'narration', text: 'A' }] }).dialogue ?? []
+    expect(bare.style).toBeUndefined()
+    expect(bare.tail).toBeUndefined()
+    const [cleared] = PanelPatchSchema.parse({ dialogue: [{ speakerId: null, kind: 'narration', text: 'A', style: null, tail: null }] }).dialogue ?? []
+    expect(cleared.style).toBeNull()
+    expect(cleared.tail).toBeNull()
   })
 })
 

@@ -397,7 +397,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('cancels the text of a bubble on Escape and stays open, and clears a selected bubble before going back', async () => {
-    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
     const { calls } = mount()
     const stage = within(workspace()).getByTestId('panel-stage')
@@ -420,7 +420,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('closes the open text of a line the agent removed, says so in Lines, and reopens no old draft when a line comes back there', () => {
-    const line = (id: string, text: string) => ({ id, speakerId: null, kind: 'narration' as const, text, placement: null })
+    const line = (id: string, text: string) => ({ id, speakerId: null, kind: 'narration' as const, text, placement: null, style: null, tail: null })
     const night = line('dlg_0000000001', 'Night fell.')
     const withLines = (dialogue: Panel['dialogue']): void => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue }, third] } })
     withLines([night, line('dlg_0000000002', 'Dawn.')])
@@ -445,7 +445,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('puts the tabs under the stage, on Lines, and selects the bubble of the row the user goes into', () => {
-    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
     mount()
     const tabs = within(workspace()).getByRole('tablist')
@@ -464,7 +464,7 @@ describe('PanelWorkspace', () => {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       return this.classList.contains('bubble') ? rect(100, 50) : rect(400, 600)
     })
-    const line = (text: string) => ({ id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text, placement: { x: 0.5, y: 0.8 } })
+    const line = (text: string) => ({ id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text, placement: { x: 0.5, y: 0.8 }, style: null, tail: null })
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line('Night fell.')] }, { ...third, dialogue: [line('Dawn.')] }] } })
     const { calls } = mount({ 'panels:update': (req: { panelId: string }) => ({ panel: req.panelId === B ? second : third, warnings: [] }) })
     const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')

@@ -4,7 +4,7 @@ import type { BubblePlacement, DialogueLine } from '@shared/types'
 import { DialogueOverlay, type OverlayEditing } from './DialogueOverlay'
 
 function line(id: string, text: string, o: Partial<DialogueLine> = {}): DialogueLine {
-  return { id, speakerId: null, kind: 'speech', text, placement: null, ...o }
+  return { id, speakerId: null, kind: 'speech', text, placement: null, style: null, tail: null, ...o }
 }
 
 const at = (x: number, y: number): BubblePlacement => ({ x, y })

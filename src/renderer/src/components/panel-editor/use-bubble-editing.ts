@@ -212,7 +212,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     const speakerId = panel.characters[0]?.characterId ?? null
     select(null)
     textClosed.current = false
-    setAdding({ id: newLineId(), speakerId, kind: speakerId === null ? 'narration' : 'speech', text: '', placement })
+    setAdding({ id: newLineId(), speakerId, kind: speakerId === null ? 'narration' : 'speech', text: '', placement, style: null, tail: null })
     setText({ index: null, draft: '', expect: null })
   }
 
@@ -233,7 +233,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
         panelB !== null && el !== null
           ? placementFromPointer({ pointer: { x: panelB.left + line.placement.x * panelB.width, y: panelB.top + line.placement.y * panelB.height }, grab: { dx: 0, dy: 0 }, panel: panelB, bubble: boxOf(el) })
           : line.placement
-      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement }
+      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement, style: null, tail: null }
       select(base.length)
       send(
         (lines) => [...lines, { ...line, text: value, placement }],

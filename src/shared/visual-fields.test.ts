@@ -107,6 +107,6 @@ describe('staleVisualFields', () => {
     expect(staleVisualFields({ ...p, frame: 'borderless' })).toEqual([])
     expect(staleVisualFields({ ...p, gutter: 'black' })).toEqual([])
     expect(staleVisualFields({ ...p, beside: true, gapAfter: 'long' })).toEqual([])
-    expect(staleVisualFields({ ...p, dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Night.', placement: { x: 0.5, y: 0.5 } }] })).toEqual([])
+    expect(staleVisualFields({ ...p, dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Night.', placement: { x: 0.5, y: 0.5 }, style: null, tail: null }] })).toEqual([])
   })
 })
