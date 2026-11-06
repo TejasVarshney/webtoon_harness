@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  body { margin: 0; background: #cfd6d2; font: 13px sans-serif; width: 1180px; }
+  .row { position: relative; height: 215px; border-bottom: 1px solid #8a908c; overflow: hidden; }
+  .label { position: absolute; left: 8px; top: 6px; font-weight: 600; z-index: 5; }
+  .b { position: absolute; box-sizing: border-box; width: max-content; max-width: 190px; translate: -50% -50%; font: 700 15px/1.15 'Comic Sans MS', sans-serif; text-align: center; text-transform: uppercase; color: var(--ink, #111); padding: 1em 1.35em; }
+  .speech, .whisper { background: var(--fill, #fff); border: var(--w, 2px) solid var(--stroke, #111); border-radius: 50%; }
+  .whisper { border-style: dashed; font-weight: 400; }
+  .shout { padding: 1.7em 1.9em; }
+  .b > span { position: relative; }
+  .body { position: absolute; inset: 0; width: 100%; height: 100%; }
+  svg.t { position: absolute; left: 50%; top: 50%; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+  svg.under { position: absolute; inset: 0; width: 100%; height: 100%; }
+</style>
+<div class="row" id="a"><div class="label">A. Stored data only: wedge from the centre, under the body (seam, width depends on length)</div></div>
+<div class="row" id="b"><div class="label">B. Measured box: open root on the real outline, same root width at every length</div></div>
+<div class="row" id="c"><div class="label">B with styles and other shapes: whisper, shout, thought, custom colours, thick outline</div></div>
+<script>
+  const TEXT = 'Is that the moon?'
+  const TIPS = [[-40, 42], [46, 62], [120, 80], [-125, 20], [18, -58]]
+
+  /* Row A: the wedge knows only the centre and the tip. */
+  function rowA() {
+    const row = document.getElementById('a')
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('class', 'under')
+    row.append(svg)
+    TIPS.forEach(([dx, dy], n) => {
+      const cx = 130 + n * 225, cy = 100
+      const L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L, base = 2.4 * 15
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+      p.setAttribute('points', `${cx + nx * base / 2},${cy + ny * base / 2} ${cx + dx},${cy + dy} ${cx - nx * base / 2},${cy - ny * base / 2}`)
+      p.setAttribute('fill', '#fff'); p.setAttribute('stroke', '#111'); p.setAttribute('stroke-width', '2'); p.setAttribute('stroke-linejoin', 'round')
+      svg.append(p)
+      const b = document.createElement('div')
+      b.className = 'b speech'; b.style.left = cx + 'px'; b.style.top = cy + 'px'
+      b.innerHTML = `<span>${TEXT}</span>`
+      row.append(b)
+    })
+  }
+
+  /* The plan's geometry: the tip in px from the bubble's centre, the root's two ends on the outline's inner edge. */
+  const BODY = { speech: [1, 1], whisper: [1, 1], shout: [0.81, 0.67], thought: [0.85, 0.8] }
+  function tailWedge({ box, tip, root, stroke, shape }) {
+    const [rx, ry] = BODY[shape]
+    const A = Math.max(box.width / 2 * rx - stroke, 1), B = Math.max(box.height / 2 * ry - stroke, 1)
+    if ((tip.x / (A + stroke)) ** 2 + (tip.y / (B + stroke)) ** 2 <= 1) return null
+    const phi = Math.atan2(tip.y / B, tip.x / A)
+    const speed = Math.hypot(A * Math.sin(phi), B * Math.cos(phi))
+    const d = Math.min(root / 2 / speed, Math.PI / 4)
+    const at = (t) => ({ x: A * Math.cos(t), y: B * Math.sin(t) })
+    return { a: at(phi - d), tip, b: at(phi + d) }
+  }
+  function thoughtPuffs({ box, tip, em, shape }) {
+    const [rx, ry] = BODY[shape]
+    const A = box.width / 2 * rx, B = box.height / 2 * ry
+    const L = Math.hypot(tip.x, tip.y), r = 1 / Math.hypot(tip.x / L / A, tip.y / L / B)
+    if (L <= r) return []
+    return [[0.3, 0.42], [0.65, 0.28], [1, 0.17]].map(([t, s]) => {
+      const d = r + (L - r) * t
+      return { cx: tip.x / L * d, cy: tip.y / L * d, rx: s * em, ry: s * em * 0.8 }
+    })
+  }
+
+  const SPIKES = '100.0,50.0 92.7,54.7 98.5,60.8 89.3,63.4 94.3,70.9 83.7,71.0 87.4,79.8 79.8,80.3 78.4,87.0 70.4,85.1 67.7,92.1 60.3,87.6 56.0,94.7 50.0,87.8 44.0,94.7 40.2,85.8 32.3,92.1 29.1,85.9 21.6,87.0 20.8,79.6 12.6,79.8 14.6,72.0 5.7,70.9 10.7,63.4 1.5,60.8 9.3,54.4 0.0,50.0 5.3,45.1 1.5,39.2 8.9,36.0 5.7,29.1 14.6,28.0 12.6,20.2 22.1,21.7 21.6,13.0 30.9,17.3 32.3,7.9 39.2,10.7 44.0,5.3 50.0,10.4 56.0,5.3 60.3,12.4 67.7,7.9 69.5,16.5 78.4,13.0 77.2,22.4 87.4,20.2 87.0,27.0 94.3,29.1 91.1,36.0 98.5,39.2 92.7,45.3'
+  const CLOUD = [[50,50,32],[24,48,22],[76,48,22],[36,28,20],[64,28,20],[36,72,20],[64,72,20],[16,30,14],[84,30,14],[16,70,14],[84,70,14],[8,50,12],[92,50,12],[50,16,15],[50,84,15]]
+
+  function bubble(row, cx, cy, shape, tip, vars = {}, text = TEXT) {
+    const b = document.createElement('div')
+    b.className = `b ${shape === 'thought' ? 'shout' : shape}`
+    b.style.left = cx + 'px'; b.style.top = cy + 'px'
+    Object.entries(vars).forEach(([k, v]) => b.style.setProperty(k, v))
+    const fill = vars['--fill'] || '#fff', stroke = vars['--stroke'] || '#111', w = parseFloat(vars['--w'] || '2')
+    let body = ''
+    if (shape === 'shout') body = `<svg class="body" viewBox="-2 -8 104 116" preserveAspectRatio="none"><polygon points="${SPIKES}" fill="${fill}" stroke="${stroke}" stroke-width="${w * 1.5}" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`
+    if (shape === 'thought') body = `<svg class="body" viewBox="-7 -4 114 108" preserveAspectRatio="none">${CLOUD.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${stroke}" stroke="${stroke}" stroke-width="${w * 2.5}" vector-effect="non-scaling-stroke"/>`).join('')}${CLOUD.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>`).join('')}</svg>`
+    b.innerHTML = `${body}<svg class="t"></svg><span>${text}</span>`
+    row.append(b)
+    const r = b.getBoundingClientRect(), box = { width: r.width, height: r.height }
+    const em = parseFloat(getComputedStyle(b).fontSize)
+    const svg = b.querySelector('svg.t')
+    if (shape === 'thought') {
+      svg.innerHTML = thoughtPuffs({ box, tip, em, shape }).map((p) => `<ellipse cx="${p.cx}" cy="${p.cy}" rx="${p.rx}" ry="${p.ry}" fill="${fill}" stroke="${stroke}" stroke-width="${w}"/>`).join('')
+      return
+    }
+    const g = tailWedge({ box, tip, root: Math.min(1.1 * em + 0.08 * Math.hypot(tip.x, tip.y), 0.5 * Math.min(box.width, box.height)), stroke: w, shape })
+    if (!g) return
+    const dash = shape === 'whisper' ? `stroke-dasharray="${2.2 * w} ${1.6 * w}"` : ''
+    svg.innerHTML = `<path d="M${g.a.x} ${g.a.y} L${g.tip.x} ${g.tip.y} L${g.b.x} ${g.b.y}" fill="${fill}" stroke="${stroke}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="butt" ${dash}/>`
+  }
+
+  rowA()
+  const rb = document.getElementById('b')
+  TIPS.forEach(([x, y], n) => bubble(rb, 130 + n * 225, 100, 'speech', { x, y }))
+  const rc = document.getElementById('c')
+  bubble(rc, 120, 105, 'whisper', { x: 40, y: 60 }, {}, 'Is it you...')
+  bubble(rc, 345, 105, 'shout', { x: -70, y: 75 }, {}, 'Get down!')
+  bubble(rc, 575, 95, 'thought', { x: 70, y: 70 }, {}, 'Too late now.')
+  bubble(rc, 800, 105, 'speech', { x: -60, y: 62 }, { '--fill': '#10233f', '--stroke': '#7fb2ff', '--ink': '#e8f1ff' }, 'Signal lost')
+  bubble(rc, 1030, 105, 'speech', { x: 55, y: 70 }, { '--w': '5px', '--fill': '#fff4c2' }, 'Heavy line')
+</script>
