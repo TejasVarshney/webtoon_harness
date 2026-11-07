@@ -2414,7 +2414,9 @@ kbd {
   position: relative;
 }
 
-/* An oval balloon with a pointed tail: a black wedge with a white wedge inside it, toward the speaker. */
+/* An oval balloon with a pointed tail: a wedge in the outline's colour with one in the fill's inside it, toward the
+   speaker. The fill's wedge is inset by multiples of the outline's width, so the tail's sides match the body at any
+   width. Both reach up past the oval by a fixed 3 and 4 px, which is for its curve and not its outline. */
 .bubble-speech,
 .bubble-whisper,
 .bubble-shout {
@@ -2457,7 +2459,8 @@ kbd {
   position: absolute;
   top: calc(100% - 3px);
   left: 24%;
-  width: calc(var(--tail) * 1.1);
+  /* No outline, no wedge of it: its edges would show around the fill's. Any width above 0 is far past the full one. */
+  width: min(var(--tail) * 1.1, var(--bubble-stroke-width, 2px) * 1000);
   height: var(--tail);
   content: '';
   background: var(--bubble-stroke, #111);
@@ -2472,9 +2475,9 @@ kbd {
 .bubble-tail-edge.bubble-shout::after {
   position: absolute;
   top: calc(100% - 4px);
-  left: calc(24% + 3px);
-  width: calc(var(--tail) * 1.1 - 6px);
-  height: calc(var(--tail) - 5px);
+  left: calc(24% + var(--bubble-stroke-width, 2px) * 1.5);
+  width: calc(var(--tail) * 1.1 - var(--bubble-stroke-width, 2px) * 3);
+  height: calc(var(--tail) - var(--bubble-stroke-width, 2px) * 2.5);
   content: '';
   background: var(--bubble-fill, #fff);
   clip-path: polygon(0 0, 100% 0, 15% 100%);
@@ -2489,7 +2492,7 @@ kbd {
 
 .bubble-side-right.bubble-tail-down::after,
 .bubble-side-right.bubble-tail-edge::after {
-  right: calc(24% + 3px);
+  right: calc(24% + var(--bubble-stroke-width, 2px) * 1.5);
   left: auto;
   clip-path: polygon(0 0, 100% 0, 85% 100%);
 }
@@ -2502,7 +2505,7 @@ kbd {
 
 .bubble-side-center.bubble-tail-down::after,
 .bubble-side-center.bubble-tail-edge::after {
-  left: calc(50% - var(--tail) * 0.55 + 3px);
+  left: calc(50% - var(--tail) * 0.55 + var(--bubble-stroke-width, 2px) * 1.5);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 

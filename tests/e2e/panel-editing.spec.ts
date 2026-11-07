@@ -587,3 +587,22 @@ test("a resting dot at the panel's edge can be pressed and tabbed to, and the ar
   expect(await scrolled()).toBe(0)
   await app.close()
 })
+
+// The look of it is checked by eye; this holds the rule. Each side of the fill's wedge sits 1.5 outline widths in from the
+// outline's wedge, and with no outline there is no wedge of it to show.
+test("an automatic tail's sides follow the outline's width", async () => {
+  const line = (text: string, strokeWidth?: number) => ({ speakerId: null, kind: 'speech', text, placement: { x: 0.5, y: 0.5 }, style: strokeWidth === undefined ? null : { strokeWidth } })
+  const { app, stage } = await openPanelWith([line('None', 0), line('Usual'), line('Heavy', 6)])
+  const wedges = (i: number): Promise<{ outline: number; fill: number }> =>
+    stage.locator(`[data-line="${i}"]`).evaluate((el: any) => {
+      const width = (pseudo: string): number => parseFloat((globalThis as any).getComputedStyle(el, pseudo).width)
+      return { outline: width('::before'), fill: width('::after') }
+    })
+  const [none, usual, heavy] = [await wedges(0), await wedges(1), await wedges(2)]
+  expect(none.outline).toBe(0)
+  expect(none.fill).toBeGreaterThan(0)
+  expect(usual.outline - usual.fill).toBeCloseTo(6)
+  expect(heavy.outline - heavy.fill).toBeCloseTo(18)
+  expect(heavy.outline).toBeCloseTo(usual.outline)
+  await app.close()
+})
