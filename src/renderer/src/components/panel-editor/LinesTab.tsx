@@ -38,9 +38,10 @@ function visibleSpan(el: HTMLElement): { top: number; bottom: number } {
  * Scrolls the row of the selected line into view inside the inspector's own scroll area, and nowhere else: the stage
  * above it never moves, so a bubble being pressed, dragged or typed in stays under the pointer and in sight. That is
  * why there is no waiting for a press or a double-click to end. A row the user is already in (it has the focus) is
- * where they put it, and stays.
+ * where they put it, and stays. `count` is how many rows there are: the stage selects a new line before its save
+ * lands, so its row comes after the selection does.
  */
-function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | null, area: RefObject<HTMLElement | null>): void {
+function useScrollToRow(line: number | null, count: number, row: (i: number) => HTMLElement | null, area: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const el = line === null ? null : row(line)
     const box = area.current
@@ -50,7 +51,7 @@ function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | n
     // The nearest edge, and the row's top when it is taller than the area.
     if (r.top < a.top) box.scrollTop += r.top - a.top
     else if (r.bottom > a.bottom) box.scrollTop += Math.min(r.bottom - a.bottom, r.top - a.top)
-  }, [line, row, area])
+  }, [line, count, row, area])
 }
 
 export interface LinesTabProps {
@@ -394,7 +395,7 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
   const [adding, setAdding] = useState<LineIdentity | null>(null)
   const rows = useRef<(HTMLLIElement | null)[]>([])
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
-  useScrollToRow(selectedLine, rowAt, scrollArea)
+  useScrollToRow(selectedLine, panel.dialogue.length, rowAt, scrollArea)
 
   function addLine(): void {
     const speakerId = panel.characters[0]?.characterId ?? null

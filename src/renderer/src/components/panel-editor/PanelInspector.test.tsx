@@ -190,6 +190,16 @@ describe('PanelInspector', () => {
     expect(onSelectLine).toHaveBeenLastCalledWith(1)
   })
 
+  it('scrolls to the selected row once it exists: the stage selects a new line before its save lands', () => {
+    layOutRows({ area: [0, 100], rowTop: 50, rowHeight: 200 })
+    const { rerender } = mount()
+    rerender(2)
+    expect(tabPanel().scrollTop).toBe(0)
+    replaceStored({ ...stored, dialogue: [hello, night, { ...hello, id: 'dlg_0000000003', text: 'Added.' }] })
+    // The new row is 450-650 under an area of 0-100: its top is brought to the area's top.
+    expect(tabPanel().scrollTop).toBe(450)
+  })
+
   it('opens Lines when the stage selects a line', () => {
     const { rerender } = mount()
     open('Scene')
