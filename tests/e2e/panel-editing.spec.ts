@@ -606,3 +606,26 @@ test("an automatic tail's sides follow the outline's width", async () => {
   expect(heavy.outline).toBeCloseTo(usual.outline)
   await app.close()
 })
+
+// Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
+test('a selected bubble under another takes the press', async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const { app, page, workspace, stage, stored } = await openPanelWith([
+    { speakerId: null, kind: 'narration', text: 'The line underneath it', placement: spot },
+    { speakerId: null, kind: 'narration', text: 'The line drawn on top', placement: spot }
+  ])
+  const under = stage.locator('[data-line="0"]')
+  const box = await boxOf(under)
+  const at = [box.x + box.width / 2, box.y + box.height / 2]
+  const lineUnderPointer = (): Promise<string | null> => page.evaluate(([x, y]) => (globalThis as any).document.elementFromPoint(x, y)?.closest('[data-line]')?.getAttribute('data-line') ?? null, at)
+  expect(await lineUnderPointer(), 'the later line is drawn on top').toBe('1')
+
+  await workspace.getByRole('tabpanel').locator('.line-row').first().getByLabel('Text', { exact: true }).click()
+  await expect(under).toHaveAttribute('data-selected', 'true')
+  await expect.poll(lineUnderPointer).toBe('0')
+
+  await dragBubble(page, stage, under, 0.3, 0.3)
+  await expect.poll(async () => (await stored())[0].placement.y).toBeLessThan(0.4)
+  expect((await stored())[1].placement).toEqual(spot)
+  await app.close()
+})

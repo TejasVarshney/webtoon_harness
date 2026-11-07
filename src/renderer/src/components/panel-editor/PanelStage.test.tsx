@@ -856,6 +856,16 @@ describe("the tail's dot", () => {
       expect(first).not.toEqual(second)
     })
 
+    it('puts a new bubble on the next spot of the grid, counting the lines there are', async () => {
+      stored = { ...stored, dialogue: [0, 1, 2, 3, 4, 5].map((n) => ({ ...hello, id: `dlg_000000000${n}`, text: `Line ${n}` })) }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+      const { calls } = mount()
+      await choose('Caption')
+      await userEvent.type(textBox(), 'Later.{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)[0].dialogue!.at(-1)!.placement).toEqual({ x: 0.3, y: 0.5 })
+    })
+
     it('is disabled while a new bubble is being typed', async () => {
       mount()
       await choose('Shout')

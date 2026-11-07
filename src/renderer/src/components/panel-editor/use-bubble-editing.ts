@@ -16,7 +16,7 @@ import {
 import type { BubblePlacement, BubbleShape, DialogueLine, Panel } from '@shared/types'
 import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
-import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, boxOf, centreOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
+import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, addSpot, boxOf, centreOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
 import { appendLine, editLine, identityOf, newBubble, removeLine, type LineIdentity } from './dialogue-edits'
 import type { Nudge, Press } from './bubble-press'
 import { useDialogueSaver } from './use-dialogue-saver'
@@ -213,17 +213,14 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
   function addAt(placement: BubblePlacement, shape?: BubbleShape): void {
     flushNudge()
     const first = panel.characters[0]?.characterId ?? null
-    const made = shape === undefined ? { speakerId: first, kind: first === null ? ('narration' as const) : ('speech' as const), style: null } : newBubble(shape, first)
+    const made = newBubble(shape ?? (first === null ? 'caption' : 'speech'), first)
     select(null)
     textClosed.current = false
     setAdding({ id: newLineId(), ...made, text: '', placement, tail: null })
     setText({ index: null, draft: '', expect: null })
   }
 
-  /** Each new bubble from the menu is a little lower than the last, so they do not stack. */
-  function add(shape: BubbleShape): void {
-    addAt({ x: 0.5, y: Math.min(0.2 + 0.12 * base.length, 0.8) }, shape)
-  }
+  const add = (shape: BubbleShape): void => addAt(addSpot(base.length), shape)
 
   /** Enter or blur. Empty text keeps the old text (deleting is the Delete key); a new line left empty is dropped. */
   function commitText(): void {

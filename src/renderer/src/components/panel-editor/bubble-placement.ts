@@ -61,6 +61,11 @@ export function nudgePlacement(
   return { x: round(clampAxis(x, half.x)), y: round(clampAxis(y, half.y)) }
 }
 
+/** Where the Add bubble menu puts a panel's next line, given how many it has: across three columns and down five rows, 15 spots before it starts over. */
+export function addSpot(count: number): BubblePlacement {
+  return { x: [0.3, 0.5, 0.7][count % 3], y: [0.2, 0.35, 0.5, 0.65, 0.8][Math.floor(count / 3) % 5] }
+}
+
 /** The placement of a bubble where it is drawn now: the first drag or nudge of an automatic bubble starts from here. */
 export function centreOf(bubble: Box, panel: Box): BubblePlacement {
   if (panel.width <= 0 || panel.height <= 0) return { x: 0.5, y: 0.5 }

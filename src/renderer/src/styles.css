@@ -2333,7 +2333,9 @@ kbd {
   outline: none;
 }
 
+/* The selected bubble comes to the front, so one under another takes the press, and so does its dot. */
 .dialogue-overlay[data-editing='true'] .bubble[data-selected='true'] {
+  z-index: 1;
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
