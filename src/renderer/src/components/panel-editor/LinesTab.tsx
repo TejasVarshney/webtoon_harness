@@ -9,6 +9,7 @@ import { useLastWarnings } from './panel-save-queue'
 import type { StylePreview } from './PanelStage'
 import { useDialogueSaver, type DialogueSaver } from './use-dialogue-saver'
 import { useAutosave } from './use-field-autosave'
+import { useScrollToRow } from './use-scroll-to-row'
 
 const KINDS = DialogueKindSchema.options
 /** The saves Lines shows the warnings of: the dialogue's, from here or from the stage. */
@@ -16,43 +17,6 @@ const DIALOGUE = ['dialogue'] as const
 
 /** Focus moved somewhere outside the element the event is on. */
 const leaves = (e: FocusEvent<HTMLElement>): boolean => !(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))
-
-/**
- * The part of `el` that is on screen, top to bottom: its box, cut by each ancestor that clips and by the window. When
- * a short window has the column scrolled, part of the scroll area may be out of sight below it.
- */
-function visibleSpan(el: HTMLElement): { top: number; bottom: number } {
-  const box = el.getBoundingClientRect()
-  let top = box.top
-  let bottom = Math.min(box.bottom, window.innerHeight)
-  for (let p = el.parentElement; p !== null; p = p.parentElement) {
-    if (getComputedStyle(p).overflowY === 'visible') continue
-    const r = p.getBoundingClientRect()
-    top = Math.max(top, r.top)
-    bottom = Math.min(bottom, r.bottom)
-  }
-  return bottom > top ? { top, bottom } : { top: box.top, bottom: box.bottom }
-}
-
-/**
- * Scrolls the row of the selected line into view inside the inspector's own scroll area, and nowhere else: the stage
- * above it never moves, so a bubble being pressed, dragged or typed in stays under the pointer and in sight. That is
- * why there is no waiting for a press or a double-click to end. A row the user is already in (it has the focus) is
- * where they put it, and stays. `count` is how many rows there are: the stage selects a new line before its save
- * lands, so its row comes after the selection does.
- */
-function useScrollToRow(line: number | null, count: number, row: (i: number) => HTMLElement | null, area: RefObject<HTMLElement | null>): void {
-  useEffect(() => {
-    const el = line === null ? null : row(line)
-    const box = area.current
-    if (el === null || box === null || el.contains(document.activeElement)) return
-    const r = el.getBoundingClientRect()
-    const a = visibleSpan(box)
-    // The nearest edge, and the row's top when it is taller than the area.
-    if (r.top < a.top) box.scrollTop += r.top - a.top
-    else if (r.bottom > a.bottom) box.scrollTop += Math.min(r.bottom - a.bottom, r.top - a.top)
-  }, [line, count, row, area])
-}
 
 export interface LinesTabProps {
   panel: Panel
@@ -121,6 +85,8 @@ interface LineRowProps {
   onPreviewStyle?(preview: StylePreview | null): void
   /** The row whose style the stage is showing: it shows one at a time. */
   previewing: RefObject<number | null>
+  /** This row's line is being removed, and how that save ends. */
+  onRemove(index: number, outcome: ReturnType<DialogueSaver['save']>): void
 }
 
 /**
@@ -131,7 +97,7 @@ interface LineRowProps {
  * way, so a pick and typed text both land. The tail is not in it: a tail dragged on the stage must never be
  * overwritten by a style that was waiting.
  */
-function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle, previewing }: LineRowProps) {
+function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle, previewing, onRemove }: LineRowProps) {
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
@@ -251,7 +217,7 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
     style.undo()
     const expect = expectNow()
     base.current = null
-    void save((current) => removeLine(current, index, expect))
+    onRemove(index, save((current) => removeLine(current, index, expect)))
   }
 
   return (
@@ -404,7 +370,35 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
   const rows = useRef<(HTMLLIElement | null)[]>([])
   const previewing = useRef<number | null>(null)
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
-  useScrollToRow(selectedLine, panel.dialogue.length, rowAt, scrollArea)
+  /** The selection and count as of now, for a save that lands later. */
+  const latest = useRef({ selected: selectedLine, count: panel.dialogue.length })
+  useLayoutEffect(() => {
+    latest.current = { selected: selectedLine, count: panel.dialogue.length }
+  })
+  /** Set when the selection moved to follow its line, so the scroll does not chase it. */
+  const followed = useRef(false)
+  useScrollToRow(selectedLine, panel.dialogue.length, rowAt, scrollArea, followed)
+
+  /**
+   * Selection is by index, so a removal moves it: when the save lands, the selection goes down one if the line removed
+   * was above it, and is cleared if the line removed was the selected one. A refused or conflicted save changed no list.
+   * With the last line selected the stage has already let go of it by then (its index is out of range), so the line
+   * selected when Remove was pressed is the one followed.
+   */
+  function removed(index: number, outcome: ReturnType<DialogueSaver['save']>): void {
+    const pressedWith = latest.current.selected
+    void outcome.then((result) => {
+      if (result !== 'saved' || pressedWith === null) return
+      const { selected, count } = latest.current
+      // Still where it was, or let go of by the stage because the list shrank past it.
+      if (selected !== pressedWith && !(selected === null && pressedWith >= count)) return
+      if (index === pressedWith) onSelectLine(null)
+      else if (index < pressedWith) {
+        followed.current = true
+        onSelectLine(pressedWith - 1)
+      }
+    })
+  }
 
   function addLine(): void {
     const speakerId = panel.characters[0]?.characterId ?? null
@@ -450,6 +444,7 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
               onSelect={() => onSelectLine(i)}
               onPreviewStyle={onPreviewStyle}
               previewing={previewing}
+              onRemove={removed}
               rowRef={(el) => {
                 rows.current[i] = el
               }}

@@ -536,6 +536,68 @@ test("a row's buttons take the first click, and a lower row's text takes the foc
   await app.close()
 })
 
+// A removal is not a reason to scroll: the user is working where they clicked. Row 0 is selected and off screen, and a
+// Remove near the bottom must leave the Lines area where it is.
+test('Remove leaves the Lines list where it was scrolled, with the selected row off screen', async () => {
+  const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+  const { app, workspace, stored } = await openPanelWith(names.map((text) => ({ speakerId: null, kind: 'narration', text, placement: null })))
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+
+  await row(0).getByLabel('Text', { exact: true }).click()
+  await expect(row(0)).toHaveAttribute('aria-current', 'true')
+  const scrollTop = (): Promise<number> => area.evaluate((el: any) => el.scrollTop)
+  await area.evaluate((el: any) => {
+    el.scrollTop = el.scrollHeight
+  })
+  const before = await scrollTop()
+  expect(before).toBeGreaterThan(0)
+  const rowHeight = (await boxOf(row(7))).height
+
+  // Twice: it must not come back on the second, either.
+  for (const left of [8, 7]) {
+    await row(left - 1).getByRole('button', { name: 'Remove' }).click()
+    await expect.poll(async () => (await stored()).length).toBe(left)
+    await expect(area.locator('.line-row')).toHaveCount(left)
+    // The browser clamps the position to the shorter list: at the bottom, that is all that may change. A scroll back to
+    // the selected row would land near 0.
+    const furthest = await area.evaluate((el: any) => el.scrollHeight - el.clientHeight)
+    expect(Math.abs((await scrollTop()) - Math.min(before, furthest))).toBeLessThanOrEqual(rowHeight)
+    expect(await scrollTop()).toBeGreaterThan(rowHeight * 3)
+    await expect(row(0)).toHaveAttribute('aria-current', 'true')
+    await expect(row(0).getByLabel('Text', { exact: true })).toHaveValue('One')
+  }
+  await app.close()
+})
+
+// Selection is by index, so a removal above the selected line would leave the block on the next one.
+test('Remove above the selected row keeps its style block on the same line', async () => {
+  const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven']
+  const { app, workspace, stage, stored } = await openPanelWith(names.map((text) => ({ speakerId: null, kind: 'narration', text, placement: null })))
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+  const open = area.locator('.line-row:has(.bubble-style)')
+
+  await row(3).getByLabel('Text', { exact: true }).click()
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Four')
+  await row(1).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(async () => (await stored()).map((l) => l.text)).toEqual(['One', 'Three', 'Four', 'Five', 'Six', 'Seven'])
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Four')
+  await expect(stage.locator('.bubble[data-selected="true"]')).toHaveText('Four')
+
+  // The same with the last line selected.
+  await row(5).getByLabel('Text', { exact: true }).click()
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Seven')
+  await row(0).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(async () => (await stored()).length).toBe(5)
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Seven')
+  await expect(stage.locator('.bubble[data-selected="true"]')).toHaveText('Seven')
+  await app.close()
+})
+
 /** Presses a bubble at its centre and drags it to a point of the panel, in fractions; beyond 1 is past its edge. */
 async function dragBubble(page: Page, stage: Locator, bubble: Locator, x: number, y: number): Promise<void> {
   const from = await boxOf(bubble)

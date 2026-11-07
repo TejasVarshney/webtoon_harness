@@ -529,6 +529,75 @@ describe('PanelWorkspace', () => {
     })
   })
 
+  describe('removing a line in Lines', () => {
+    const texts = ['One', 'Two', 'Three', 'Four', 'Five']
+    const lineOf = (text: string, n: number): Panel['dialogue'][number] => ({ id: `dlg_00000000${String(n).padStart(2, '0')}`, speakerId: null, kind: 'narration', text, placement: null, style: null, tail: null })
+    const rows = (): HTMLElement[] => within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')
+    const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')
+    /** The text of the line whose row is marked, and of the bubble the stage shows as selected. */
+    const marked = (): string[] => rows().filter((r) => r.getAttribute('aria-current') === 'true').map((r) => (within(r).getByLabelText('Text') as HTMLTextAreaElement).value)
+    const selectedBubbles = (): string[] => within(stage()).getAllByLabelText(/^Line \d/).filter((b) => b.getAttribute('data-selected') === 'true').map((b) => b.textContent ?? '')
+    const open = (count: number, refuse = false) => {
+      let stored = { ...second, dialogue: texts.slice(0, count).map((t, i) => lineOf(t, i + 1)) }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, stored, third] } })
+      let version = 0
+      return mount({
+        'panels:update': (req: { patch: { dialogue: Omit<Panel['dialogue'][number], 'id'>[] } }) => {
+          if (refuse) throw new Error('Dialogue is too long')
+          version += 1
+          const dialogue = req.patch.dialogue.map((d, i) => ({ ...d, id: `dlg_0000001${String(version).padStart(1, '0')}${String(i).padStart(2, '0')}` }))
+          stored = { ...second, dialogue, updatedAt: `2026-10-21T11:00:0${version}.000Z` }
+          return { panel: stored, warnings: [] }
+        },
+        'panels:list': () => [first, stored, third]
+      })
+    }
+    const select = (i: number): void => focus(within(rows()[i]).getByLabelText('Text'))
+    const remove = (i: number): void => {
+      fireEvent.click(within(rows()[i]).getByRole('button', { name: 'Remove' }))
+    }
+
+    it('removing a line above the selected one keeps the selection on the same line', async () => {
+      open(5)
+      select(3)
+      expect(marked()).toEqual(['Four'])
+      remove(1)
+      await waitFor(() => expect(rows()).toHaveLength(4))
+      await waitFor(() => expect(marked()).toEqual(['Four']))
+      await waitFor(() => expect(selectedBubbles()).toEqual(['Four']))
+    })
+
+    it('removing a line above the last line, while the last is selected, keeps it selected', async () => {
+      open(3)
+      select(2)
+      expect(marked()).toEqual(['Three'])
+      remove(0)
+      await waitFor(() => expect(rows()).toHaveLength(2))
+      await waitFor(() => expect(marked()).toEqual(['Three']))
+      await waitFor(() => expect(selectedBubbles()).toEqual(['Three']))
+    })
+
+    it('a refused removal leaves the selection where it was', async () => {
+      open(5, true)
+      select(3)
+      remove(1)
+      await within(workspace()).findByRole('alert')
+      expect(rows()).toHaveLength(5)
+      expect(marked()).toEqual(['Four'])
+      expect(selectedBubbles()).toEqual(['Four'])
+    })
+
+    it('removing the selected line clears the selection', async () => {
+      open(5)
+      select(1)
+      expect(marked()).toEqual(['Two'])
+      remove(1)
+      await waitFor(() => expect(rows()).toHaveLength(4))
+      await waitFor(() => expect(marked()).toEqual([]))
+      await waitFor(() => expect(selectedBubbles()).toEqual([]))
+    })
+  })
+
   it('keeps one stage when stepping, and saves what was typed in a bubble and a nudge still waiting', async () => {
     const keyWarnings = vi.spyOn(console, 'error')
     // jsdom has no layout: the panel is 400x600 at the origin, and every bubble is 100x50 at its top left corner.
