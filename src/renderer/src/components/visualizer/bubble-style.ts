@@ -4,7 +4,8 @@ import type { BubbleFont, BubbleShape, BubbleStyle } from '@shared/types'
 // A bubble's look. The stylesheet holds each shape's default; a line's `style` stores only what differs from it, and
 // `bubbleStyleProps` turns that into inline variables and text properties that override the stylesheet.
 
-type Defaults = Required<Omit<BubbleStyle, 'shape'>>
+/** Every key but the shape, which has none here, and the width: without one, the bubble fits its text. */
+type Defaults = Required<Omit<BubbleStyle, 'shape' | 'width'>>
 
 const FALLBACK = "'Comic Neue', var(--font)"
 
@@ -47,13 +48,15 @@ export function bubbleStyleProps(style: BubbleStyle | null): CSSProperties {
   if (style.caps !== undefined) props.textTransform = style.caps ? 'uppercase' : 'none'
   if (style.align !== undefined) props.textAlign = style.align
   if (style.font !== undefined) props.fontFamily = FONTS.find((f) => f.id === style.font)!.family
+  // Drawn by `.bubble-sized`, which the overlay adds when there is a width.
+  if (style.width !== undefined) props['--bubble-width'] = `${Math.round(style.width * 10000) / 100}%`
   return props as CSSProperties
 }
 
 /**
  * The style after one change. A key set to its default, or to undefined, is dropped, and a style left with no keys is
- * null, so a line is only ever styled by what the user actually changed. `shape` has no default here: it is kept
- * whenever it is given.
+ * null, so a line is only ever styled by what the user actually changed. `shape` and `width` have no default here:
+ * they are kept whenever they are given.
  */
 export function withStyleChange(style: BubbleStyle | null, change: Partial<BubbleStyle>, defaults: Defaults): BubbleStyle | null {
   const next: Record<string, unknown> = { ...style, ...change }

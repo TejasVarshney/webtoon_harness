@@ -196,6 +196,16 @@ describe('bubble look', () => {
     expect(() => DialogueLineSchema.parse({ ...base, ...bad })).toThrow()
   })
 
+  it('accepts a bubble width from a tenth to 0.95 of the panel', () => {
+    expect(DialogueLineSchema.parse({ ...base, style: { width: 0.1 } }).style).toEqual({ width: 0.1 })
+    expect(DialogueLineSchema.parse({ ...base, style: { width: 0.95 } }).style).toEqual({ width: 0.95 })
+  })
+
+  it('refuses a width the panel cannot hold', () => {
+    expect(() => DialogueLineSchema.parse({ ...base, style: { width: 0.05 } })).toThrow()
+    expect(() => DialogueLineSchema.parse({ ...base, style: { width: 1 } })).toThrow()
+  })
+
   it('says how a colour is written when it refuses one', () => {
     const refused = DialogueLineSchema.safeParse({ ...base, style: { fill: '#fff' } })
     expect(refused.error?.issues[0].message).toBe('A colour is written as #rrggbb')

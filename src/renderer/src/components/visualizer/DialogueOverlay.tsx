@@ -42,7 +42,8 @@ export interface DialogueOverlayProps {
  * are no name labels, only a tooltip with the speaker's name. Sound effects sit over the middle of the art.
  * A line with a placement is drawn there instead, centred on that point, in a layer of its own; its shape and tail are
  * still the layout's. A stored tail tip is drawn by `BubbleTailArt`, measured from the page. A line's `style` is drawn
- * as inline variables, and a line shaped as a sound effect sits in the sound-effect layer whatever its kind.
+ * as inline variables, with `bubble-sized` when it sets a width, and a line shaped as a sound effect sits in the
+ * sound-effect layer whatever its kind.
  */
 export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverlayProps) {
   const roster = useRoster(dialogue.some((line) => line.speakerId !== null))
@@ -63,7 +64,7 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
     return (
       <div
         key={line.id}
-        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${extra}`}
+        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${line.style?.width !== undefined ? ' bubble-sized' : ''}${extra}`}
         data-kind={line.kind}
         data-shape={b.shape}
         data-side={b.side}

@@ -102,6 +102,22 @@ describe('DialogueOverlay', () => {
     expect(bubbleOf(container, 'Plain.').getAttribute('style')).toBeNull()
   })
 
+  it('a bubble with a width is drawn that wide', () => {
+    const dialogue = [line('dlg_0000000001', 'Wide.', { placement: at(0.5, 0.5), style: { width: 0.42 } })]
+    const { container } = render(<DialogueOverlay dialogue={dialogue} />)
+    const bubble = bubbleOf(container, 'Wide.')
+    expect(bubble).toHaveClass('bubble-sized')
+    expect(bubble.style.getPropertyValue('--bubble-width')).toBe('42%')
+  })
+
+  it("a bubble without a width keeps today's look", () => {
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Plain.'), line('dlg_0000000002', 'Red.', { style: { fill: '#ff0000' } })]} />)
+    expect(bubbleOf(container, 'Plain.')).not.toHaveClass('bubble-sized')
+    expect(bubbleOf(container, 'Plain.').getAttribute('style')).toBeNull()
+    expect(bubbleOf(container, 'Red.')).not.toHaveClass('bubble-sized')
+    expect(bubbleOf(container, 'Red.').style.getPropertyValue('--bubble-width')).toBe('')
+  })
+
   it("keeps a placed bubble's position beside its look", () => {
     const dialogue = [line('dlg_0000000001', 'Here.', { placement: at(0.25, 0.75), style: { fill: '#ff0000' } })]
     const { container } = render(<DialogueOverlay dialogue={dialogue} />)

@@ -2673,6 +2673,13 @@ kbd {
   transform: rotate(7deg) skewX(6deg);
 }
 
+/* A bubble the user gave a width: that share of the panel, outline included, whatever its shape's cap, and its text
+   wraps to it. An automatic bubble's share is of the flow column, a little narrower than the panel. */
+.bubble.bubble-sized {
+  width: var(--bubble-width);
+  max-width: none;
+}
+
 /* --- Characters tab ---------------------------------------------------------------------------------- */
 
 .character-studio,

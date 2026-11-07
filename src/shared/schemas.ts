@@ -261,7 +261,9 @@ export const BubbleStyleSchema = z.object({
   fill: HexColor.optional(),
   stroke: HexColor.optional(),
   /** CSS px at the lettering's scale. */
-  strokeWidth: z.number().min(0).max(6).optional()
+  strokeWidth: z.number().min(0).max(6).optional(),
+  /** The bubble's whole width, outline included, as a share of the panel's width. Left out, the bubble fits its text. */
+  width: z.number().min(0.1).max(0.95).optional()
 })
 
 /** Where a bubble's tail points: 'none' draws no tail, a point is the tip as fractions of the panel. An enum rather than a literal because tool schemas go to every provider as JSON Schema. */
