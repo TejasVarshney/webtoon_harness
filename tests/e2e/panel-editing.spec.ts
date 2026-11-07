@@ -459,3 +459,69 @@ test('the Add bubble menu shows all six choices in the smallest window', async (
   await page.keyboard.press('Escape')
   await app.close()
 })
+
+/** A panel the mock draws with these lines and no cast, open in the editor at a laptop size. */
+async function openPanelWith(dialogue: object[]) {
+  const { app, page, projectsRoot } = await launchApp({
+    script: {
+      turns: [
+        { toolCalls: [{ name: 'create_panel', input: { episodeId: { $episode: 'current' }, description: 'An empty street.', setting: 'Street at night', shot: 'wide', characters: [], dialogue } }] },
+        { text: 'Drew panel 1.' }
+      ]
+    }
+  })
+  await createProjectAndSession(page, 'Moon Diary')
+  await sendChat(page, 'Draw panel 1', 'Drew panel 1.')
+  await page.getByTestId('tab-webtoon').click()
+  const card = page.getByTestId('panel-card').first()
+  await expect(card.locator('img')).toHaveCount(1)
+  const panelId = (await card.getAttribute('data-panel-id'))!
+  await setWindowSize(app, page, 1440, 900)
+  await card.click()
+  const workspace = page.getByTestId('panel-workspace')
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('.bubble')).toHaveCount(dialogue.length)
+  const stored = async (): Promise<any[]> => (await readProjectJson(projectsRoot, `panels/${panelId}.json`)).dialogue
+  return { app, page, workspace, stage, stored }
+}
+
+// A press focuses a button before it is released. If that focus selected the row, its style block would open and the
+// button would move from under the pointer, or a block above would close and move it up, and no click would fire. So
+// these are real clicks, on rows that are not selected.
+test("a row's buttons take the first click, and a lower row's text takes the focus, with a block open above or not", async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const narrated = (text: string, placement: object | null = null) => ({ speakerId: null, kind: 'narration', text, placement })
+  const { app, workspace, page, stored } = await openPanelWith([narrated('One'), narrated('Two', spot), narrated('Three', spot), narrated('Four'), narrated('Five'), narrated('Six')])
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+  const texts = async (): Promise<string[]> => (await stored()).map((l) => l.text)
+
+  // Nothing is selected: Remove and Reset to auto act on the first click, and open no block.
+  await expect(area.locator('.bubble-style')).toHaveCount(0)
+  await row(5).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(texts).toEqual(['One', 'Two', 'Three', 'Four', 'Five'])
+  await row(1).getByRole('button', { name: 'Reset to auto' }).click()
+  await expect.poll(async () => (await stored())[1].placement).toBeNull()
+  await expect(area.locator('.bubble-style')).toHaveCount(0)
+
+  // With a block open on the first row, the same goes for the rows below it, and the block stays where it is.
+  await row(0).getByLabel('Text', { exact: true }).click()
+  await expect(row(0).locator('.bubble-style')).toBeVisible()
+  await row(4).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(texts).toEqual(['One', 'Two', 'Three', 'Four'])
+  await row(2).getByRole('button', { name: 'Reset to auto' }).click()
+  await expect.poll(async () => (await stored())[2].placement).toBeNull()
+  await expect(row(0).locator('.bubble-style')).toBeVisible()
+
+  // The text of a lower row moves up as the block above it closes, under the press: it still has the focus, and what
+  // is typed lands in that row.
+  const lower = row(3).getByLabel('Text', { exact: true })
+  await lower.click()
+  await expect(lower).toBeFocused()
+  await expect(row(3).locator('.bubble-style')).toBeVisible()
+  await expect(row(0).locator('.bubble-style')).toHaveCount(0)
+  await page.keyboard.type(' typed')
+  await expect.poll(async () => (await stored())[3].text).toContain('typed')
+  expect((await texts()).slice(0, 3)).toEqual(['One', 'Two', 'Three'])
+  await app.close()
+})

@@ -250,8 +250,10 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
       ref={rowRef}
       className="line-row"
       aria-current={selected ? 'true' : undefined}
-      onFocus={() => {
-        if (!selected) onSelect()
+      onFocus={(e) => {
+        // A press focuses its button before the release. Selecting here would open this row's block, or close one above,
+        // and move the button from under the pointer, so no click would fire.
+        if (!selected && !(e.target instanceof Element && e.target.closest('.form-actions'))) onSelect()
       }}
       onBlur={(e) => {
         // Moving between the row's own fields is not leaving it: a text emptied on the way must not undo the rest.
@@ -259,15 +261,6 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
       }}
     >
       <LineFields characters={characters} value={draft.value} onChange={change} />
-      {selected && (
-        <BubbleStyleBlock
-          autoShape={bubbleShape({ kind: draft.value.kind, text: draft.value.text })}
-          style={style.value}
-          tail={line.tail}
-          onStyle={setStyle}
-          onTail={setTail}
-        />
-      )}
       <div className="form-actions">
         {line.placement !== null && (
           <button type="button" onClick={resetPlacement}>
@@ -278,6 +271,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
           Remove
         </button>
       </div>
+      {selected && (
+        <BubbleStyleBlock
+          autoShape={bubbleShape({ kind: draft.value.kind, text: draft.value.text })}
+          style={style.value}
+          tail={line.tail}
+          onStyle={setStyle}
+          onTail={setTail}
+        />
+      )}
     </li>
   )
 }

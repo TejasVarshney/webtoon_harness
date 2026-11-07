@@ -179,6 +179,17 @@ describe('PanelInspector', () => {
     expect(onSelectLine).toHaveBeenLastCalledWith(1)
   })
 
+  it("leaves the selection alone when the focus lands on a row's buttons: a block opening or closing would move them from under the press", () => {
+    stored = { ...stored, dialogue: [night, { ...night, id: 'dlg_0000000005' }] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    const { onSelectLine } = mount({ selectedLine: 0 })
+    act(() => within(rows()[1]).getByRole('button', { name: 'Remove' }).focus())
+    act(() => within(rows()[1]).getByRole('button', { name: 'Reset to auto' }).focus())
+    expect(onSelectLine).not.toHaveBeenCalled()
+    act(() => text(1).focus())
+    expect(onSelectLine).toHaveBeenLastCalledWith(1)
+  })
+
   it('opens Lines when the stage selects a line', () => {
     const { rerender } = mount()
     open('Scene')
@@ -299,6 +310,13 @@ describe('PanelInspector', () => {
         mount({ selectedLine: 1 })
         expect(within(rows()[0]).queryByRole('group', { name: 'Shape' })).toBeNull()
         expect(within(rows()[1]).getByRole('group', { name: 'Shape' })).toBeInTheDocument()
+      })
+
+      it("draws the block after the row's buttons, so opening it moves neither them nor the fields", () => {
+        mount({ selectedLine: 0 })
+        const actions = rows()[0].querySelector('.form-actions')!
+        const block = rows()[0].querySelector('.bubble-style')!
+        expect(actions.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       })
 
       it('saves a style after the wait, with the rest of the dialogue untouched', async () => {
