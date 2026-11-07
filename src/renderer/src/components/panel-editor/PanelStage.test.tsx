@@ -8,6 +8,7 @@ import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
+import { NUDGE_COMMIT_MS } from './bubble-placement'
 import { toDrafts } from './dialogue-edits'
 import { PanelStage } from './PanelStage'
 import { useDialogueSaver } from './use-dialogue-saver'
@@ -15,8 +16,8 @@ import { useDialogueSaver } from './use-dialogue-saver'
 const A = 'pnl_00000000aa'
 const MINA = 'chr_0000000001'
 const cast: PanelCharacter[] = [{ characterId: MINA, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }]
-const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null }
-const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 } }
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null, style: null, tail: null }
+const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 }, style: null, tail: null }
 
 /** The panel as the main process holds it: what `panels:list` returns, and what `panels:update` changes. */
 let stored: Panel
@@ -76,7 +77,14 @@ function mount(props: { share?: number; slant?: 'left' | 'right' } = {}) {
       gate = null
       if (wait !== null) await wait
       // Like the service: a dialogue save gives every line a new id.
-      const dialogue = (req.patch.dialogue ?? []).map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null }))
+      // A line sent without a look takes the stored line's at its index, so a test can catch a look moving between lines.
+      const dialogue = (req.patch.dialogue ?? []).map((line, i) => ({
+        ...line,
+        id: `dlg_${String((ids += 1)).padStart(10, '0')}`,
+        placement: line.placement ?? null,
+        style: line.style === undefined ? (stored.dialogue[i]?.style ?? null) : line.style,
+        tail: line.tail === undefined ? (stored.dialogue[i]?.tail ?? null) : line.tail
+      }))
       stored = { ...stored, dialogue }
       return { panel: stored, warnings: [] }
     },
@@ -323,6 +331,17 @@ describe('PanelStage', () => {
     expect(bubble(0)).toHaveTextContent('Night fell.')
   })
 
+  it('deleting a middle bubble leaves each look on its own line', async () => {
+    const line = (n: number, fill: string | null): DialogueLine => ({ id: `dlg_000000000${n}`, speakerId: null, kind: 'narration', text: `Line ${n}`, placement: null, style: fill === null ? null : { fill }, tail: null })
+    replaceStored({ ...stored, dialogue: [line(1, '#aa0000'), line(2, null), line(3, '#0000cc')] })
+    const { calls } = mount()
+    act(() => bubble(1).focus())
+    await userEvent.keyboard('{Delete}')
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    await waitFor(() => expect(stored.dialogue).toHaveLength(2))
+    expect(stored.dialogue.map((d) => d.style?.fill)).toEqual(['#aa0000', '#0000cc'])
+  })
+
   it('adds a line where the empty panel is double-clicked, spoken by the first of the cast', async () => {
     const { calls } = mount()
     fireEvent.doubleClick(stage().querySelector('.dialogue-overlay')!, { clientX: 200, clientY: 300 })
@@ -331,7 +350,7 @@ describe('PanelStage', () => {
     await userEvent.type(textBox(), 'Hey{Enter}')
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
     expect(updates(calls)[0]).toEqual({
-      dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Hey', placement: { x: 0.5, y: 0.5 } }]
+      dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Hey', placement: { x: 0.5, y: 0.5 }, style: null, tail: null }]
     })
     await waitFor(() => expect(stored.dialogue).toHaveLength(3))
     expect(bubble(2)).toHaveTextContent('Hey')
@@ -348,7 +367,7 @@ describe('PanelStage', () => {
     fireEvent.doubleClick(media(), { clientX: 100, clientY: 150 })
     await userEvent.type(textBox(), 'Later.{Enter}')
     await waitFor(() => expect(updates(calls)).toHaveLength(1))
-    expect(updates(calls)[0]).toEqual({ dialogue: [{ speakerId: null, kind: 'narration', text: 'Later.', placement: { x: 0.25, y: 0.25 } }] })
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ speakerId: null, kind: 'narration', text: 'Later.', placement: { x: 0.25, y: 0.25 }, style: null, tail: null }] })
   })
 
   it('adds no line on a double-click on the panel status, or on its Retry', () => {
@@ -527,5 +546,427 @@ describe('PanelStage', () => {
 
     expect([...new Set(calls.map((c) => c.channel))].sort()).toEqual(['panels:list', 'panels:update'])
     for (const { channel } of calls) expect(channel).not.toMatch(/^(panelChat|agent):|^panels:(generate|editImage|upload)/)
+  })
+})
+
+describe("the tail's dot", () => {
+  const dot = (): HTMLElement => within(stage()).getByLabelText('Point of line 1')
+  const dots = (): HTMLElement[] => within(stage()).queryAllByLabelText(/^Point of line/)
+  const withTail = (tail: DialogueLine['tail']): void => {
+    stored = { ...stored, dialogue: [{ ...hello, tail }, night] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+  }
+  /** Presses the dot and drags it to (x, y), releasing there unless told not to. */
+  function dragDot(x: number, y: number, release = true): void {
+    fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: x, clientY: y, buttons: 1 })
+    if (release) fireEvent.pointerUp(stage(), { clientX: x, clientY: y })
+  }
+
+  it('shows only on the selected bubble that can have a tail', async () => {
+    mount()
+    expect(dots()).toHaveLength(0)
+    await userEvent.click(bubble(0))
+    expect(dots()).toHaveLength(1)
+    await userEvent.click(bubble(1))
+    expect(dots()).toHaveLength(0)
+  })
+
+  it('saves the tip as fractions of the panel when it is dragged, and nothing else', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: { x: 0.25, y: 0.5 } }, toDrafts([night])[0]] })
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('neither drags the bubble nor clears the selection when it is pressed', async () => {
+    const { calls, onSelectLine } = mount()
+    await userEvent.click(bubble(0))
+    onSelectLine.mockClear()
+    dragDot(100, 300, false)
+    expect(bubble(0)).not.toHaveAttribute('data-dragging')
+    expect(bubble(0)).not.toHaveClass('bubble-placed')
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+    fireEvent.pointerUp(stage(), { clientX: 100, clientY: 300 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].placement).toBeNull()
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+    expect(onSelectLine).not.toHaveBeenCalledWith(null)
+  })
+
+  it('saves nothing for a press on it that does not move', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 50, clientY: 100 })
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    expect(bubble(0)).toHaveAttribute('data-selected', 'true')
+  })
+
+  it("keeps the tip inside the panel when it is dragged past the panel's edge", async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(900, -50)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 1, y: 0 })
+  })
+
+  it('shows the tip while it is dragged, before anything is saved', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    expect(stage().querySelector('.bubble-tail path')).toBeNull()
+    dragDot(100, 300, false)
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    // The tip (100, 300) is (50, 275) from the bubble's centre.
+    expect(stage().querySelector('.bubble-tail path')?.getAttribute('d')).toContain('L50 275')
+    expect(bubble(0)).toHaveClass('bubble-tail-point')
+  })
+
+  it('leaves the tip where it is when the bubble is moved', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: 300, clientY: 150, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 300, clientY: 150 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], tail: { x: 0.5, y: 0.9 }, placement: { x: 0.75, y: 0.25 } })
+  })
+
+  it('nudges the tip with the arrow keys, saved once, with the focus kept on the dot', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS - 1))
+    expect(updates(calls)).toEqual([])
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.52, y: 0.9 })
+    await waitFor(() => expect(stored.dialogue[0].id).not.toBe(hello.id))
+    await waitFor(() => expect(dot()).toHaveFocus())
+  })
+
+  it('gives the tail back to the app on a double-click, without opening the text or adding a line', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    fireEvent.doubleClick(dot(), { clientX: 200, clientY: 540 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: null }, toDrafts([night])[0]] })
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+    expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
+  })
+
+  it('goes while the text is open', async () => {
+    mount()
+    await userEvent.click(bubble(0))
+    expect(dots()).toHaveLength(1)
+    await userEvent.dblClick(bubble(0))
+    expect(textBox()).toBeInTheDocument()
+    expect(dots()).toHaveLength(0)
+  })
+
+  it('creates a tail when it is dragged from a bubble with none', async () => {
+    withTail('none')
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    expect(dot()).toHaveAttribute('data-state', 'resting')
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.25, y: 0.5 })
+  })
+
+  it('draws no tail for a tip inside the bubble, and keeps the dot', async () => {
+    withTail({ x: 0.125, y: 0.04 })
+    mount()
+    await userEvent.click(bubble(0))
+    expect(stage().querySelector('.bubble-tail path')).toBeNull()
+    expect(dot()).toHaveAttribute('data-state', 'pointed')
+  })
+
+  /** A double-click on the empty panel, as a user makes it: it opens the text of a new line. */
+  function addLineOnEmptyPanel(): void {
+    const overlay = stage().querySelector<HTMLElement>('.dialogue-overlay')!
+    fireEvent.pointerDown(overlay, { clientX: 200, clientY: 300, buttons: 1 })
+    fireEvent.pointerUp(overlay, { clientX: 200, clientY: 300 })
+    fireEvent.doubleClick(overlay, { clientX: 200, clientY: 300 })
+  }
+
+  it('saves a tail nudge still waiting when the bubble is pressed', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 50, clientY: 25 })
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.51, y: 0.9 })
+  })
+
+  it('saves a tail nudge still waiting when the stage goes away', async () => {
+    withTail({ x: 0.5, y: 0.9 })
+    const { calls, unmount } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => dot().focus())
+    fireEvent.keyDown(dot(), { key: 'ArrowRight' })
+    unmount()
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[0].tail).toEqual({ x: 0.51, y: 0.9 })
+  })
+
+  it('saves a bubble nudge still waiting when the dot is pressed, then the tip on top of it', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => bubble(0).focus())
+    fireEvent.keyDown(bubble(0), { key: 'ArrowRight' })
+    vi.useRealTimers()
+    dragDot(100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[0].dialogue?.[0].placement).not.toBeNull()
+    expect(updates(calls)[1].dialogue?.[0].placement).toEqual(updates(calls)[0].dialogue?.[0].placement)
+    expect(updates(calls)[1].dialogue?.[0].tail).toEqual({ x: 0.25, y: 0.5 })
+    expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('builds a tip dragged while a retype is still saving on the new text', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    await userEvent.dblClick(bubble(0))
+    let open: () => void = () => undefined
+    gate = new Promise((resolve) => (open = resolve))
+    await userEvent.clear(textBox())
+    await userEvent.type(textBox(), 'Bye{Enter}')
+    await waitFor(() => expect(within(stage()).queryByRole('textbox')).toBeNull())
+    dragDot(100, 300)
+    open()
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[1].dialogue?.[0]).toMatchObject({ text: 'Bye', tail: { x: 0.25, y: 0.5 } })
+    await waitFor(() => expect(stored.dialogue[0].tail).toEqual({ x: 0.25, y: 0.5 }))
+    expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('does nothing for a double-click that follows a drag of the dot', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragDot(100, 300)
+    await waitFor(() => expect(stored.dialogue[0].tail).toEqual({ x: 0.25, y: 0.5 }))
+    fireEvent.doubleClick(dot(), { clientX: 100, clientY: 300 })
+    fireEvent.doubleClick(stage().querySelector('.dialogue-overlay')!, { clientX: 100, clientY: 300 })
+    await act(async () => undefined)
+    expect(updates(calls)).toHaveLength(1)
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+  })
+
+  it('gives the focus to the new line, not the dot, after the dot had it and a speech line is added', async () => {
+    mount()
+    await userEvent.click(bubble(0))
+    act(() => dot().focus())
+    addLineOnEmptyPanel()
+    await userEvent.type(textBox(), 'Hey{Enter}')
+    await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+    await waitFor(() => expect(bubble(2)).toHaveFocus())
+  })
+
+  it('gives the focus to the new line after the dot had it and a caption is added, though a caption has no dot', async () => {
+    stored = { ...stored, characters: [] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    await userEvent.click(bubble(0))
+    act(() => dot().focus())
+    addLineOnEmptyPanel()
+    await userEvent.type(textBox(), 'Hey{Enter}')
+    await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+    await waitFor(() => expect(bubble(2)).toHaveFocus())
+  })
+
+  // Real pointer events can be lost in the e2e drag (see `pointDot` there), so this is the guard on the path itself: a
+  // press on the dot and a save's remount of the bubble, in each order they can come. The press lives on the stage, not
+  // on the bubble that goes away, so the drag carries on.
+  describe("a press on the dot against the bubble's remount", () => {
+    const tails = (calls: { channel: string; req: unknown }[]) => updates(calls).map((p) => p.dialogue?.[0].tail)
+    const press = (): void => {
+      fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    }
+    const finish = (on: HTMLElement = stage()): void => {
+      fireEvent.pointerMove(on, { clientX: 100, clientY: 300, buttons: 1 })
+      fireEvent.pointerUp(on, { clientX: 100, clientY: 300 })
+    }
+    /** A drag of the bubble whose save is still going: its landing remounts the bubble, with a new line id. */
+    async function heldSave() {
+      const m = mount()
+      await userEvent.click(bubble(0))
+      let open: () => void = () => undefined
+      gate = new Promise((resolve) => (open = resolve))
+      fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+      fireEvent.pointerMove(stage(), { clientX: 60, clientY: 30, buttons: 1 })
+      fireEvent.pointerUp(stage(), { clientX: 60, clientY: 30 })
+      await waitFor(() => expect(updates(m.calls)).toHaveLength(1))
+      const before = bubble(0)
+      return {
+        ...m,
+        land: async () => {
+          await act(async () => open())
+          await act(async () => undefined)
+          expect(before.isConnected, 'the bubble remounted').toBe(false)
+        }
+      }
+    }
+    async function expectTipStored(calls: { channel: string; req: unknown }[]): Promise<void> {
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      expect(tails(calls)[1]).toEqual({ x: 0.25, y: 0.5 })
+    }
+
+    it('press, remount, then move', async () => {
+      const m = await heldSave()
+      press()
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, move past the threshold, remount, then move on', async () => {
+      const m = await heldSave()
+      press()
+      fireEvent.pointerMove(stage(), { clientX: 70, clientY: 150, buttons: 1 })
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, move under the threshold, remount, then move', async () => {
+      const m = await heldSave()
+      press()
+      fireEvent.pointerMove(stage(), { clientX: 51, clientY: 100, buttons: 1 })
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('remount, then press the new dot and drag', async () => {
+      const m = await heldSave()
+      await m.land()
+      press()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, remount, then move and release over the panel image rather than the stage', async () => {
+      const m = await heldSave()
+      press()
+      await m.land()
+      finish(media())
+      await expectTipStored(m.calls)
+    })
+
+    it('with a text save held: press, remount, then move', async () => {
+      const m = mount()
+      await userEvent.click(bubble(0))
+      let open: () => void = () => undefined
+      gate = new Promise((resolve) => (open = resolve))
+      fireEvent.doubleClick(bubble(0))
+      await userEvent.type(textBox(), ' More{Enter}')
+      await waitFor(() => expect(updates(m.calls)).toHaveLength(1))
+      press()
+      await act(async () => open())
+      await act(async () => undefined)
+      finish()
+      await expectTipStored(m.calls)
+    })
+  })
+
+  describe('Add bubble', () => {
+    const addButton = (): HTMLElement => within(stage()).getByRole('button', { name: 'Add bubble' })
+    async function choose(name: string): Promise<void> {
+      await userEvent.click(addButton())
+      await userEvent.click(within(stage()).getByRole('menuitem', { name }))
+    }
+
+    it("opens the new bubble's text", async () => {
+      const { calls } = mount()
+      await choose('Shout')
+      expect(stage().querySelector('.bubble-editor')).toHaveFocus()
+      await userEvent.type(textBox(), 'Hey{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      const line = updates(calls)[0].dialogue!.at(-1)!
+      expect(line).toMatchObject({ kind: 'speech', text: 'Hey', speakerId: MINA, style: { shape: 'shout' }, tail: null })
+      expect(line.placement).not.toBeNull()
+    })
+
+    it('a caption has no speaker and no stored style', async () => {
+      const { calls } = mount()
+      await choose('Caption')
+      await userEvent.type(textBox(), 'Later.{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)[0].dialogue!.at(-1)).toMatchObject({ kind: 'narration', speakerId: null, style: null })
+    })
+
+    it('stores each choice as the table says', async () => {
+      const { calls } = mount()
+      const want: [string, object][] = [
+        ['Speech', { kind: 'speech', speakerId: MINA, style: null }],
+        ['Whisper', { kind: 'speech', speakerId: MINA, style: { shape: 'whisper' } }],
+        ['Thought', { kind: 'thought', speakerId: MINA, style: null }],
+        ['Sound effect', { kind: 'sfx', speakerId: null, style: null }]
+      ]
+      for (const [i, [name, line]] of want.entries()) {
+        await choose(name)
+        await userEvent.type(textBox(), `Text ${i}{Enter}`)
+        await waitFor(() => expect(updates(calls)).toHaveLength(i + 1))
+        expect(updates(calls)[i].dialogue!.at(-1)).toMatchObject(line)
+        await waitFor(() => expect(stored.dialogue).toHaveLength(3 + i))
+      }
+    })
+
+    it('a bubble left empty is dropped', async () => {
+      const { calls } = mount()
+      await choose('Shout')
+      await userEvent.type(textBox(), '{Enter}')
+      expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
+      expect(updates(calls)).toHaveLength(0)
+    })
+
+    it('two new bubbles do not land on the same spot', async () => {
+      const { calls } = mount()
+      await choose('Speech')
+      await userEvent.type(textBox(), 'One{Enter}')
+      await waitFor(() => expect(stored.dialogue).toHaveLength(3))
+      await choose('Speech')
+      await userEvent.type(textBox(), 'Two{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      const [first, second] = updates(calls).map((p) => p.dialogue!.at(-1)!.placement)
+      expect(first).not.toEqual(second)
+    })
+
+    it('puts a new bubble on the next spot of the grid, counting the lines there are', async () => {
+      stored = { ...stored, dialogue: [0, 1, 2, 3, 4, 5].map((n) => ({ ...hello, id: `dlg_000000000${n}`, text: `Line ${n}` })) }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+      const { calls } = mount()
+      await choose('Caption')
+      await userEvent.type(textBox(), 'Later.{Enter}')
+      await waitFor(() => expect(updates(calls)).toHaveLength(1))
+      expect(updates(calls)[0].dialogue!.at(-1)!.placement).toEqual({ x: 0.3, y: 0.5 })
+    })
+
+    it('is disabled while a new bubble is being typed', async () => {
+      mount()
+      await choose('Shout')
+      expect(addButton()).toBeDisabled()
+      await userEvent.type(textBox(), '{Escape}')
+      expect(addButton()).toBeEnabled()
+    })
   })
 })

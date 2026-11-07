@@ -14,6 +14,8 @@ export interface LaunchOptions {
   projectsRoot?: string
   /** A directory that stands in for the export save dialog (WEBTOON_EXPORT_TARGET). */
   exportTarget?: string
+  /** Forces the main window's device scale factor. Chromium rounds a 2.5px frame border to whole device pixels, so a panel is a fraction of a px narrower at 1.25 than at 1, which a test comparing px against the export window needs to rule out. */
+  deviceScaleFactor?: number
 }
 
 export interface LaunchedApp {
@@ -47,7 +49,8 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<LaunchedApp> 
 
   // `args: ['.']` with cwd at the repo root makes app.getAppPath() the repo root, so the
   // package.json "main" entry (out/main/index.js) is what Electron runs.
-  const app = await electron.launch({ args: ['.'], cwd: repoRoot, env })
+  const args = opts.deviceScaleFactor === undefined ? ['.'] : ['.', `--force-device-scale-factor=${opts.deviceScaleFactor}`]
+  const app = await electron.launch({ args, cwd: repoRoot, env })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
   return { app, page, userDataDir, projectsRoot }

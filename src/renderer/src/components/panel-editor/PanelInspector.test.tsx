@@ -13,7 +13,7 @@ import { item, usage } from '../../test/item-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
 import { PanelInspector } from './PanelInspector'
-import { PanelStage } from './PanelStage'
+import { PanelStage, type StylePreview } from './PanelStage'
 
 const A = 'pnl_00000000aa'
 const MINA = 'chr_0000000001'
@@ -24,14 +24,18 @@ const sora = character({ id: SORA, name: 'Sora', variations: [variation({ id: 'v
 const lantern = item({ id: LANTERN, name: 'Lantern', ownerId: MINA, usages: [usage({ id: 'use_00000000l1', itemId: LANTERN, name: 'Lit' })] })
 const cast: PanelCharacter[] = [{ characterId: MINA, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }]
 const held: PanelItem = { itemId: LANTERN, usageId: 'use_00000000l1', heldBy: MINA, action: 'lit' }
-const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null }
-const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 } }
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null, style: null, tail: null }
+const night: DialogueLine = { id: 'dlg_0000000002', speakerId: null, kind: 'narration', text: 'Night fell.', placement: { x: 0.5, y: 0.8 }, style: null, tail: null }
 
 /** The panel as the main process holds it: what `panels:list` returns, and what `panels:update` changes. */
 let stored: Panel
 let ids = 0
 /** While set, `panels:update` refuses with it. */
 let refusal: string | null = null
+/** The next `panels:update` refuses with it, and the ones after it do not. */
+let refuseOnce: string | null = null
+/** While set, `panels:update` waits for it before answering: a save still in flight. */
+let hold: Promise<void> | null = null
 /** What the next `panels:update` warns about (the service checks the whole panel on every save). */
 let warnings: string[] = []
 const originalScroll = Element.prototype.scrollIntoView
@@ -40,6 +44,8 @@ beforeEach(() => {
   stored = panel({ id: A, characters: cast, dialogue: [hello, night] })
   ids = 100
   refusal = null
+  refuseOnce = null
+  hold = null
   warnings = []
   useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, selectedPanelId: A })
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [stored] } })
@@ -60,11 +66,17 @@ function replaceStored(next: Panel): void {
 
 function installApi() {
   return installFakeApi({
-    'panels:update': (req: { panelId: string; patch: PanelPatch }) => {
+    'panels:update': async (req: { panelId: string; patch: PanelPatch }) => {
+      if (hold !== null) await hold
+      if (refuseOnce !== null) {
+        const message = refuseOnce
+        refuseOnce = null
+        throw new Error(message)
+      }
       if (refusal !== null) throw new Error(refusal)
       const { dialogue, ...rest } = req.patch
       // Like the service: a dialogue save gives every line a new id.
-      const lines = dialogue?.map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null }))
+      const lines = dialogue?.map((line) => ({ ...line, id: `dlg_${String((ids += 1)).padStart(10, '0')}`, placement: line.placement ?? null, style: line.style ?? null, tail: line.tail ?? null }))
       stored = { ...stored, ...rest, ...(lines !== undefined ? { dialogue: lines } : {}) } as Panel
       return { panel: stored, warnings }
     },
@@ -73,16 +85,16 @@ function installApi() {
 }
 
 /** The inspector as the workspace mounts it: fed from the store, so saves and agent edits reach it. */
-function Host({ selectedLine, onSelectLine }: { selectedLine: number | null; onSelectLine(i: number | null): void }) {
+function Host({ selectedLine, onSelectLine, onPreviewStyle }: { selectedLine: number | null; onSelectLine(i: number | null): void; onPreviewStyle?(preview: StylePreview | null): void }) {
   const open = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((p) => p.id === A))
-  return open === undefined ? null : <PanelInspector panel={open} selectedLine={selectedLine} onSelectLine={onSelectLine} />
+  return open === undefined ? null : <PanelInspector panel={open} selectedLine={selectedLine} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />
 }
 
-function mount({ selectedLine = null }: { selectedLine?: number | null } = {}) {
+function mount({ selectedLine = null, onPreviewStyle }: { selectedLine?: number | null; onPreviewStyle?(preview: StylePreview | null): void } = {}) {
   const onSelectLine = vi.fn()
   const api = installApi()
-  const view = render(<Host selectedLine={selectedLine} onSelectLine={onSelectLine} />)
-  return { ...api, onSelectLine, rerender: (line: number | null) => view.rerender(<Host selectedLine={line} onSelectLine={onSelectLine} />), unmount: view.unmount }
+  const view = render(<Host selectedLine={selectedLine} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />)
+  return { ...api, onSelectLine, rerender: (line: number | null) => view.rerender(<Host selectedLine={line} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />), unmount: view.unmount }
 }
 
 const tab = (name: string): HTMLElement => screen.getByRole('tab', { name })
@@ -165,6 +177,27 @@ describe('PanelInspector', () => {
     const { onSelectLine } = mount()
     act(() => text(1).focus())
     expect(onSelectLine).toHaveBeenLastCalledWith(1)
+  })
+
+  it("leaves the selection alone when the focus lands on a row's buttons: a block opening or closing would move them from under the press", () => {
+    stored = { ...stored, dialogue: [night, { ...night, id: 'dlg_0000000005' }] }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    const { onSelectLine } = mount({ selectedLine: 0 })
+    act(() => within(rows()[1]).getByRole('button', { name: 'Remove' }).focus())
+    act(() => within(rows()[1]).getByRole('button', { name: 'Reset to auto' }).focus())
+    expect(onSelectLine).not.toHaveBeenCalled()
+    act(() => text(1).focus())
+    expect(onSelectLine).toHaveBeenLastCalledWith(1)
+  })
+
+  it('scrolls to the selected row once it exists: the stage selects a new line before its save lands', () => {
+    layOutRows({ area: [0, 100], rowTop: 50, rowHeight: 200 })
+    const { rerender } = mount()
+    rerender(2)
+    expect(tabPanel().scrollTop).toBe(0)
+    replaceStored({ ...stored, dialogue: [hello, night, { ...hello, id: 'dlg_0000000003', text: 'Added.' }] })
+    // The new row is 450-650 under an area of 0-100: its top is brought to the area's top.
+    expect(tabPanel().scrollTop).toBe(450)
   })
 
   it('opens Lines when the stage selects a line', () => {
@@ -279,6 +312,217 @@ describe('PanelInspector', () => {
       await waitFor(() => expect(within(rows()[1]).queryByRole('button', { name: 'Reset to auto' })).toBeNull())
     })
 
+    describe('the style block', () => {
+      const shape = (i: number, name: string): HTMLElement => within(within(rows()[i]).getByRole('group', { name: 'Shape' })).getByRole('button', { name })
+      const tailButton = (name: string): HTMLElement => within(within(rows()[0]).getByRole('group', { name: 'Tail' })).getByRole('button', { name })
+
+      it('shows the style block only under the selected row', () => {
+        mount({ selectedLine: 1 })
+        expect(within(rows()[0]).queryByRole('group', { name: 'Shape' })).toBeNull()
+        expect(within(rows()[1]).getByRole('group', { name: 'Shape' })).toBeInTheDocument()
+      })
+
+      it("draws the block after the row's buttons, so opening it moves neither them nor the fields", () => {
+        mount({ selectedLine: 0 })
+        const actions = rows()[0].querySelector('.form-actions')!
+        const block = rows()[0].querySelector('.bubble-style')!
+        expect(actions.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      })
+
+      it('Reset style leaves the focus on the Font select of the same row, and the style goes', async () => {
+        const styled = { ...hello, style: { fill: '#ff0000' } }
+        stored = { ...stored, dialogue: [styled, night] }
+        usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+        mount({ selectedLine: 0 })
+        await userEvent.click(within(rows()[0]).getByRole('button', { name: 'Reset style' }))
+        expect(within(rows()[0]).queryByRole('button', { name: 'Reset style' })).toBeNull()
+        expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
+        await waitFor(() => expect(stored.dialogue[0].style).toBeNull(), { timeout: 2000 })
+        expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
+      })
+
+      it("a row's save landing leaves another row's waiting preview on the stage", async () => {
+        fakeTimers()
+        let shown: StylePreview | null = null
+        const { rerender } = mount({ selectedLine: 0, onPreviewStyle: (preview) => (shown = preview) })
+        fireEvent.click(shape(0, 'Shout'))
+        expect(shown).toEqual({ index: 0, style: { shape: 'shout' } })
+        await wait(300)
+        rerender(1)
+        fireEvent.click(shape(1, 'Whisper'))
+        expect(shown).toEqual({ index: 1, style: { shape: 'whisper' } })
+        // The first row's save is sent and lands here; the second row's is still waiting, for another 300 ms.
+        await wait(300)
+        expect(stored.dialogue[0].style).toEqual({ shape: 'shout' })
+        expect(stored.dialogue[1].style).toBeNull()
+        expect(shown).toEqual({ index: 1, style: { shape: 'whisper' } })
+        await wait(300)
+        expect(stored.dialogue[1].style).toEqual({ shape: 'whisper' })
+        expect(shown).toBeNull()
+      })
+
+      it('saves a style after the wait, with the rest of the dialogue untouched', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(599)
+        expect(updates(calls)).toEqual([])
+        await wait(1)
+        vi.useRealTimers()
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], style: { shape: 'shout' } }, toDrafts([night])[0]] })
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'true')
+      })
+
+      it('saves a waiting style when the row is left', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        act(() => shape(0, 'Shout').focus())
+        fireEvent.click(shape(0, 'Shout'))
+        expect(updates(calls)).toEqual([])
+        vi.useRealTimers()
+        act(() => shape(0, 'Shout').blur())
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0].dialogue?.[0].style).toEqual({ shape: 'shout' })
+      })
+
+      it('a style and typed text in the same row both land', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+      })
+
+      it('a refused style save says so, and Undo my change drops it', async () => {
+        refusal = 'Dialogue is too long'
+        const { calls } = mount({ selectedLine: 0 })
+        act(() => shape(0, 'Shout').focus())
+        fireEvent.click(shape(0, 'Shout'))
+        act(() => shape(0, 'Shout').blur())
+        const alert = await within(tabPanel()).findByRole('alert')
+        expect(alert).toHaveTextContent('Dialogue is too long')
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'true')
+        fireEvent.click(within(alert).getByRole('button', { name: 'Undo my change' }))
+        expect(shape(0, 'Shout')).toHaveAttribute('aria-pressed', 'false')
+        expect(shape(0, 'Auto')).toHaveAttribute('aria-pressed', 'true')
+        await act(async () => undefined)
+        expect(updates(calls)).toHaveLength(1)
+      })
+
+      const dawn: DialogueLine = { id: 'dlg_0000000003', speakerId: null, kind: 'narration', text: 'Dawn broke.', placement: null, style: null, tail: null }
+
+      it('a style picked before Remove does not land on the next line', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Remove' }))
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(rows()).toHaveLength(1))
+        expect(text(0)).toHaveValue('Night fell.')
+        expect(stored.dialogue.map((l) => l.style)).toEqual([null])
+        expect(updates(calls)).toHaveLength(1)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+      })
+
+      it('a style picked before a line above it is deleted does not land on the wrong line', async () => {
+        fakeTimers()
+        stored = { ...stored, dialogue: [hello, night, dawn] }
+        usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+        const { calls } = mount({ selectedLine: 1 })
+        fireEvent.click(shape(1, 'Shout'))
+        // The line above is deleted elsewhere (the stage, or the agent): the styled row now shows the third line.
+        replaceStored({ ...stored, dialogue: [{ ...night, id: 'dlg_0000000011' }, { ...dawn, id: 'dlg_0000000012' }] })
+        await wait(1200)
+        vi.useRealTimers()
+        expect(await within(tabPanel()).findByText('This line changed while you were editing it.')).toBeInTheDocument()
+        expect(updates(calls)).toEqual([])
+        expect(stored.dialogue.map((l) => l.style)).toEqual([null, null])
+        expect(shape(1, 'Shout')).toHaveAttribute('aria-pressed', 'false')
+      })
+
+      it('a style pending while the text is refused still saves', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        await wait(100)
+        fireEvent.click(shape(0, 'Shout'))
+        let release = (): void => undefined
+        hold = new Promise<void>((resolve) => (release = resolve))
+        refuseOnce = 'Dialogue is too long'
+        // The text save is sent at 600 ms and held; the style is sent at 700 ms behind it.
+        await wait(700)
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(stored.dialogue[0].text).toBe('Hello.')
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      /** Types text and lets its save be sent and held, then picks a style: the pick is made while the text is saving. */
+      async function pickWhileTextSaves(): Promise<{ release(): void; calls: { channel: string; req: unknown }[] }> {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        let release = (): void => undefined
+        hold = new Promise<void>((resolve) => (release = resolve))
+        await wait(600)
+        expect(updates(calls)).toHaveLength(1)
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(600)
+        return { release, calls }
+      }
+
+      it('a style picked while the text is saving still saves when the text lands', async () => {
+        const { release, calls } = await pickWhileTextSaves()
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      it('a style picked while the text is saving still saves when the text is refused', async () => {
+        refuseOnce = 'Dialogue is too long'
+        const { release, calls } = await pickWhileTextSaves()
+        release()
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0].style).toEqual({ shape: 'shout' }))
+        expect(stored.dialogue[0].text).toBe('Hello.')
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      it('style first, then text, both land', async () => {
+        fakeTimers()
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(shape(0, 'Shout'))
+        await wait(100)
+        fireEvent.change(text(0), { target: { value: 'Hi.' } })
+        await wait(1200)
+        vi.useRealTimers()
+        await waitFor(() => expect(stored.dialogue[0]).toMatchObject({ text: 'Hi.', style: { shape: 'shout' } }))
+        expect(updates(calls)).toHaveLength(2)
+        expect(within(tabPanel()).queryByRole('alert')).toBeNull()
+        expect(within(tabPanel()).queryByText('This line changed while you were editing it.')).toBeNull()
+      })
+
+      it('Tail buttons save at once', async () => {
+        const { calls } = mount({ selectedLine: 0 })
+        fireEvent.click(tailButton('None'))
+        await waitFor(() => expect(updates(calls)).toHaveLength(1))
+        expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], tail: 'none' }, toDrafts([night])[0]] })
+        await waitFor(() => expect(tailButton('None')).toHaveAttribute('aria-pressed', 'true'))
+      })
+    })
+
     it('removes a line', async () => {
       const { calls } = mount()
       fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Remove' }))
@@ -303,7 +547,7 @@ describe('PanelInspector', () => {
       fireEvent.change(text(2), { target: { value: ' Later. ' } })
       act(() => text(2).blur())
       await waitFor(() => expect(updates(calls)).toHaveLength(1))
-      expect(updates(calls)[0]).toEqual({ dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Later.', placement: null }] })
+      expect(updates(calls)[0]).toEqual({ dialogue: [...toDrafts([hello, night]), { speakerId: MINA, kind: 'speech', text: 'Later.', placement: null, style: null, tail: null }] })
       await waitFor(() => expect(stored.dialogue).toHaveLength(3))
       expect(rows()).toHaveLength(3)
       expect(text(2)).toHaveValue('Later.')

@@ -1469,6 +1469,19 @@ kbd {
   pointer-events: none;
 }
 
+/* The Add bubble button sits left of the zoom controls; its menu is fixed to the window and opens upward from the button (left and bottom are set when it opens), so the stage's clip cannot cut it. */
+.stage-add {
+  position: relative;
+  pointer-events: auto;
+}
+
+.stage-add > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+}
+
 .stage-zoom-controls {
   display: flex;
   align-items: center;
@@ -1603,6 +1616,101 @@ kbd {
 
 .line-row > .form-actions {
   flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+/* The selected line's look, full width under its fields: three lines (shape and tail; font, size, lettering; colours),
+   each wrapping on its own when the column is narrow. */
+.bubble-style {
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble-style-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.bubble-style-group,
+.bubble-style .field,
+.bubble-style-slider {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.bubble-style-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.bubble-style-label,
+.line-row .bubble-style .field > label,
+.bubble-style-hint {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+/* The row hides every field label for screen readers; the block shows its own. */
+.line-row .bubble-style .field > label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+}
+
+.bubble-style .icon-button {
+  width: var(--control-height);
+  height: var(--control-height);
+}
+
+.bubble-style .icon-button svg {
+  flex: none;
+}
+
+.bubble-style-buttons > button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.bubble-style-buttons > button:not(.icon-button) {
+  padding: 0 10px;
+}
+
+.bubble-style .field select {
+  width: 140px;
+}
+
+.bubble-style input[type='color'] {
+  width: var(--control-height);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.bubble-style input[type='range'] {
+  width: 110px;
+  min-height: var(--control-height);
+  padding: 0;
+  accent-color: var(--accent);
+  background: transparent;
+  border: 0;
+}
+
+.bubble-style output {
+  min-width: 3.5em;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bubble-style-reset {
   margin-left: auto;
 }
 
@@ -1899,10 +2007,12 @@ kbd {
   outline-color: var(--accent);
 }
 
+/* Clip, not hidden: a hidden box can still be scrolled, and focus on anything past its edge would slide the art up in
+   its frame. */
 .panel-media {
   position: relative;
   width: 100%;
-  overflow: hidden;
+  overflow: clip;
   background: var(--raised);
 }
 
@@ -2187,10 +2297,10 @@ kbd {
   box-sizing: border-box;
   max-width: 62%;
   font-family: 'Comic Neue', var(--font);
-  font-size: calc(clamp(9px, 3.4cqw, 20px) * var(--lettering));
+  font-size: calc(clamp(9px, 3.4cqw, 20px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 700;
   line-height: 1.15;
-  color: #111;
+  color: var(--bubble-color, #111);
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -2223,7 +2333,9 @@ kbd {
   outline: none;
 }
 
+/* The selected bubble comes to the front, so one under another takes the press, and so does its dot. */
 .dialogue-overlay[data-editing='true'] .bubble[data-selected='true'] {
+  z-index: 1;
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -2245,7 +2357,7 @@ kbd {
   font: inherit;
   letter-spacing: inherit;
   line-height: inherit;
-  text-align: center;
+  text-align: inherit;
   text-transform: inherit;
   color: inherit;
   background: transparent;
@@ -2272,7 +2384,41 @@ kbd {
   align-self: flex-end;
 }
 
-/* An oval balloon with a pointed tail: a black wedge with a white wedge inside it, toward the speaker. */
+/* A shout's burst and a thought's cloud are inline SVG (BubbleBody), so they take the bubble's colours; the text sits
+   above them. */
+.bubble-body {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: var(--bubble-fill, #fff);
+  stroke: var(--bubble-stroke, #111);
+}
+
+.bubble-shout .bubble-body polygon {
+  stroke-width: calc(var(--bubble-stroke-width, 2px) * 1.5);
+  stroke-linejoin: round;
+}
+
+.bubble-thought .bubble-body .bubble-body-outline {
+  fill: var(--bubble-stroke, #111);
+  stroke-width: calc(var(--bubble-stroke-width, 2px) * 2.5);
+}
+
+.bubble-thought .bubble-body .bubble-body-fill {
+  stroke: none;
+}
+
+.bubble-text,
+.bubble-editor {
+  position: relative;
+}
+
+/* An oval balloon with a pointed tail: a wedge in the outline's colour with one in the fill's inside it, toward the
+   speaker. The fill's wedge is inset by multiples of the outline's width, so the tail's sides match the body at any
+   width. Both reach up past the oval by a fixed 3 and 4 px, which is for its curve and not its outline. */
 .bubble-speech,
 .bubble-whisper,
 .bubble-shout {
@@ -2281,9 +2427,16 @@ kbd {
 }
 
 .bubble-speech,
+.bubble-whisper,
+.bubble-caption {
+  background: var(--bubble-fill, #fff);
+  border-width: var(--bubble-stroke-width, 2px);
+  border-style: solid;
+  border-color: var(--bubble-stroke, #111);
+}
+
+.bubble-speech,
 .bubble-whisper {
-  background: #fff;
-  border: 2px solid #111;
   border-radius: 50%;
 }
 
@@ -2294,10 +2447,9 @@ kbd {
 
 .bubble-shout {
   padding: 1.7em 1.9em;
-  font-size: calc(clamp(10px, 4cqw, 24px) * var(--lettering));
+  font-size: calc(clamp(10px, 4cqw, 24px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 700;
   letter-spacing: 0.02em;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -8 104 116' preserveAspectRatio='none'%3E%3Cpolygon points='100.0,50.0 92.7,54.7 98.5,60.8 89.3,63.4 94.3,70.9 83.7,71.0 87.4,79.8 79.8,80.3 78.4,87.0 70.4,85.1 67.7,92.1 60.3,87.6 56.0,94.7 50.0,87.8 44.0,94.7 40.2,85.8 32.3,92.1 29.1,85.9 21.6,87.0 20.8,79.6 12.6,79.8 14.6,72.0 5.7,70.9 10.7,63.4 1.5,60.8 9.3,54.4 0.0,50.0 5.3,45.1 1.5,39.2 8.9,36.0 5.7,29.1 14.6,28.0 12.6,20.2 22.1,21.7 21.6,13.0 30.9,17.3 32.3,7.9 39.2,10.7 44.0,5.3 50.0,10.4 56.0,5.3 60.3,12.4 67.7,7.9 69.5,16.5 78.4,13.0 77.2,22.4 87.4,20.2 87.0,27.0 94.3,29.1 91.1,36.0 98.5,39.2 92.7,45.3' fill='white' stroke='black' stroke-width='3' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
 
 .bubble-tail-down.bubble-speech::before,
@@ -2309,10 +2461,11 @@ kbd {
   position: absolute;
   top: calc(100% - 3px);
   left: 24%;
-  width: calc(var(--tail) * 1.1);
+  /* No outline, no wedge of it: its edges would show around the fill's. Any width above 0 is far past the full one. */
+  width: min(var(--tail) * 1.1, var(--bubble-stroke-width, 2px) * 1000);
   height: var(--tail);
   content: '';
-  background: #111;
+  background: var(--bubble-stroke, #111);
   clip-path: polygon(0 0, 100% 0, 15% 100%);
 }
 
@@ -2324,11 +2477,11 @@ kbd {
 .bubble-tail-edge.bubble-shout::after {
   position: absolute;
   top: calc(100% - 4px);
-  left: calc(24% + 3px);
-  width: calc(var(--tail) * 1.1 - 6px);
-  height: calc(var(--tail) - 5px);
+  left: calc(24% + var(--bubble-stroke-width, 2px) * 1.5);
+  width: calc(var(--tail) * 1.1 - var(--bubble-stroke-width, 2px) * 3);
+  height: calc(var(--tail) - var(--bubble-stroke-width, 2px) * 2.5);
   content: '';
-  background: #fff;
+  background: var(--bubble-fill, #fff);
   clip-path: polygon(0 0, 100% 0, 15% 100%);
 }
 
@@ -2341,7 +2494,7 @@ kbd {
 
 .bubble-side-right.bubble-tail-down::after,
 .bubble-side-right.bubble-tail-edge::after {
-  right: calc(24% + 3px);
+  right: calc(24% + var(--bubble-stroke-width, 2px) * 1.5);
   left: auto;
   clip-path: polygon(0 0, 100% 0, 85% 100%);
 }
@@ -2354,7 +2507,7 @@ kbd {
 
 .bubble-side-center.bubble-tail-down::after,
 .bubble-side-center.bubble-tail-edge::after {
-  left: calc(50% - var(--tail) * 0.55 + 3px);
+  left: calc(50% - var(--tail) * 0.55 + var(--bubble-stroke-width, 2px) * 1.5);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
@@ -2386,18 +2539,18 @@ kbd {
   min-width: 7em;
   padding: 1.9em 2.4em;
   margin-bottom: 1.4em;
-  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering));
+  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 400;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-7 -4 114 108' preserveAspectRatio='none'%3E%3Ccircle cx='50' cy='50' r='32' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='24' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='76' cy='48' r='22' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='28' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='36' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='64' cy='72' r='20' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='30' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='16' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='84' cy='70' r='14' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='8' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='92' cy='50' r='12' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='16' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='84' r='15' fill='black' stroke='black' stroke-width='5' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='32' fill='white'/%3E%3Ccircle cx='24' cy='48' r='22' fill='white'/%3E%3Ccircle cx='76' cy='48' r='22' fill='white'/%3E%3Ccircle cx='36' cy='28' r='20' fill='white'/%3E%3Ccircle cx='64' cy='28' r='20' fill='white'/%3E%3Ccircle cx='36' cy='72' r='20' fill='white'/%3E%3Ccircle cx='64' cy='72' r='20' fill='white'/%3E%3Ccircle cx='16' cy='30' r='14' fill='white'/%3E%3Ccircle cx='84' cy='30' r='14' fill='white'/%3E%3Ccircle cx='16' cy='70' r='14' fill='white'/%3E%3Ccircle cx='84' cy='70' r='14' fill='white'/%3E%3Ccircle cx='8' cy='50' r='12' fill='white'/%3E%3Ccircle cx='92' cy='50' r='12' fill='white'/%3E%3Ccircle cx='50' cy='16' r='15' fill='white'/%3E%3Ccircle cx='50' cy='84' r='15' fill='white'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
 
-.bubble-thought::before,
-.bubble-thought::after {
+/* Only an automatic tail has these puffs: a stored tip draws its own (`.bubble-tail`), and `none` draws nothing. */
+.bubble-thought:not(.bubble-tail-none, .bubble-tail-point)::before,
+.bubble-thought:not(.bubble-tail-none, .bubble-tail-point)::after {
   position: absolute;
   left: 22%;
   content: '';
-  background: #fff;
-  border: 2px solid #111;
+  background: var(--bubble-fill, #fff);
+  border: var(--bubble-stroke-width, 2px) solid var(--bubble-stroke, #111);
   border-radius: 50%;
 }
 
@@ -2432,34 +2585,88 @@ kbd {
   left: calc(50% - 0.8em);
 }
 
+/* 1 x 1: Chromium paints nothing for a 0 x 0 svg, even with overflow visible. Coordinates are px from the bubble's centre. */
+.bubble-tail {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bubble-tail path,
+.bubble-tail ellipse {
+  fill: var(--bubble-fill, #fff);
+  stroke: var(--bubble-stroke, #111);
+  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-linejoin: round;
+}
+
+.bubble-whisper .bubble-tail path {
+  stroke-dasharray: 4 3;
+}
+
+/* The dot at a tail's tip, drawn only when the stage gives the tail a handle: 14px on screen at any zoom, with a 24px hit area. */
+.bubble-tail-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(14px / var(--stage-scale, 1));
+  height: calc(14px / var(--stage-scale, 1));
+  translate: -50% -50%;
+  /* Over the bubble's text, which is positioned and comes after it. */
+  z-index: 1;
+  cursor: grab;
+  background: var(--accent);
+  border: calc(2px / var(--stage-scale, 1)) solid #fff;
+  border-radius: 50%;
+}
+
+.bubble-tail-handle::before {
+  position: absolute;
+  inset: calc(-7px / var(--stage-scale, 1));
+  content: '';
+  border-radius: 50%;
+}
+
+.bubble-tail-handle[data-state='resting'] {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+.bubble-tail-handle:focus-visible {
+  outline: calc(2px / var(--stage-scale, 1)) solid var(--accent);
+  outline-offset: calc(2px / var(--stage-scale, 1));
+}
+
 /* A caption box: square corners and a hard offset shadow, in the top corner. */
 .bubble-caption {
   max-width: 72%;
   padding: 0.5em 0.75em;
-  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering));
+  font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   text-align: left;
-  background: #fff;
-  border: 2px solid #111;
-  box-shadow: 0.25em 0.25em 0 #111;
+  box-shadow: 0.25em 0.25em 0 var(--bubble-stroke, #111);
 }
 
 /* Sound effects: big outlined lettering over the middle of the art, tilted. */
 .bubble-sfx {
   max-width: 92%;
   font-family: 'Bangers', 'Comic Neue', var(--font);
-  font-size: calc(clamp(18px, 9cqw, 64px) * var(--lettering));
+  font-size: calc(clamp(18px, 9cqw, 64px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0.05em;
-  color: #fff;
-  text-shadow: 0.06em 0.07em 0 #111;
+  color: var(--bubble-color, #fff);
+  text-shadow: 0.06em 0.07em 0 var(--bubble-stroke, #111);
   transform: rotate(-8deg) skewX(-8deg);
-  -webkit-text-stroke: 0.09em #111;
+  -webkit-text-stroke: 0.09em var(--bubble-stroke, #111);
   paint-order: stroke fill;
 }
 
 .bubble-sfx.bubble-loud {
-  font-size: calc(clamp(24px, 14cqw, 96px) * var(--lettering));
+  font-size: calc(clamp(24px, 14cqw, 96px) * var(--lettering) * var(--bubble-size, 1));
 }
 
 .bubble-sfx.bubble-tilt-right {

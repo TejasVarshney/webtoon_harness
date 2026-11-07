@@ -15,6 +15,43 @@ async function boxOf(locator: Locator): Promise<{ x: number; y: number; width: n
   return box!
 }
 
+/** Drags the selected bubble's tail dot, by its centre on screen, to a fraction of the panel. */
+async function dragDot(page: Page, stage: Locator, x: number, y: number): Promise<void> {
+  // Waits until the dot's position is the same on two reads in a row.
+  let dot = await boxOf(stage.locator('.bubble-tail-handle'))
+  await expect
+    .poll(async () => {
+      const next = await boxOf(stage.locator('.bubble-tail-handle'))
+      const still = next.x === dot.x && next.y === dot.y
+      dot = next
+      return still
+    })
+    .toBe(true)
+  const media = await boxOf(stage.locator('.panel-media'))
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(media.x + media.width * x, media.y + media.height * y, { steps: 12 })
+  await page.mouse.up()
+}
+
+/**
+ * Drags the dot, and once more if `saved` does not then say the tail is stored. Now and then an injected drag stores
+ * nothing, and may do nothing at all. A real OS pointer event during it is the likely cause: it ends the press at the
+ * `(e.buttons & 1) === 0` guard in `useBubbleEditing`. `PanelStage.test.tsx` holds a press on the dot against the bubble's
+ * remount in each order, which is the real guard on this path: one extra try here cannot hide a drag that mostly fails.
+ */
+async function pointDot(page: Page, stage: Locator, x: number, y: number, saved: () => Promise<boolean>): Promise<void> {
+  const attempt = async (): Promise<void> => {
+    await dragDot(page, stage, x, y)
+    await expect.poll(saved, { timeout: 2500 }).toBe(true)
+  }
+  await attempt().catch(async () => {
+    // Said out loud, so a drag that often fails shows in the run's output instead of passing unseen.
+    console.log('pointDot: the first drag stored no tip, trying once more')
+    await attempt()
+  })
+}
+
 /** Sets the window's outer size, and waits until the page has its new content size. */
 async function setWindowSize(app: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
   const [w, h] = await app.evaluate(({ BrowserWindow }, [w, h]) => {
@@ -147,12 +184,22 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   await expect.poll(async () => (await stored()).items.map((i: { itemId: string }) => i.itemId)).toEqual([item.id])
   expect((await stored()).versions).toHaveLength(versions)
 
+  // 5b. The line is styled and pointed, so the chat's fix lands on a styled line.
+  await bubble.click()
+  await workspace.getByRole('tab', { name: 'Lines' }).click()
+  await workspace.getByLabel('Fill', { exact: true }).fill('#ffe066')
+  await expect.poll(async () => (await stored()).dialogue[0].style?.fill).toBe('#ffe066')
+  await pointDot(page, stage, 0.7, 0.92, async () => (await stored()).dialogue[0].tail !== null)
+  const pointed = (await stored()).dialogue[0].tail
+
   // 6. The panel chat fixes the line: its text changes, the user's spot stays, and nothing is redrawn.
   await workspace.getByTestId('composer-input').fill('Make her line say it is so huge')
   await workspace.getByTestId('composer-send').click()
   await expect(workspace.getByTestId('message-assistant').last()).toContainText('Fixed the line.')
   await expect.poll(async () => (await stored()).dialogue[0].text).toBe(fixed)
   expect(near((await stored()).dialogue[0].placement)).toBe(true)
+  expect((await stored()).dialogue[0].style.fill, 'the look survives the chat').toBe('#ffe066')
+  expect((await stored()).dialogue[0].tail, 'the tail survives the chat').toEqual(pointed)
   expect((await stored()).versions).toHaveLength(versions)
   await expect(stage.locator('.dialogue-placed .bubble')).toHaveText(fixed)
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
@@ -351,5 +398,306 @@ test('a zoomed panel moves with the middle button, or with Space and a drag', as
   await page.mouse.dblclick(cx, cy)
   await expect(stage.getByRole('textbox', { name: 'Line text' })).toBeFocused()
   await page.keyboard.press('Escape')
+  await app.close()
+})
+
+// Add a Shout bubble from the stage, give it a font and a fill, point its tail with the dot, and find all of it on the
+// strip: the card draws the shout in that fill with a tail, and the panel's JSON holds the look and the tail.
+test('add, style and point a bubble, and find it on the strip', async () => {
+  const { app, page, projectsRoot } = await launchApp()
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('img')).toHaveCount(1)
+  await setWindowSize(app, page, 1440, 900)
+  const stored = async () => (await readProjectJson(projectsRoot, 'panels'))[0]
+
+  await workspace.getByRole('button', { name: 'Add bubble', exact: true }).click()
+  await workspace.getByRole('menuitem', { name: 'Shout' }).click()
+  await expect(stage.locator('.bubble-editor')).toBeFocused()
+  await page.keyboard.type('BOOM!')
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => (await stored()).dialogue[0]?.style).toEqual({ shape: 'shout' })
+
+  await workspace.getByLabel('Font', { exact: true }).selectOption({ label: 'Anton' })
+  await workspace.getByLabel('Fill', { exact: true }).fill('#ff8800')
+  await expect.poll(async () => (await stored()).dialogue[0].style).toMatchObject({ shape: 'shout', font: 'impact', fill: '#ff8800' })
+
+  await pointDot(page, stage, 0.75, 0.9, async () => (await stored()).dialogue[0].tail !== null)
+  await expect(stage.locator('.bubble-tail path')).toHaveCount(1)
+
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+  const card = page.getByTestId('panel-card').first()
+  const shout = card.locator('.bubble-shout')
+  await expect(shout).toHaveText('BOOM!')
+  expect(await shout.evaluate((el: any) => el.style.getPropertyValue('--bubble-fill'))).toBe('#ff8800')
+  await expect(card.locator('.bubble-tail path')).toHaveCount(1)
+  const line = (await stored()).dialogue[0]
+  expect(line.style).toBeTruthy()
+  expect(line.tail).toMatchObject({ x: expect.any(Number), y: expect.any(Number) })
+  await app.close()
+})
+
+// In the smallest window the stage is short, and the menu must still show all six choices: each one is what a click at
+// its centre reaches, and a real click on Speech opens the new bubble's text.
+test('the Add bubble menu shows all six choices in the smallest window', async () => {
+  const { app, page } = await launchApp()
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('img')).toHaveCount(1)
+  await setWindowSize(app, page, 960, 600)
+
+  await workspace.getByRole('button', { name: 'Add bubble', exact: true }).click()
+  const names = ['Speech', 'Shout', 'Whisper', 'Thought', 'Caption', 'Sound effect']
+  for (const name of names) {
+    const box = await boxOf(page.getByRole('menuitem', { name, exact: true }))
+    const hit = await page.evaluate(([x, y]) => {
+      const el = (globalThis as any).document.elementFromPoint(x, y)
+      return el?.closest('[role="menuitem"]')?.textContent ?? null
+    }, [box.x + box.width / 2, box.y + box.height / 2])
+    expect(hit, `${name} is what a click at its centre reaches`).toBe(name)
+  }
+  await page.getByRole('menuitem', { name: 'Speech', exact: true }).click()
+  await expect(stage.locator('.bubble-editor')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await app.close()
+})
+
+/** A panel the mock draws with these lines and no cast, open in the editor at a laptop size. */
+async function openPanelWith(dialogue: object[]) {
+  const { app, page, projectsRoot } = await launchApp({
+    script: {
+      turns: [
+        { toolCalls: [{ name: 'create_panel', input: { episodeId: { $episode: 'current' }, description: 'An empty street.', setting: 'Street at night', shot: 'wide', characters: [], dialogue } }] },
+        { text: 'Drew panel 1.' }
+      ]
+    }
+  })
+  await createProjectAndSession(page, 'Moon Diary')
+  await sendChat(page, 'Draw panel 1', 'Drew panel 1.')
+  await page.getByTestId('tab-webtoon').click()
+  const card = page.getByTestId('panel-card').first()
+  await expect(card.locator('img')).toHaveCount(1)
+  const panelId = (await card.getAttribute('data-panel-id'))!
+  await setWindowSize(app, page, 1440, 900)
+  await card.click()
+  const workspace = page.getByTestId('panel-workspace')
+  const stage = workspace.getByTestId('panel-stage')
+  await expect(stage.locator('.bubble')).toHaveCount(dialogue.length)
+  const stored = async (): Promise<any[]> => (await readProjectJson(projectsRoot, `panels/${panelId}.json`)).dialogue
+  return { app, page, workspace, stage, stored }
+}
+
+// A press focuses a button before it is released. If that focus selected the row, its style block would open and the
+// button would move from under the pointer, or a block above would close and move it up, and no click would fire. So
+// these are real clicks, on rows that are not selected.
+test("a row's buttons take the first click, and a lower row's text takes the focus, with a block open above or not", async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const narrated = (text: string, placement: object | null = null) => ({ speakerId: null, kind: 'narration', text, placement })
+  const { app, workspace, page, stored } = await openPanelWith([narrated('One'), narrated('Two', spot), narrated('Three', spot), narrated('Four'), narrated('Five'), narrated('Six')])
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+  const texts = async (): Promise<string[]> => (await stored()).map((l) => l.text)
+
+  // Nothing is selected: Remove and Reset to auto act on the first click, and open no block.
+  await expect(area.locator('.bubble-style')).toHaveCount(0)
+  await row(5).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(texts).toEqual(['One', 'Two', 'Three', 'Four', 'Five'])
+  await row(1).getByRole('button', { name: 'Reset to auto' }).click()
+  await expect.poll(async () => (await stored())[1].placement).toBeNull()
+  await expect(area.locator('.bubble-style')).toHaveCount(0)
+
+  // With a block open on the first row, the same goes for the rows below it, and the block stays where it is.
+  await row(0).getByLabel('Text', { exact: true }).click()
+  await expect(row(0).locator('.bubble-style')).toBeVisible()
+  await row(4).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(texts).toEqual(['One', 'Two', 'Three', 'Four'])
+  await row(2).getByRole('button', { name: 'Reset to auto' }).click()
+  await expect.poll(async () => (await stored())[2].placement).toBeNull()
+  await expect(row(0).locator('.bubble-style')).toBeVisible()
+
+  // The text of a lower row moves up as the block above it closes, under the press: it still has the focus, and what
+  // is typed lands in that row.
+  const lower = row(3).getByLabel('Text', { exact: true })
+  await lower.click()
+  await expect(lower).toBeFocused()
+  await expect(row(3).locator('.bubble-style')).toBeVisible()
+  await expect(row(0).locator('.bubble-style')).toHaveCount(0)
+  await page.keyboard.type(' typed')
+  await expect.poll(async () => (await stored())[3].text).toContain('typed')
+  expect((await texts()).slice(0, 3)).toEqual(['One', 'Two', 'Three'])
+  await app.close()
+})
+
+// A removal is not a reason to scroll: the user is working where they clicked. Row 0 is selected and off screen, and a
+// Remove near the bottom must leave the Lines area where it is.
+test('Remove leaves the Lines list where it was scrolled, with the selected row off screen', async () => {
+  const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+  const { app, workspace, stored } = await openPanelWith(names.map((text) => ({ speakerId: null, kind: 'narration', text, placement: null })))
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+
+  await row(0).getByLabel('Text', { exact: true }).click()
+  await expect(row(0)).toHaveAttribute('aria-current', 'true')
+  const scrollTop = (): Promise<number> => area.evaluate((el: any) => el.scrollTop)
+  await area.evaluate((el: any) => {
+    el.scrollTop = el.scrollHeight
+  })
+  const before = await scrollTop()
+  expect(before).toBeGreaterThan(0)
+  const rowHeight = (await boxOf(row(7))).height
+
+  // Twice: it must not come back on the second, either.
+  for (const left of [8, 7]) {
+    await row(left - 1).getByRole('button', { name: 'Remove' }).click()
+    await expect.poll(async () => (await stored()).length).toBe(left)
+    await expect(area.locator('.line-row')).toHaveCount(left)
+    // The browser clamps the position to the shorter list: at the bottom, that is all that may change. A scroll back to
+    // the selected row would land near 0.
+    const furthest = await area.evaluate((el: any) => el.scrollHeight - el.clientHeight)
+    expect(Math.abs((await scrollTop()) - Math.min(before, furthest))).toBeLessThanOrEqual(rowHeight)
+    expect(await scrollTop()).toBeGreaterThan(rowHeight * 3)
+    await expect(row(0)).toHaveAttribute('aria-current', 'true')
+    await expect(row(0).getByLabel('Text', { exact: true })).toHaveValue('One')
+  }
+  await app.close()
+})
+
+// Selection is by index, so a removal above the selected line would leave the block on the next one.
+test('Remove above the selected row keeps its style block on the same line', async () => {
+  const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven']
+  const { app, workspace, stage, stored } = await openPanelWith(names.map((text) => ({ speakerId: null, kind: 'narration', text, placement: null })))
+  const area = workspace.getByRole('tabpanel')
+  const row = (i: number): Locator => area.locator('.line-row').nth(i)
+  const open = area.locator('.line-row:has(.bubble-style)')
+
+  await row(3).getByLabel('Text', { exact: true }).click()
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Four')
+  await row(1).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(async () => (await stored()).map((l) => l.text)).toEqual(['One', 'Three', 'Four', 'Five', 'Six', 'Seven'])
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Four')
+  await expect(stage.locator('.bubble[data-selected="true"]')).toHaveText('Four')
+
+  // The same with the last line selected.
+  await row(5).getByLabel('Text', { exact: true }).click()
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Seven')
+  await row(0).getByRole('button', { name: 'Remove' }).click()
+  await expect.poll(async () => (await stored()).length).toBe(5)
+  await expect(open).toHaveCount(1)
+  await expect(open.getByLabel('Text', { exact: true })).toHaveValue('Seven')
+  await expect(stage.locator('.bubble[data-selected="true"]')).toHaveText('Seven')
+  await app.close()
+})
+
+/** Presses a bubble at its centre and drags it to a point of the panel, in fractions; beyond 1 is past its edge. */
+async function dragBubble(page: Page, stage: Locator, bubble: Locator, x: number, y: number): Promise<void> {
+  const from = await boxOf(bubble)
+  const media = await boxOf(stage.locator('.panel-media'))
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(media.x + media.width * x, media.y + media.height * y, { steps: 12 })
+  await page.mouse.up()
+}
+
+// A bubble at the panel's edge has its resting dot held inside the panel, where a press can reach it, and focus on the
+// dot scrolls nothing: the art stays in its frame.
+test("a resting dot at the panel's edge can be pressed and tabbed to, and the art stays put", async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const { app, page, stage, stored } = await openPanelWith([
+    { speakerId: null, kind: 'speech', text: 'Low', placement: spot, tail: 'none' },
+    // No speaker in the cast: its automatic tail leaves through the top of the frame.
+    { speakerId: null, kind: 'speech', text: 'High', placement: { x: 0.5, y: 0.3 } }
+  ])
+  const dot = stage.locator('.bubble-tail-handle')
+  const scrolled = (): Promise<number> => stage.locator('.panel-media').evaluate((el: any) => el.scrollTop)
+  const dotTakesThePress = async (): Promise<string | null> => {
+    const box = await boxOf(dot)
+    return page.evaluate(([x, y]) => (globalThis as any).document.elementFromPoint(x, y)?.className ?? null, [box.x + box.width / 2, box.y + box.height / 2])
+  }
+
+  // At the bottom edge, with no tail: the dot rests below the bubble, or would.
+  const low = stage.locator('[data-line="0"]')
+  await dragBubble(page, stage, low, 0.5, 1.1)
+  await expect.poll(async () => (await stored())[0].placement.y).toBeGreaterThan(0.85)
+  await expect.poll(dotTakesThePress).toBe('bubble-tail-handle')
+  await low.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+
+  // A drag from it points the tail.
+  await pointDot(page, stage, 0.25, 0.5, async () => typeof (await stored())[0].tail === 'object')
+  const tip = (await stored())[0].tail
+  expect(Math.abs(tip.x - 0.25)).toBeLessThanOrEqual(0.02)
+  expect(Math.abs(tip.y - 0.5)).toBeLessThanOrEqual(0.02)
+  expect(await scrolled()).toBe(0)
+
+  // A stored tip stays where it was put, even at the very edge with half its dot cut off, and focus on it scrolls nothing.
+  await pointDot(page, stage, 0.5, 1.05, async () => (await stored())[0].tail.y > 0.99)
+  await low.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+
+  // At the top edge, with a tail that leaves through the frame: the dot would rest above the panel.
+  const high = stage.locator('[data-line="1"]')
+  await dragBubble(page, stage, high, 0.5, -0.1)
+  await expect.poll(async () => (await stored())[1].placement.y).toBeLessThan(0.15)
+  await expect.poll(dotTakesThePress).toBe('bubble-tail-handle')
+  await high.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+  await app.close()
+})
+
+// The look of it is checked by eye; this holds the rule. Each side of the fill's wedge sits 1.5 outline widths in from the
+// outline's wedge, and with no outline there is no wedge of it to show.
+test("an automatic tail's sides follow the outline's width", async () => {
+  const line = (text: string, strokeWidth?: number) => ({ speakerId: null, kind: 'speech', text, placement: { x: 0.5, y: 0.5 }, style: strokeWidth === undefined ? null : { strokeWidth } })
+  const { app, stage } = await openPanelWith([line('None', 0), line('Usual'), line('Heavy', 6)])
+  const wedges = (i: number): Promise<{ outline: number; fill: number }> =>
+    stage.locator(`[data-line="${i}"]`).evaluate((el: any) => {
+      const width = (pseudo: string): number => parseFloat((globalThis as any).getComputedStyle(el, pseudo).width)
+      return { outline: width('::before'), fill: width('::after') }
+    })
+  const [none, usual, heavy] = [await wedges(0), await wedges(1), await wedges(2)]
+  expect(none.outline).toBe(0)
+  expect(none.fill).toBeGreaterThan(0)
+  expect(usual.outline - usual.fill).toBeCloseTo(6)
+  expect(heavy.outline - heavy.fill).toBeCloseTo(18)
+  expect(heavy.outline).toBeCloseTo(usual.outline)
+  await app.close()
+})
+
+// Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
+test('a selected bubble under another takes the press', async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const { app, page, workspace, stage, stored } = await openPanelWith([
+    { speakerId: null, kind: 'narration', text: 'The line underneath it', placement: spot },
+    { speakerId: null, kind: 'narration', text: 'The line drawn on top', placement: spot }
+  ])
+  const under = stage.locator('[data-line="0"]')
+  const box = await boxOf(under)
+  const at = [box.x + box.width / 2, box.y + box.height / 2]
+  const lineUnderPointer = (): Promise<string | null> => page.evaluate(([x, y]) => (globalThis as any).document.elementFromPoint(x, y)?.closest('[data-line]')?.getAttribute('data-line') ?? null, at)
+  expect(await lineUnderPointer(), 'the later line is drawn on top').toBe('1')
+
+  await workspace.getByRole('tabpanel').locator('.line-row').first().getByLabel('Text', { exact: true }).click()
+  await expect(under).toHaveAttribute('data-selected', 'true')
+  await expect.poll(lineUnderPointer).toBe('0')
+
+  await dragBubble(page, stage, under, 0.3, 0.3)
+  await expect.poll(async () => (await stored())[0].placement.y).toBeLessThan(0.4)
+  expect((await stored())[1].placement).toEqual(spot)
   await app.close()
 })

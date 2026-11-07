@@ -5,6 +5,7 @@ import { ItemPicker } from '../visualizer/ItemPicker'
 import { useItemRoster } from '../visualizer/use-item-roster'
 import { useRoster } from '../visualizer/use-roster'
 import { LinesTab } from './LinesTab'
+import type { StylePreview } from './PanelStage'
 import { SceneTab, type SceneFields } from './SceneTab'
 import { useDialogueSaver } from './use-dialogue-saver'
 import { useFieldAutosave, type FieldAutosave } from './use-field-autosave'
@@ -24,6 +25,8 @@ export interface PanelInspectorProps {
   selectedLine: number | null
   /** Selects a line from a row of Lines, so the stage selects its bubble. */
   onSelectLine(i: number | null): void
+  /** Shows a style being picked in Lines on the stage until it is saved. */
+  onPreviewStyle?(preview: StylePreview | null): void
 }
 
 /** A tab's refused saves, each with "Undo my change", then the warnings of its last save as a quiet list. */
@@ -60,7 +63,7 @@ function SaveStatus({ fields, warnings }: { fields: FieldAutosave<unknown>[]; wa
  * save, so its message is seen. Keyed by panel in the workspace: stepping to another panel or going Back saves what
  * is still waiting.
  */
-export function PanelInspector({ panel, selectedLine, onSelectLine }: PanelInspectorProps) {
+export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewStyle }: PanelInspectorProps) {
   const [tab, setTab] = useState<Tab>('lines')
   const id = useId()
   const roster = useRoster()
@@ -119,7 +122,7 @@ export function PanelInspector({ panel, selectedLine, onSelectLine }: PanelInspe
         ))}
       </div>
       <div ref={scrollArea} className="inspector-panel" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
-        {tab === 'lines' && <LinesTab panel={panel} characters={roster} selectedLine={selectedLine} onSelectLine={onSelectLine} scrollArea={scrollArea} />}
+        {tab === 'lines' && <LinesTab panel={panel} characters={roster} selectedLine={selectedLine} onSelectLine={onSelectLine} scrollArea={scrollArea} onPreviewStyle={onPreviewStyle} />}
         {tab === 'cast' && (
           // The pickers' inputs have no blur of their own: leaving any of them saves at once.
           <div className="inspector-fields" onBlur={flushPickers}>

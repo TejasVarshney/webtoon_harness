@@ -1,0 +1,36 @@
+import { describe, expect, it } from 'vitest'
+import { bubbleDefaults, bubbleStyleProps, withStyleChange } from './bubble-style'
+
+describe('bubble style', () => {
+  it("knows each shape's default look", () => {
+    expect(bubbleDefaults('speech')).toEqual({ font: 'comic', size: 1, bold: true, italic: false, caps: true, align: 'center', color: '#111111', fill: '#ffffff', stroke: '#111111', strokeWidth: 2 })
+    expect(bubbleDefaults('whisper').bold).toBe(false)
+    expect(bubbleDefaults('thought').bold).toBe(false)
+    expect(bubbleDefaults('caption').align).toBe('left')
+    expect(bubbleDefaults('sfx')).toMatchObject({ font: 'bangers', bold: false, color: '#ffffff' })
+  })
+
+  it('sets nothing for a line with no style', () => {
+    expect(bubbleStyleProps(null)).toEqual({})
+  })
+
+  it('turns a style into variables and text properties', () => {
+    expect(bubbleStyleProps({ size: 1.5, fill: '#ff0000', stroke: '#00ff00', strokeWidth: 5, color: '#0000ff' })).toEqual({
+      '--bubble-size': '1.5',
+      '--bubble-fill': '#ff0000',
+      '--bubble-stroke': '#00ff00',
+      '--bubble-stroke-width': '5px',
+      '--bubble-color': '#0000ff'
+    })
+    expect(bubbleStyleProps({ bold: false, italic: true, caps: false, align: 'right' })).toEqual({ fontWeight: 400, fontStyle: 'italic', textTransform: 'none', textAlign: 'right' })
+    expect(bubbleStyleProps({ bold: true }).fontWeight).toBe(700)
+    expect(bubbleStyleProps({ font: 'impact' }).fontFamily).toContain('Anton')
+  })
+
+  it('stores only what differs from the default, and nothing when nothing does', () => {
+    const d = bubbleDefaults('speech')
+    expect(withStyleChange(null, { bold: false }, d)).toEqual({ bold: false })
+    expect(withStyleChange({ bold: false }, { bold: true }, d)).toBeNull()
+    expect(withStyleChange({ shape: 'shout', fill: '#ff0000' }, { shape: undefined }, d)).toEqual({ fill: '#ff0000' })
+  })
+})

@@ -13,19 +13,18 @@ import {
   type PointerEvent,
   type RefObject
 } from 'react'
-import type { BubblePlacement, DialogueLine, Panel } from '@shared/types'
+import type { BubblePlacement, BubbleShape, DialogueLine, Panel } from '@shared/types'
 import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
-import { DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, centreOf, nudgePlacement, placementFromPointer, type Box } from './bubble-placement'
-import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'
+import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, addSpot, boxOf, centreOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
+import { appendLine, editLine, identityOf, newBubble, removeLine, type LineIdentity } from './dialogue-edits'
+import type { Nudge, Press } from './bubble-press'
 import { useDialogueSaver } from './use-dialogue-saver'
+import { inTailHandle, useTailEditing } from './use-tail-editing'
 
 /** The id a new line has until it is saved and the service gives it a real one. Each new line has its own. */
 let newLines = 0
 const newLineId = (): string => `dlg_new_${(newLines += 1)}`
-
-const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const
-type Arrow = (typeof ARROWS)[number]
 
 export interface BubbleEditing {
   editing: OverlayEditing
@@ -35,26 +34,9 @@ export interface BubbleEditing {
   lines: DialogueLine[]
   /** For the stage element: a press on the empty stage, the drag that follows a press on a bubble, and Escape. */
   stage: HTMLAttributes<HTMLElement>
-}
-
-/** A press on a bubble, which becomes a drag once it has moved far enough. */
-interface Press {
-  index: number
-  pointerId: number
-  start: { x: number; y: number }
-  /** The pointer's offset from the bubble's centre, kept while it is dragged. */
-  grab: { dx: number; dy: number }
-  bubble: { width: number; height: number }
-  expect: LineIdentity
-  dragging: boolean
-  placement: BubblePlacement | null
-}
-
-/** A run of arrow keys on one bubble, saved as one change when the keys stop. */
-interface Nudge {
-  index: number
-  expect: LineIdentity
-  placement: BubblePlacement
+  /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
+  add(shape: BubbleShape): void
+  adding: boolean
 }
 
 /** The text open for typing: a stored line's (by index), or the new line's (`index: null`). */
@@ -68,10 +50,6 @@ const inTextField = (target: EventTarget): boolean => target instanceof Element 
 const inBubble = (target: EventTarget): boolean => target instanceof Element && target.closest('.bubble') !== null
 /** The panel's status (Generating…, or Failed with its Retry) and any button are not empty stage: a double-click there adds no line. */
 const inControl = (target: EventTarget): boolean => target instanceof Element && target.closest('.panel-status, button') !== null
-const boxOf = (el: Element): Box => {
-  const r = el.getBoundingClientRect()
-  return { left: r.left, top: r.top, width: r.width, height: r.height }
-}
 
 /**
  * Selecting, retyping, dragging, nudging, adding and deleting the bubbles of the panel on the stage. Every
@@ -131,6 +109,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
   const bubbleAt = (i: number): HTMLElement | null => stageRef.current?.querySelector<HTMLElement>(`[data-line="${i}"]`) ?? null
   const focusStage = (): void => {
     keepFocus.current = false
+    tail.tailFocus.current = false
     stageRef.current?.focus({ preventScroll: true })
   }
 
@@ -146,6 +125,24 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     },
     [save]
   )
+
+  // The run of nudges waiting is saved through a ref: the tail's closures are made before `flushNudge` is.
+  const flushRef = useRef<() => void>(() => undefined)
+  const tail = useTailEditing({
+    base,
+    selected,
+    textEditing,
+    panelBox,
+    select,
+    send,
+    press,
+    nudge,
+    nudgeTimer,
+    keepFocus,
+    dragEnded,
+    dropPress,
+    flushNudge: () => flushRef.current()
+  })
 
   const commitPlacement = useCallback(
     (index: number, placement: BubblePlacement, expect: LineIdentity): void => {
@@ -163,11 +160,12 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     nudgeTimer.current = null
     const run = nudge.current
     nudge.current = null
-    if (run !== null) commitPlacement(run.index, run.placement, run.expect)
-  }, [commitPlacement])
+    if (run === null) return
+    if (run.tail) tail.commitTail(run.index, run.placement, run.expect)
+    else commitPlacement(run.index, run.placement, run.expect)
+  }, [commitPlacement, tail.commitTail])
 
   // Stepping to another panel remounts the stage: a run of nudges still waiting is saved, not lost.
-  const flushRef = useRef(flushNudge)
   useLayoutEffect(() => {
     flushRef.current = flushNudge
   })
@@ -176,16 +174,20 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
   // A press outside the stage leaves the focus where the user put it.
   useEffect(() => {
     function onPointerDown(e: globalThis.PointerEvent): void {
-      if (!(e.target instanceof Node) || !stageRef.current?.contains(e.target)) keepFocus.current = false
+      if (!(e.target instanceof Node) || !stageRef.current?.contains(e.target)) {
+        keepFocus.current = false
+        tail.tailFocus.current = false
+      }
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [stageRef])
 
   // The selected bubble remounts on every save (its line has a new id) and when it moves into the placed layer. Its
-  // focus fell to the body with it, so it is given back, by index.
+  // focus fell to the body with it, so it is given back, by index. The tail's dot is measured after it mounts, so it
+  // takes the focus back itself (`bindTail`'s ref).
   useLayoutEffect(() => {
-    if (!keepFocus.current || selected === null || textEditing !== null) return
+    if (!keepFocus.current || tail.tailFocus.current || selected === null || textEditing !== null) return
     const el = bubbleAt(selected)
     const active = document.activeElement
     if (el !== null && el !== active && (active === null || active === document.body)) el.focus({ preventScroll: true })
@@ -207,14 +209,18 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     setText({ index: i, draft: line.text, expect: identityOf(line) })
   }
 
-  function addAt(placement: BubblePlacement): void {
+  /** A double-click adds a spoken line (narration without a cast); the Add bubble menu adds the `shape` it names. */
+  function addAt(placement: BubblePlacement, shape?: BubbleShape): void {
     flushNudge()
-    const speakerId = panel.characters[0]?.characterId ?? null
+    const first = panel.characters[0]?.characterId ?? null
+    const made = newBubble(shape ?? (first === null ? 'caption' : 'speech'), first)
     select(null)
     textClosed.current = false
-    setAdding({ id: newLineId(), speakerId, kind: speakerId === null ? 'narration' : 'speech', text: '', placement })
+    setAdding({ id: newLineId(), ...made, text: '', placement, tail: null })
     setText({ index: null, draft: '', expect: null })
   }
+
+  const add = (shape: BubbleShape): void => addAt(addSpot(base.length), shape)
 
   /** Enter or blur. Empty text keeps the old text (deleting is the Delete key); a new line left empty is dropped. */
   function commitText(): void {
@@ -233,7 +239,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
         panelB !== null && el !== null
           ? placementFromPointer({ pointer: { x: panelB.left + line.placement.x * panelB.width, y: panelB.top + line.placement.y * panelB.height }, grab: { dx: 0, dy: 0 }, panel: panelB, bubble: boxOf(el) })
           : line.placement
-      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement }
+      const draft = { speakerId: line.speakerId, kind: line.kind, text: value, placement, style: line.style, tail: null }
       select(base.length)
       send(
         (lines) => [...lines, { ...line, text: value, placement }],
@@ -264,6 +270,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       if (nudgeTimer.current !== null) clearTimeout(nudgeTimer.current)
       nudge.current = null
       setPreview(null)
+      tail.setTailPreview(null)
     }
     flushNudge()
     const expect = identityOf(line)
@@ -281,10 +288,10 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     const line = base[i]
     if (panelB === null || el === null || line === undefined || panelB.width <= 0 || panelB.height <= 0) return
     const bubble = boxOf(el)
-    if (nudge.current?.index !== i) {
+    if (nudge.current?.index !== i || nudge.current.tail) {
       flushNudge()
       // An automatic bubble starts from where the layout drew it.
-      nudge.current = { index: i, expect: identityOf(line), placement: line.placement ?? centreOf(bubble, panelB) }
+      nudge.current = { index: i, expect: identityOf(line), tail: false, placement: line.placement ?? centreOf(bubble, panelB) }
     }
     const run = nudge.current!
     run.placement = nudgePlacement(run.placement, key, big, { x: bubble.width / 2 / panelB.width, y: bubble.height / 2 / panelB.height })
@@ -300,12 +307,13 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     if (p?.dragging) {
       setDragging(null)
       setPreview(null)
+      tail.setTailPreview(null)
     }
   }
 
   function pressBubble(e: PointerEvent<HTMLDivElement>, i: number): void {
     // A press in the open text places its caret.
-    if (e.button !== 0 || inTextField(e.target)) return
+    if (e.button !== 0 || inTextField(e.target) || inTailHandle(e.target)) return
     // The new line being typed is not dragged before it is saved.
     const line = base[i]
     if (line === undefined) return
@@ -327,6 +335,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       bubble: { width: box.width, height: box.height },
       expect,
       dragging: false,
+      tail: false,
       placement: null
     }
   }
@@ -354,11 +363,13 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       'aria-label': `Line ${i + 1}`,
       onPointerDown: (e: PointerEvent<HTMLDivElement>) => pressBubble(e, i),
       onDoubleClick: (e: MouseEvent<HTMLDivElement>) => {
-        if (!inTextField(e.target)) openText(i)
+        if (!inTextField(e.target) && !inTailHandle(e.target)) openText(i)
       },
       onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => onBubbleKeyDown(e, i),
       onFocus: (e: FocusEvent<HTMLDivElement>) => {
         keepFocus.current = true
+        // Any focus but the dot's (the bubble's, or its text's) takes the focus from the dot.
+        if (!inTailHandle(e.target)) tail.tailFocus.current = false
         // Tabbing to a bubble selects it, as a click does. The new line is selected once it is saved.
         if (e.target === e.currentTarget && i < base.length) select(i)
       }
@@ -373,14 +384,20 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     if (!p.dragging) return
     dragEnded.current = true
     setDragging(null)
-    if (commit && p.placement !== null) commitPlacement(p.index, p.placement, p.expect)
-    else setPreview(null)
+    if (commit && p.placement !== null) {
+      if (p.tail) tail.commitTail(p.index, p.placement, p.expect)
+      else commitPlacement(p.index, p.placement, p.expect)
+    } else {
+      setPreview(null)
+      tail.setTailPreview(null)
+    }
   }
 
   const stage: HTMLAttributes<HTMLElement> = {
     onPointerDown: (e) => {
       dragEnded.current = false
       if (e.button !== 0 || inBubble(e.target)) return
+      tail.tailFocus.current = false
       dropPress()
       flushNudge()
       select(null)
@@ -399,12 +416,14 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
         // Captured on the stage, not the bubble: an automatic bubble remounts as it moves into the placed layer.
         p.dragging = true
         stageRef.current?.setPointerCapture?.(e.pointerId)
-        setDragging(p.index)
+        // Dragging the dot moves the tip, not the bubble.
+        if (!p.tail) setDragging(p.index)
       }
       const panelB = panelBox()
       if (panelB === null) return
       p.placement = placementFromPointer({ pointer: { x: e.clientX, y: e.clientY }, grab: p.grab, panel: panelB, bubble: p.bubble })
-      setPreview({ index: p.index, placement: p.placement })
+      if (p.tail) tail.setTailPreview({ index: p.index, tip: p.placement })
+      else setPreview({ index: p.index, placement: p.placement })
     },
     onPointerUp: (e) => endPress(e, true),
     onPointerCancel: (e) => endPress(e, false),
@@ -459,10 +478,12 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
         })
 
   return {
-    editing: { selected, textEditing, textEditor, preview, dragging, bind },
+    editing: { selected, textEditing, textEditor, preview, tailPreview: tail.tailPreview, dragging, bind, bindTail: tail.bindTail },
     selected,
     select,
     lines,
-    stage
+    stage,
+    add,
+    adding: adding !== null
   }
 }

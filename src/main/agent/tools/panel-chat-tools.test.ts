@@ -92,6 +92,8 @@ describe('panel chat tools: the tool set', () => {
     for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('update_panel_fields').properties.dialogue.description).toContain(PLACEMENT_DOC)
+    expect(schema('update_panel_fields').properties.dialogue.description).toContain('leave either out to keep the one at the same position')
+    expect(schema('update_panel_fields').properties.dialogue.description).toContain('when removing or reordering lines, send style and tail on every line kept')
     expect(schema('get_panel_context').properties ?? {}).toEqual({})
   })
 })
@@ -316,6 +318,15 @@ describe('update_panel_fields', () => {
     expect(json(r).fields.dialogue[0]).toMatchObject({ text: 'New text', placement: { x: 0.62, y: 0.18 } })
   })
 
+  it('update_panel_fields keeps a look it was not sent', async () => {
+    const { run, s, ctx, mina, p2, panel } = await setup()
+    const look = { style: { shape: 'whisper' as const, italic: true }, tail: { x: 0.3, y: 0.7 } }
+    await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Old text', ...look }] }, { strictMentions: true, strictSheets: false })
+    const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'New text' }] })
+    expect(r.ok, r.content).toBe(true)
+    expect((await panel(p2.id)).dialogue[0]).toMatchObject({ text: 'New text', ...look })
+  })
+
   it('clears a placement with an explicit null and sets one when given', async () => {
     const { run, s, ctx, mina, p2 } = await setup()
     await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true, strictSheets: false })
@@ -484,6 +495,19 @@ describe('get_panel_context', () => {
     )
     const out = json(await run('get_panel_context'))
     expect(out.dialogue.map((line: { placement: unknown }) => line.placement)).toEqual([{ x: 0.62, y: 0.18 }, null])
+  })
+
+  it('the panel context shows a line\'s style and tail', async () => {
+    const { run, s, ctx, mina, p2 } = await setup()
+    await s.panels.update(
+      ctx,
+      p2.id,
+      { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hi', style: { shape: 'shout', bold: true }, tail: { x: 0.3, y: 0.7 } }, { speakerId: null, kind: 'sfx', text: 'Click' }] },
+      { strictMentions: true, strictSheets: false }
+    )
+    const out = json(await run('get_panel_context'))
+    expect(out.dialogue[0]).toMatchObject({ style: { shape: 'shout', bold: true }, tail: { x: 0.3, y: 0.7 } })
+    expect(out.dialogue[1]).toMatchObject({ style: null, tail: null })
   })
 })
 

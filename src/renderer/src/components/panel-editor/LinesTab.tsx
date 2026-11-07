@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type RefObject } from 'react'
 import { DialogueKindSchema } from '@shared/schemas'
-import type { Character, DialogueLine, Panel } from '@shared/types'
+import type { BubbleStyle, Character, DialogueLine, Panel } from '@shared/types'
 import { Field } from '../characters/controls'
+import { bubbleShape } from '../visualizer/bubble-layout'
+import { BubbleStyleBlock } from './BubbleStyleBlock'
 import { appendLine, editLine, identityOf, removeLine, type LineIdentity } from './dialogue-edits'
 import { useLastWarnings } from './panel-save-queue'
+import type { StylePreview } from './PanelStage'
 import { useDialogueSaver, type DialogueSaver } from './use-dialogue-saver'
 import { useAutosave } from './use-field-autosave'
+import { useScrollToRow } from './use-scroll-to-row'
 
 const KINDS = DialogueKindSchema.options
 /** The saves Lines shows the warnings of: the dialogue's, from here or from the stage. */
@@ -13,42 +17,6 @@ const DIALOGUE = ['dialogue'] as const
 
 /** Focus moved somewhere outside the element the event is on. */
 const leaves = (e: FocusEvent<HTMLElement>): boolean => !(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))
-
-/**
- * The part of `el` that is on screen, top to bottom: its box, cut by each ancestor that clips and by the window. When
- * a short window has the column scrolled, part of the scroll area may be out of sight below it.
- */
-function visibleSpan(el: HTMLElement): { top: number; bottom: number } {
-  const box = el.getBoundingClientRect()
-  let top = box.top
-  let bottom = Math.min(box.bottom, window.innerHeight)
-  for (let p = el.parentElement; p !== null; p = p.parentElement) {
-    if (getComputedStyle(p).overflowY === 'visible') continue
-    const r = p.getBoundingClientRect()
-    top = Math.max(top, r.top)
-    bottom = Math.min(bottom, r.bottom)
-  }
-  return bottom > top ? { top, bottom } : { top: box.top, bottom: box.bottom }
-}
-
-/**
- * Scrolls the row of the selected line into view inside the inspector's own scroll area, and nowhere else: the stage
- * above it never moves, so a bubble being pressed, dragged or typed in stays under the pointer and in sight. That is
- * why there is no waiting for a press or a double-click to end. A row the user is already in (it has the focus) is
- * where they put it, and stays.
- */
-function useScrollToRow(line: number | null, row: (i: number) => HTMLElement | null, area: RefObject<HTMLElement | null>): void {
-  useEffect(() => {
-    const el = line === null ? null : row(line)
-    const box = area.current
-    if (el === null || box === null || el.contains(document.activeElement)) return
-    const r = el.getBoundingClientRect()
-    const a = visibleSpan(box)
-    // The nearest edge, and the row's top when it is taller than the area.
-    if (r.top < a.top) box.scrollTop += r.top - a.top
-    else if (r.bottom > a.bottom) box.scrollTop += Math.min(r.bottom - a.bottom, r.top - a.top)
-  }, [line, row, area])
-}
 
 export interface LinesTabProps {
   panel: Panel
@@ -59,6 +27,8 @@ export interface LinesTabProps {
   onSelectLine(i: number | null): void
   /** The inspector's scroll area the rows are in, which the selected row is scrolled inside. */
   scrollArea: RefObject<HTMLElement | null>
+  /** Shows the style being picked on the stage until it is saved; null ends it. */
+  onPreviewStyle?(preview: StylePreview | null): void
 }
 
 /** Who says a line: Narration, or a non-archived character, plus the line's own speaker if they were archived since. */
@@ -112,24 +82,39 @@ interface LineRowProps {
   error: string | null
   onSelect(): void
   rowRef(el: HTMLLIElement | null): void
+  onPreviewStyle?(preview: StylePreview | null): void
+  /** The row whose style the stage is showing: it shows one at a time. */
+  previewing: RefObject<number | null>
+  /** This row's line is being removed, and how that save ends. */
+  onRemove(index: number, outcome: ReturnType<DialogueSaver['save']>): void
 }
 
 /**
  * One stored line. Its speaker, kind and text are one draft, saved `AUTOSAVE_MS` after the last change, when the row is
  * left and on unmount, as the whole dialogue built at send time with this line changed. Each save expects the line as
  * the edit found it, or as this row's last save left it: an agent's change in between makes it a conflict, not an
- * overwrite. A text left empty keeps the old text (Remove deletes).
+ * overwrite. A text left empty keeps the old text (Remove deletes). The style is a draft of its own, saved the same
+ * way, so a pick and typed text both land. The tail is not in it: a tail dragged on the stage must never be
+ * overwritten by a style that was waiting.
  */
-function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef }: LineRowProps) {
+function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle, previewing, onRemove }: LineRowProps) {
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
+  /**
+   * The lines the waiting style may be saved onto: the line as it was when the style was picked, and each text this
+   * row has sent since. A style never depends on the text, so it saves whether a text save landed (the line now says
+   * the new text) or was refused (it still says the old), and never onto a different line that moved into this row.
+   */
+  const styleExpect = useRef<LineIdentity[]>([])
   const draft = useAutosave<LineIdentity>(identityOf(line), {
     normalize: (v) => ({ speakerId: v.speakerId, kind: v.kind, text: v.text.trim() }),
     sendable: (v) => v.text !== '',
     send: (v) => {
       const expect = base.current ?? identityOf(line)
       base.current = v
+      // A style waiting on this row may find the line either way once this save is decided.
+      styleExpect.current.push(v)
       inFlight.current += 1
       return save((current) => editLine(current, index, expect, v)).then((outcome) => {
         inFlight.current -= 1
@@ -140,15 +125,66 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
     }
   })
 
+  /** The line as a change made now must find it. */
+  const expectNow = (): LineIdentity => (inFlight.current > 0 && base.current !== null ? base.current : identityOf(line))
+
+  const style = useAutosave<BubbleStyle | null>(line.style, {
+    normalize: (v) => v,
+    send: (v) =>
+      save((current) => {
+        for (const expect of styleExpect.current) {
+          const built = editLine(current, index, expect, { style: v })
+          if (built !== null) return built
+        }
+        return null
+      }).then((outcome) => (outcome === 'saved' ? 'saved' : outcome === 'refused' ? 'refused' : 'dropped'))
+  })
+
+  /** Picks a style; a pick that begins a new one notes the line it is for. */
+  function setStyle(next: BubbleStyle | null): void {
+    // A text save of this row still in flight may land or be refused: the line then says the new text or the old, so both count.
+    if (!style.pending) styleExpect.current = inFlight.current > 0 && base.current !== null ? [identityOf(line), base.current] : [identityOf(line)]
+    style.set(next)
+  }
+
+  // The line in this row is not the one the style was picked on (it was removed or moved, or an agent changed it): the
+  // style is sent now, so it is dropped with the usual notice, or, if it was refused, given up.
+  const { pending: styleWaiting, refused: styleRefused, flush: flushStyle, undo: dropStyle } = style
+  useEffect(() => {
+    if (!styleWaiting || styleExpect.current.some((e) => e.speakerId === line.speakerId && e.kind === line.kind && e.text === line.text)) return
+    if (styleRefused) dropStyle()
+    else flushStyle()
+  }, [styleWaiting, styleRefused, line.speakerId, line.kind, line.text, flushStyle, dropStyle])
+
   // A refused draft with no message left would be unsaved text nobody is told about: it gives way to the stored line.
   const orphaned = draft.refused && error === null
   const { undo } = draft
   useEffect(() => {
     if (orphaned) undo()
   }, [orphaned, undo])
+  const styleOrphaned = style.refused && error === null
+  const { undo: undoStyle } = style
+  useEffect(() => {
+    if (styleOrphaned) undoStyle()
+  }, [styleOrphaned, undoStyle])
 
-  /** The line as a change made now must find it. */
-  const expectNow = (): LineIdentity => (inFlight.current > 0 && base.current !== null ? base.current : identityOf(line))
+  // The stage draws the style as picked while it waits to be saved, and goes back to the store's once it is.
+  const previewTo = useRef(onPreviewStyle)
+  useLayoutEffect(() => {
+    previewTo.current = onPreviewStyle
+  })
+  const { pending: stylePending, value: styleValue } = style
+  useLayoutEffect(() => {
+    if (!stylePending) return
+    previewing.current = index
+    previewTo.current?.({ index, style: styleValue })
+    return () => {
+      // Another row has picked a style since: this row's save landing does not end that one's preview.
+      if (previewing.current !== index) return
+      previewing.current = null
+      previewTo.current?.(null)
+    }
+  }, [stylePending, styleValue, index, previewing])
 
   function change(patch: Partial<LineIdentity>): void {
     // An edit begins from the line as shown, the store's, unless this row still has a change of its own going.
@@ -159,6 +195,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
   function leave(): void {
     if (draft.value.text.trim() === '') draft.undo()
     else draft.flush()
+    style.flush()
+  }
+
+  /** The tail saves at once, after whatever of the row is still waiting. */
+  function setTail(next: 'none' | null): void {
+    draft.flush()
+    style.flush()
+    const expect = expectNow()
+    void save((current) => editLine(current, index, expect, { tail: next }))
   }
 
   function resetPlacement(): void {
@@ -169,9 +214,10 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
 
   function remove(): void {
     draft.undo()
+    style.undo()
     const expect = expectNow()
     base.current = null
-    void save((current) => removeLine(current, index, expect))
+    onRemove(index, save((current) => removeLine(current, index, expect)))
   }
 
   return (
@@ -179,8 +225,10 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
       ref={rowRef}
       className="line-row"
       aria-current={selected ? 'true' : undefined}
-      onFocus={() => {
-        if (!selected) onSelect()
+      onFocus={(e) => {
+        // A press focuses its button before the release. Selecting here would open this row's block, or close one above,
+        // and move the button from under the pointer, so no click would fire.
+        if (!selected && !(e.target instanceof Element && e.target.closest('.form-actions'))) onSelect()
       }}
       onBlur={(e) => {
         // Moving between the row's own fields is not leaving it: a text emptied on the way must not undo the rest.
@@ -198,6 +246,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
           Remove
         </button>
       </div>
+      {selected && (
+        <BubbleStyleBlock
+          autoShape={bubbleShape({ kind: draft.value.kind, text: draft.value.text })}
+          style={style.value}
+          tail={line.tail}
+          onStyle={setStyle}
+          onTail={setTail}
+        />
+      )}
     </li>
   )
 }
@@ -240,7 +297,7 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
     }
     settled.current = true
     setState('saving')
-    void save((current) => appendLine(current, { ...value, text, placement: null })).then((outcome) => {
+    void save((current) => appendLine(current, { ...value, text, placement: null, style: null, tail: null })).then((outcome) => {
       if (outcome !== 'refused') onDone()
       else {
         settled.current = false
@@ -306,13 +363,42 @@ function NewLineRow({ initial, characters, save, error, onDone }: NewLineRowProp
  * the inspector's scroll area only, and going into a row selects its bubble. A line that changed under an edit, here or
  * on the stage, and a dialogue save the service refused, are said here, once.
  */
-export function LinesTab({ panel, characters, selectedLine, onSelectLine, scrollArea }: LinesTabProps) {
+export function LinesTab({ panel, characters, selectedLine, onSelectLine, scrollArea, onPreviewStyle }: LinesTabProps) {
   const { save, conflict, error, clear } = useDialogueSaver(panel.id)
   const warnings = useLastWarnings(panel.id, DIALOGUE)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
   const rows = useRef<(HTMLLIElement | null)[]>([])
+  const previewing = useRef<number | null>(null)
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
-  useScrollToRow(selectedLine, rowAt, scrollArea)
+  /** The selection and count as of now, for a save that lands later. */
+  const latest = useRef({ selected: selectedLine, count: panel.dialogue.length })
+  useLayoutEffect(() => {
+    latest.current = { selected: selectedLine, count: panel.dialogue.length }
+  })
+  /** Set when the selection moved to follow its line, so the scroll does not chase it. */
+  const followed = useRef(false)
+  useScrollToRow(selectedLine, panel.dialogue.length, rowAt, scrollArea, followed)
+
+  /**
+   * Selection is by index, so a removal moves it: when the save lands, the selection goes down one if the line removed
+   * was above it, and is cleared if the line removed was the selected one. A refused or conflicted save changed no list.
+   * With the last line selected the stage has already let go of it by then (its index is out of range), so the line
+   * selected when Remove was pressed is the one followed.
+   */
+  function removed(index: number, outcome: ReturnType<DialogueSaver['save']>): void {
+    const pressedWith = latest.current.selected
+    void outcome.then((result) => {
+      if (result !== 'saved' || pressedWith === null) return
+      const { selected, count } = latest.current
+      // Still where it was, or let go of by the stage because the list shrank past it.
+      if (selected !== pressedWith && !(selected === null && pressedWith >= count)) return
+      if (index === pressedWith) onSelectLine(null)
+      else if (index < pressedWith) {
+        followed.current = true
+        onSelectLine(pressedWith - 1)
+      }
+    })
+  }
 
   function addLine(): void {
     const speakerId = panel.characters[0]?.characterId ?? null
@@ -356,6 +442,9 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
               save={save}
               error={error}
               onSelect={() => onSelectLine(i)}
+              onPreviewStyle={onPreviewStyle}
+              previewing={previewing}
+              onRemove={removed}
               rowRef={(el) => {
                 rows.current[i] = el
               }}

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Panel, PanelDraft, ToolResult } from '@shared/types'
 import type { ProjectContext } from '../../storage/project-store'
 import { testServices, type TestServices } from '../../test/test-services'
@@ -331,7 +333,7 @@ describe('list_panels and get_panel', () => {
       gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
-      dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.', placement: null }],
+      dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.', placement: null, style: null, tail: null }],
       currentVersion: { id: made.versionId, status: 'ready', imagePath: made.imagePath }
     })
   })
@@ -422,6 +424,45 @@ describe('update_panel', () => {
     const stored = await panel(made.panelId)
     expect(stored).toMatchObject({ description: 'Rewritten', shot: 'wide', currentVersionId: made.versionId })
     expect(stored.versions).toHaveLength(1)
+  })
+
+  it('update_panel can set a style and a tail', async () => {
+    const { run, character, created, panel } = await setup()
+    const mina = await character('Mina')
+    const made = await created([mina])
+    const line = { speakerId: mina.id, kind: 'speech', text: 'Hey!', style: { shape: 'shout', color: '#ff0000' }, tail: { x: 0.3, y: 0.7 } }
+    const r = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [line] } })
+    expect(r.ok, r.content).toBe(true)
+    expect((await panel(made.panelId)).dialogue[0]).toMatchObject({ style: { shape: 'shout', color: '#ff0000' }, tail: { x: 0.3, y: 0.7 } })
+    const none = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, tail: 'none' }] } })
+    expect(none.ok, none.content).toBe(true)
+    expect((await panel(made.panelId)).dialogue[0].tail).toBe('none')
+  })
+
+  it('a style the app cannot draw comes back as an error', async () => {
+    const { run, character, created, panel } = await setup()
+    const mina = await character('Mina')
+    const made = await created([mina])
+    const r = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'Hey!', style: { color: 'red' } }] } })
+    expect(r.ok).toBe(false)
+    expect((await panel(made.panelId)).dialogue).toEqual([])
+  })
+
+  it('the tool schema stays free of const and pattern', () => {
+    const schema = JSON.stringify(z.toJSONSchema(PanelPatchSchema))
+    expect(schema).not.toContain('"const"')
+    expect(schema).not.toContain('"pattern"')
+    const tail = (z.toJSONSchema(PanelPatchSchema) as any).properties.dialogue.items.properties.tail
+    expect(JSON.stringify(tail)).toContain('"enum":["none"]')
+  })
+
+  it('says a look is kept by position, and must be sent on the lines kept when lines are removed or reordered', async () => {
+    const { tools } = await setup()
+    for (const name of ['create_panel', 'update_panel']) {
+      const schema = JSON.stringify(tools.specs().find((t) => t.name === name)!.inputSchema)
+      expect(schema, name).toContain('leave either out to keep the one at the same position')
+      expect(schema, name).toContain('when removing or reordering lines, send style and tail on every line kept')
+    }
   })
 
   it('enforces the same validation as create_panel, and the mention guard on a description edit', async () => {

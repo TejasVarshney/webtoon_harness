@@ -397,7 +397,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('cancels the text of a bubble on Escape and stays open, and clears a selected bubble before going back', async () => {
-    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
     const { calls } = mount()
     const stage = within(workspace()).getByTestId('panel-stage')
@@ -420,7 +420,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('closes the open text of a line the agent removed, says so in Lines, and reopens no old draft when a line comes back there', () => {
-    const line = (id: string, text: string) => ({ id, speakerId: null, kind: 'narration' as const, text, placement: null })
+    const line = (id: string, text: string) => ({ id, speakerId: null, kind: 'narration' as const, text, placement: null, style: null, tail: null })
     const night = line('dlg_0000000001', 'Night fell.')
     const withLines = (dialogue: Panel['dialogue']): void => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue }, third] } })
     withLines([night, line('dlg_0000000002', 'Dawn.')])
@@ -445,7 +445,7 @@ describe('PanelWorkspace', () => {
   })
 
   it('puts the tabs under the stage, on Lines, and selects the bubble of the row the user goes into', () => {
-    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null }
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line] }, third] } })
     mount()
     const tabs = within(workspace()).getByRole('tablist')
@@ -457,6 +457,147 @@ describe('PanelWorkspace', () => {
     expect(row).toHaveAttribute('aria-current', 'true')
   })
 
+  describe('a style picked in Lines', () => {
+    const line = { id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text: 'Night fell.', placement: null, style: null, tail: null }
+    const withLine = (dialogue: Panel['dialogue']): Panel => ({ ...second, dialogue })
+    const bubble = (): HTMLElement => within(within(workspace()).getByTestId('panel-stage')).getByLabelText('Line 1')
+    const pick = (): void => {
+      const row = within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')[0]
+      focus(within(row).getByLabelText('Text'))
+      fireEvent.change(within(row).getByLabelText('Fill'), { target: { value: '#00ff00' } })
+    }
+
+    it('shows on the stage as soon as it is picked, before it is saved', () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      const { calls } = mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
+    })
+
+    it('the preview ends when the row is removed', async () => {
+      const other = { ...line, id: 'dlg_0000000002', text: 'Dawn broke.' }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line, other]), third] } })
+      const left = withLine([other])
+      mount({ 'panels:update': () => ({ panel: left, warnings: [] }), 'panels:list': () => [first, left, third] })
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      const row = within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')[0]
+      fireEvent.click(within(row).getByRole('button', { name: 'Remove' }))
+      await waitFor(() => expect(within(within(workspace()).getByTestId('panel-stage')).getAllByLabelText(/^Line \d/)).toHaveLength(1))
+      expect(bubble()).toHaveTextContent('Dawn broke.')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+    })
+
+    it('the preview ends on Undo my change', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      mount({
+        'panels:update': () => {
+          throw new Error('Dialogue is too long')
+        }
+      })
+      pick()
+      const row = within(within(workspace()).getByRole('tabpanel')).getByRole('listitem')
+      act(() => within(row).getByLabelText('Text').blur())
+      const alert = await within(workspace()).findByRole('alert')
+      expect(alert).toHaveTextContent('Dialogue is too long')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      fireEvent.click(within(alert).getByRole('button', { name: 'Undo my change' }))
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+    })
+
+    it('the preview does not follow the user to another panel', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), { ...third, dialogue: [{ ...line, id: 'dlg_0000000005' }] }] } })
+      mount({ 'panels:update': () => ({ panel: second, warnings: [] }) })
+      pick()
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#00ff00')
+      await userEvent.click(within(header()).getByRole('button', { name: 'Next panel' }))
+      expect(within(workspace()).getByRole('heading', { level: 1 })).toHaveTextContent('Panel 3 of 3')
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('')
+    })
+
+    it('ends once the save lands, and the stored look shows from then on', async () => {
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([line]), third] } })
+      const saved = withLine([{ ...line, style: { fill: '#00ff00' } }])
+      mount({ 'panels:update': () => ({ panel: saved, warnings: [] }), 'panels:list': () => [first, saved, third] })
+      pick()
+      await waitFor(() => expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]?.[1].dialogue[0].style).toEqual({ fill: '#00ff00' }))
+      // The agent restyles the line afterwards: the stage follows the store, not the finished preview.
+      act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, withLine([{ ...line, style: { fill: '#ff0000' } }]), third] } }))
+      expect(bubble().style.getPropertyValue('--bubble-fill')).toBe('#ff0000')
+    })
+  })
+
+  describe('removing a line in Lines', () => {
+    const texts = ['One', 'Two', 'Three', 'Four', 'Five']
+    const lineOf = (text: string, n: number): Panel['dialogue'][number] => ({ id: `dlg_00000000${String(n).padStart(2, '0')}`, speakerId: null, kind: 'narration', text, placement: null, style: null, tail: null })
+    const rows = (): HTMLElement[] => within(within(workspace()).getByRole('tabpanel')).getAllByRole('listitem')
+    const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')
+    /** The text of the line whose row is marked, and of the bubble the stage shows as selected. */
+    const marked = (): string[] => rows().filter((r) => r.getAttribute('aria-current') === 'true').map((r) => (within(r).getByLabelText('Text') as HTMLTextAreaElement).value)
+    const selectedBubbles = (): string[] => within(stage()).getAllByLabelText(/^Line \d/).filter((b) => b.getAttribute('data-selected') === 'true').map((b) => b.textContent ?? '')
+    const open = (count: number, refuse = false) => {
+      let stored = { ...second, dialogue: texts.slice(0, count).map((t, i) => lineOf(t, i + 1)) }
+      usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, stored, third] } })
+      let version = 0
+      return mount({
+        'panels:update': (req: { patch: { dialogue: Omit<Panel['dialogue'][number], 'id'>[] } }) => {
+          if (refuse) throw new Error('Dialogue is too long')
+          version += 1
+          const dialogue = req.patch.dialogue.map((d, i) => ({ ...d, id: `dlg_0000001${String(version).padStart(1, '0')}${String(i).padStart(2, '0')}` }))
+          stored = { ...second, dialogue, updatedAt: `2026-10-21T11:00:0${version}.000Z` }
+          return { panel: stored, warnings: [] }
+        },
+        'panels:list': () => [first, stored, third]
+      })
+    }
+    const select = (i: number): void => focus(within(rows()[i]).getByLabelText('Text'))
+    const remove = (i: number): void => {
+      fireEvent.click(within(rows()[i]).getByRole('button', { name: 'Remove' }))
+    }
+
+    it('removing a line above the selected one keeps the selection on the same line', async () => {
+      open(5)
+      select(3)
+      expect(marked()).toEqual(['Four'])
+      remove(1)
+      await waitFor(() => expect(rows()).toHaveLength(4))
+      await waitFor(() => expect(marked()).toEqual(['Four']))
+      await waitFor(() => expect(selectedBubbles()).toEqual(['Four']))
+    })
+
+    it('removing a line above the last line, while the last is selected, keeps it selected', async () => {
+      open(3)
+      select(2)
+      expect(marked()).toEqual(['Three'])
+      remove(0)
+      await waitFor(() => expect(rows()).toHaveLength(2))
+      await waitFor(() => expect(marked()).toEqual(['Three']))
+      await waitFor(() => expect(selectedBubbles()).toEqual(['Three']))
+    })
+
+    it('a refused removal leaves the selection where it was', async () => {
+      open(5, true)
+      select(3)
+      remove(1)
+      await within(workspace()).findByRole('alert')
+      expect(rows()).toHaveLength(5)
+      expect(marked()).toEqual(['Four'])
+      expect(selectedBubbles()).toEqual(['Four'])
+    })
+
+    it('removing the selected line clears the selection', async () => {
+      open(5)
+      select(1)
+      expect(marked()).toEqual(['Two'])
+      remove(1)
+      await waitFor(() => expect(rows()).toHaveLength(4))
+      await waitFor(() => expect(marked()).toEqual([]))
+      await waitFor(() => expect(selectedBubbles()).toEqual([]))
+    })
+  })
+
   it('keeps one stage when stepping, and saves what was typed in a bubble and a nudge still waiting', async () => {
     const keyWarnings = vi.spyOn(console, 'error')
     // jsdom has no layout: the panel is 400x600 at the origin, and every bubble is 100x50 at its top left corner.
@@ -464,7 +605,7 @@ describe('PanelWorkspace', () => {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       return this.classList.contains('bubble') ? rect(100, 50) : rect(400, 600)
     })
-    const line = (text: string) => ({ id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text, placement: { x: 0.5, y: 0.8 } })
+    const line = (text: string) => ({ id: 'dlg_0000000001', speakerId: null, kind: 'narration' as const, text, placement: { x: 0.5, y: 0.8 }, style: null, tail: null })
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, { ...second, dialogue: [line('Night fell.')] }, { ...third, dialogue: [line('Dawn.')] }] } })
     const { calls } = mount({ 'panels:update': (req: { panelId: string }) => ({ panel: req.panelId === B ? second : third, warnings: [] }) })
     const stage = (): HTMLElement => within(workspace()).getByTestId('panel-stage')

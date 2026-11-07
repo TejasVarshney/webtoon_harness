@@ -1,19 +1,18 @@
-import type { DialogueLine, PanelCharacter } from '@shared/types'
+import type { BubbleShape, BubbleStyle, DialogueLine, PanelCharacter } from '@shared/types'
 
 // Pure placement rules for the dialogue overlay: which shape each line is drawn as, which side of the panel it sits
 // on, and where its tail points. The panel data stays as it is; everything here is read from the line's kind and
 // text and from the cast's positions, the way a letterer reads a script.
 
-export type BubbleShape = 'speech' | 'shout' | 'whisper' | 'thought' | 'caption' | 'sfx'
 export type BubbleSide = 'left' | 'center' | 'right'
-/** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it. */
-type BubbleTail = 'down' | 'edge' | 'none'
+/** `down`: toward the speaker in the panel; `edge`: out through the top of the frame, for a voice that is not in it; `point`: to the tip the line stores. */
+export type TailDrawing = 'down' | 'edge' | 'none' | 'point'
 
 export interface BubbleLayout {
   id: string
   shape: BubbleShape
   side: BubbleSide
-  tail: BubbleTail
+  tail: TailDrawing
   /** The speaker is not in the panel's cast (or the line has no speaker). */
   offPanel: boolean
   /** A sound effect drawn big: it has a "!" or is mostly capitals. */
@@ -38,7 +37,8 @@ function shortExclamation(text: string): boolean {
 
 const trailsOff = (text: string): boolean => /^\s*(\.\.\.|…)|(\.\.\.|…)\s*$/u.test(text)
 
-export function bubbleShape(line: Pick<DialogueLine, 'kind' | 'text'>): BubbleShape {
+export function bubbleShape(line: Pick<DialogueLine, 'kind' | 'text'> & { style?: BubbleStyle | null }): BubbleShape {
+  if (line.style?.shape) return line.style.shape
   switch (line.kind) {
     case 'narration':
       return 'caption'
@@ -79,8 +79,10 @@ export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): B
     if (shape === 'caption') return { ...base, side: 'left', tail: 'none', offPanel: line.speakerId === null }
     if (shape === 'sfx') return { ...base, side: 'center', tail: 'none', offPanel: true, loud: line.text.includes('!') || mostlyCapitals(line.text) }
 
+    // A stored tail wins over the automatic one: 'none' draws nothing, a point is drawn to that point.
+    const stored: TailDrawing | null = line.tail === null ? null : line.tail === 'none' ? 'none' : 'point'
     const inCast = line.speakerId !== null ? castSide.get(line.speakerId) : undefined
-    if (inCast === undefined) return { ...base, side: freeSide, tail: 'edge', offPanel: true }
+    if (inCast === undefined) return { ...base, side: freeSide, tail: stored ?? 'edge', offPanel: true }
 
     const speaker = line.speakerId as string
     let side = speakerSide.get(speaker)
@@ -91,6 +93,6 @@ export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): B
       speakerSide.set(speaker, side)
       if (!sideOwner.has(side)) sideOwner.set(side, speaker)
     }
-    return { ...base, side, tail: 'down', offPanel: false }
+    return { ...base, side, tail: stored ?? 'down', offPanel: false }
   })
 }

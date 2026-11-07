@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DialogueLine, PanelCharacter } from '@shared/types'
 import { bubbleShape, layoutBubbles, sideOfPosition } from './bubble-layout'
 
-const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId, placement: null })
+const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId, placement: null, style: null, tail: null })
 const cast = (characterId: string, position: PanelCharacter['position']): Pick<PanelCharacter, 'characterId' | 'position'> => ({ characterId, position })
 
 describe('bubbleShape', () => {
@@ -75,6 +75,20 @@ describe('layoutBubbles', () => {
     ])
   })
 
+  it("a line's tail decides how it is drawn", () => {
+    const cast1 = [cast('chr_a', 'left')]
+    const withTail = (tail: DialogueLine['tail']): DialogueLine => ({ ...line('speech', 'Hi there.', 'chr_a'), tail })
+    expect(layoutBubbles([withTail('none')], cast1)[0].tail).toBe('none')
+    expect(layoutBubbles([withTail({ x: 0.2, y: 0.9 })], cast1)[0].tail).toBe('point')
+    expect(layoutBubbles([withTail(null)], cast1)[0].tail).toBe('down')
+    expect(layoutBubbles([withTail(null)], [])[0].tail).toBe('edge')
+  })
+
+  it('a caption or sound effect never draws a tail, whatever is stored', () => {
+    const [b] = layoutBubbles([{ ...line('narration', 'Midnight.'), tail: { x: 0.2, y: 0.9 } }], [])
+    expect(b.tail).toBe('none')
+  })
+
   it('keeps the lines in reading order and their ids', () => {
     const d = [line('narration', 'n', null, 'dlg_1'), line('thought', 't', 'chr_a', 'dlg_2'), line('sfx', 's', null, 'dlg_3')]
     expect(layoutBubbles(d, [cast('chr_a', 'right')]).map((b) => b.id)).toEqual(['dlg_1', 'dlg_2', 'dlg_3'])
@@ -91,5 +105,12 @@ describe('sideOfPosition', () => {
     // Both sides, or a word that only contains one, say nothing about a side.
     expect(sideOfPosition('left of the door, right by the window')).toBe('center')
     expect(sideOfPosition('upright, bright light')).toBe('center')
+  })
+})
+
+describe('bubbleShape with a style', () => {
+  it('draws the chosen shape whatever the words say', () => {
+    expect(bubbleShape({ kind: 'speech', text: 'Hello.', style: { shape: 'shout' } })).toBe('shout')
+    expect(bubbleShape({ kind: 'speech', text: 'STOP!', style: { shape: 'speech' } })).toBe('speech')
   })
 })

@@ -15,6 +15,14 @@ export const STAGE_ROW_PX = 560
 
 export type Box = { left: number; top: number; width: number; height: number }
 
+export const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const
+export type Arrow = (typeof ARROWS)[number]
+
+export const boxOf = (el: Element): Box => {
+  const r = el.getBoundingClientRect()
+  return { left: r.left, top: r.top, width: r.width, height: r.height }
+}
+
 const round = (n: number): number => Math.round(n * 10000) / 10000
 
 /** Keeps a bubble's centre where the whole bubble stays inside the panel; an axis it overflows is centred. */
@@ -51,6 +59,11 @@ export function nudgePlacement(
   const x = p.x + (key === 'ArrowRight' ? step : key === 'ArrowLeft' ? -step : 0)
   const y = p.y + (key === 'ArrowDown' ? step : key === 'ArrowUp' ? -step : 0)
   return { x: round(clampAxis(x, half.x)), y: round(clampAxis(y, half.y)) }
+}
+
+/** Where the Add bubble menu puts a panel's next line, given how many it has: across three columns and down five rows, 15 spots before it starts over. */
+export function addSpot(count: number): BubblePlacement {
+  return { x: [0.3, 0.5, 0.7][count % 3], y: [0.2, 0.35, 0.5, 0.65, 0.8][Math.floor(count / 3) % 5] }
 }
 
 /** The placement of a bubble where it is drawn now: the first drag or nudge of an automatic bubble starts from here. */

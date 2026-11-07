@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
-import type { Panel } from '@shared/types'
+import type { BubbleStyle, Panel } from '@shared/types'
 import { PanelArt } from '../visualizer/PanelArt'
+import { AddBubbleMenu } from './AddBubbleMenu'
 import { STAGE_ROW_PX, fitScale } from './bubble-placement'
 import { useBubbleEditing } from './use-bubble-editing'
 import { useStagePan } from './use-stage-pan'
@@ -12,6 +13,12 @@ import { useStageZoom, ZoomBar } from './use-stage-zoom'
  * the column must keep room for the tabs; the fit reads that cap, and falls back to this when there is none to read.
  */
 const STAGE_MAX_HEIGHT = 0.62
+
+/** A style picked in Lines and not saved yet, for the line at `index`. */
+export interface StylePreview {
+  index: number
+  style: BubbleStyle | null
+}
 
 export interface PanelStageProps {
   panel: Panel
@@ -26,6 +33,8 @@ export interface PanelStageProps {
   /** The zoom, relative to the fit, and how to change it. The workspace keeps one per panel; without them the stage keeps its own. */
   zoom?: number
   onZoom?(zoom: number): void
+  /** A style being picked in Lines, drawn on its line until it is saved. */
+  stylePreview?: StylePreview | null
 }
 
 export interface Fit {
@@ -84,7 +93,7 @@ export function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObjec
  * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone,
  * and a line that changed under an edit, or a refused save, is said in the Lines tab.
  */
-export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zoom: heldZoom, onZoom }: PanelStageProps) {
+export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zoom: heldZoom, onZoom, stylePreview }: PanelStageProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const shapeRef = useRef<HTMLDivElement>(null)
@@ -92,7 +101,7 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   const zoom = heldZoom ?? ownZoom
   const zoomControl = useStageZoom(viewportRef, shapeRef, zoom, onZoom ?? setOwnZoom)
   const pan = useStagePan(viewportRef)
-  const { editing, selected, select, lines, stage } = useBubbleEditing(panel, stageRef)
+  const { editing, selected, select, lines, stage, add, adding } = useBubbleEditing(panel, stageRef)
   const fit = useStageFit(stageRef, shapeRef)
 
   // The workspace keeps the selected line, so the Lines tab can follow it, and a row selected there selects its bubble.
@@ -106,22 +115,27 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   }, [selectedLine, select])
 
   const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
-  const drawn = lines === panel.dialogue ? panel : { ...panel, dialogue: lines }
+  const shown = stylePreview ? lines.map((line, i) => (i === stylePreview.index ? { ...line, style: stylePreview.style } : line)) : lines
+  const drawn = shown === panel.dialogue ? panel : { ...panel, dialogue: shown }
 
   const scale = fit === null ? null : fit.scale * zoom
+  // The tail's dot is drawn at one size on screen at any zoom, so its size is divided by the scale.
+  const rowStyle = { width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})`, '--stage-scale': scale ?? undefined } as CSSProperties
 
   return (
     <div ref={stageRef} className="panel-stage" data-testid="panel-stage" data-gutter={panel.gutter} tabIndex={-1} {...stage}>
       <div ref={viewportRef} className="stage-viewport" data-testid="stage-viewport" data-pan={pan ?? undefined}>
         <div className="stage-fit" style={fit === null || scale === null ? undefined : { width: fit.width * scale, height: fit.height * scale }}>
-          <div className="stage-row" style={{ width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})` }}>
+          <div className="stage-row" style={rowStyle}>
             <div ref={shapeRef} className="panel-shape" data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame} data-slant={slant} style={shape}>
               <PanelArt panel={drawn} editing={editing} />
             </div>
           </div>
         </div>
       </div>
-      <ZoomBar zoom={zoom} control={zoomControl} />
+      <ZoomBar zoom={zoom} control={zoomControl}>
+        <AddBubbleMenu disabled={adding} onAdd={add} />
+      </ZoomBar>
     </div>
   )
 }

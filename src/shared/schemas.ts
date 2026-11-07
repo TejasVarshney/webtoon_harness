@@ -242,13 +242,42 @@ export const PanelItemSchema = z.object({
 /** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
 export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
 
+export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
+export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
+// A refine and not a regex: a regex reaches the tool schemas as `pattern`, sent as it is to every provider.
+const HexColor = z.string().refine((v) => /^#[0-9a-f]{6}$/i.test(v), 'A colour is written as #rrggbb')
+
+/** How one bubble looks. Every key is optional: only what differs from the shape's default is stored. */
+export const BubbleStyleSchema = z.object({
+  shape: BubbleShapeSchema.optional(),
+  font: BubbleFontSchema.optional(),
+  /** A multiplier of the lettering's size. */
+  size: z.number().min(0.5).max(3).optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  caps: z.boolean().optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  color: HexColor.optional(),
+  fill: HexColor.optional(),
+  stroke: HexColor.optional(),
+  /** CSS px at the lettering's scale. */
+  strokeWidth: z.number().min(0).max(6).optional()
+})
+
+/** Where a bubble's tail points: 'none' draws no tail, a point is the tip as fractions of the panel. An enum rather than a literal because tool schemas go to every provider as JSON Schema. */
+const BubbleTailSchema = z.union([z.enum(['none']), BubblePlacementSchema])
+
 export const DialogueLineSchema = z.object({
   id: Id,
   speakerId: Id.nullable(),
   kind: DialogueKindSchema,
   text: z.string(),
   /** Null leaves the bubble where the strip's automatic layout puts it. */
-  placement: BubblePlacementSchema.nullable().default(null)
+  placement: BubblePlacementSchema.nullable().default(null),
+  /** Null draws the bubble in its kind's default look. */
+  style: BubbleStyleSchema.nullable().default(null),
+  /** Null points the tail the automatic way. */
+  tail: BubbleTailSchema.nullable().default(null)
 })
 
 /** What a panel's picture shows. A change to any of these makes the image out of date. */
@@ -306,7 +335,12 @@ export const PanelSchema = z.object({
  * A dialogue line before it is stored: the service assigns the `dlg_` id. `placement` has no default
  * on purpose: left out it stays `undefined` (the line inherits the stored one), where `null` means automatic.
  */
-const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({ placement: BubblePlacementSchema.nullable().optional() })
+// No defaults on the look fields: undefined means inherit from the stored line, and a default would turn it into clear.
+const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({
+  placement: BubblePlacementSchema.nullable().optional(),
+  style: BubbleStyleSchema.nullable().optional(),
+  tail: BubbleTailSchema.nullable().optional()
+})
 
 export const PanelDraftSchema = z.object({
   episodeId: Id,

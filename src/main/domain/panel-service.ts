@@ -114,7 +114,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       gutter: draft.gutter,
       characters: draft.characters,
       items: draft.items ?? [],
-      dialogue: draft.dialogue.map((line) => withId(line, null)),
+      dialogue: draft.dialogue.map((line) => withId(line, undefined)),
       continuityNotes: draft.continuityNotes ?? '',
       offPanelMentions: draft.offPanelMentions ?? [],
       versions: [],
@@ -165,8 +165,8 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         gutter: patch.gutter ?? current.gutter,
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
-        // A line sent without a placement keeps the one stored at its index: agents send the whole array when they reword one line.
-        dialogue: patch.dialogue ? patch.dialogue.map((line, i) => withId(line, current.dialogue[i]?.placement ?? null)) : current.dialogue,
+        // A line sent without a placement, style or tail keeps the one stored at its index: agents send the whole array when they reword one line.
+        dialogue: patch.dialogue ? patch.dialogue.map((line, i) => withId(line, current.dialogue[i])) : current.dialogue,
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
@@ -450,7 +450,18 @@ function fixInstruction(issues: string[]): string | undefined {
   return issues.length > 0 ? `Fix these consistency issues: ${issues.join('; ')}` : undefined
 }
 
-/** Gives a draft line its id. A line sent without a placement takes `inherited`; an explicit null stays null. */
-function withId(line: Omit<DialogueLine, 'id' | 'placement'> & { placement?: DialogueLine['placement'] }, inherited: DialogueLine['placement']): DialogueLine {
-  return { id: newId('dlg'), speakerId: line.speakerId, kind: line.kind, text: line.text, placement: line.placement === undefined ? inherited : line.placement }
+/** Gives a draft line its id. A line sent without a placement, style or tail takes `inherited`'s; an explicit null stays null. */
+function withId(
+  line: Omit<DialogueLine, 'id' | 'placement' | 'style' | 'tail'> & Partial<Pick<DialogueLine, 'placement' | 'style' | 'tail'>>,
+  inherited: Pick<DialogueLine, 'placement' | 'style' | 'tail'> | undefined
+): DialogueLine {
+  return {
+    id: newId('dlg'),
+    speakerId: line.speakerId,
+    kind: line.kind,
+    text: line.text,
+    placement: line.placement === undefined ? (inherited?.placement ?? null) : line.placement,
+    style: line.style === undefined ? (inherited?.style ?? null) : line.style,
+    tail: line.tail === undefined ? (inherited?.tail ?? null) : line.tail
+  }
 }

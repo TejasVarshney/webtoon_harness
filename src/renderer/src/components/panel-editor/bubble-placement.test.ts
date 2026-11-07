@@ -1,9 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { centreOf, fitScale, nudgePlacement, placementFromPointer } from './bubble-placement'
+import { addSpot, centreOf, fitScale, nudgePlacement, placementFromPointer } from './bubble-placement'
 
 const panel = { left: 0, top: 0, width: 400, height: 600 }
 const bubble = { width: 100, height: 50 }
 const grab = { dx: 0, dy: 0 }
+
+describe('addSpot', () => {
+  it('gives 15 new bubbles in a row 15 different spots inside the panel', () => {
+    const spots = Array.from({ length: 15 }, (_, count) => addSpot(count))
+    expect(new Set(spots.map((s) => `${s.x},${s.y}`)).size).toBe(15)
+    for (const s of spots) {
+      expect(s.x).toBeGreaterThan(0)
+      expect(s.x).toBeLessThan(1)
+      expect(s.y).toBeGreaterThan(0)
+      expect(s.y).toBeLessThan(1)
+    }
+  })
+
+  it('goes across three columns, then down a row, and starts over after the fifth row', () => {
+    expect(addSpot(0)).toEqual({ x: 0.3, y: 0.2 })
+    expect(addSpot(2)).toEqual({ x: 0.7, y: 0.2 })
+    expect(addSpot(3)).toEqual({ x: 0.3, y: 0.35 })
+    expect(addSpot(14)).toEqual({ x: 0.7, y: 0.8 })
+    expect(addSpot(15)).toEqual(addSpot(0))
+  })
+})
 
 describe('placementFromPointer', () => {
   it('puts the centre where the pointer is', () => {

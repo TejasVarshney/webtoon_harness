@@ -410,7 +410,7 @@ describe('PanelService update', () => {
     events.length = 0
     const { panel } = await svc.update(ctx, p.id, { dialogue: [{ speakerId: m.id, kind: 'thought', text: 'new' }], shot: 'close-up' }, USER)
     expect(panel).toMatchObject({ shot: 'close-up', description: p.description, setting: p.setting, continuityNotes: 'rain', characters: p.characters })
-    expect(panel.dialogue).toEqual([{ id: expect.stringMatching(/^dlg_/), speakerId: m.id, kind: 'thought', text: 'new', placement: null }])
+    expect(panel.dialogue).toEqual([{ id: expect.stringMatching(/^dlg_/), speakerId: m.id, kind: 'thought', text: 'new', placement: null, style: null, tail: null }])
     expect(panel.dialogue[0].id).not.toBe(p.dialogue[0].id)
     expect(await svc.get(ctx, p.id)).toEqual(panel)
     expect(events).toEqual([{ type: 'panel.changed', projectId: ctx.id, panelId: p.id }])
@@ -443,6 +443,28 @@ describe('PanelService update', () => {
     expect(lines.map((d) => d.text)).toEqual(['ONE', 'TWO', 'THREE', 'four'])
     expect(lines.map((d) => d.placement)).toEqual([placed, null, other, null])
     expect((await svc.get(ctx, p.id)).dialogue.map((d) => d.placement)).toEqual([placed, null, other, null])
+  })
+
+  it("keeps a line's style and tail when an agent rewords it", async () => {
+    const { svc, epi, ctx } = await setup()
+    const style = { fill: '#ff0000' }
+    const tail = { x: 0.2, y: 0.9 }
+    const p = (await svc.create(ctx, draft(epi.id, { dialogue: [{ speakerId: null, kind: 'speech', text: 'Old', style, tail }] }), USER)).panel
+    const { panel } = await svc.update(ctx, p.id, { dialogue: [{ speakerId: null, kind: 'speech', text: 'New' }] }, USER)
+    expect(panel.dialogue[0]).toMatchObject({ text: 'New', style, tail })
+  })
+
+  it('clears them on an explicit null', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { dialogue: [{ speakerId: null, kind: 'speech', text: 'Old', style: { fill: '#ff0000' }, tail: { x: 0.2, y: 0.9 } }] }), USER)).panel
+    const { panel } = await svc.update(ctx, p.id, { dialogue: [{ speakerId: null, kind: 'speech', text: 'New', style: null, tail: null }] }, USER)
+    expect(panel.dialogue[0]).toMatchObject({ style: null, tail: null })
+  })
+
+  it('gives a created line no look', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { dialogue: [{ speakerId: null, kind: 'speech', text: 'Bare' }] }), USER)).panel
+    expect(p.dialogue[0]).toMatchObject({ style: null, tail: null })
   })
 
   it('clears a placement on an explicit null and sets one on an explicit value', async () => {

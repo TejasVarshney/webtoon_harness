@@ -137,7 +137,7 @@ Only a `ready` version can be made current. In the main chat there is no revert 
 Dialogue is drawn over the image by the app, so changing it needs no image call (R6).
 
 - `update_panel_fields` with `dialogue` replaces the **whole** list. Include every line you keep, in reading order.
-- Each line is `speakerId`, `kind` and `text`, and optionally `placement`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
+- Each line is `speakerId`, `kind` and `text`, and optionally `placement`, `style` and `tail`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
 - `speakerId` is a character id (copy it from `get_panel_context`), or null for `narration` and `sfx`.
 - At most 2 bubbles per panel and 25 words per bubble.
 - `"dialogue": []` removes all lines.
@@ -149,6 +149,13 @@ Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18
 - **Set one only when the user asks for a spot**, for example "put Mina's bubble top right". Pick the centre of that region, such as `{"x": 0.8, "y": 0.2}`, and leave every other line without `placement`.
 - **`placement: null` clears a spot** and hands the bubble back to the app. Use it when the user asks to reset a bubble, not otherwise.
 - A placement is layout, like `frame` or `gutter`: it needs no redraw.
+
+A bubble's look is data too, and needs no redraw.
+
+- `style` holds only what differs from the app's default: `shape` (`speech`, `shout`, `whisper`, `thought`, `caption`, `sfx`), `font` (`comic`, `bangers`, `hand`, `impact`, `serif`, `typewriter`), `size` (0.5 to 3), `bold`, `italic`, `caps`, `align` (`left`, `center`, `right`), `color`, `fill`, `stroke` (`#rrggbb`), `strokeWidth` (0 to 6).
+- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
+- **Keep the user's looks.** A line you send without `style` or `tail` keeps those of the line at the same position, so changing words never changes a look. If you reorder, add or remove lines, send them on each line you keep.
+- **Set them only when the user asks**, for example "make Mina's line red" or "point the bubble at Jun".
 
 ## Reporting Changes
 

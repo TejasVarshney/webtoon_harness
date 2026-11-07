@@ -164,6 +164,8 @@ prj_0123456789/
 
 Dialogue is stored as data and drawn over the image by the app; generated images contain no text. Everything you delete in the app goes to the operating system's trash, and the agent has no delete tools: characters used by panels are archived instead of deleted, and every image attempt is kept as a version. A project file that was hand-edited into invalid JSON is reported as a problem and left untouched, and the project still opens.
 
+In the panel editor you can letter a panel yourself. **Add bubble** on the stage offers speech, shout, whisper, thought, caption and sound-effect bubbles. Under a line in the **Lines** tab you can change its font, size, colors and outline, and **Reset style** puts it back. To point a bubble's tail, drag the dot at its tip; moving the bubble leaves the tip where it is. Export draws the same look as the stage.
+
 ## Workflow docs
 
 The agent's behavior is governed by markdown files, not hard-coded prompts. The shipped defaults live in `resources/agent-docs`, and each project gets its own copy in its `agent/` folder. `agent/AGENTS.md` is the agent's system prompt, and the files under `workflows/` and `reference/` are read on demand through the `read_workflow_doc` tool.
