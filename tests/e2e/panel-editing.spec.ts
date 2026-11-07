@@ -45,7 +45,11 @@ async function pointDot(page: Page, stage: Locator, x: number, y: number, saved:
     await dragDot(page, stage, x, y)
     await expect.poll(saved, { timeout: 2500 }).toBe(true)
   }
-  await attempt().catch(attempt)
+  await attempt().catch(async () => {
+    // Said out loud, so a drag that often fails shows in the run's output instead of passing unseen.
+    console.log('pointDot: the first drag stored no tip, trying once more')
+    await attempt()
+  })
 }
 
 /** Sets the window's outer size, and waits until the page has its new content size. */
