@@ -984,6 +984,18 @@ describe('the width handles', () => {
     fireEvent.pointerMove(stage(), { clientX: to, clientY: 25, buttons: 1 })
     if (release) fireEvent.pointerUp(stage(), { clientX: to, clientY: 25 })
   }
+  /** jsdom has no stylesheet: these rules stand in for the app's, where a test needs one. */
+  let sheet: HTMLStyleElement | null = null
+  function withRules(css: string): void {
+    sheet = document.createElement('style')
+    sheet.textContent = css
+    document.head.append(sheet)
+  }
+  afterEach(() => {
+    sheet?.remove()
+    sheet = null
+  })
+  const thought: DialogueLine = { ...night, kind: 'thought', text: 'Hmm.' }
 
   it('show on the selected bubble only, one on each side, and go while the text is open', async () => {
     mount()
@@ -1144,5 +1156,73 @@ describe('the width handles', () => {
     expect(updates(calls)[1].dialogue?.[1].style).toEqual({ fill: '#00ff00', width: 0.75 })
     await waitFor(() => expect(stored.dialogue[1].style).toEqual({ fill: '#00ff00', width: 0.75 }))
     expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('a press off the edge moves the edge by the move only', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    // Pressed 6 px outside the right edge, at 100, and moved 8 px: the edge goes to 108, not to the pointer at 114.
+    dragHandle(1, 'right', 106, 114)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.135, y: 0.8 }, style: { width: 0.27 } })
+  })
+
+  it('a thought dragged below its floor stores the floor, and keeps its other edge where it was', async () => {
+    // Its cloud is never under 120 px wide: 0.3 of the panel.
+    withRules('.bubble-thought { min-width: 120px }')
+    withLines([hello, thought])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 100, 40)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Its left edge stays at 0.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.15, y: 0.8 }, style: { width: 0.3 } })
+  })
+
+  it('arrow keys at the floor do not lower the stored width', async () => {
+    withRules('.bubble-thought { min-width: 120px }')
+    withLines([hello, { ...thought, style: { width: 0.3 } }])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => handle(1, 'left').focus())
+    fireEvent.keyDown(handle(1, 'left'), { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle(1, 'left'), { key: 'ArrowLeft', shiftKey: true })
+    expect(bubble(1).style.getPropertyValue('--bubble-width')).toBe('30%')
+    expect(handle(1, 'left')).toHaveAttribute('aria-valuenow', '30')
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[1].style).toEqual({ width: 0.3 })
+  })
+
+  it('a run of arrow keys is kept inside the panel at the height the bubble has when it is saved', async () => {
+    // Once it has a width, its text wraps to 300 px tall.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (!this.classList.contains('bubble')) return rect(0, 0, 400, 600)
+      return this.classList.contains('bubble-sized') ? rect(0, 330, 96, 300) : rect(0, 455, 100, 50)
+    })
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => handle(1, 'right').focus())
+    fireEvent.keyDown(handle(1, 'right'), { key: 'ArrowLeft' })
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Centred at 0.8 down, a 300 px tall bubble would cross the bottom: it is moved up to 0.75.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.5, y: 0.75 }, style: { width: 0.24 } })
+  })
+
+  it("a sound effect is resized from its own width, not its tilted box's", async () => {
+    // Tilted, it covers 0 to 100 on screen, though it is 80 wide: its sides are at 10 and 90.
+    withRules('.panel-media { width: 400px } .bubble-sfx { width: 80px }')
+    withLines([hello, { ...night, kind: 'sfx', text: 'BAM' }])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 90, 190)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // The left side stays at 10: 180 px wide, centred at 100.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.25, y: 0.8 }, style: { width: 0.45 } })
   })
 })

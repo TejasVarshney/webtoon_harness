@@ -18,11 +18,35 @@ const MAX_WIDTH = 0.95
 const STEP = 0.01
 const STEP_BIG = 0.05
 
-const clampWidth = (w: number): number => Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w)) * 10000) / 10000
+const round = (n: number): number => Math.round(n * 10000) / 10000
+
+/** `floor` is the narrowest the bubble is drawn: a width under it would be stored but not shown. */
+const clampWidth = (w: number, floor: number): number => round(Math.min(MAX_WIDTH, Math.max(floor, w)))
 
 /** A centre where a bubble `size` big (screen px) is whole inside the panel, as a drag keeps it. */
 const inside = (centre: BubblePlacement, size: { width: number; height: number }, panel: Box): BubblePlacement =>
   placementFromPointer({ pointer: { x: panel.left + centre.x * panel.width, y: panel.top + centre.y * panel.height }, grab: { dx: 0, dy: 0 }, panel, bubble: size })
+
+/** A length the stylesheet gives, in px; 0 for none, and in jsdom, which lays nothing out. */
+const px = (v: string): number => parseFloat(v) || 0
+
+/**
+ * The bubble across, in screen px: its centre, and its width as it is laid out. A sound effect is tilted, so its box on
+ * screen is wider than it is. Also the narrowest it can be drawn, as a share of the panel's width: its shape's
+ * min-width, or its padding and outline around about one letter. jsdom has no layout, so there it is the box.
+ */
+function drawnAcross(el: HTMLElement, panelB: Box): { centre: number; width: number; floor: number } {
+  const box = boxOf(el)
+  const media = el.closest<HTMLElement>('.panel-media')
+  const mediaWidth = media === null ? 0 : px(getComputedStyle(media).width) || media.offsetWidth
+  // Screen px for each px of the stage before it is scaled.
+  const scale = mediaWidth > 0 ? panelB.width / mediaWidth : 1
+  const s = getComputedStyle(el)
+  const width = (px(s.width) || el.offsetWidth) * scale || box.width
+  const least = Math.max(px(s.minWidth), px(s.paddingLeft) + px(s.paddingRight) + px(s.borderLeftWidth) + px(s.borderRightWidth) + px(s.fontSize)) * scale
+  // Rounded up, so the stored width is never under the drawn one.
+  return { centre: box.left + box.width / 2, width, floor: Math.max(MIN_WIDTH, Math.ceil((least / panelB.width) * 10000) / 10000) }
+}
 
 /** What the handles share with the bubbles: their press and nudge (one at a time, whichever it is on), and how they save. */
 interface WidthHost {
@@ -48,7 +72,7 @@ interface WidthHost {
  * where it is), stepped with the arrow keys around the bubble's centre, double-clicked to give the width back to the
  * text. A drag and a run of keys go through the same press and nudge as the bubble's, with `width` set, and are drawn
  * as `widthPreview` until they are saved. Each saves the width and the centre that goes with it in one save, so an
- * automatic bubble is placed by its first resize.
+ * automatic bubble is placed by its first resize. No width is under what the bubble can be drawn at.
  */
 export function useWidthEditing(host: WidthHost) {
   const { base, selected, textEditing, panelBox, bubbleAt, select, send, press, nudge, nudgeTimer, keepFocus, dragEnded, dropPress, flushNudge } = host
@@ -74,6 +98,20 @@ export function useWidthEditing(host: WidthHost) {
     [send]
   )
 
+  /**
+   * Saves a width set by a drag or a run of keys. The bubble is kept inside the panel once more, now that its height at
+   * the new width is known: the preview has drawn it.
+   */
+  const saveWidth = useCallback(
+    (index: number, width: number, placement: BubblePlacement, expect: LineIdentity): void => {
+      const panelB = panelBox()
+      const el = bubbleAt(index)
+      const kept = panelB !== null && el !== null && panelB.width > 0 && panelB.height > 0 ? inside(placement, boxOf(el), panelB) : placement
+      commitWidth(index, width, kept, expect)
+    },
+    [panelBox, bubbleAt, commitWidth]
+  )
+
   /** Where line `i` is centred now: a run of nudges of it still waiting has moved it from where the line says. */
   function centreNow(i: number, line: DialogueLine, bubble: Box, panelB: Box): BubblePlacement {
     const run = nudge.current
@@ -86,8 +124,10 @@ export function useWidthEditing(host: WidthHost) {
     const line = base[i]
     const el = bubbleAt(i)
     const panelB = panelBox()
-    if (e.button !== 0 || line === undefined || el === null || panelB === null) return
+    if (e.button !== 0 || line === undefined || el === null || panelB === null || panelB.width <= 0) return
     const box = boxOf(el)
+    const drawn = drawnAcross(el, panelB)
+    const out = edge === 'right' ? 1 : -1
     const y = centreNow(i, line, box, panelB).y
     dropPress()
     flushNudge()
@@ -97,12 +137,13 @@ export function useWidthEditing(host: WidthHost) {
       index: i,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
-      grab: { dx: 0, dy: 0 },
+      // Off the side by this much: the side keeps that distance from the pointer, so it does not jump to it.
+      grab: { dx: e.clientX - (drawn.centre + (out * drawn.width) / 2), dy: 0 },
       bubble: { width: box.width, height: box.height },
       expect: identityOf(line),
       dragging: false,
       tail: false,
-      width: { edge, anchor: edge === 'right' ? box.left : box.left + box.width, y, share: null },
+      width: { edge, anchor: drawn.centre - (out * drawn.width) / 2, y, floor: drawn.floor, share: null },
       placement: null
     }
   }
@@ -112,8 +153,8 @@ export function useWidthEditing(host: WidthHost) {
     const r = p.width
     if (r === undefined || panelB.width <= 0 || panelB.height <= 0) return
     const out = r.edge === 'right' ? 1 : -1
-    // The width is from the other side to the pointer, and the centre midway between them.
-    r.share = clampWidth((out * (x - r.anchor)) / panelB.width)
+    // The width is from the other side to the side being dragged, and the centre midway between them.
+    r.share = clampWidth((out * (x - p.grab.dx - r.anchor)) / panelB.width, r.floor)
     const centre = { x: (r.anchor - panelB.left) / panelB.width + (out * r.share) / 2, y: r.y }
     p.placement = inside(centre, { width: r.share * panelB.width, height: p.bubble.height }, panelB)
     setWidthPreview({ index: p.index, width: r.share, placement: p.placement })
@@ -122,11 +163,7 @@ export function useWidthEditing(host: WidthHost) {
   /** The stage's release of a drag of a handle. */
   function releaseWidth(p: Press): void {
     if (p.width === undefined || p.width.share === null || p.placement === null) return
-    // Kept inside the panel once more, now that the bubble's height at its new width is known.
-    const panelB = panelBox()
-    const el = bubbleAt(p.index)
-    const placement = panelB !== null && el !== null && panelB.width > 0 && panelB.height > 0 ? inside(p.placement, boxOf(el), panelB) : p.placement
-    commitWidth(p.index, p.width.share, placement, p.expect)
+    saveWidth(p.index, p.width.share, p.placement, p.expect)
   }
 
   function nudgeWidth(i: number, wider: boolean, big: boolean): void {
@@ -135,14 +172,15 @@ export function useWidthEditing(host: WidthHost) {
     const line = base[i]
     if (panelB === null || el === null || line === undefined || panelB.width <= 0 || panelB.height <= 0) return
     const box = boxOf(el)
+    const drawn = drawnAcross(el, panelB)
     if (nudge.current?.index !== i || nudge.current.width === undefined) {
       const placement = centreNow(i, line, box, panelB)
       flushNudge()
       // An automatic bubble starts from the width it is drawn at.
-      nudge.current = { index: i, expect: identityOf(line), tail: false, width: line.style?.width ?? box.width / panelB.width, placement }
+      nudge.current = { index: i, expect: identityOf(line), tail: false, width: line.style?.width ?? drawn.width / panelB.width, placement }
     }
     const run = nudge.current!
-    const width = clampWidth(run.width! + (wider ? 1 : -1) * (big ? STEP_BIG : STEP))
+    const width = clampWidth(run.width! + (wider ? 1 : -1) * (big ? STEP_BIG : STEP), drawn.floor)
     run.width = width
     run.placement = inside(run.placement, { width: width * panelB.width, height: box.height }, panelB)
     setWidthPreview({ index: i, width, placement: run.placement })
@@ -180,5 +218,5 @@ export function useWidthEditing(host: WidthHost) {
     }
   }
 
-  return { widthPreview, setWidthPreview, widthFocus, commitWidth, dragWidth, releaseWidth, bindWidth }
+  return { widthPreview, setWidthPreview, widthFocus, saveWidth, dragWidth, releaseWidth, bindWidth }
 }

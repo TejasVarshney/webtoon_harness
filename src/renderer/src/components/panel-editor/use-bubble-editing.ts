@@ -103,11 +103,11 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
 
   const select = useCallback((i: number | null) => setSelectedIndex(i), [])
 
-  const panelBox = (): Box | null => {
+  const panelBox = useCallback((): Box | null => {
     const media = stageRef.current?.querySelector('.panel-media')
     return media ? boxOf(media) : null
-  }
-  const bubbleAt = (i: number): HTMLElement | null => stageRef.current?.querySelector<HTMLElement>(`[data-line="${i}"]`) ?? null
+  }, [stageRef])
+  const bubbleAt = useCallback((i: number): HTMLElement | null => stageRef.current?.querySelector<HTMLElement>(`[data-line="${i}"]`) ?? null, [stageRef])
   const focusStage = (): void => {
     keepFocus.current = false
     tail.tailFocus.current = false
@@ -152,9 +152,9 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     nudge.current = null
     if (run === null) return
     if (run.tail) tail.commitTail(run.index, run.placement, run.expect)
-    else if (run.width !== undefined) widths.commitWidth(run.index, run.width, run.placement, run.expect)
+    else if (run.width !== undefined) widths.saveWidth(run.index, run.width, run.placement, run.expect)
     else commitPlacement(run.index, run.placement, run.expect)
-  }, [commitPlacement, tail.commitTail, widths.commitWidth])
+  }, [commitPlacement, tail.commitTail, widths.saveWidth])
 
   // Stepping to another panel remounts the stage: a run of nudges still waiting is saved, not lost.
   useLayoutEffect(() => {

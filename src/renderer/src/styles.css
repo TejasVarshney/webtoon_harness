@@ -2644,7 +2644,8 @@ kbd {
 
 /* The handles on the selected bubble's sides that set its width: a pill 6 x 16 px on screen at any zoom, with a 24px
    hit area, drawn like the tail's dot. Each is centred on the bubble's edge: on the middle of its outline, for a shape
-   whose outline is the box's border. */
+   whose outline is the box's border. Only the pill's inner half of the hit area is inside the bubble, so a press on a
+   small bubble still moves it. */
 .bubble-width-handle {
   --edge-out: 0px;
   position: absolute;
@@ -2669,10 +2670,23 @@ kbd {
   --edge-out: calc(var(--bubble-stroke-width, 2px) / 2);
 }
 
+/* The hit area reaches `--hit-in` (screen px) into the bubble from the handle's centre and 21px out. At the panel's side,
+   which clips what is outside, `BubbleWidthHandles` sets it to reach further in, so that some of it can be pressed. */
 .bubble-width-handle::before {
   position: absolute;
-  inset: calc(-5.5px / var(--stage-scale, 1)) calc(-10.5px / var(--stage-scale, 1));
+  top: 50%;
+  width: calc((21px + var(--hit-in, 3px)) / var(--stage-scale, 1));
+  height: calc(24px / var(--stage-scale, 1));
+  translate: 0 -50%;
   content: '';
+}
+
+.bubble-width-handle[data-edge='left']::before {
+  right: calc(50% - var(--hit-in, 3px) / var(--stage-scale, 1));
+}
+
+.bubble-width-handle[data-edge='right']::before {
+  left: calc(50% - var(--hit-in, 3px) / var(--stage-scale, 1));
 }
 
 .bubble-width-handle:focus-visible {

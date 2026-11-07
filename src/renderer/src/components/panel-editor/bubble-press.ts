@@ -8,10 +8,12 @@ import type { LineIdentity } from './dialogue-edits'
 /** A press on one of a bubble's width handles. The bubble's other side stays where it is. */
 interface WidthPress {
   edge: BubbleEdge
-  /** The other side, in screen px across. */
+  /** The other side, in screen px across. The press's `grab.dx` is the pointer's distance from the side it is on. */
   anchor: number
   /** The height of the bubble's centre, as a fraction of the panel: a resize keeps it. */
   y: number
+  /** The narrowest the bubble is drawn, as a share of the panel's width: it is never stored narrower. */
+  floor: number
   /** The width the drag has reached, as a share of the panel's; null until it moves. */
   share: number | null
 }

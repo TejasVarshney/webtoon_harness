@@ -717,6 +717,32 @@ test("a bubble's width is set by dragging its handle", async () => {
   await app.close()
 })
 
+// The handles' hit areas are mostly outside the bubble's sides, so a short selected bubble is still moved by a press on
+// it a little off its centre, either side, and its width is left alone.
+test('a press near the middle of a short selected bubble moves it and leaves its width alone', async () => {
+  const { app, page, stage, stored } = await openPanelWith([{ speakerId: null, kind: 'speech', text: 'Hi', placement: { x: 0.5, y: 0.5 } }])
+  const bubble = stage.locator('[data-line="0"]')
+  await bubble.click()
+  await expect(bubble.locator('.bubble-width-handle')).toHaveCount(2)
+  for (const [dx, to] of [
+    [-8, 0.3],
+    [8, 0.6]
+  ]) {
+    const box = await boxOf(bubble)
+    const media = await boxOf(stage.locator('.panel-media'))
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(media.x + media.width * to, media.y + media.height * to, { steps: 12 })
+    await page.mouse.up()
+    // Grabbed `dx` px off its centre, so its centre lands that far from the pointer.
+    const want = { x: to - dx / media.width, y: to }
+    const near = (p: { x: number; y: number } | null): boolean => p !== null && Math.abs(p.x - want.x) <= 0.01 && Math.abs(p.y - want.y) <= 0.01
+    await expect.poll(async () => near((await stored())[0].placement), { message: `moved by a press ${dx} px off its centre` }).toBe(true)
+    expect((await stored())[0].style, 'its width is left alone').toBeNull()
+  }
+  await app.close()
+})
+
 // Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
 test('a selected bubble under another takes the press', async () => {
   const spot = { x: 0.5, y: 0.5 }
