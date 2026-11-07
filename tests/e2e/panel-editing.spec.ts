@@ -34,12 +34,18 @@ async function dragDot(page: Page, stage: Locator, x: number, y: number): Promis
   await page.mouse.up()
 }
 
-/** Drags the dot until `saved` says the tail is stored: a press that lands as the bubble remounts after a save does nothing, so it is made again. */
+/**
+ * Drags the dot, and once more if `saved` does not then say the tail is stored. Now and then an injected drag stores
+ * nothing, and may do nothing at all. A real OS pointer event during it is the likely cause: it ends the press at the
+ * `(e.buttons & 1) === 0` guard in `useBubbleEditing`. `PanelStage.test.tsx` holds a press on the dot against the bubble's
+ * remount in each order, which is the real guard on this path: one extra try here cannot hide a drag that mostly fails.
+ */
 async function pointDot(page: Page, stage: Locator, x: number, y: number, saved: () => Promise<boolean>): Promise<void> {
-  await expect(async () => {
+  const attempt = async (): Promise<void> => {
     await dragDot(page, stage, x, y)
     await expect.poll(saved, { timeout: 2500 }).toBe(true)
-  }).toPass({ timeout: 20000 })
+  }
+  await attempt().catch(attempt)
 }
 
 /** Sets the window's outer size, and waits until the page has its new content size. */

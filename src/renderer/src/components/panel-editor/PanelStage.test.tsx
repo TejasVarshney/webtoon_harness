@@ -793,6 +793,101 @@ describe("the tail's dot", () => {
     await waitFor(() => expect(bubble(2)).toHaveFocus())
   })
 
+  // Real pointer events can be lost in the e2e drag (see `pointDot` there), so this is the guard on the path itself: a
+  // press on the dot and a save's remount of the bubble, in each order they can come. The press lives on the stage, not
+  // on the bubble that goes away, so the drag carries on.
+  describe("a press on the dot against the bubble's remount", () => {
+    const tails = (calls: { channel: string; req: unknown }[]) => updates(calls).map((p) => p.dialogue?.[0].tail)
+    const press = (): void => {
+      fireEvent.pointerDown(dot(), { clientX: 50, clientY: 100, buttons: 1 })
+    }
+    const finish = (on: HTMLElement = stage()): void => {
+      fireEvent.pointerMove(on, { clientX: 100, clientY: 300, buttons: 1 })
+      fireEvent.pointerUp(on, { clientX: 100, clientY: 300 })
+    }
+    /** A drag of the bubble whose save is still going: its landing remounts the bubble, with a new line id. */
+    async function heldSave() {
+      const m = mount()
+      await userEvent.click(bubble(0))
+      let open: () => void = () => undefined
+      gate = new Promise((resolve) => (open = resolve))
+      fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+      fireEvent.pointerMove(stage(), { clientX: 60, clientY: 30, buttons: 1 })
+      fireEvent.pointerUp(stage(), { clientX: 60, clientY: 30 })
+      await waitFor(() => expect(updates(m.calls)).toHaveLength(1))
+      const before = bubble(0)
+      return {
+        ...m,
+        land: async () => {
+          await act(async () => open())
+          await act(async () => undefined)
+          expect(before.isConnected, 'the bubble remounted').toBe(false)
+        }
+      }
+    }
+    async function expectTipStored(calls: { channel: string; req: unknown }[]): Promise<void> {
+      await waitFor(() => expect(updates(calls)).toHaveLength(2))
+      expect(tails(calls)[1]).toEqual({ x: 0.25, y: 0.5 })
+    }
+
+    it('press, remount, then move', async () => {
+      const m = await heldSave()
+      press()
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, move past the threshold, remount, then move on', async () => {
+      const m = await heldSave()
+      press()
+      fireEvent.pointerMove(stage(), { clientX: 70, clientY: 150, buttons: 1 })
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, move under the threshold, remount, then move', async () => {
+      const m = await heldSave()
+      press()
+      fireEvent.pointerMove(stage(), { clientX: 51, clientY: 100, buttons: 1 })
+      await m.land()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('remount, then press the new dot and drag', async () => {
+      const m = await heldSave()
+      await m.land()
+      press()
+      finish()
+      await expectTipStored(m.calls)
+    })
+
+    it('press, remount, then move and release over the panel image rather than the stage', async () => {
+      const m = await heldSave()
+      press()
+      await m.land()
+      finish(media())
+      await expectTipStored(m.calls)
+    })
+
+    it('with a text save held: press, remount, then move', async () => {
+      const m = mount()
+      await userEvent.click(bubble(0))
+      let open: () => void = () => undefined
+      gate = new Promise((resolve) => (open = resolve))
+      fireEvent.doubleClick(bubble(0))
+      await userEvent.type(textBox(), ' More{Enter}')
+      await waitFor(() => expect(updates(m.calls)).toHaveLength(1))
+      press()
+      await act(async () => open())
+      await act(async () => undefined)
+      finish()
+      await expectTipStored(m.calls)
+    })
+  })
+
   describe('Add bubble', () => {
     const addButton = (): HTMLElement => within(stage()).getByRole('button', { name: 'Add bubble' })
     async function choose(name: string): Promise<void> {
