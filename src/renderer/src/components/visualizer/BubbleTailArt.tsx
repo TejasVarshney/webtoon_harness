@@ -15,6 +15,8 @@ interface BubbleBox {
   /** The overlay, which is the panel. */
   panel: Size
   em: number
+  /** Screen px for each px at the overlay's own scale. */
+  scale: number
 }
 
 const same = (a: BubbleBox, b: BubbleBox): boolean =>
@@ -24,7 +26,23 @@ const same = (a: BubbleBox, b: BubbleBox): boolean =>
   a.centre.y === b.centre.y &&
   a.panel.width === b.panel.width &&
   a.panel.height === b.panel.height &&
-  a.em === b.em
+  a.em === b.em &&
+  a.scale === b.scale
+
+/** Half the dot's size on screen (`.bubble-tail-handle`). */
+const DOT_RADIUS_PX = 7
+
+/**
+ * A resting dot, held whole inside the panel. Outside it, a press there would land on the stage and not the dot, and a
+ * dot that is focused there would have the browser try to bring it into view. A stored tip is where the user put it.
+ */
+function insidePanel(p: Point, m: BubbleBox): Point {
+  const inset = DOT_RADIUS_PX / m.scale
+  return {
+    x: Math.min(m.panel.width - inset - m.centre.x, Math.max(inset - m.centre.x, p.x)),
+    y: Math.min(m.panel.height - inset - m.centre.y, Math.max(inset - m.centre.y, p.y))
+  }
+}
 
 function useBubbleBox(ref: RefObject<Element | null>): BubbleBox | null {
   const [measured, setMeasured] = useState<BubbleBox | null>(null)
@@ -46,7 +64,8 @@ function useBubbleBox(ref: RefObject<Element | null>): BubbleBox | null {
         box: { width: b.width / scale, height: b.height / scale },
         centre: { x: (b.left + b.width / 2 - o.left) / scale, y: (b.top + b.height / 2 - o.top) / scale },
         panel: { width: o.width / scale, height: o.height / scale },
-        em: Number.isFinite(em) ? em : 16
+        em: Number.isFinite(em) ? em : 16,
+        scale
       }
       setMeasured((prev) => (prev !== null && same(prev, next) ? prev : next))
     }
@@ -80,7 +99,7 @@ export function BubbleTailArt({ shape, side, drawing, tip, stroke, handle }: Bub
   if (m !== null) {
     local = tip
       ? { x: tip.x * m.panel.width - m.centre.x, y: tip.y * m.panel.height - m.centre.y }
-      : restingTip({ box: m.box, em: m.em, side, drawing: drawing === 'point' ? 'down' : drawing })
+      : insidePanel(restingTip({ box: m.box, em: m.em, side, drawing: drawing === 'point' ? 'down' : drawing }), m)
   }
   let art = null
   // An automatic tail is the stylesheet's; only a stored tip is drawn here, and the dot may sit by one that is not.

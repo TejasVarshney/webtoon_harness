@@ -525,3 +525,65 @@ test("a row's buttons take the first click, and a lower row's text takes the foc
   expect((await texts()).slice(0, 3)).toEqual(['One', 'Two', 'Three'])
   await app.close()
 })
+
+/** Presses a bubble at its centre and drags it to a point of the panel, in fractions; beyond 1 is past its edge. */
+async function dragBubble(page: Page, stage: Locator, bubble: Locator, x: number, y: number): Promise<void> {
+  const from = await boxOf(bubble)
+  const media = await boxOf(stage.locator('.panel-media'))
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(media.x + media.width * x, media.y + media.height * y, { steps: 12 })
+  await page.mouse.up()
+}
+
+// A bubble at the panel's edge has its resting dot held inside the panel, where a press can reach it, and focus on the
+// dot scrolls nothing: the art stays in its frame.
+test("a resting dot at the panel's edge can be pressed and tabbed to, and the art stays put", async () => {
+  const spot = { x: 0.5, y: 0.5 }
+  const { app, page, stage, stored } = await openPanelWith([
+    { speakerId: null, kind: 'speech', text: 'Low', placement: spot, tail: 'none' },
+    // No speaker in the cast: its automatic tail leaves through the top of the frame.
+    { speakerId: null, kind: 'speech', text: 'High', placement: { x: 0.5, y: 0.3 } }
+  ])
+  const dot = stage.locator('.bubble-tail-handle')
+  const scrolled = (): Promise<number> => stage.locator('.panel-media').evaluate((el: any) => el.scrollTop)
+  const dotTakesThePress = async (): Promise<string | null> => {
+    const box = await boxOf(dot)
+    return page.evaluate(([x, y]) => (globalThis as any).document.elementFromPoint(x, y)?.className ?? null, [box.x + box.width / 2, box.y + box.height / 2])
+  }
+
+  // At the bottom edge, with no tail: the dot rests below the bubble, or would.
+  const low = stage.locator('[data-line="0"]')
+  await dragBubble(page, stage, low, 0.5, 1.1)
+  await expect.poll(async () => (await stored())[0].placement.y).toBeGreaterThan(0.85)
+  await expect.poll(dotTakesThePress).toBe('bubble-tail-handle')
+  await low.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+
+  // A drag from it points the tail.
+  await pointDot(page, stage, 0.25, 0.5, async () => typeof (await stored())[0].tail === 'object')
+  const tip = (await stored())[0].tail
+  expect(Math.abs(tip.x - 0.25)).toBeLessThanOrEqual(0.02)
+  expect(Math.abs(tip.y - 0.5)).toBeLessThanOrEqual(0.02)
+  expect(await scrolled()).toBe(0)
+
+  // A stored tip stays where it was put, even at the very edge with half its dot cut off, and focus on it scrolls nothing.
+  await pointDot(page, stage, 0.5, 1.05, async () => (await stored())[0].tail.y > 0.99)
+  await low.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+
+  // At the top edge, with a tail that leaves through the frame: the dot would rest above the panel.
+  const high = stage.locator('[data-line="1"]')
+  await dragBubble(page, stage, high, 0.5, -0.1)
+  await expect.poll(async () => (await stored())[1].placement.y).toBeLessThan(0.15)
+  await expect.poll(dotTakesThePress).toBe('bubble-tail-handle')
+  await high.focus()
+  await page.keyboard.press('Tab')
+  await expect(dot).toBeFocused()
+  expect(await scrolled()).toBe(0)
+  await app.close()
+})
