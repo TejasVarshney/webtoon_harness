@@ -92,6 +92,20 @@ describe('BubbleTailArt', () => {
     expect(pathOf(container)).not.toBe(before)
   })
 
+  it('measures again when the lines beside it change: a line above that grows moves it without resizing it', () => {
+    const observed: Element[] = []
+    class FakeObserver {
+      observe(el: Element): void {
+        observed.push(el)
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeObserver)
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Hi', { tail: TIP })]} />)
+    expect(observed).toContain(container.querySelector('.dialogue-flow'))
+  })
+
   describe('a resting dot', () => {
     // The panel is 400x600. jsdom has no font size, so 1em is 16 px and a tail reaches 17.6 px past the bubble.
     it('keeps its usual place while that is inside the panel', () => {

@@ -73,6 +73,8 @@ function useBubbleBox(ref: RefObject<Element | null>): BubbleBox | null {
     const observer = new ResizeObserver(measure)
     observer.observe(bubble)
     observer.observe(overlay)
+    // A line above that grows moves this bubble without resizing it, and its layer grows with it.
+    if (bubble.parentElement !== null) observer.observe(bubble.parentElement)
     return () => observer.disconnect()
   })
   return measured
