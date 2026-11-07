@@ -92,6 +92,8 @@ describe('panel chat tools: the tool set', () => {
     for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('update_panel_fields').properties.dialogue.description).toContain(PLACEMENT_DOC)
+    expect(schema('update_panel_fields').properties.dialogue.description).toContain('leave either out to keep the one at the same position')
+    expect(schema('update_panel_fields').properties.dialogue.description).toContain('when removing or reordering lines, send style and tail on every line kept')
     expect(schema('get_panel_context').properties ?? {}).toEqual({})
   })
 })

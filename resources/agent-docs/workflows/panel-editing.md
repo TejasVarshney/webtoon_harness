@@ -137,7 +137,7 @@ Only a `ready` version can be made current. In the main chat there is no revert 
 Dialogue is drawn over the image by the app, so changing it needs no image call (R6).
 
 - `update_panel_fields` with `dialogue` replaces the **whole** list. Include every line you keep, in reading order.
-- Each line is `speakerId`, `kind` and `text`, and optionally `placement`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
+- Each line is `speakerId`, `kind` and `text`, and optionally `placement`, `style` and `tail`. Do not send `id` or `speaker`: those come back from the app, they are not inputs.
 - `speakerId` is a character id (copy it from `get_panel_context`), or null for `narration` and `sfx`.
 - At most 2 bubbles per panel and 25 words per bubble.
 - `"dialogue": []` removes all lines.

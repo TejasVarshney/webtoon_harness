@@ -455,6 +455,15 @@ describe('update_panel', () => {
     expect(JSON.stringify(tail)).toContain('"enum":["none"]')
   })
 
+  it('says a look is kept by position, and must be sent on the lines kept when lines are removed or reordered', async () => {
+    const { tools } = await setup()
+    for (const name of ['create_panel', 'update_panel']) {
+      const schema = JSON.stringify(tools.specs().find((t) => t.name === name)!.inputSchema)
+      expect(schema, name).toContain('leave either out to keep the one at the same position')
+      expect(schema, name).toContain('when removing or reordering lines, send style and tail on every line kept')
+    }
+  })
+
   it('enforces the same validation as create_panel, and the mention guard on a description edit', async () => {
     const { run, character, created, panel } = await setup()
     const mina = await character('Mina')
