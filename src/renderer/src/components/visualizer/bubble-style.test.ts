@@ -33,4 +33,11 @@ describe('bubble style', () => {
     expect(withStyleChange({ bold: false }, { bold: true }, d)).toBeNull()
     expect(withStyleChange({ shape: 'shout', fill: '#ff0000' }, { shape: undefined }, d)).toEqual({ fill: '#ff0000' })
   })
+
+  it('draws a width as a share of the panel, keeps it through other changes, and drops it when cleared', () => {
+    const d = bubbleDefaults('speech')
+    expect(bubbleStyleProps({ width: 0.42 })).toEqual({ '--bubble-width': '42%' })
+    expect(withStyleChange({ width: 0.4 }, { bold: false }, d)).toEqual({ width: 0.4, bold: false })
+    expect(withStyleChange({ width: 0.4 }, { width: undefined }, d)).toBeNull()
+  })
 })

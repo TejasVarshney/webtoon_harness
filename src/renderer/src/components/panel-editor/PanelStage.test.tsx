@@ -9,7 +9,7 @@ import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
 import { NUDGE_COMMIT_MS } from './bubble-placement'
-import { toDrafts } from './dialogue-edits'
+import { editLine, identityOf, toDrafts } from './dialogue-edits'
 import { PanelStage } from './PanelStage'
 import { useDialogueSaver } from './use-dialogue-saver'
 
@@ -968,5 +968,261 @@ describe("the tail's dot", () => {
       await userEvent.type(textBox(), '{Escape}')
       expect(addButton()).toBeEnabled()
     })
+  })
+})
+
+describe('the width handles', () => {
+  const handles = (): HTMLElement[] => within(stage()).queryAllByRole('slider')
+  const handle = (i: number, edge: 'left' | 'right'): HTMLElement => within(stage()).getAllByLabelText(`Width of line ${i + 1}`).find((h) => h.dataset.edge === edge)!
+  const withLines = (dialogue: DialogueLine[]): void => {
+    stored = { ...stored, dialogue }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+  }
+  /** Presses a handle at `from` across and drags it to `to`, releasing there unless told not to. */
+  function dragHandle(i: number, edge: 'left' | 'right', from: number, to: number, release = true): void {
+    fireEvent.pointerDown(handle(i, edge), { clientX: from, clientY: 25, buttons: 1 })
+    fireEvent.pointerMove(stage(), { clientX: to, clientY: 25, buttons: 1 })
+    if (release) fireEvent.pointerUp(stage(), { clientX: to, clientY: 25 })
+  }
+  /** jsdom has no stylesheet: these rules stand in for the app's, where a test needs one. */
+  let sheet: HTMLStyleElement | null = null
+  function withRules(css: string): void {
+    sheet = document.createElement('style')
+    sheet.textContent = css
+    document.head.append(sheet)
+  }
+  afterEach(() => {
+    sheet?.remove()
+    sheet = null
+  })
+  const thought: DialogueLine = { ...night, kind: 'thought', text: 'Hmm.' }
+
+  it('show on the selected bubble only, one on each side, and go while the text is open', async () => {
+    mount()
+    expect(handles()).toHaveLength(0)
+    await userEvent.click(bubble(0))
+    expect(handles().map((h) => [h.getAttribute('aria-label'), h.dataset.edge])).toEqual([
+      ['Width of line 1', 'left'],
+      ['Width of line 1', 'right']
+    ])
+    for (const h of handles()) expect(bubble(0)).toContainElement(h)
+    // An automatic bubble says the width it is drawn at: 100 of the 400 px panel.
+    expect(handle(0, 'right')).toHaveAttribute('aria-valuemin', '10')
+    expect(handle(0, 'right')).toHaveAttribute('aria-valuemax', '95')
+    expect(handle(0, 'right')).toHaveAttribute('aria-valuenow', '25')
+    // A caption has them too: every shape does.
+    await userEvent.click(bubble(1))
+    expect(handles().map((h) => h.getAttribute('aria-label'))).toEqual(['Width of line 2', 'Width of line 2'])
+    await userEvent.dblClick(bubble(1))
+    expect(textBox()).toBeInTheDocument()
+    expect(handles()).toHaveLength(0)
+  })
+
+  it('dragging the right handle keeps the left edge, and saves the width and centre in one save', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 100, 300)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // The bubble is drawn from 0 to 100 across: its left edge stays at 0, so it is 300 of the 400 px wide, centred at 150.
+    expect(updates(calls)[0]).toEqual({ dialogue: [toDrafts([hello])[0], { ...toDrafts([night])[0], placement: { x: 0.375, y: 0.8 }, style: { width: 0.75 } }] })
+    expect(bubble(1)).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('dragging the left handle keeps the right edge', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'left', 0, 20)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Its right edge stays at 100: 80 px wide, centred at 60.
+    expect(updates(calls)[0].dialogue?.[1]).toEqual({ ...toDrafts([night])[0], placement: { x: 0.15, y: 0.8 }, style: { width: 0.2 } })
+  })
+
+  it('a width past the panel is clamped, and the bubble stays inside', async () => {
+    // From 200 to 300 across; once it has a width, as wide as that, from 10 across, with its text wrapped to 300 px tall.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (!this.classList.contains('bubble')) return rect(0, 0, 400, 600)
+      if (!this.classList.contains('bubble-sized')) return rect(200, 450, 100, 50)
+      return rect(10, 300, (parseFloat((this as HTMLElement).style.getPropertyValue('--bubble-width')) / 100) * 400, 300)
+    })
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 300, 900)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // At most 0.95 wide, moved left so its right edge is the panel's, and up so its new height fits.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.525, y: 0.75 }, style: { width: 0.95 } })
+    await waitFor(() => expect(stored.dialogue[1].style).toEqual({ width: 0.95 }))
+
+    // At least a tenth wide, though the left handle is dragged past the right edge, which is at 390.
+    dragHandle(1, 'left', 10, 900)
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[1].dialogue?.[1]).toMatchObject({ placement: { x: 0.925, y: 0.75 }, style: { width: 0.1 } })
+  })
+
+  it('an automatic bubble is placed by its first resize', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(0))
+    dragHandle(0, 'right', 100, 200)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // From where it is drawn, centred at (50, 25): its left edge stays at 0 and its centre at the same height.
+    expect(updates(calls)[0].dialogue?.[0]).toEqual({ ...toDrafts([hello])[0], placement: { x: 0.25, y: 0.0417 }, style: { width: 0.5 } })
+    expect(bubble(0)).toHaveClass('bubble-placed')
+  })
+
+  it('the stage shows the width while dragging, before anything is saved', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 100, 300, false)
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    expect(bubble(1)).toHaveClass('bubble-sized')
+    expect(bubble(1).style.getPropertyValue('--bubble-width')).toBe('75%')
+    expect(bubble(1)).toHaveStyle({ left: '37.5%', top: '80%' })
+    expect(handle(1, 'right')).toHaveAttribute('aria-valuenow', '75')
+    // A resize is not a move: the bubble does not lift off the art.
+    expect(bubble(1)).not.toHaveAttribute('data-dragging')
+    fireEvent.pointerUp(stage(), { clientX: 300, clientY: 25 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+  })
+
+  it('arrow keys change the width by 1%, 5% with Shift, saved once', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => handle(1, 'right').focus())
+    fireEvent.keyDown(handle(1, 'right'), { key: 'ArrowRight' })
+    // From the width it is drawn at, 100 of the 400 px.
+    expect(handle(1, 'right')).toHaveAttribute('aria-valuenow', '26')
+    fireEvent.keyDown(handle(1, 'right'), { key: 'ArrowLeft', shiftKey: true })
+    expect(bubble(1).style.getPropertyValue('--bubble-width')).toBe('21%')
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS - 1))
+    expect(updates(calls)).toEqual([])
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Around its centre, which stays where it was.
+    expect(updates(calls)[0].dialogue?.[1]).toEqual({ ...toDrafts([night])[0], placement: { x: 0.5, y: 0.8 }, style: { width: 0.21 } })
+    // The saved line has a new id, so its bubble remounts: the handle gets the focus back.
+    await waitFor(() => expect(stored.dialogue[1].id).not.toBe(night.id))
+    await waitFor(() => expect(handle(1, 'right')).toHaveFocus())
+  })
+
+  it('double-clicking a handle gives the width back to the text, keeps the placement, opens no text and adds no line', async () => {
+    withLines([hello, { ...night, style: { width: 0.6, fill: '#ff0000' } }])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    fireEvent.doubleClick(handle(1, 'left'), { clientX: 0, clientY: 25 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [toDrafts([hello])[0], { ...toDrafts([night])[0], style: { fill: '#ff0000' } }] })
+    expect(within(stage()).queryByRole('textbox')).toBeNull()
+    expect(within(stage()).queryByLabelText('Line 3')).toBeNull()
+  })
+
+  it('a press on a handle neither drags the bubble nor clears the selection', async () => {
+    const { calls, onSelectLine } = mount()
+    await userEvent.click(bubble(1))
+    onSelectLine.mockClear()
+    // A press that does not move saves nothing.
+    fireEvent.pointerDown(handle(1, 'right'), { clientX: 100, clientY: 25, buttons: 1 })
+    fireEvent.pointerUp(stage(), { clientX: 100, clientY: 25 })
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+    dragHandle(1, 'right', 100, 300, false)
+    expect(bubble(1)).not.toHaveAttribute('data-dragging')
+    expect(bubble(1)).toHaveAttribute('data-selected', 'true')
+    fireEvent.pointerUp(stage(), { clientX: 300, clientY: 25 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // The centre goes with the width, not with the pointer.
+    expect(updates(calls)[0].dialogue?.[1].placement).toEqual({ x: 0.375, y: 0.8 })
+    expect(bubble(1)).toHaveAttribute('data-selected', 'true')
+    expect(onSelectLine).not.toHaveBeenCalledWith(null)
+  })
+
+  it('a style picked in the row just before a resize is kept', async () => {
+    /** The Lines row's saver. Pressing a handle takes the focus from the row, which sends the style it was waiting on. */
+    let saveFromRow: ReturnType<typeof useDialogueSaver>['save'] = () => Promise.resolve('skipped')
+    function Row() {
+      saveFromRow = useDialogueSaver(A).save
+      return null
+    }
+    const { calls } = mount()
+    render(<Row />)
+    await userEvent.click(bubble(1))
+    let open: () => void = () => undefined
+    gate = new Promise((resolve) => (open = resolve))
+    void saveFromRow((current) => editLine(current, 1, identityOf(current[1]), { style: { fill: '#00ff00' } }))
+    dragHandle(1, 'right', 100, 300)
+    await act(async () => open())
+    await waitFor(() => expect(updates(calls)).toHaveLength(2))
+    expect(updates(calls)[1].dialogue?.[1].style).toEqual({ fill: '#00ff00', width: 0.75 })
+    await waitFor(() => expect(stored.dialogue[1].style).toEqual({ fill: '#00ff00', width: 0.75 }))
+    expect(saver()).toBeEmptyDOMElement()
+  })
+
+  it('a press off the edge moves the edge by the move only', async () => {
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    // Pressed 6 px outside the right edge, at 100, and moved 8 px: the edge goes to 108, not to the pointer at 114.
+    dragHandle(1, 'right', 106, 114)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.135, y: 0.8 }, style: { width: 0.27 } })
+  })
+
+  it('a thought dragged below its floor stores the floor, and keeps its other edge where it was', async () => {
+    // Its cloud is never under 120 px wide: 0.3 of the panel.
+    withRules('.bubble-thought { min-width: 120px }')
+    withLines([hello, thought])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 100, 40)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Its left edge stays at 0.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.15, y: 0.8 }, style: { width: 0.3 } })
+  })
+
+  it('arrow keys at the floor do not lower the stored width', async () => {
+    withRules('.bubble-thought { min-width: 120px }')
+    withLines([hello, { ...thought, style: { width: 0.3 } }])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => handle(1, 'left').focus())
+    fireEvent.keyDown(handle(1, 'left'), { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle(1, 'left'), { key: 'ArrowLeft', shiftKey: true })
+    expect(bubble(1).style.getPropertyValue('--bubble-width')).toBe('30%')
+    expect(handle(1, 'left')).toHaveAttribute('aria-valuenow', '30')
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0].dialogue?.[1].style).toEqual({ width: 0.3 })
+  })
+
+  it('a run of arrow keys is kept inside the panel at the height the bubble has when it is saved', async () => {
+    // Once it has a width, its text wraps to 300 px tall.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (!this.classList.contains('bubble')) return rect(0, 0, 400, 600)
+      return this.classList.contains('bubble-sized') ? rect(0, 330, 96, 300) : rect(0, 455, 100, 50)
+    })
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => handle(1, 'right').focus())
+    fireEvent.keyDown(handle(1, 'right'), { key: 'ArrowLeft' })
+    await act(() => vi.advanceTimersByTimeAsync(NUDGE_COMMIT_MS))
+    vi.useRealTimers()
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // Centred at 0.8 down, a 300 px tall bubble would cross the bottom: it is moved up to 0.75.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.5, y: 0.75 }, style: { width: 0.24 } })
+  })
+
+  it("a sound effect is resized from its own width, not its tilted box's", async () => {
+    // Tilted, it covers 0 to 100 on screen, though it is 80 wide: its sides are at 10 and 90.
+    withRules('.panel-media { width: 400px } .bubble-sfx { width: 80px }')
+    withLines([hello, { ...night, kind: 'sfx', text: 'BAM' }])
+    const { calls } = mount()
+    await userEvent.click(bubble(1))
+    dragHandle(1, 'right', 90, 190)
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    // The left side stays at 10: 180 px wide, centred at 100.
+    expect(updates(calls)[0].dialogue?.[1]).toMatchObject({ placement: { x: 0.25, y: 0.8 }, style: { width: 0.45 } })
   })
 })

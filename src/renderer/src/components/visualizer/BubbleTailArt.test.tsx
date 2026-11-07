@@ -31,7 +31,7 @@ afterEach(() => {
 const pathOf = (container: HTMLElement): string => container.querySelector('.bubble-tail path')!.getAttribute('d')!
 
 /** The stage's overlay with the first bubble selected, so it has its dot. */
-const selectedFirst: OverlayEditing = { selected: 0, textEditing: null, textEditor: null, preview: null, tailPreview: null, dragging: null, bind: () => ({}), bindTail: () => ({}) }
+const selectedFirst: OverlayEditing = { selected: 0, textEditing: null, textEditor: null, preview: null, tailPreview: null, widthPreview: null, dragging: null, bind: () => ({}), bindTail: () => ({}), bindWidth: () => ({}) }
 const dotOf = (container: HTMLElement): string => container.querySelector<HTMLElement>('.bubble-tail-handle')!.style.transform
 
 describe('BubbleTailArt', () => {

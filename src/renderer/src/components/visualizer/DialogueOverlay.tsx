@@ -2,6 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react'
 import type { BubblePlacement, DialogueLine, PanelCharacter } from '@shared/types'
 import { BubbleBody } from './BubbleBody'
 import { BubbleTailArt } from './BubbleTailArt'
+import { BubbleWidthHandles, type BubbleEdge, type WidthHandleProps } from './BubbleWidthHandles'
 import { layoutBubbles } from './bubble-layout'
 import { bubbleStyleProps } from './bubble-style'
 import { hasTail } from './bubble-tail'
@@ -21,11 +22,15 @@ export interface OverlayEditing {
   preview: { index: number; placement: BubblePlacement } | null
   /** Shown instead of the stored tail's tip while its dot is dragged or nudged. */
   tailPreview: { index: number; tip: BubblePlacement } | null
+  /** Shown instead of the stored width and placement while a width handle is dragged or nudged. */
+  widthPreview: { index: number; width: number; placement: BubblePlacement } | null
   dragging: number | null
   /** Handlers, tabIndex and aria-label for the bubble of line `index`. */
   bind(index: number): HTMLAttributes<HTMLDivElement>
   /** Handlers and aria-label for the dot at the tip of that bubble's tail. */
   bindTail(index: number): HTMLAttributes<HTMLDivElement>
+  /** Handlers and aria-label for the handle on that side of the bubble, which sets its width. */
+  bindWidth(index: number, edge: BubbleEdge): WidthHandleProps
 }
 
 export interface DialogueOverlayProps {
@@ -42,28 +47,35 @@ export interface DialogueOverlayProps {
  * are no name labels, only a tooltip with the speaker's name. Sound effects sit over the middle of the art.
  * A line with a placement is drawn there instead, centred on that point, in a layer of its own; its shape and tail are
  * still the layout's. A stored tail tip is drawn by `BubbleTailArt`, measured from the page. A line's `style` is drawn
- * as inline variables, and a line shaped as a sound effect sits in the sound-effect layer whatever its kind.
+ * as inline variables, with `bubble-sized` when it sets a width, and a line shaped as a sound effect sits in the
+ * sound-effect layer whatever its kind. While editing, the selected bubble has the tail's dot and the width handles,
+ * unless its text is open.
  */
 export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverlayProps) {
   const roster = useRoster(dialogue.some((line) => line.speakerId !== null))
   if (dialogue.length === 0) return null
   const layout = new Map(layoutBubbles(dialogue, cast).map((b) => [b.id, b]))
-  const placementOf = (line: DialogueLine, i: number): BubblePlacement | null => (editing?.preview?.index === i ? editing.preview.placement : line.placement)
+  const widthPreviewOf = (i: number) => (editing?.widthPreview?.index === i ? editing.widthPreview : null)
+  const placementOf = (line: DialogueLine, i: number): BubblePlacement | null =>
+    editing?.preview?.index === i ? editing.preview.placement : (widthPreviewOf(i)?.placement ?? line.placement)
   const bubble = (line: DialogueLine, i: number, extra = '') => {
     const b = layout.get(line.id)!
     const placement = placementOf(line, i)
-    const look = bubbleStyleProps(line.style)
+    const previewWidth = widthPreviewOf(i)?.width
+    const width = previewWidth ?? line.style?.width
+    const look = bubbleStyleProps(previewWidth === undefined ? line.style : { ...line.style, width: previewWidth })
     const style = placement ? { ...look, left: `${placement.x * 100}%`, top: `${placement.y * 100}%` } : look
     const previewTip = editing?.tailPreview?.index === i ? editing.tailPreview.tip : null
     const tip = previewTip ?? (line.tail !== null && line.tail !== 'none' ? line.tail : null)
     // A tail being dragged is drawn pointed, whatever the layout would have drawn.
     const tail = previewTip === null ? b.tail : 'point'
-    const dot = editing !== undefined && editing.selected === i && editing.textEditing !== i && hasTail(b.shape)
+    const handles = editing !== undefined && editing.selected === i && editing.textEditing !== i
+    const dot = handles && hasTail(b.shape)
     const speaker = line.speakerId === null ? undefined : roster.find((c) => c.id === line.speakerId)?.name
     return (
       <div
         key={line.id}
-        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${extra}`}
+        className={`bubble bubble-${b.shape} bubble-side-${b.side} bubble-tail-${tail}${b.loud ? ' bubble-loud' : ''}${placement ? ' bubble-placed' : ''}${width !== undefined ? ' bubble-sized' : ''}${extra}`}
         data-kind={line.kind}
         data-shape={b.shape}
         data-side={b.side}
@@ -78,6 +90,7 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
         {hasTail(b.shape) && (tail === 'point' || dot) && (
           <BubbleTailArt shape={b.shape} side={b.side} drawing={tail} tip={tip} stroke={line.style?.strokeWidth ?? 2} handle={dot ? editing.bindTail(i) : undefined} />
         )}
+        {handles && <BubbleWidthHandles width={width} bind={(edge) => editing.bindWidth(i, edge)} />}
         {editing?.textEditing === i ? editing.textEditor : <span className="bubble-text">{line.text}</span>}
       </div>
     )

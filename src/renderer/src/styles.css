@@ -2616,8 +2616,9 @@ kbd {
   width: calc(14px / var(--stage-scale, 1));
   height: calc(14px / var(--stage-scale, 1));
   translate: -50% -50%;
-  /* Over the bubble's text, which is positioned and comes after it. */
-  z-index: 1;
+  /* Over the bubble's text, which is positioned and comes after it, and over the width handles: on a small bubble at
+     the panel's top the resting dot can sit in a handle's hit area, and the dot is the one a press there means. */
+  z-index: 2;
   cursor: grab;
   background: var(--accent);
   border: calc(2px / var(--stage-scale, 1)) solid #fff;
@@ -2637,6 +2638,58 @@ kbd {
 }
 
 .bubble-tail-handle:focus-visible {
+  outline: calc(2px / var(--stage-scale, 1)) solid var(--accent);
+  outline-offset: calc(2px / var(--stage-scale, 1));
+}
+
+/* The handles on the selected bubble's sides that set its width: a pill 6 x 16 px on screen at any zoom, with a 24px
+   hit area, drawn like the tail's dot. Each is centred on the bubble's edge: on the middle of its outline, for a shape
+   whose outline is the box's border. Only the pill's inner half of the hit area is inside the bubble, so a press on a
+   small bubble still moves it. */
+.bubble-width-handle {
+  --edge-out: 0px;
+  position: absolute;
+  top: 50%;
+  left: calc(0px - var(--edge-out));
+  width: calc(6px / var(--stage-scale, 1));
+  height: calc(16px / var(--stage-scale, 1));
+  translate: -50% -50%;
+  /* Over the bubble's text, which is positioned and comes after it. */
+  z-index: 1;
+  cursor: ew-resize;
+  background: var(--accent);
+  border: calc(1.5px / var(--stage-scale, 1)) solid #fff;
+  border-radius: calc(3px / var(--stage-scale, 1));
+}
+
+.bubble-width-handle[data-edge='right'] {
+  left: calc(100% + var(--edge-out));
+}
+
+:is(.bubble-speech, .bubble-whisper, .bubble-caption) > .bubble-width-handle {
+  --edge-out: calc(var(--bubble-stroke-width, 2px) / 2);
+}
+
+/* The hit area reaches `--hit-in` (screen px) into the bubble from the handle's centre and 21px out. At the panel's side,
+   which clips what is outside, `BubbleWidthHandles` sets it to reach further in, so that some of it can be pressed. */
+.bubble-width-handle::before {
+  position: absolute;
+  top: 50%;
+  width: calc((21px + var(--hit-in, 3px)) / var(--stage-scale, 1));
+  height: calc(24px / var(--stage-scale, 1));
+  translate: 0 -50%;
+  content: '';
+}
+
+.bubble-width-handle[data-edge='left']::before {
+  right: calc(50% - var(--hit-in, 3px) / var(--stage-scale, 1));
+}
+
+.bubble-width-handle[data-edge='right']::before {
+  left: calc(50% - var(--hit-in, 3px) / var(--stage-scale, 1));
+}
+
+.bubble-width-handle:focus-visible {
   outline: calc(2px / var(--stage-scale, 1)) solid var(--accent);
   outline-offset: calc(2px / var(--stage-scale, 1));
 }
@@ -2671,6 +2724,13 @@ kbd {
 
 .bubble-sfx.bubble-tilt-right {
   transform: rotate(7deg) skewX(6deg);
+}
+
+/* A bubble the user gave a width: that share of the panel, outline included, whatever its shape's cap, and its text
+   wraps to it. An automatic bubble's share is of the flow column, a little narrower than the panel. */
+.bubble.bubble-sized {
+  width: var(--bubble-width);
+  max-width: none;
 }
 
 /* --- Characters tab ---------------------------------------------------------------------------------- */

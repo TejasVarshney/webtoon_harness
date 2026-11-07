@@ -43,14 +43,20 @@ async function slicesOf(app: ElectronApplication, dir: string): Promise<{ path: 
 
 const total = (slices: { height: number }[]): number => slices.reduce((sum, s) => sum + s.height, 0)
 
-/** The strip's first row width, and its first bubble's height, font size and panel height, in CSS px; the first tail's path, and whether the Anton face the styled line asks for has loaded. */
-type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number; tail: string | null; anton: boolean }
+/**
+ * The strip's first row width, and its first bubble's height, font size and panel height, in CSS px; the first tail's
+ * path, whether the Anton face the styled line asks for has loaded, and the width of the bubble that has one over its
+ * panel's.
+ */
+type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number; tail: string | null; anton: boolean; sized: number | null }
 
 /** Run in a page (the main window or the export window): measures the strip as it is drawn there. */
 const MEASURE_STRIP = `(() => {
   const bubble = document.querySelector('.bubble')
   const media = bubble && bubble.closest('.panel-media')
   if (!bubble || !media) return null
+  const sized = document.querySelector('.bubble-sized')
+  const sizedPanel = sized && sized.closest('.panel-media')
   return {
     rowWidth: document.querySelector('.strip-row').getBoundingClientRect().width,
     bubbleHeight: bubble.getBoundingClientRect().height,
@@ -58,7 +64,8 @@ const MEASURE_STRIP = `(() => {
     fontSize: parseFloat(getComputedStyle(bubble.querySelector('.bubble-text')).fontSize),
     tail: document.querySelector('.bubble-tail path')?.getAttribute('d') ?? null,
     // Not document.fonts.check, which also says true when no such face is registered.
-    anton: [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Anton' && f.status === 'loaded')
+    anton: [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Anton' && f.status === 'loaded'),
+    sized: sized && sizedPanel ? sized.getBoundingClientRect().width / sizedPanel.getBoundingClientRect().width : null
   }
 })()`
 
@@ -110,7 +117,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
           panel('Mina runs.', { frame: 'slanted' }),
           panel('Mina stops.', {
             beside: false,
-            dialogue: [{ speakerId: mina, kind: 'speech', text: 'Over here!', style: { font: 'impact', fill: '#fff4c2' }, tail: { x: 0.2, y: 0.9 } }]
+            dialogue: [{ speakerId: mina, kind: 'speech', text: 'Over here!', style: { font: 'impact', fill: '#fff4c2', width: 0.5 }, tail: { x: 0.2, y: 0.9 } }]
           }),
           panel('Mina is in the dark.', { gutter: 'black' })
         ]
@@ -151,6 +158,12 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   expect(inExport!.tail).not.toBeNull()
   expect(inExport!.tail).toBe(onScreen!.tail)
   expect(inExport!.anton).toBe(true)
+  // The line with a width is as wide against its panel in the export as on screen. It is automatic, so its half is of
+  // the flow column, a little narrower than the panel.
+  expect(onScreen!.sized).toBeGreaterThan(0.4)
+  expect(onScreen!.sized).toBeLessThanOrEqual(0.5)
+  expect(inExport!.sized).not.toBeNull()
+  expect(Math.abs(inExport!.sized! - onScreen!.sized!)).toBeLessThanOrEqual(0.01)
   const folderA = (await readdir(targetA)).filter((n) => n.startsWith('Moon Diary - 01 - '))
   expect(folderA).toHaveLength(1)
   const slicesA = await slicesOf(first.app, join(targetA, folderA[0]))

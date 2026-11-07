@@ -11,7 +11,7 @@ const at = (x: number, y: number): BubblePlacement => ({ x, y })
 
 /** An `editing` prop with nothing selected, which the tests override one field at a time. */
 function editing(o: Partial<OverlayEditing> = {}): OverlayEditing {
-  return { selected: null, textEditing: null, textEditor: null, preview: null, tailPreview: null, dragging: null, bind: () => ({ tabIndex: 0 }), bindTail: () => ({}), ...o }
+  return { selected: null, textEditing: null, textEditor: null, preview: null, tailPreview: null, widthPreview: null, dragging: null, bind: () => ({ tabIndex: 0 }), bindTail: () => ({}), bindWidth: () => ({}), ...o }
 }
 
 function bubbleOf(container: HTMLElement, text: string): HTMLElement {
@@ -100,6 +100,22 @@ describe('DialogueOverlay', () => {
   it('gives an unstyled bubble no inline style, as before', () => {
     const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Plain.')]} />)
     expect(bubbleOf(container, 'Plain.').getAttribute('style')).toBeNull()
+  })
+
+  it('a bubble with a width is drawn that wide', () => {
+    const dialogue = [line('dlg_0000000001', 'Wide.', { placement: at(0.5, 0.5), style: { width: 0.42 } })]
+    const { container } = render(<DialogueOverlay dialogue={dialogue} />)
+    const bubble = bubbleOf(container, 'Wide.')
+    expect(bubble).toHaveClass('bubble-sized')
+    expect(bubble.style.getPropertyValue('--bubble-width')).toBe('42%')
+  })
+
+  it("a bubble without a width keeps today's look", () => {
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Plain.'), line('dlg_0000000002', 'Red.', { style: { fill: '#ff0000' } })]} />)
+    expect(bubbleOf(container, 'Plain.')).not.toHaveClass('bubble-sized')
+    expect(bubbleOf(container, 'Plain.').getAttribute('style')).toBeNull()
+    expect(bubbleOf(container, 'Red.')).not.toHaveClass('bubble-sized')
+    expect(bubbleOf(container, 'Red.').style.getPropertyValue('--bubble-width')).toBe('')
   })
 
   it("keeps a placed bubble's position beside its look", () => {
