@@ -196,6 +196,11 @@ describe('bubble look', () => {
     expect(() => DialogueLineSchema.parse({ ...base, ...bad })).toThrow()
   })
 
+  it('says how a colour is written when it refuses one', () => {
+    const refused = DialogueLineSchema.safeParse({ ...base, style: { fill: '#fff' } })
+    expect(refused.error?.issues[0].message).toBe('A colour is written as #rrggbb')
+  })
+
   it('keeps "inherit" apart from "clear" in a patch', () => {
     const [bare] = PanelPatchSchema.parse({ dialogue: [{ speakerId: null, kind: 'narration', text: 'A' }] }).dialogue ?? []
     expect(bare.style).toBeUndefined()

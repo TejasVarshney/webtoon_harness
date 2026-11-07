@@ -244,7 +244,8 @@ export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: 
 
 export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
 export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
-const HexColor = z.string().regex(/^#[0-9a-f]{6}$/i)
+// A refine and not a regex: a regex reaches the tool schemas as `pattern`, sent as it is to every provider.
+const HexColor = z.string().refine((v) => /^#[0-9a-f]{6}$/i.test(v), 'A colour is written as #rrggbb')
 
 /** How one bubble looks. Every key is optional: only what differs from the shape's default is stored. */
 export const BubbleStyleSchema = z.object({

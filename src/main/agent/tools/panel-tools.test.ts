@@ -448,9 +448,10 @@ describe('update_panel', () => {
     expect((await panel(made.panelId)).dialogue).toEqual([])
   })
 
-  it('the tool schema stays free of const', () => {
-    const json = JSON.stringify(z.toJSONSchema(PanelPatchSchema))
-    expect(json).not.toContain('"const"')
+  it('the tool schema stays free of const and pattern', () => {
+    const schema = JSON.stringify(z.toJSONSchema(PanelPatchSchema))
+    expect(schema).not.toContain('"const"')
+    expect(schema).not.toContain('"pattern"')
     const tail = (z.toJSONSchema(PanelPatchSchema) as any).properties.dialogue.items.properties.tail
     expect(JSON.stringify(tail)).toContain('"enum":["none"]')
   })
