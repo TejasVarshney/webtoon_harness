@@ -679,6 +679,44 @@ test("an automatic tail's sides follow the outline's width", async () => {
   await app.close()
 })
 
+// The right handle of a bubble is dragged just after a fill is picked in its row: the stored width is the share it was
+// dragged to, the fill is kept, and the bubble is drawn that wide against its panel, on the stage and on the strip.
+test("a bubble's width is set by dragging its handle", async () => {
+  const { app, page, workspace, stage, stored } = await openPanelWith([{ speakerId: null, kind: 'speech', text: 'A line long enough to wrap in a narrow bubble', placement: { x: 0.5, y: 0.4 } }])
+  const bubble = stage.locator('[data-line="0"]')
+  const handle = bubble.locator('.bubble-width-handle[data-edge="right"]')
+  await bubble.click()
+  await expect(handle).toBeVisible()
+  // A press at the handle's centre reaches the handle, not the bubble's text under it.
+  const at = await boxOf(handle)
+  const grip = { x: at.x + at.width / 2, y: at.y + at.height / 2 }
+  const hit = await page.evaluate(([x, y]) => (globalThis as any).document.elementFromPoint(x, y)?.className ?? null, [grip.x, grip.y])
+  expect(hit).toBe('bubble-width-handle')
+
+  await workspace.getByLabel('Fill', { exact: true }).fill('#ffe066')
+  const share = 0.6
+  const from = await boxOf(bubble)
+  const media = await boxOf(stage.locator('.panel-media'))
+  await page.mouse.move(grip.x, grip.y)
+  await page.mouse.down()
+  await page.mouse.move(from.x + media.width * share, grip.y, { steps: 12 })
+  await page.mouse.up()
+  await expect.poll(async () => (await stored())[0].style?.width ?? null).not.toBeNull()
+  const { style } = (await stored())[0]
+  expect(Math.abs(style.width - share), 'the width is the share dragged to').toBeLessThanOrEqual(0.01)
+  expect(style.fill, 'the fill picked just before is kept').toBe('#ffe066')
+
+  /** The bubble's width over its panel's, as drawn. */
+  const drawn = async (scope: Locator): Promise<number> => (await boxOf(scope.locator('.bubble').first())).width / (await boxOf(scope.locator('.panel-media'))).width
+  await expect.poll(async () => Math.abs((await drawn(stage)) - style.width) <= 0.02, { message: 'the stage draws the width' }).toBe(true)
+
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+  const card = page.getByTestId('panel-card').first()
+  await expect(card.locator('.bubble-sized')).toHaveCount(1)
+  expect(Math.abs((await drawn(card)) - style.width), 'the strip draws the width').toBeLessThanOrEqual(0.02)
+  await app.close()
+})
+
 // Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
 test('a selected bubble under another takes the press', async () => {
   const spot = { x: 0.5, y: 0.5 }
