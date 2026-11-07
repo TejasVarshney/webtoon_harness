@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BubbleShape, BubbleStyle, DialogueLine } from '@shared/types'
 import { BubbleStyleBlock } from './BubbleStyleBlock'
@@ -130,6 +130,15 @@ describe('BubbleStyleBlock', () => {
     plain.view.unmount()
     const { onStyle } = mount({ style: { fill: '#ff0000' } })
     fireEvent.click(screen.getByRole('button', { name: 'Reset style' }))
+    expect(onStyle).toHaveBeenCalledWith(null)
+  })
+
+  it('Reset style hands the focus to the font before it goes', () => {
+    const { onStyle } = mount({ style: { fill: '#ff0000' } })
+    const reset = screen.getByRole('button', { name: 'Reset style' })
+    act(() => reset.focus())
+    fireEvent.click(reset)
+    expect(screen.getByLabelText('Font')).toHaveFocus()
     expect(onStyle).toHaveBeenCalledWith(null)
   })
 })

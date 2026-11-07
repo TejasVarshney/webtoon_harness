@@ -329,6 +329,18 @@ describe('PanelInspector', () => {
         expect(actions.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       })
 
+      it('Reset style leaves the focus on the Font select of the same row, and the style goes', async () => {
+        const styled = { ...hello, style: { fill: '#ff0000' } }
+        stored = { ...stored, dialogue: [styled, night] }
+        usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+        mount({ selectedLine: 0 })
+        await userEvent.click(within(rows()[0]).getByRole('button', { name: 'Reset style' }))
+        expect(within(rows()[0]).queryByRole('button', { name: 'Reset style' })).toBeNull()
+        expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
+        await waitFor(() => expect(stored.dialogue[0].style).toBeNull(), { timeout: 2000 })
+        expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
+      })
+
       it('saves a style after the wait, with the rest of the dialogue untouched', async () => {
         fakeTimers()
         const { calls } = mount({ selectedLine: 0 })

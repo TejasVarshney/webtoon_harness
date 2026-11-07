@@ -1,5 +1,5 @@
 import { AlignCenter, AlignLeft, AlignRight, Bold, CaseUpper, Italic } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import type { BubbleShape, BubbleStyle, DialogueLine } from '@shared/types'
 import { Field } from '../characters/controls'
 import { bubbleDefaults, FONTS, withStyleChange } from '../visualizer/bubble-style'
@@ -64,6 +64,13 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
   const defaults = bubbleDefaults(shape)
   const look = { ...defaults, ...style }
   const change = (patch: Partial<BubbleStyle>): void => onStyle(withStyleChange(style, patch, defaults))
+  const font = useRef<HTMLSelectElement>(null)
+
+  /** The button goes with the style, and its focus would fall to the body, where the next Escape leaves the editor. */
+  function reset(): void {
+    font.current?.focus()
+    onStyle(null)
+  }
 
   function toggle(label: string, key: 'bold' | 'italic' | 'caps', icon: ReactNode) {
     return (
@@ -120,7 +127,7 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
       <div className="bubble-style-line">
         <Field label="Font">
           {(id) => (
-            <select id={id} value={look.font} onChange={(e) => change({ font: e.target.value as BubbleStyle['font'] })}>
+            <select ref={font} id={id} value={look.font} onChange={(e) => change({ font: e.target.value as BubbleStyle['font'] })}>
               {FONTS.map((f) => (
                 <option key={f.id} value={f.id} style={{ fontFamily: f.family }}>
                   {f.label}
@@ -166,7 +173,7 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
           </Field>
         )}
         {style !== null && (
-          <button type="button" className="bubble-style-reset" onClick={() => onStyle(null)}>
+          <button type="button" className="bubble-style-reset" onClick={reset}>
             Reset style
           </button>
         )}
