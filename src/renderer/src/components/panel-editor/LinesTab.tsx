@@ -119,6 +119,8 @@ interface LineRowProps {
   onSelect(): void
   rowRef(el: HTMLLIElement | null): void
   onPreviewStyle?(preview: StylePreview | null): void
+  /** The row whose style the stage is showing: it shows one at a time. */
+  previewing: RefObject<number | null>
 }
 
 /**
@@ -129,7 +131,7 @@ interface LineRowProps {
  * way, so a pick and typed text both land. The tail is not in it: a tail dragged on the stage must never be
  * overwritten by a style that was waiting.
  */
-function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle }: LineRowProps) {
+function LineRow({ index, line, characters, selected, save, error, onSelect, rowRef, onPreviewStyle, previewing }: LineRowProps) {
   /** What the line will say on the server when this row's next save is built: as the edit found it, then as this row's last save left it. */
   const base = useRef<LineIdentity | null>(null)
   const inFlight = useRef(0)
@@ -208,9 +210,15 @@ function LineRow({ index, line, characters, selected, save, error, onSelect, row
   const { pending: stylePending, value: styleValue } = style
   useLayoutEffect(() => {
     if (!stylePending) return
+    previewing.current = index
     previewTo.current?.({ index, style: styleValue })
-    return () => previewTo.current?.(null)
-  }, [stylePending, styleValue, index])
+    return () => {
+      // Another row has picked a style since: this row's save landing does not end that one's preview.
+      if (previewing.current !== index) return
+      previewing.current = null
+      previewTo.current?.(null)
+    }
+  }, [stylePending, styleValue, index, previewing])
 
   function change(patch: Partial<LineIdentity>): void {
     // An edit begins from the line as shown, the store's, unless this row still has a change of its own going.
@@ -394,6 +402,7 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
   const warnings = useLastWarnings(panel.id, DIALOGUE)
   const [adding, setAdding] = useState<LineIdentity | null>(null)
   const rows = useRef<(HTMLLIElement | null)[]>([])
+  const previewing = useRef<number | null>(null)
   const rowAt = useCallback((i: number) => rows.current[i] ?? null, [])
   useScrollToRow(selectedLine, panel.dialogue.length, rowAt, scrollArea)
 
@@ -440,6 +449,7 @@ export function LinesTab({ panel, characters, selectedLine, onSelectLine, scroll
               error={error}
               onSelect={() => onSelectLine(i)}
               onPreviewStyle={onPreviewStyle}
+              previewing={previewing}
               rowRef={(el) => {
                 rows.current[i] = el
               }}

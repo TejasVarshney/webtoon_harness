@@ -13,7 +13,7 @@ import { item, usage } from '../../test/item-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
 import { PanelInspector } from './PanelInspector'
-import { PanelStage } from './PanelStage'
+import { PanelStage, type StylePreview } from './PanelStage'
 
 const A = 'pnl_00000000aa'
 const MINA = 'chr_0000000001'
@@ -85,16 +85,16 @@ function installApi() {
 }
 
 /** The inspector as the workspace mounts it: fed from the store, so saves and agent edits reach it. */
-function Host({ selectedLine, onSelectLine }: { selectedLine: number | null; onSelectLine(i: number | null): void }) {
+function Host({ selectedLine, onSelectLine, onPreviewStyle }: { selectedLine: number | null; onSelectLine(i: number | null): void; onPreviewStyle?(preview: StylePreview | null): void }) {
   const open = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((p) => p.id === A))
-  return open === undefined ? null : <PanelInspector panel={open} selectedLine={selectedLine} onSelectLine={onSelectLine} />
+  return open === undefined ? null : <PanelInspector panel={open} selectedLine={selectedLine} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />
 }
 
-function mount({ selectedLine = null }: { selectedLine?: number | null } = {}) {
+function mount({ selectedLine = null, onPreviewStyle }: { selectedLine?: number | null; onPreviewStyle?(preview: StylePreview | null): void } = {}) {
   const onSelectLine = vi.fn()
   const api = installApi()
-  const view = render(<Host selectedLine={selectedLine} onSelectLine={onSelectLine} />)
-  return { ...api, onSelectLine, rerender: (line: number | null) => view.rerender(<Host selectedLine={line} onSelectLine={onSelectLine} />), unmount: view.unmount }
+  const view = render(<Host selectedLine={selectedLine} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />)
+  return { ...api, onSelectLine, rerender: (line: number | null) => view.rerender(<Host selectedLine={line} onSelectLine={onSelectLine} onPreviewStyle={onPreviewStyle} />), unmount: view.unmount }
 }
 
 const tab = (name: string): HTMLElement => screen.getByRole('tab', { name })
@@ -339,6 +339,26 @@ describe('PanelInspector', () => {
         expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
         await waitFor(() => expect(stored.dialogue[0].style).toBeNull(), { timeout: 2000 })
         expect(within(rows()[0]).getByLabelText('Font')).toHaveFocus()
+      })
+
+      it("a row's save landing leaves another row's waiting preview on the stage", async () => {
+        fakeTimers()
+        let shown: StylePreview | null = null
+        const { rerender } = mount({ selectedLine: 0, onPreviewStyle: (preview) => (shown = preview) })
+        fireEvent.click(shape(0, 'Shout'))
+        expect(shown).toEqual({ index: 0, style: { shape: 'shout' } })
+        await wait(300)
+        rerender(1)
+        fireEvent.click(shape(1, 'Whisper'))
+        expect(shown).toEqual({ index: 1, style: { shape: 'whisper' } })
+        // The first row's save is sent and lands here; the second row's is still waiting, for another 300 ms.
+        await wait(300)
+        expect(stored.dialogue[0].style).toEqual({ shape: 'shout' })
+        expect(stored.dialogue[1].style).toBeNull()
+        expect(shown).toEqual({ index: 1, style: { shape: 'whisper' } })
+        await wait(300)
+        expect(stored.dialogue[1].style).toEqual({ shape: 'whisper' })
+        expect(shown).toBeNull()
       })
 
       it('saves a style after the wait, with the rest of the dialogue untouched', async () => {
