@@ -429,6 +429,109 @@ describe('composePanelPrompt with items', () => {
   })
 })
 
+describe('composePanelPrompt with packing', () => {
+  const dohyun = makeCharacter({ id: 'chr_dohyun', name: 'Dohyun', appearanceLock: 'DOHYUN_LOCK', variations: [readyVariation('chr_dohyun', 'var_d0', 'characters/chr_dohyun/base.png')] })
+  const yuna = makeCharacter({ id: 'chr_yuna', name: 'Yuna', appearanceLock: 'YUNA_LOCK', variations: [readyVariation('chr_yuna', 'var_y0', 'characters/chr_yuna/base.png')] })
+  const everyone = new Map<string, Character>([...roster, [dohyun.id, dohyun], [yuna.id, yuna]])
+  const four = [cast(mina, 'var_m0'), cast(jin, 'var_j0'), cast(dohyun, 'var_d0'), cast(yuna, 'var_y0')]
+  /** Names the pack file after its members, so a test can see which sheets went in. */
+  const packing = { path: (members: { name: string }[]) => `panels/pnl_1/pack-${members.map((m) => m.name).join('-')}.png` }
+  const base = { stylePreset: 'STYLE', roster: everyone, itemRoster, previous: PREVIOUS, maxReferences: 4, packing }
+  const NOTE = (n: number, k: number) =>
+    `[CHARACTERS] Reference image ${n} holds ${k} character sheets, each labeled with the person's name, only to show what each person looks like: never copy its layout, background, poses or labels.`
+
+  it('changes nothing at or under the cap', () => {
+    for (const characters of [four.slice(0, 3), four.slice(0, 2)]) {
+      const input = { ...base, panel: panel({ characters }) }
+      expect(composePanelPrompt(input)).toEqual(composePanelPrompt({ ...input, packing: undefined }))
+    }
+    const atCap = composePanelPrompt({ ...base, panel: panel({ characters: four }), previous: null })
+    expect(atCap.references.map((r) => r.subject.kind)).toEqual(['character', 'character', 'character', 'character'])
+    expect(atCap.prompt).toContain('\n[CHARACTERS]\n')
+  })
+
+  it('packs the last two sheets of four cast members and a previous panel, one line apiece', () => {
+    const { prompt, references } = composePanelPrompt({ ...base, panel: panel({ description: 'They meet.', characters: four }) })
+    expect(prompt.split('\n')).toEqual([
+      '[STYLE] STYLE. Vertical-scroll webtoon panel, 2:3 aspect ratio, medium shot. No text, no speech bubbles, no captions, no watermark.',
+      '[SETTING] Rooftop at dusk',
+      '[ACTION] They meet.',
+      NOTE(3, 2),
+      '- Mina (reference image 1): MINA_LOCK Look: Base. Position: center.',
+      '- Jin (reference image 2): JIN_LOCK Look: Base. Position: center.',
+      '- Dohyun (reference image 3, the sheet labeled Dohyun): DOHYUN_LOCK Look: Base. Position: center.',
+      '- Yuna (reference image 3, the sheet labeled Yuna): YUNA_LOCK Look: Base. Position: center.',
+      '[CONTINUITY] Continues directly from the previous panel (reference image 4). Keep setting layout, lighting, time of day and outfits consistent.'
+    ])
+    expect(references).toEqual([
+      { relPath: 'characters/chr_mina/base.png', label: 'Mina', subject: { kind: 'character', id: 'chr_mina' } },
+      { relPath: 'characters/chr_jin/base.png', label: 'Jin', subject: { kind: 'character', id: 'chr_jin' } },
+      {
+        relPath: 'panels/pnl_1/pack-Dohyun-Yuna.png',
+        label: 'character sheets',
+        subject: {
+          kind: 'pack',
+          members: [
+            { subject: { kind: 'character', id: 'chr_dohyun' }, name: 'Dohyun', relPath: 'characters/chr_dohyun/base.png' },
+            { subject: { kind: 'character', id: 'chr_yuna' }, name: 'Yuna', relPath: 'characters/chr_yuna/base.png' }
+          ]
+        }
+      },
+      { relPath: PREVIOUS.imagePath, label: 'previous panel', subject: { kind: 'previous' } }
+    ])
+  })
+
+  it('packs as many as it takes, the whole cast at most, before dropping anything', () => {
+    const withItem = { ...base, panel: panel({ characters: four.slice(0, 3), items: [held()] }) }
+    const three = composePanelPrompt(withItem)
+    expect(three.references.map((r) => r.relPath)).toEqual(['characters/chr_mina/base.png', 'panels/pnl_1/pack-Jin-Dohyun.png', 'items/itm_blaster/fire.png', PREVIOUS.imagePath])
+    expect(three.prompt).toContain(NOTE(2, 2))
+    expect(three.prompt).toContain('- Kestrel blaster (reference image 3): BLOCK')
+
+    const all = composePanelPrompt({ ...base, panel: panel({ characters: four, items: [held()] }), sketch: 'panels/pnl_1/sketch-a.png' })
+    expect(all.references.map((r) => r.relPath)).toEqual(['panels/pnl_1/pack-Mina-Jin-Dohyun-Yuna.png', 'items/itm_blaster/fire.png', 'panels/pnl_1/sketch-a.png', PREVIOUS.imagePath])
+    expect(all.prompt).toContain(NOTE(1, 4))
+    expect(all.prompt).toContain('- Mina (reference image 1, the sheet labeled Mina): ')
+    expect(all.prompt).toContain('- Yuna (reference image 1, the sheet labeled Yuna): ')
+    expect(all.prompt).toContain('[LAYOUT] Follow the rough composition of the sketch (reference image 3)')
+    expect(all.prompt).toContain('previous panel (reference image 4)')
+  })
+
+  it('drops as before what still does not fit after a full pack', () => {
+    const { references, prompt } = composePanelPrompt({ ...base, maxReferences: 2, panel: panel({ characters: four.slice(0, 2), items: [held()] }), sketch: 'panels/pnl_1/sketch-a.png' })
+    expect(references.map((r) => r.relPath)).toEqual(['panels/pnl_1/pack-Mina-Jin.png', 'items/itm_blaster/fire.png'])
+    expect(prompt).not.toContain('[LAYOUT]')
+    expect(prompt).toContain('previous panel (no reference image)')
+
+    const tiny = composePanelPrompt({ ...base, maxReferences: 1, previous: null, panel: panel({ characters: [...four, cast(mina, 'var_m1')] }) })
+    expect(tiny.references.map((r) => r.relPath)).toEqual(['panels/pnl_1/pack-Mina-Jin-Dohyun-Yuna.png'])
+    expect(tiny.prompt).toContain('- Mina (no reference image): MINA_LOCK Look: Outfit: School uniform')
+  })
+
+  it('packs only ready sheets, and a member that is not ready keeps the no-reference form', () => {
+    const pending = makeCharacter({ id: 'chr_wip', name: 'Wip', appearanceLock: 'WIP_LOCK', variations: [makeVariation({ id: 'var_w0', characterId: 'chr_wip', status: 'pending' })] })
+    const { prompt, references } = composePanelPrompt({
+      ...base,
+      roster: new Map([...everyone, [pending.id, pending]]),
+      panel: panel({ characters: [cast(mina, 'var_m0'), cast(jin, 'var_j0'), cast(pending, 'var_w0'), cast(dohyun, 'var_d0'), cast(yuna, 'var_y0')] })
+    })
+    expect(references.map((r) => r.relPath)).toEqual(['characters/chr_mina/base.png', 'characters/chr_jin/base.png', 'panels/pnl_1/pack-Dohyun-Yuna.png', PREVIOUS.imagePath])
+    expect(prompt).toContain('- Wip (no reference image): WIP_LOCK')
+    expect(prompt).toContain('- Dohyun (reference image 3, the sheet labeled Dohyun): ')
+  })
+
+  it('never packs one sheet, with a cap of 0, or without packing', () => {
+    const one = { ...base, maxReferences: 1, panel: panel({ characters: [cast(mina, 'var_m0')] }) }
+    expect(composePanelPrompt(one)).toEqual(composePanelPrompt({ ...one, packing: undefined }))
+    const zero = composePanelPrompt({ ...base, maxReferences: 0, panel: panel({ characters: four }) })
+    expect(zero.references).toEqual([])
+    expect(zero.prompt).toContain('\n[CHARACTERS]\n- Mina (no reference image)')
+    const off = composePanelPrompt({ ...base, packing: undefined, panel: panel({ characters: four }) })
+    expect(off.references.map((r) => r.subject.kind)).toEqual(['character', 'character', 'character', 'character'])
+    expect(off.prompt).toContain('previous panel (no reference image)')
+  })
+})
+
 describe('editPanelPrompt', () => {
   it('pins the edit prompt', () =>
     expect(

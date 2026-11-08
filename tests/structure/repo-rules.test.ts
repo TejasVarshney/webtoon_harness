@@ -28,6 +28,7 @@ const ALLOWED: Record<string, string[]> = {
 
 const ELECTRON_ALLOWED = new Set([
   'src/main/domain/electron-image-ops.ts',
+  'src/main/domain/electron-pack-composer.ts',
   'src/main/export/electron-codec.ts',
   'src/main/export/offscreen-capturer.ts',
   'src/main/index.ts',

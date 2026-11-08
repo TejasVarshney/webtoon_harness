@@ -205,6 +205,45 @@ describe('workflow docs lint', () => {
     expect(extractSection(read('reference/prompt-templates'), 'Panel Prompt')).toContain(prompt)
   })
 
+  /** Three cast members written with placeholders, each with a ready sheet of its own. */
+  function placeholderCast() {
+    return [1, 2, 3].map((n) =>
+      makeCharacter({
+        name: '{name}',
+        appearanceLock: '{appearanceLock}',
+        variations: [makeVariation({ name: '{variation.name}', delta: '{variation.delta}', status: 'ready', imagePath: `characters/${n}.png` })]
+      })
+    )
+  }
+
+  it('prompt templates reproduce a panel prompt with packed character sheets verbatim', () => {
+    const cast = placeholderCast()
+    const prompt = composePanelPrompt({
+      stylePreset: '{stylePreset}',
+      panel: {
+        description: '{description}',
+        setting: '{setting}',
+        shot: '{shot}' as never,
+        aspect: '{aspect}' as never,
+        frame: 'bordered',
+        characters: cast.map((c) => ({ characterId: c.id, variationId: c.variations[0].id, action: '{action}', expression: '{expression}', position: '{position}' as never })),
+        items: [],
+        continuityNotes: '{continuityNotes}'
+      },
+      roster: new Map(cast.map((c) => [c.id, c])),
+      itemRoster: new Map(),
+      previous: { panelId: 'pnl_0000000002', imagePath: 'panels/b.png' },
+      maxReferences: 3,
+      packing: { path: () => 'panels/pnl_0000000001/pack-a.png' }
+    })
+      .prompt.replace('(reference image 1)', '(reference image {n})')
+      .replaceAll('reference image 2', 'reference image {p}')
+      .replace('Reference image 2 holds 2 ', 'Reference image {p} holds {count} ')
+      .replace('(reference image 3)', '(reference image {m})')
+    expect(prompt).toContain('holds {count} character sheets')
+    expect(extractSection(read('reference/prompt-templates'), 'Panel Prompt')).toContain(prompt)
+  })
+
   it('prompt templates reproduce a panel edit prompt with items verbatim', () => {
     const edit = editPanelPrompt('{instruction}', [{ name: '{name}', appearanceLock: '{appearanceLock}' }], [{ name: '{item.name}', appearanceLock: '{item.appearanceLock}' }])
     expect(extractSection(read('reference/prompt-templates'), 'Panel Edit Prompt')).toContain(edit)
@@ -247,6 +286,29 @@ describe('workflow docs lint', () => {
       },
       roster: [character],
       itemRoster: [item]
+    })
+    expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
+  })
+
+  it('prompt templates reproduce the consistency checker user message with packed sheets verbatim', () => {
+    const cast = placeholderCast()
+    const message = buildCheckMessage({
+      references: [
+        { relPath: 'characters/1.png', label: '{name}', subject: { kind: 'character', id: cast[0].id } },
+        {
+          relPath: 'panels/pnl_0000000001/pack-a.png',
+          label: 'character sheets',
+          subject: { kind: 'pack', members: cast.slice(1).map((c) => ({ subject: { kind: 'character' as const, id: c.id }, name: c.name, relPath: c.variations[0].imagePath! })) }
+        },
+        { relPath: 'panels/b.png', label: 'previous panel', subject: { kind: 'previous' } }
+      ],
+      panel: {
+        ...makePanel({ characters: cast.map((c) => ({ characterId: c.id, variationId: c.variations[0].id })) }),
+        description: '{description}',
+        shot: '{shot}' as never
+      },
+      roster: cast,
+      itemRoster: []
     })
     expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
   })

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createIdentityImageOps } from '../domain/image-ops'
 import { FakeEncryptor } from './fake-encryptor'
+import { createFakePackComposer } from './fake-pack-composer'
 import { createServices, type Services, type ServicesOptions } from '../services'
 
 export interface TestServices extends Services {
@@ -29,7 +30,8 @@ export async function testServices(overrides: Partial<ServicesOptions> = {}): Pr
     })
   const services = await createServices({ ...overrides, projectsRoot, userDataDir, trash, encryptor: overrides.encryptor ?? new FakeEncryptor(),
     templatesDir: overrides.templatesDir ?? path.resolve('resources', 'agent-docs'),
-    imageOps: overrides.imageOps ?? createIdentityImageOps()
+    imageOps: overrides.imageOps ?? createIdentityImageOps(),
+    packComposer: overrides.packComposer ?? createFakePackComposer()
   })
   return {
     ...services,

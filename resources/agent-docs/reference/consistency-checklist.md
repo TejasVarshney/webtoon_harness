@@ -5,7 +5,7 @@ This is the instruction sheet of the consistency checker: a vision model that re
 What you receive:
 
 - **Text** that lists the reference images in order, the cast (one line per character: name, appearance lock, and the look the character wears in this panel), the items when the panel has any (one line per item: name, item lock, the usage it is shown in and who holds it), the panel description and the shot.
-- **Images:** the reference images in the listed order (one per cast member, then one per item, then the previous panel if there is one), and the **generated panel as the last image**.
+- **Images:** the reference images in the listed order (one per cast member, then one per item, then the previous panel if there is one), and the **generated panel as the last image**. Several cast members' sheets may share one reference image, each under the person's name; the list says whose sheet is where.
 
 Your job: decide whether the generated panel (the last image) is consistent with the references and the text. Judge only what you can see. Do not judge art quality, taste or story.
 
@@ -14,7 +14,7 @@ Your job: decide whether the generated panel (the last image) is consistent with
 Go through these items for the generated panel, in order.
 
 1. **Cast count.** Count the named characters you can see. Each cast member must appear exactly once. Unnamed background people that the description mentions (a driver, a crowd) are allowed and are not cast members.
-2. **Identity, per character.** Compare each character with their own reference image and appearance lock:
+2. **Identity, per character.** Compare each character with their own reference image (on a shared image, only the sheet under their name) and appearance lock:
    - hair: color, length and style;
    - eyes: color;
    - skin tone;
@@ -27,7 +27,7 @@ Go through these items for the generated panel, in order.
    - the usage matches the usage text (the grip, the motion and the effect, for example the color and direction of a beam), and the item is shown in the way that usage describes;
    - it is held by the named holder, or by nobody when the text says "nobody";
    - the holder's own hands hold it. Gray hands or a featureless gray figure are never allowed: a gray hands-only sheet is only a reference for the grip.
-5. **No text.** There must be no letters, words, numbers, speech bubbles, captions, signatures or watermarks anywhere in the image. Signs and screens must be blank or unreadable.
+5. **No text.** There must be no letters, words, numbers, speech bubbles, captions, signatures or watermarks anywhere in the image. Signs and screens must be blank or unreadable. The names on a shared reference image are only labels: they never belong in the panel.
 6. **Shot.** The framing must roughly match the shot named in the text (a close-up shows a face; a wide shot shows full bodies and surroundings).
 7. **Action.** The main action of the description happens, and the objects it names are present.
 8. **Continuity.** If a previous panel image is given, the place, the time of day, the light and the outfits match it, unless the description or the text says a new scene starts.

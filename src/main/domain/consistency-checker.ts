@@ -7,6 +7,7 @@ import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import type { ProjectContext } from '../storage/project-store'
 import { loadImageForTextModel, MAX_TEXT_MODEL_IMAGE_EDGE, UnreadableImageError, type ImageOps } from './image-ops'
 import type { PanelPromptReference } from './prompts'
+import { planPack } from './reference-pack'
 
 /** The project doc that is the checker's system prompt. Editing the project's copy changes how the checker judges. */
 const CHECKLIST_DOC = 'reference/consistency-checklist'
@@ -26,7 +27,7 @@ export const CHECK_TIMEOUT_MS = 180_000
 export interface ConsistencyCheckInput {
   /** The generated image to judge (project-relative). */
   imageRelPath: string
-  /** The reference images the panel was drawn from, in prompt order (cast variations, then items, then the previous panel). */
+  /** The reference images the panel was drawn from, in prompt order (cast variations or a pack of them, then items, then the previous panel). */
   references: PanelPromptReference[]
   panel: Panel
   /** Every character, archived ones included. */
@@ -115,13 +116,15 @@ export function parseCheckResponse(text: string): CheckResult {
  * reference was not sent), the items when the panel has any (`Name — appearanceLock — Use: usage —
  * Held by: holder`, with the same marker), the panel description and the shot.
  * `reference/prompt-templates` documents it. A reference belongs to a cast member or item by its
- * `subject`, never by label (a character and an item may share a name).
+ * `subject`, never by label (a character and an item may share a name). A packed reference lists
+ * whose sheet is where on it, by the name drawn above each sheet.
  */
 export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster'>): string {
   const { references, panel, roster, itemRoster } = input
-  const images = [...references.map((r, i) => `${i + 1}. Reference: ${r.label}`), `${references.length + 1}. Generated panel (the image to check)`]
+  const images = [...references.map((r, i) => `${i + 1}. Reference: ${referenceLabel(r)}`), `${references.length + 1}. Generated panel (the image to check)`]
 
-  const sent = (kind: 'character' | 'item', id: string): boolean => references.some((r) => r.subject.kind === kind && r.subject.id === id)
+  const sent = (kind: 'character' | 'item', id: string): boolean =>
+    references.some(({ subject: s }) => (s.kind === 'pack' ? s.members.some((m) => m.subject.kind === kind && m.subject.id === id) : s.kind === kind && s.id === id))
 
   const cast = panel.characters.map((entry) => {
     const character = roster.find((c) => c.id === entry.characterId)
@@ -152,6 +155,13 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     `Panel description: ${panel.description}`,
     `Shot: ${panel.shot}`
   ].join('\n')
+}
+
+/** A reference's entry in the image list: its label, or for a pack whose sheet is where (`Jin (left), Mina (right)`). */
+function referenceLabel(ref: PanelPromptReference): string {
+  if (ref.subject.kind !== 'pack') return ref.label
+  const cells = planPack(ref.subject.members.map((m) => m.name)).cells.map((c) => `${c.name} (${c.position})`)
+  return `character sheets, each labeled with the person's name: ${cells.join(', ')}`
 }
 
 /**
