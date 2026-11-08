@@ -508,6 +508,42 @@ describe('composePanelPrompt with packing', () => {
     expect(tiny.prompt).toContain('- Mina (no reference image): MINA_LOCK Look: Outfit: School uniform')
   })
 
+  it('packs more of the cast as the cap goes down, to the whole cast on one image at a cap of 1', () => {
+    const sheet = (name: string) => `characters/chr_${name.toLowerCase()}/base.png`
+    const packOf = (...names: string[]) => `panels/pnl_1/pack-${names.join('-')}.png`
+    const ITEM = 'items/itm_blaster/fire.png'
+    const sent = (characters: typeof four, items: ReturnType<typeof held>[], maxReferences: number) =>
+      composePanelPrompt({ ...base, maxReferences, panel: panel({ characters, items }) }).references.map((r) => r.relPath)
+    const threeAndItem = (cap: number) => sent(four.slice(0, 3), [held()], cap)
+    const fourAndItem = (cap: number) => sent(four, [held()], cap)
+    const fourOnly = (cap: number) => sent(four, [], cap)
+
+    expect([4, 3, 2, 1].map(threeAndItem)).toEqual([
+      [sheet('Mina'), packOf('Jin', 'Dohyun'), ITEM, PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun'), ITEM, PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun'), ITEM],
+      [packOf('Mina', 'Jin', 'Dohyun')]
+    ])
+    expect([4, 3, 2, 1].map(fourAndItem)).toEqual([
+      [sheet('Mina'), packOf('Jin', 'Dohyun', 'Yuna'), ITEM, PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun', 'Yuna'), ITEM, PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun', 'Yuna'), ITEM],
+      [packOf('Mina', 'Jin', 'Dohyun', 'Yuna')]
+    ])
+    expect([4, 3, 2, 1].map(fourOnly)).toEqual([
+      [sheet('Mina'), sheet('Jin'), packOf('Dohyun', 'Yuna'), PREVIOUS.imagePath],
+      [sheet('Mina'), packOf('Jin', 'Dohyun', 'Yuna'), PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun', 'Yuna'), PREVIOUS.imagePath],
+      [packOf('Mina', 'Jin', 'Dohyun', 'Yuna')]
+    ])
+
+    // At a cap of 1 the item and the previous panel are left out, and the prompt says so.
+    const { prompt } = composePanelPrompt({ ...base, maxReferences: 1, panel: panel({ characters: four.slice(0, 3), items: [held()] }) })
+    expect(prompt).toContain(NOTE(1, 3))
+    expect(prompt).toContain('- Kestrel blaster (no reference image): BLOCK')
+    expect(prompt).toContain('previous panel (no reference image)')
+  })
+
   it('packs only ready sheets, and a member that is not ready keeps the no-reference form', () => {
     const pending = makeCharacter({ id: 'chr_wip', name: 'Wip', appearanceLock: 'WIP_LOCK', variations: [makeVariation({ id: 'var_w0', characterId: 'chr_wip', status: 'pending' })] })
     const { prompt, references } = composePanelPrompt({

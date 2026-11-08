@@ -2098,6 +2098,27 @@ describe('PanelService reference packing', () => {
     expect(sent.text).not.toContain('(no reference image)')
   })
 
+  it("follows the image model's cap at every draw: a lower cap packs more of the cast", async () => {
+    const { svc, ctx, p, m, b, previousImage, maxRefs, composer } = await crowded()
+    const packed = (v: { referenceImagePaths: string[] }) => v.referenceImagePaths.map((r) => (r.startsWith(`panels/${p.id}/pack-`) ? 'pack' : r))
+    const cells = () => composer!.calls.at(-1)!.plan.cells.map((c) => c.name)
+
+    expect(packed(await svc.generate(ctx, p.id))).toEqual([m.imagePath, 'pack', b.imagePath, previousImage])
+    expect(cells()).toEqual(['Zed', 'Kai'])
+    maxRefs.image = 2
+    expect(packed(await svc.generate(ctx, p.id))).toEqual(['pack', b.imagePath])
+    expect(cells()).toEqual(['Mina', 'Zed', 'Kai'])
+    maxRefs.image = 1
+    const one = await svc.generate(ctx, p.id)
+    expect(packed(one)).toEqual(['pack'])
+    expect(one.prompt).toContain('- Kestrel blaster (no reference image): ')
+    // The same three sheets: the pack drawn at a cap of 2 is reused.
+    expect(composer!.calls).toHaveLength(2)
+    maxRefs.image = 5
+    expect(packed(await svc.generate(ctx, p.id))).not.toContain('pack')
+    expect(composer!.calls).toHaveLength(2)
+  })
+
   it('leaves a panel under the cap as it was', async () => {
     const { svc, ctx, epi, m, z, composer } = await crowded()
     const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m), castOf(z)] }), USER)).panel
