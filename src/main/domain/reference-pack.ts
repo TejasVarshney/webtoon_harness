@@ -123,12 +123,12 @@ function cellPosition(column: number, row: number, columns: number, rows: number
 }
 
 /**
- * Where a panel's packed image is stored, named by the layout and its members' names and sheets: a redraw reuses the
+ * Where a panel's packed image is stored, named by the layout, the size it is drawn at, and its members' names and sheets: a redraw reuses the
  * file, and a renamed character or a new sheet gets a new one. Sheets are never rewritten in place (a new image gets a
  * new file name), so a sheet's path stands for its pixels. The panel folder goes to the trash with the panel.
  */
 export function packRelPath(panelId: string, members: PackMember[]): string {
-  const key = JSON.stringify({ layout: PACK_LAYOUT, members: members.map((m) => [m.name, m.relPath]) })
+  const key = JSON.stringify({ layout: PACK_LAYOUT, maxEdge: MAX_REFERENCE_IMAGE_EDGE, members: members.map((m) => [m.name, m.relPath]) })
   return `panels/${panelId}/pack-${createHash('sha256').update(key).digest('hex').slice(0, 16)}.png`
 }
 
