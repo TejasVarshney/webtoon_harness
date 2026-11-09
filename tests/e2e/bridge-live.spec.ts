@@ -130,7 +130,7 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
     const firingCard = page.getByTestId('usage-card').filter({ hasText: 'Firing' })
     await waitForImage('Kestrel blaster Firing image', cardState(firingCard), () => firingCard.getByRole('button', { name: 'Regenerate' }).click())
 
-    // The panel, through editing mode: Mina in her base look, the blaster in Firing, held by her.
+    // The panel, through focus mode: Mina in her base look, the blaster in Firing, held by her.
     await openTab(page, 'webtoon')
     await page.getByTestId('add-panel').last().click()
     const editor = page.getByTestId('panel-workspace')

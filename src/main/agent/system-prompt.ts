@@ -90,7 +90,6 @@ function layoutParts(p: Panel): string[] {
   if (p.beside) parts.push('beside')
   if (p.frame !== 'bordered') parts.push(p.frame)
   if (p.gapAfter !== 'normal') parts.push(`gap ${p.gapAfter}`)
-  if (p.gutter !== 'white') parts.push(`gutter ${p.gutter}`)
   return parts
 }
 

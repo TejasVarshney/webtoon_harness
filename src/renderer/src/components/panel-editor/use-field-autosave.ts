@@ -6,8 +6,8 @@ import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 /** How long a field waits after the last change before it saves. */
 const AUTOSAVE_MS = 600
 
-/** The panel's fields the editing mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
-export type AutosaveField = 'description' | 'setting' | 'location' | 'shot' | 'aspect' | 'frame' | 'beside' | 'gapAfter' | 'gutter' | 'characters' | 'items'
+/** The panel's fields focus mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
+export type AutosaveField = 'description' | 'setting' | 'location' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items'
 
 /** What became of a sent value: stored, refused by the service, or not sent after all (the line changed, the panel is gone). */
 type AutosaveOutcome = 'saved' | 'refused' | 'dropped'

@@ -18,8 +18,8 @@ const ARROW_STEP: Record<string, { x: number; y: number }> = {
   ArrowDown: { x: 0, y: 1 }
 }
 
-/** Presses that start on these belong to the control (the toolbar, the delete dialog, later a bubble), not to the card. */
-const CONTROL_SELECTOR = 'button, a, input, textarea, select, [role="dialog"]'
+/** Presses that start on these belong to the control (the panel's tools, their popovers and the delete dialog, later a bubble), not to the card. */
+const CONTROL_SELECTOR = 'button, a, input, textarea, select, [role="dialog"], .panel-tools'
 
 type Previews = Record<string, PanelPlacement>
 

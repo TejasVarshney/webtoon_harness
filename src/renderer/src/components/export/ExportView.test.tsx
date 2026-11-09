@@ -53,7 +53,7 @@ describe('ExportView', () => {
     expect(screen.queryByTestId('panel-status')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByText('No image yet')).toBeNull()
-    expect(container.querySelector('.panel-toolbar')).toBeNull()
+    expect(container.querySelector('.panel-tools')).toBeNull()
     const card = screen.getAllByTestId('panel-card')[0]
     expect(card.hasAttribute('tabindex')).toBe(false)
     expect(card.getAttribute('data-selected')).toBeNull()

@@ -67,7 +67,7 @@ async function setWindowSize(app: ElectronApplication, page: Page, width: number
 // the user's spot, on the card the user left from, and none of it drew a new version.
 // The panel chat's state names no ids for the mock to resolve refs from, so a first launch makes the cast, the item
 // and the panel, and a second one, on the same folders, has a script that names Mina's id outright.
-test('edit a panel in editing mode and find the changes on the strip', async () => {
+test('edit a panel in focus mode and find the changes on the strip', async () => {
   const mina = { $character: 'Mina' }
   const first = await launchApp({
     script: {
@@ -134,9 +134,17 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
   const stored = () => readProjectJson(projectsRoot, `panels/${panelId}.json`)
   const versions = (await stored()).versions.length
 
-  // 1. Editing mode, at a laptop size.
+  // 1. Focus mode, at a laptop size.
   await setWindowSize(app, page, 1440, 900)
   await card.click()
+  // 0. The selected panel's tools edit it where it sits: a frame change saves without opening focus mode.
+  await page.getByRole('button', { name: 'Scene', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Scene' }).getByLabel('Frame').selectOption('borderless')
+  await expect.poll(async () => (await stored()).frame).toBe('borderless')
+  await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Scene' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Focus', exact: true }).click()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByRole('heading', { level: 1 })).toHaveText('Panel 1 of 1')
@@ -169,8 +177,8 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
 
   // 4. A layout change saves without a redraw.
   await workspace.getByRole('tab', { name: 'Scene' }).click()
-  await workspace.getByLabel('Gutter').selectOption('black')
-  await expect.poll(async () => (await stored()).gutter).toBe('black')
+  await workspace.getByLabel('Frame').selectOption('slanted')
+  await expect.poll(async () => (await stored()).frame).toBe('slanted')
   expect((await stored()).versions).toHaveLength(versions)
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
 
@@ -269,7 +277,7 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   const stored = () => readProjectJson(projectsRoot, `panels/${panelId}.json`)
 
   await setWindowSize(app, page, 1440, 900)
-  await card.click()
+  await card.dblclick()
   const workspace = page.getByTestId('panel-workspace')
   const stage = workspace.getByTestId('panel-stage')
   const area = workspace.getByRole('tabpanel')
@@ -489,7 +497,7 @@ async function openPanelWith(dialogue: object[]) {
   await expect(card.locator('img')).toHaveCount(1)
   const panelId = (await card.getAttribute('data-panel-id'))!
   await setWindowSize(app, page, 1440, 900)
-  await card.click()
+  await card.dblclick()
   const workspace = page.getByTestId('panel-workspace')
   const stage = workspace.getByTestId('panel-stage')
   await expect(stage.locator('.bubble')).toHaveCount(dialogue.length)

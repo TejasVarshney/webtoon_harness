@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
-import { PanelAspectSchema, PanelFrameSchema, PanelGapSchema, PanelGutterSchema, ShotTypeSchema } from '@shared/schemas'
+import { PanelAspectSchema, PanelFrameSchema, ShotTypeSchema } from '@shared/schemas'
 import type { Panel } from '@shared/types'
 import { Field } from '../characters/controls'
 import { useLocationRoster } from '../visualizer/use-location-roster'
@@ -9,8 +9,6 @@ import type { FieldAutosave } from './use-field-autosave'
 const SHOTS = ShotTypeSchema.options
 const ASPECTS = PanelAspectSchema.options
 const FRAMES = PanelFrameSchema.options
-const GAPS = PanelGapSchema.options
-const GUTTERS = PanelGutterSchema.options
 
 /** The Scene tab's fields, each saved on its own (`useFieldAutosave`). */
 export interface SceneFields {
@@ -20,9 +18,6 @@ export interface SceneFields {
   shot: FieldAutosave<Panel['shot']>
   aspect: FieldAutosave<Panel['aspect']>
   frame: FieldAutosave<Panel['frame']>
-  beside: FieldAutosave<Panel['beside']>
-  gapAfter: FieldAutosave<Panel['gapAfter']>
-  gutter: FieldAutosave<Panel['gutter']>
 }
 
 /** A select over a field's options, saved after the last change and when it is left. */
@@ -134,15 +129,14 @@ function LocationPicker({ field }: { field: FieldAutosave<Panel['location']> }) 
 }
 
 /**
- * What the panel shows and where it sits in the strip: description, setting, location, shot and aspect, then the layout group
- * from the old panel dialog. Each field saves on its own; the text fields at once when they are left. Layout changes
- * never redraw.
+ * What the panel shows: description, setting, location, shot and aspect, then its frame. Each field saves on its own; the
+ * text fields at once when they are left. A frame change never redraws. Where the panel sits is set by dragging it on the strip.
  */
 export function SceneTab({ fields }: { fields: SceneFields }) {
   const tallNoteId = useId()
   // A tall panel fades at its edges instead of having a frame, whatever its frame says.
   const tall = isTallAspect(fields.aspect.value)
-  const { description, setting, location, shot, aspect, frame, beside, gapAfter, gutter } = fields
+  const { description, setting, location, shot, aspect, frame } = fields
   return (
     <div className="scene-tab">
       <Field label="Description">
@@ -158,18 +152,12 @@ export function SceneTab({ fields }: { fields: SceneFields }) {
         <legend>Layout</legend>
         <div className="field-row">
           <Field label="Frame">{(id) => <Choice id={id} field={frame} options={FRAMES} disabled={tall} describedBy={tall ? tallNoteId : undefined} />}</Field>
-          <Field label="Gap after">{(id) => <Choice id={id} field={gapAfter} options={GAPS} />}</Field>
-          <Field label="Gutter">{(id) => <Choice id={id} field={gutter} options={GUTTERS} />}</Field>
         </div>
         {tall && (
           <p id={tallNoteId} className="hint">
             Tall panels fade instead of a frame
           </p>
         )}
-        <label className="inline-label">
-          <input type="checkbox" checked={beside.value} onChange={(e) => beside.set(e.target.checked)} onBlur={beside.flush} />
-          Beside the previous panel
-        </label>
       </fieldset>
     </div>
   )

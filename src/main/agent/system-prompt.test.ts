@@ -67,10 +67,10 @@ describe('system prompt', () => {
 
   it('shows the layout after the shot and aspect, only where it differs from the defaults', () => {
     const plain = makePanel({ id: 'pnl_0000000001' })
-    const laidOut = makePanel({ id: 'pnl_0000000002', shot: 'wide', aspect: '16:9', beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const laidOut = makePanel({ id: 'pnl_0000000002', shot: 'wide', aspect: '16:9', beside: true, frame: 'slanted', gapAfter: 'long' })
     const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], episode: null, recentPanels: [plain, laidOut] })
     expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast:')
-    expect(s).toContain('- pnl_0000000002 [wide, 16:9, beside, slanted, gap long, gutter black] cast:')
+    expect(s).toContain('- pnl_0000000002 [wide, 16:9, beside, slanted, gap long] cast:')
     expect(layoutTag(makePanel({ shot: 'close-up', beside: true }))).toBe('close-up, 2:3, beside')
     expect(layoutTag(makePanel({ frame: 'borderless', gapAfter: 'tight' }))).toBe('medium, 2:3, borderless, gap tight')
   })
@@ -236,10 +236,10 @@ describe('buildPanelContext', () => {
 
   it('shows the layout only where it differs from the defaults', () => {
     expect(buildPanelContext(panel, [mina, jin], [], null, null)).not.toContain('layout:')
-    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long' })
     const lines = buildPanelContext(laidOut, [], [], null, null).split('\n')
-    expect(lines).toContain('layout: beside, slanted, gap long, gutter black')
-    expect(lines.indexOf('layout: beside, slanted, gap long, gutter black')).toBe(lines.indexOf('aspect: 2:3') + 1)
+    expect(lines).toContain('layout: beside, slanted, gap long')
+    expect(lines.indexOf('layout: beside, slanted, gap long')).toBe(lines.indexOf('aspect: 2:3') + 1)
   })
 
   it('counts ready versions only, and says none when the current version is not ready', () => {

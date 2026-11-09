@@ -10,7 +10,8 @@ import { SceneTab, type SceneFields } from './SceneTab'
 import { useDialogueSaver } from './use-dialogue-saver'
 import { useFieldAutosave, type FieldAutosave } from './use-field-autosave'
 
-type Tab = 'lines' | 'cast' | 'items' | 'scene'
+export type InspectorTab = 'lines' | 'cast' | 'items' | 'scene'
+type Tab = InspectorTab
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'lines', label: 'Lines' },
@@ -21,6 +22,8 @@ const TABS: { id: Tab; label: string }[] = [
 
 export interface PanelInspectorProps {
   panel: Panel
+  /** The tab it opens on. Default Lines. */
+  initialTab?: InspectorTab
   /** The line selected on the stage (or by a row of Lines), which Lines marks and scrolls to. */
   selectedLine: number | null
   /** Selects a line from a row of Lines, so the stage selects its bubble. */
@@ -63,8 +66,8 @@ function SaveStatus({ fields, warnings }: { fields: FieldAutosave<unknown>[]; wa
  * save, so its message is seen. Keyed by panel in the workspace: stepping to another panel or going Back saves what
  * is still waiting.
  */
-export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewStyle }: PanelInspectorProps) {
-  const [tab, setTab] = useState<Tab>('lines')
+export function PanelInspector({ panel, initialTab = 'lines', selectedLine, onSelectLine, onPreviewStyle }: PanelInspectorProps) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const id = useId()
   const roster = useRoster()
   const itemRoster = useItemRoster()
@@ -80,10 +83,7 @@ export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewSty
     location: useFieldAutosave(panel, 'location'),
     shot: useFieldAutosave(panel, 'shot'),
     aspect: useFieldAutosave(panel, 'aspect'),
-    frame: useFieldAutosave(panel, 'frame'),
-    beside: useFieldAutosave(panel, 'beside'),
-    gapAfter: useFieldAutosave(panel, 'gapAfter'),
-    gutter: useFieldAutosave(panel, 'gutter')
+    frame: useFieldAutosave(panel, 'frame')
   }
 
   useEffect(() => {

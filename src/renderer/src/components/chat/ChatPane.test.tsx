@@ -149,7 +149,7 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('composer-attach')).toBeDisabled()
   })
 
-  it('stays the main chat alone when a panel is selected: the panel chat lives in the editing mode', async () => {
+  it('stays the main chat alone when a panel is selected: the panel chat lives in focus mode', async () => {
     installFakeApi({ 'sessions:load': () => [] })
     render(<ChatPane />)
     const input = await screen.findByTestId('composer-input')

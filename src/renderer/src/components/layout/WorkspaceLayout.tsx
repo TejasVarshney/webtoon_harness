@@ -8,7 +8,7 @@ export interface WorkspaceLayoutProps {
   right: ReactNode
   /** The top bar over both panes, on the frame. */
   header?: ReactNode
-  /** Drawn over both panes, on the sheet (editing mode). The panes under it stay mounted but inert. */
+  /** Drawn over both panes, on the sheet (focus mode). The panes under it stay mounted but inert. */
   overlay?: ReactNode
 }
 

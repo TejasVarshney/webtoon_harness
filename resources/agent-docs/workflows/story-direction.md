@@ -159,7 +159,7 @@ A webtoon is read by scrolling down. Time on screen is space on the page:
 - **Silence**: a panel with no dialogue is a pause. Use one after a big line.
 - **Rhythm**: a common pattern is wide (where) → medium (who and what) → close-up (how they feel). Do not use the same shot three times in a row.
 
-One beat per panel (R5) is what makes pacing work: the reader gets one new thing per scroll. Shot and aspect choices are in `reference/webtoon-style-guide`. Rows, gaps and gutters (quick exchanges side by side, a long gap for time passing, a black gutter for a dark scene) are in its Panel Layout section.
+One beat per panel (R5) is what makes pacing work: the reader gets one new thing per scroll. Shot and aspect choices are in `reference/webtoon-style-guide`. Rows and gaps (quick exchanges side by side, a long gap for time passing) are in its Panel Layout section.
 
 ## Continuity Across Sessions
 

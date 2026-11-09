@@ -26,7 +26,6 @@ function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
     frame: panel.frame,
     beside: panel.beside,
     gapAfter: panel.gapAfter,
-    gutter: panel.gutter,
     setting: panel.setting,
     location: panel.location,
     description: panel.description,

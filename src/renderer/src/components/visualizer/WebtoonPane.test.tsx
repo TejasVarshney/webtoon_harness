@@ -77,7 +77,7 @@ describe('WebtoonPane', () => {
     expect(screen.getByText(/no panels yet/i)).toBeInTheDocument()
   })
 
-  it('opens the new blank panel in editing mode once the strip has it', async () => {
+  it('opens the new blank panel in focus mode once the strip has it', async () => {
     const blank = panel({ id: 'pnl_00000000f1', description: '', setting: '', characters: [], dialogue: [], versions: [], currentVersionId: null })
     let panels: Panel[] = []
     const { calls } = mount({

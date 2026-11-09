@@ -109,12 +109,28 @@ describe('dragging panels on the strip', () => {
     expect(card(0).style.left).toBe('40px')
   })
 
-  it('a press on the toolbar does not start a drag', () => {
+  it('a press on the panel tools, or in a popover they open, does not start a drag', () => {
     const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
-    drag(screen.getAllByRole('button', { name: 'Regenerate' })[0], 40, 40)
+    drag(screen.getByRole('button', { name: 'Redraw' }), 40, 40)
+    // The bar between its buttons, and the popover (a portal, but still the card's child in the React tree).
+    drag(screen.getByRole('toolbar', { name: 'Panel tools' }), 40, 40)
+    fireEvent.click(screen.getByRole('button', { name: 'Scene' }))
+    drag(screen.getByRole('dialog', { name: 'Scene' }), 40, 40)
     expect(placeCalls(calls)).toEqual([])
     expect(card(0).style.left).toBe('40px')
+  })
+
+  it('the tools and popovers match the selector that skips presses on controls', () => {
+    installFakeApi({ 'panels:list': () => [a, b] })
+    useAppStore.getState().selectPanel(a.id)
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cast' }))
+    const controls = 'button, a, input, textarea, select, [role="dialog"], .panel-tools'
+    for (const el of [screen.getByRole('toolbar', { name: 'Panel tools' }), screen.getByRole('dialog', { name: 'Cast' }), ...screen.getAllByRole('button')]) {
+      expect(el.closest(controls), el.outerHTML.slice(0, 60)).not.toBeNull()
+    }
   })
 
   it('resize keeps the aspect and saves width', async () => {
@@ -165,10 +181,11 @@ describe('dragging panels on the strip', () => {
     expect(placeCalls(calls)).toEqual([{ projectId, episodeId: EPISODE_ID, moves: [{ panelId: a.id, placement: { x: 42, y: 40, width: 200 } }] }])
   })
 
-  it('an arrow key in a toolbar button is not a nudge', () => {
+  it('an arrow key in a tool button is not a nudge', () => {
     installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
-    fireEvent.keyDown(screen.getAllByRole('button', { name: 'Regenerate' })[0], { key: 'ArrowRight' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Redraw' }), { key: 'ArrowRight' })
     expect(card(0).style.left).toBe('40px')
   })
 
@@ -226,10 +243,11 @@ describe('dragging panels on the strip', () => {
 
   it('takes the pointer at the press, so a move off the card still reaches it', () => {
     installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const capture = vi.fn()
     card(0).setPointerCapture = capture
-    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Regenerate' })[0], { pointerId: 7, button: 0, buttons: 1 })
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Redraw' }), { pointerId: 7, button: 0, buttons: 1 })
     expect(capture).not.toHaveBeenCalled()
     fireEvent.pointerDown(card(0), { pointerId: 7, clientX: 100, clientY: 100, button: 0, buttons: 1 })
     expect(capture).toHaveBeenCalledWith(7)

@@ -92,6 +92,16 @@ describe('panel selection', () => {
     expect([state().focusedPanelId, state().selectedPanelIds]).toEqual([null, ['c']])
   })
 
+  it('focusing with the sketch tool asks for the sketch canvas once; any other focus clears the ask', () => {
+    state().focusPanel('a', { sketch: true })
+    expect([state().focusedPanelId, state().focusSketch]).toEqual(['a', true])
+    state().focusPanel('b')
+    expect([state().focusedPanelId, state().focusSketch]).toEqual(['b', false])
+    state().focusPanel('c', { sketch: true })
+    state().focusPanel(null)
+    expect(state().focusSketch).toBe(false)
+  })
+
   it('closeProject and openProject reset the selection and the focus', async () => {
     installFakeApi({ 'projects:open': () => ({ meta, problems: [] }), 'sessions:list': () => [] })
     useAppStore.setState({ projectId: P, selectedPanelId: 'a', selectedPanelIds: ['a', 'b'], shiftSelecting: true, focusedPanelId: 'a' })

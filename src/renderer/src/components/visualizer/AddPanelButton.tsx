@@ -14,7 +14,7 @@ export interface AddPanelButtonProps {
 }
 
 /**
- * Appends a blank panel to the episode, with no image, and opens it in editing mode, where the user sketches the scene,
+ * Appends a blank panel to the episode, with no image, and opens it in focus mode, where the user sketches the scene,
  * fills in its details and generates it. One click makes one panel.
  */
 export function AddPanelButton({ episodeId, testId, className, children }: AddPanelButtonProps) {

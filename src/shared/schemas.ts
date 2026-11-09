@@ -361,7 +361,6 @@ export const PanelDraftSchema = z.object({
   frame: PanelFrameSchema.optional(),
   beside: z.boolean().optional(),
   gapAfter: PanelGapSchema.optional(),
-  gutter: PanelGutterSchema.optional(),
   characters: z.array(PanelCharacterSchema),
   items: z.array(PanelItemSchema).optional(),
   dialogue: z.array(DialogueDraftSchema),

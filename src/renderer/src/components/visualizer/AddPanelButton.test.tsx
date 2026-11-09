@@ -14,7 +14,7 @@ beforeEach(() => {
 })
 
 describe('AddPanelButton', () => {
-  it('makes one panel for a double click, and opens it in editing mode', async () => {
+  it('makes one panel for a double click, and opens it in focus mode', async () => {
     let release: () => void = () => undefined
     const gate = new Promise<void>((resolve) => (release = resolve))
     const made = panel({ id: 'pnl_00000000cc' })

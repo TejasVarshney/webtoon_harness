@@ -57,8 +57,7 @@ function versionBrief(panel: Panel): { id: string; status: PanelVersion['status'
 export const layoutFields = {
   frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade. No redraw needed.'),
   beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false. No redraw needed."),
-  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.'),
-  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band. No redraw needed.')
+  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.')
 }
 
 /** The location input with its describe text, shared by create_panel, update_panel and the panel chat's update_panel_fields. */
@@ -91,7 +90,7 @@ const createEpisode = defineTool({
 const listPanels = defineTool({
   name: 'list_panels',
   description:
-    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), location, shot, aspect, frame, beside, gapAfter, gutter, cast, description, continuityNotes, dialogue and ' +
+    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), location, shot, aspect, frame, beside, gapAfter, cast, description, continuityNotes, dialogue and ' +
     'the current version (id, status, imagePath), which is null while the panel has no ready image. Read recent panels before drawing the next one.',
   input: z.object({
     episodeId,
@@ -113,7 +112,6 @@ const listPanels = defineTool({
           frame: p.frame,
           beside: p.beside,
           gapAfter: p.gapAfter,
-          gutter: p.gutter,
           cast: p.characters.map((c) => ({ name: names.get(c.characterId) ?? c.characterId, characterId: c.characterId, variationId: c.variationId })),
           description: p.description,
           continuityNotes: p.continuityNotes,

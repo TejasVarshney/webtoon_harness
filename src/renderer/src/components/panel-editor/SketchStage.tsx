@@ -62,7 +62,7 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
   const picture = current?.status === 'ready' && current.imagePath && projectId !== null ? assetUrl(projectId, current.imagePath) : null
 
   return (
-    <div ref={stageRef} className="panel-stage sketch-stage" data-testid="sketch-stage" data-gutter={panel.gutter}>
+    <div ref={stageRef} className="panel-stage sketch-stage" data-testid="sketch-stage">
       <div className="sketch-tools" role="toolbar" aria-label="Sketch tools" aria-orientation="vertical">
         {TOOLS.map((t) => (
           <button key={t.id} type="button" className="icon-button" aria-label={t.label} title={t.id === 'pen' || t.id === 'eraser' ? t.label : `${t.label} (Shift keeps it straight or even)`} aria-pressed={pad.tool === t.id} onClick={() => pad.setTool(t.id)}>

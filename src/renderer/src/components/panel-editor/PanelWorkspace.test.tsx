@@ -100,11 +100,38 @@ describe('PanelWorkspace', () => {
     await waitFor(() => expect(document.querySelector(`[data-panel-id="${B}"]`)).toHaveFocus())
   })
 
+  it('is named Focus mode', () => {
+    mount()
+    expect(screen.getByRole('region', { name: 'Focus mode' })).toBe(workspace())
+    expect(screen.queryByRole('region', { name: 'Panel editor' })).toBeNull()
+  })
+
+  it('the back button says Back to the strip and clears focus only, leaving the selection', async () => {
+    mount()
+    useAppStore.setState({ selectedPanelId: B, selectedPanelIds: [B] })
+    const back = within(header()).getByRole('button', { name: 'Back to the strip' })
+    expect(back).toHaveTextContent('Back to the strip')
+    await userEvent.click(back)
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+    expect(useAppStore.getState().selectedPanelIds).toEqual([B])
+    expect(useAppStore.getState().selectedPanelId).toBe(B)
+  })
+
+  it('opens on the sketch canvas when the Sketch tool asked, and a later plain Focus opens on the picture', async () => {
+    useAppStore.getState().focusPanel(B, { sketch: true })
+    mount({ 'panels:readSketch': () => null })
+    expect(screen.getByTestId('sketch-stage')).toBeInTheDocument()
+    // The request was used up: stepping to another panel, or coming back to this one, shows the picture.
+    expect(useAppStore.getState().focusSketch).toBe(false)
+    act(() => useAppStore.getState().focusPanel(C))
+    expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
+  })
+
   it('steps to the next and previous panel, and stops at the ends', async () => {
     mount()
     const next = (): HTMLElement => within(header()).getByRole('button', { name: 'Next panel' })
     const previous = (): HTMLElement => within(header()).getByRole('button', { name: 'Previous panel' })
-    expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveTextContent('Strip')
+    expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveTextContent('Back to the strip')
     await userEvent.click(next())
     expect(useAppStore.getState().focusedPanelId).toBe(C)
     expect(within(workspace()).getByRole('heading', { level: 1 })).toHaveTextContent('Panel 3 of 3')

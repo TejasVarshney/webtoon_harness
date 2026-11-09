@@ -124,7 +124,8 @@ describe('panel tools: the tool set', () => {
     for (const optional of ['afterPanelId', 'aspect', 'continuityNotes', 'offPanelMentions']) expect(schema('create_panel').required).not.toContain(optional)
     expect(schema('create_panel').properties.shot.enum).toContain('close-up')
     expect(schema('create_panel').properties.aspect.enum).toEqual(expect.arrayContaining(['2:3', '1:2', '1:3']))
-    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) {
+    expect(schema('create_panel').properties, 'has no gutter').not.toHaveProperty('gutter')
+    for (const field of ['frame', 'beside', 'gapAfter']) {
       expect(schema('create_panel').required).not.toContain(field)
       expect(schema('create_panel').properties[field].description, field).toEqual(expect.any(String))
       expect(schema('create_panel').properties[field].description, field).toContain('No redraw needed.')
@@ -344,7 +345,6 @@ describe('list_panels and get_panel', () => {
       frame: 'bordered',
       beside: false,
       gapAfter: 'normal',
-      gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
       continuityNotes: '',
@@ -355,9 +355,9 @@ describe('list_panels and get_panel', () => {
 
   it('list_panels shows the layout fields a panel was made with', async () => {
     const { run, created, episode } = await setup()
-    await created([], { beside: true, gapAfter: 'tight', frame: 'slanted', gutter: 'black' })
+    await created([], { beside: true, gapAfter: 'tight', frame: 'slanted' })
     const { panels } = json(await run('list_panels', { episodeId: episode.id }))
-    expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
+    expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight' })
   })
 
   it('reports no current version for a panel with no ready image, and keeps naming an archived cast member', async () => {
@@ -411,7 +411,7 @@ describe('update_panel', () => {
   it('create_panel takes the layout fields and stores them', async () => {
     const { created, panel } = await setup()
     const made = await created([], { beside: true, gapAfter: 'tight' })
-    expect(await panel(made.panelId)).toMatchObject({ beside: true, gapAfter: 'tight', frame: 'bordered', gutter: 'white' })
+    expect(await panel(made.panelId)).toMatchObject({ beside: true, gapAfter: 'tight', frame: 'bordered' })
   })
 
   it('a layout-only patch returns the updated panel and records no new version', async () => {

@@ -70,16 +70,18 @@ describe('StripCanvas', () => {
     expect(useAppStore.getState().selectedPanelIds).toEqual([])
   })
 
-  it('cancelling a delete keeps the shift selection', async () => {
+  it('cancelling a delete keeps the selection, and a shift selection has no per-panel tools to delete from', async () => {
     installFakeApi({})
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const [first, second] = screen.getAllByTestId('panel-card')
     await userEvent.click(first)
-    fireEvent.click(second, { shiftKey: true })
     await userEvent.click(within(first).getByRole('button', { name: 'Delete' }))
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete panel' })).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).toBeNull()
+    expect(useAppStore.getState().selectedPanelIds).toEqual([a.id])
+    fireEvent.click(second, { shiftKey: true })
     expect(useAppStore.getState().selectedPanelIds).toEqual([a.id, b.id])
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
     expect(useAppStore.getState().shiftSelecting).toBe(true)
   })
 

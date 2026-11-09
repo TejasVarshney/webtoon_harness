@@ -1,0 +1,192 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { DialogueLine, Panel, PanelPatch } from '@shared/types'
+import { initialAppState, useAppStore } from '../../stores/app-store'
+import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialItemsState, useItemsStore } from '../../stores/items-store'
+import { initialLocationsState, useLocationsStore } from '../../stores/locations-store'
+import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
+import { character, PROJECT_ID as P } from '../../test/character-fixtures'
+import { installFakeApi } from '../../test/fake-api'
+import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
+import { PanelTools } from './PanelTools'
+
+const A = 'pnl_0000000001'
+const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Hello.', placement: null, style: null, tail: null }
+const v1 = panelVersion({ id: 'ver_00000000a1', imagePath: `panels/${A}/ver_00000000a1.png` })
+const v2 = panelVersion({ id: 'ver_00000000a2', imagePath: `panels/${A}/ver_00000000a2.png` })
+
+let stored: Panel
+
+beforeEach(() => {
+  stored = panel({ id: A, dialogue: [hello], versions: [v1, v2], currentVersionId: v2.id })
+  useAppStore.setState({ ...initialAppState, projectId: P, activeEpisodeId: EPISODE_ID, selectedPanelId: A, selectedPanelIds: [A] })
+  usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [stored] } })
+  useCharactersStore.setState({ ...initialCharactersState, projectId: P, characters: [character()], loaded: true })
+  useItemsStore.setState({ ...initialItemsState, projectId: P, items: [], loaded: true })
+  useLocationsStore.setState({ ...initialLocationsState, projectId: P, locations: [], loaded: true })
+})
+
+/** The tools as a card hands them the panel: fed from the store, so a save or a revert reaches them. */
+function Host() {
+  const p = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((x) => x.id === A))
+  return p === undefined ? null : <PanelTools panel={p} />
+}
+
+function mount(handlers: Parameters<typeof installFakeApi>[0] = {}) {
+  const api = installFakeApi({
+    'panels:list': () => [stored],
+    'panels:update': (req: { patch: PanelPatch }) => {
+      stored = { ...stored, ...req.patch } as Panel
+      return { panel: stored, warnings: [] }
+    },
+    ...handlers
+  })
+  render(<Host />)
+  return api
+}
+
+const tool = (name: string): HTMLElement => screen.getByRole('button', { name })
+
+describe('PanelTools', () => {
+  it('has the tools in order, each with its name', () => {
+    mount()
+    const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
+  })
+
+  it('Redraw starts a generation', async () => {
+    const { calls } = mount({ 'panels:generate': () => undefined })
+    await userEvent.click(tool('Redraw'))
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:generate')).toBe(true))
+    expect(calls.find((c) => c.channel === 'panels:generate')?.req).toEqual({ projectId: P, panelId: A })
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('does not start a second generation while one is pending', () => {
+    stored = panel({ id: A, versions: [v1, panelVersion({ id: 'ver_00000000a3', status: 'pending', imagePath: null })], currentVersionId: v1.id })
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    expect(tool('Redraw')).toBeDisabled()
+  })
+
+  it("shows a failed redraw's message", async () => {
+    mount({
+      'panels:generate': () => {
+        throw new Error('Unknown panel: pnl_0000000001')
+      }
+    })
+    await userEvent.click(tool('Redraw'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unknown panel: pnl_0000000001')
+  })
+
+  it("Scene opens the panel's scene fields in place", async () => {
+    mount()
+    await userEvent.click(tool('Scene'))
+    const popover = screen.getByRole('dialog', { name: 'Scene' })
+    expect(within(popover).getByLabelText('Description')).toHaveValue('Mina stands on the rooftop.')
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('Lines edits a line in place', async () => {
+    const { calls } = mount()
+    await userEvent.click(tool('Lines'))
+    const popover = screen.getByRole('dialog', { name: 'Lines' })
+    const text = within(within(popover).getAllByRole('listitem')[0]).getByLabelText('Text')
+    act(() => text.focus())
+    fireEvent.change(text, { target: { value: 'Hi.' } })
+    act(() => text.blur())
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:update')).toBe(true))
+    const patch = (calls.find((c) => c.channel === 'panels:update')?.req as { patch: PanelPatch }).patch
+    expect(patch.dialogue?.[0]).toMatchObject({ text: 'Hi.' })
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('closes the open tool on Escape, and when another is opened', async () => {
+    mount()
+    await userEvent.click(tool('Cast'))
+    expect(screen.getByRole('dialog', { name: 'Cast' })).toBeInTheDocument()
+    await userEvent.click(tool('Items'))
+    expect(screen.queryByRole('dialog', { name: 'Cast' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Items' })).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes the open tool when the press lands anywhere else', async () => {
+    mount()
+    await userEvent.click(tool('Scene'))
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('Upload image stores a new version without opening focus mode', async () => {
+    const { calls } = mount({ 'panels:uploadImage': () => v2 })
+    await userEvent.click(tool('Upload image'))
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:uploadImage')).toBe(true))
+    expect(calls.find((c) => c.channel === 'panels:uploadImage')?.req).toEqual({ projectId: P, panelId: A })
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:list')).toBe(true))
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('Versions switches the current image in place', async () => {
+    const reverted = { ...stored, currentVersionId: v1.id }
+    const { calls } = mount({ 'panels:revert': () => reverted, 'panels:list': () => [reverted] })
+    await userEvent.click(tool('Versions'))
+    const popover = screen.getByRole('dialog', { name: 'Versions' })
+    expect(within(popover).getByTestId('panel-version-label')).toHaveTextContent('v2 / 2')
+    await userEvent.click(within(popover).getByRole('button', { name: 'Previous version' }))
+    expect(calls.find((c) => c.channel === 'panels:revert')?.req).toEqual({ projectId: P, panelId: A, versionId: v1.id })
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: 'Versions' })).getByTestId('panel-version-label')).toHaveTextContent('v1 / 2'))
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('Focus opens focus mode', async () => {
+    mount()
+    await userEvent.click(tool('Focus'))
+    expect(useAppStore.getState().focusedPanelId).toBe(A)
+    expect(useAppStore.getState().focusSketch).toBe(false)
+  })
+
+  it('Sketch opens focus mode on the canvas', async () => {
+    mount()
+    await userEvent.click(tool('Sketch'))
+    expect(useAppStore.getState().focusedPanelId).toBe(A)
+    expect(useAppStore.getState().focusSketch).toBe(true)
+  })
+
+  it('Delete asks first', async () => {
+    const { calls } = mount({ 'panels:delete': () => undefined, 'panels:list': () => [] })
+    await userEvent.click(tool('Delete'))
+    const confirm = screen.getByRole('dialog', { name: 'Delete panel' })
+    expect(calls.some((c) => c.channel === 'panels:delete')).toBe(false)
+
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(calls.some((c) => c.channel === 'panels:delete')).toBe(false)
+
+    await userEvent.click(tool('Delete'))
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete panel' })).getByRole('button', { name: 'Delete panel' }))
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:delete')).toBe(true))
+    expect(calls.find((c) => c.channel === 'panels:delete')?.req).toEqual({ projectId: P, panelId: A })
+  })
+
+  it('keeps presses, clicks and double clicks inside its tools and popovers from the card and the strip', async () => {
+    installFakeApi({ 'panels:list': () => [stored] })
+    const seen: string[] = []
+    const record = (e: { type: string }): void => void seen.push(e.type)
+    render(
+      <div onClick={record} onDoubleClick={record} onPointerDown={record}>
+        <Host />
+      </div>
+    )
+    const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
+    await userEvent.click(within(bar).getByRole('button', { name: 'Scene' }))
+    const field = within(screen.getByRole('dialog', { name: 'Scene' })).getByLabelText('Description')
+    await userEvent.click(field)
+    fireEvent.doubleClick(field)
+    fireEvent.pointerDown(bar)
+    expect(seen).toEqual([])
+  })
+})

@@ -403,13 +403,13 @@ describe('workflow docs lint', () => {
     const table = extractSection(read('workflows/panel-editing'), 'Edit vs Regenerate')
     const row = table.split('\n').find((line) => line.includes('`frame`'))
     expect(row, 'a row for the layout fields').toBeDefined()
-    for (const word of ['`beside`', '`gapAfter`', '`gutter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
+    for (const word of ['`beside`', '`gapAfter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
     expect(row!.trimEnd().endsWith('| no |')).toBe(true)
     // The composition row is about the picture's arrangement, not the panel's layout.
     expect(table.split('\n').find((line) => line.includes('A different composition'))).not.toMatch(/\blayout\b/)
     const catalog = extractSection(read('AGENTS'), 'Tool Catalog')
     const update = catalog.split('\n').find((line) => line.startsWith('- `update_panel` '))!
-    expect(update).toContain('`frame`, `beside`, `gapAfter` and `gutter` need no redraw')
+    expect(update).toContain('`frame`, `beside` and `gapAfter` need no redraw')
     expect(update).toContain('an aspect change between 9:16, 1:2 and 1:3')
   })
 

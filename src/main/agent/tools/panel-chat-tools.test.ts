@@ -83,13 +83,14 @@ describe('panel chat tools: the tool set', () => {
     expect(schema('revert_to_version').required).toEqual(['versionId'])
     expect(schema('update_panel_fields').required ?? []).toEqual([])
     expect(Object.keys(schema('update_panel_fields').properties)).toEqual(
-      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
+      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
     )
+    expect(Object.keys(schema('update_panel_fields').properties)).not.toContain('gutter')
     expect(schema('update_panel_fields').properties.shot.enum).toContain('close-up')
-    for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
+    for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))
     }
-    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
+    for (const field of ['frame', 'beside', 'gapAfter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('update_panel_fields').properties.dialogue.description).toContain(PLACEMENT_DOC)
     expect(schema('update_panel_fields').properties.dialogue.description).toContain('leave either out to keep the one at the same position')
@@ -301,11 +302,11 @@ describe('update_panel_fields', () => {
   it('sets the layout fields without drawing, and shows them in fields', async () => {
     const { run, s, p2, panel } = await setup()
     const generate = vi.spyOn(s.images, 'generate')
-    const r = await run('update_panel_fields', { gutter: 'black' })
+    const r = await run('update_panel_fields', { gapAfter: 'long' })
     expect(r.ok, r.content).toBe(true)
-    expect(json(r)).toMatchObject({ updated: ['gutter'], fields: { gutter: 'black', frame: 'bordered', beside: false, gapAfter: 'normal' } })
+    expect(json(r)).toMatchObject({ updated: ['gapAfter'], fields: { gapAfter: 'long', frame: 'bordered', beside: false } })
     expect(generate).not.toHaveBeenCalled()
-    expect(await panel(p2.id)).toMatchObject({ gutter: 'black' })
+    expect(await panel(p2.id)).toMatchObject({ gapAfter: 'long' })
     expect((await panel(p2.id)).versions).toHaveLength(1)
   })
 

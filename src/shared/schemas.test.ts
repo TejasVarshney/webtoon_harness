@@ -132,6 +132,12 @@ describe('Panel', () => {
     expect(PanelSchema.parse(minimalPanel)).toMatchObject({ frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' })
   })
 
+  it('the draft and the patch have no gutter, and the panel keeps it for the files that have one', () => {
+    expect(Object.keys(PanelDraftSchema.shape)).not.toContain('gutter')
+    expect(Object.keys(PanelPatchSchema.shape)).not.toContain('gutter')
+    expect(Object.keys(PanelSchema.shape)).toContain('gutter')
+  })
+
   it('refuses a frame or gap it does not know', () => {
     expect(() => PanelSchema.parse({ ...minimalPanel, frame: 'tilted' })).toThrow()
     expect(() => PanelSchema.parse({ ...minimalPanel, gapAfter: 'huge' })).toThrow()

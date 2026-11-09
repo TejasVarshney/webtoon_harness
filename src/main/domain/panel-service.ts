@@ -126,7 +126,8 @@ export class PanelService extends PanelUsageScanner {
       frame: draft.frame,
       beside: draft.beside,
       gapAfter: draft.gapAfter,
-      gutter: draft.gutter,
+      // Panels are placed on the strip now: the colour between rows has no input, and only old files carry one.
+      gutter: 'white',
       characters: draft.characters,
       items: draft.items ?? [],
       dialogue: draft.dialogue.map((line) => withId(line, undefined)),
@@ -179,7 +180,7 @@ export class PanelService extends PanelUsageScanner {
         frame: patch.frame ?? current.frame,
         beside: patch.beside ?? current.beside,
         gapAfter: patch.gapAfter ?? current.gapAfter,
-        gutter: patch.gutter ?? current.gutter,
+        gutter: current.gutter,
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
         // A line sent without a placement, style or tail keeps the one stored at its index: agents send the whole array when they reword one line.

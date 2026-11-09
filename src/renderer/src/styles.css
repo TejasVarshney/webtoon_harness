@@ -366,7 +366,7 @@ kbd {
   height: 100%;
 }
 
-/* Editing mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
+/* Focus mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
    its episode bar, below menus and dialogs. */
 .sheet-overlay {
   position: absolute;
@@ -1443,7 +1443,7 @@ kbd {
   height: 22px;
 }
 
-/* Editing mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
+/* Focus mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
    the panel's own chat on the right. */
 .panel-workspace,
 .editing-columns {
@@ -2111,8 +2111,7 @@ kbd {
   background: var(--raised);
 }
 
-.strip-band[data-gutter='black'],
-.panel-stage[data-gutter='black'] {
+.strip-band[data-gutter='black'] {
   background: #000;
 }
 
@@ -2310,30 +2309,87 @@ kbd {
   padding: 6px 10px;
 }
 
-/*
- * Hidden until the card is hovered or focused, but always clickable, so a script (or a keyboard) can reach it.
- * It straddles the panel's bottom edge, half in the gutter, so it never covers the dialogue drawn at the top.
- */
-.panel-toolbar {
+/* The tools of the one selected panel, centred under its card (PanelTools nudges them to stay inside the strip), clear
+   of the card's own corner handle. Nothing shows on a card that is not selected, and nothing covers the selected one. */
+.panel-tools {
   position: absolute;
-  right: 10px;
-  bottom: -18px;
+  top: calc(100% + 10px);
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: default;
+}
+
+.panel-tools-bar {
   display: flex;
   align-items: center;
   gap: 1px;
-  padding: 3px 3px 3px 10px;
+  padding: 3px;
+  white-space: nowrap;
   background: var(--surface);
   border-radius: var(--radius-card);
   box-shadow: var(--float-shadow);
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 0.14s var(--ease),
-    transform 0.14s var(--ease);
 }
 
-/* A toolbar that grows over its neighbour must stay above the neighbour's own (hidden, but still hit-testable) one. */
+.panel-tools-bar .icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.panel-tools-bar .icon-button[aria-expanded='true'] {
+  background: var(--control);
+}
+
+.panel-tools-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--border);
+}
+
+.panel-tools-error {
+  max-width: 280px;
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+/* Window-fixed beside a tool's button (see ToolPopover), so no pane or strip clips it. Above the cards and the strip's
+   bar, below dialogs. */
+.tool-popover {
+  position: fixed;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+.tool-popover:focus {
+  outline: none;
+}
+
+/* The inspector inside is the focus mode's, which fills a column; here it takes what it needs and scrolls past the
+   popover's own height. */
+.tool-popover .panel-inspector {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.tool-popover .inspector-panel {
+  flex: 0 1 auto;
+}
+
+/* A card that holds the tools stays above a hovered neighbour, which would otherwise cover the bar where they meet. */
 .panel-card:focus-within,
 .panel-card[data-selected='true'] {
   z-index: 2;
@@ -2343,23 +2399,8 @@ kbd {
   z-index: 3;
 }
 
-.panel-card:hover .panel-toolbar,
-.panel-card:focus-within .panel-toolbar,
-.panel-card[data-selected='true'] .panel-toolbar {
-  opacity: 1;
-  transform: none;
-}
-
-.panel-number {
-  margin-right: 4px;
-  font-size: var(--fs-small);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.panel-toolbar .icon-button {
-  width: 28px;
-  height: 28px;
+.panel-card[data-tools='true'] {
+  z-index: 4;
 }
 
 /* The strip canvas: panels placed at their own coordinates on a strip 440px wide, centred on a neutral pane. Its 440px

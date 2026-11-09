@@ -510,8 +510,8 @@ describe('PanelService update', () => {
     const { svc, epi, ctx } = await setup()
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
     const v = await svc.generate(ctx, p.id)
-    const { panel } = await svc.update(ctx, p.id, { gapAfter: 'long', gutter: 'black' }, USER)
-    expect(panel).toMatchObject({ gapAfter: 'long', gutter: 'black', frame: 'bordered', beside: false })
+    const { panel } = await svc.update(ctx, p.id, { gapAfter: 'long', frame: 'borderless' }, USER)
+    expect(panel).toMatchObject({ gapAfter: 'long', frame: 'borderless', beside: false })
     expect(panel.currentVersionId).toBe(v.id)
     expect(panel.versions).toHaveLength(1)
   })

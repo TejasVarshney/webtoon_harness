@@ -29,7 +29,7 @@ export interface PanelsActions {
   selectEpisode(id: string): void
   /**
    * Selects a panel from outside the strip (a chat thumbnail): when it belongs to another episode than the one shown,
-   * that episode is opened first, so the panel opens in editing mode. A panel that cannot be looked up is selected as is.
+   * that episode is opened first, so the panel opens in focus mode. A panel that cannot be looked up is selected as is.
    */
   showPanel(id: string): Promise<void>
   /** Creates the episode and opens it. */
@@ -147,7 +147,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
         try {
           episodeId = (await api.invoke('panels:get', { projectId: requireProject(), panelId: id })).episodeId
         } catch {
-          episodeId = null // gone or unreadable: select it anyway, as before; the editing mode says what is wrong
+          episodeId = null // gone or unreadable: select it anyway, as before; focus mode says what is wrong
         }
       }
       if (episodeId !== null && episodeId !== useAppStore.getState().activeEpisodeId) get().selectEpisode(episodeId)

@@ -16,8 +16,10 @@ export interface AppData {
   selectedPanelIds: string[]
   /** True once a shift-click added to the selection; the selection bar shows for it. A plain click ends it. */
   shiftSelecting: boolean
-  /** The panel open in the editing mode, which covers the strip. */
+  /** The panel open in focus mode, which covers the strip. */
   focusedPanelId: string | null
+  /** Set by the Sketch tool: focus mode opens on the sketch canvas. Focus mode uses it up as it opens, and any other focus clears it. */
+  focusSketch: boolean
   activeEpisodeId: string | null
   studioTab: StudioTab
   /** Thread key (a session id, or `panel:<panelId>`) to the id of its running agent run. */
@@ -50,15 +52,15 @@ export interface AppActions {
   selectPanel(id: string | null): void
   /** A shift-click: adds the panel to the selection, or takes it out when it is already in. */
   togglePanelSelection(id: string): void
-  /** Opens a panel in the editing mode (selecting it alone), or closes the editing mode for null. */
-  focusPanel(id: string | null): void
+  /** Opens a panel in focus mode (selecting it alone), or closes focus mode for null. `sketch` opens it on the sketch canvas. */
+  focusPanel(id: string | null, opts?: { sketch?: boolean }): void
   setStudioTab(tab: StudioTab): void
 }
 
 /** What no selection and no open panel look like: where a new project or episode starts. */
-export const NO_PANEL_SELECTION = { selectedPanelId: null, selectedPanelIds: [], shiftSelecting: false, focusedPanelId: null } satisfies Pick<
+export const NO_PANEL_SELECTION = { selectedPanelId: null, selectedPanelIds: [], shiftSelecting: false, focusedPanelId: null, focusSketch: false } satisfies Pick<
   AppData,
-  'selectedPanelId' | 'selectedPanelIds' | 'shiftSelecting' | 'focusedPanelId'
+  'selectedPanelId' | 'selectedPanelIds' | 'shiftSelecting' | 'focusedPanelId' | 'focusSketch'
 >
 
 export const initialAppState: AppData = {
@@ -185,9 +187,9 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     })
   },
 
-  focusPanel(id) {
-    if (id === null) set({ focusedPanelId: null })
-    else set({ focusedPanelId: id, selectedPanelId: id, selectedPanelIds: [id], shiftSelecting: false })
+  focusPanel(id, opts) {
+    if (id === null) set({ focusedPanelId: null, focusSketch: false })
+    else set({ focusedPanelId: id, focusSketch: opts?.sketch === true, selectedPanelId: id, selectedPanelIds: [id], shiftSelecting: false })
   },
 
   setStudioTab(tab) {

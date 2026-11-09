@@ -78,9 +78,9 @@ async function stripBox(page: Page, index: number): Promise<{ x: number; y: numb
   })
 }
 
-// A click on a card selects it, only a double-click opens editing mode, and the toolbar's buttons are what the pointer
+// A click on a card selects it, only a double-click opens focus mode, and the tools' buttons are what the pointer
 // lands on.
-test('a click selects a panel, a double-click opens it, and the toolbar is reachable', async () => {
+test('a click selects a panel, a double-click opens it, and its tools are reachable', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
@@ -92,8 +92,8 @@ test('a click selects a panel, a double-click opens it, and the toolbar is reach
   await expect(cards.nth(1)).toHaveAttribute('data-selected', 'true')
   await expect(workspace).toHaveCount(0)
 
-  const toolbar = cards.nth(1).getByRole('group', { name: 'Panel actions' })
-  for (const name of ['Regenerate', 'Delete']) {
+  const toolbar = cards.nth(1).getByRole('toolbar', { name: 'Panel tools' })
+  for (const name of ['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete']) {
     const button = toolbar.getByRole('button', { name })
     const box = (await button.boundingBox())!
     const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])

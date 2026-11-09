@@ -121,7 +121,7 @@ Pick the aspect by pace (default: the project's default aspect, usually 2:3, whe
 
 Do not repeat the same shot three times in a row. More in `reference/webtoon-style-guide`.
 
-Layout is set with `beside`, `frame`, `gapAfter` and `gutter` (and the tall `1:2` and `1:3` aspects): quick exchanges go beside each other, clashes are borderless, action runs slanted; the rules are in the Panel Layout section of `reference/webtoon-style-guide`.
+Layout is set with `beside`, `frame` and `gapAfter` (and the tall `1:2` and `1:3` aspects): quick exchanges go beside each other, clashes are borderless, action runs slanted; the rules are in the Panel Layout section of `reference/webtoon-style-guide`.
 
 ## Attaching Items
 

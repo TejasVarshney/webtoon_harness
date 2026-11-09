@@ -104,7 +104,7 @@ const updates = (calls: { channel: string; req: unknown }[]): PanelPatch[] =>
   calls.filter((c) => c.channel === 'panels:update').map((c) => (c.req as { patch: PanelPatch }).patch)
 
 describe('PanelStage', () => {
-  it('lays the panel out at its share of the reference row, with its frame, slant and gutter', () => {
+  it('lays the panel out at its share of the reference row, with its frame and slant, on the neutral surface', () => {
     stored = { ...stored, frame: 'slanted', gutter: 'black' }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
     mount({ share: 0.5, slant: 'right' })
@@ -113,7 +113,7 @@ describe('PanelStage', () => {
     expect(shape.style.getPropertyValue('--share')).toBe('0.5')
     expect(shape).toHaveAttribute('data-frame', 'slanted')
     expect(shape).toHaveAttribute('data-slant', 'right')
-    expect(stage()).toHaveAttribute('data-gutter', 'black')
+    expect(stage()).not.toHaveAttribute('data-gutter')
     expect(stage().querySelector<HTMLElement>('.stage-row')!.style.width).toBe('560px')
   })
 

@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { useEffect, useRef, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
-import { usePanelsStore } from '../../stores/panels-store'
-import { errorText } from '../characters/controls'
 import { PanelArt } from './PanelArt'
 import { PanelCheckBadge } from './PanelCheckBadge'
+import { PanelTools } from './PanelTools'
 import { aspectRatio } from '@shared/strip-layout'
 
 export interface PanelCardProps {
@@ -24,7 +22,7 @@ export interface PanelCardProps {
   lettering?: boolean
   /** Export mode: the panel's 1-based place in the whole episode, for naming it when its image fails to load. */
   position?: number
-  /** Handlers that move the card on the strip (see `useStripDrag`). Presses on its buttons and dialogs are left to them. */
+  /** Handlers that move the card on the strip (see `useStripDrag`). Presses on its tools and their popovers are left to them. */
   bind?: HTMLAttributes<HTMLElement>
   /** Handlers of the corner handle that resizes the card. Without them there is no handle. */
   bindResize?: HTMLAttributes<HTMLElement>
@@ -33,27 +31,25 @@ export interface PanelCardProps {
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), a badge when
- * that image failed its consistency check or was not checked, and a toolbar on hover.
- * Clicking the card selects the panel (shift adds it to the selection) and double-clicking opens it in the editing
- * mode; the toolbar's buttons and the delete confirmation it opens do neither.
+ * that image failed its consistency check or was not checked, and the panel's tools (`PanelTools`) while it is the only
+ * panel selected.
+ * Clicking the card selects the panel (shift adds it to the selection) and double-clicking opens it in focus mode; the
+ * tools and what they open do neither.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
 export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position, bind, bindResize }: PanelCardProps) {
-  const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
-  const [confirming, setConfirming] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The tools are for one panel at a time: with several selected, the selection bar acts on them.
+  const alone = useAppStore((s) => s.selectedPanelIds.length <= 1)
   const cardRef = useRef<HTMLElement>(null)
 
-  // Selecting from elsewhere (a chat thumbnail) must bring the card into view. (jsdom has no scrollIntoView.)
+  // Selecting from elsewhere (a chat thumbnail) must bring the card into view, and its tools, which hang below it.
+  // (jsdom has no scrollIntoView.)
   useEffect(() => {
-    if (selected) cardRef.current?.scrollIntoView?.({ block: 'nearest' })
-  }, [selected])
-
-  const index = siblings?.findIndex((p) => p.id === panel.id) ?? -1
-  // The newest attempt, which may not be ready yet (see PanelArt, which shows its status).
-  const generating = panel.versions.at(-1)?.status === 'pending'
+    if (!selected) return
+    cardRef.current?.scrollIntoView?.({ block: 'nearest' })
+    cardRef.current?.querySelector('.panel-tools')?.scrollIntoView?.({ block: 'nearest' })
+  }, [selected, alone])
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height. On the canvas it has a
   // box of its own, and the height follows its aspect.
@@ -62,20 +58,6 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
     '--share': String(share),
     ...(place === undefined ? {} : { position: 'absolute', left: `${place.x}px`, top: `${place.y}px`, width: `${place.width}px` })
   } as CSSProperties
-
-  function run(task: Promise<unknown>): void {
-    setBusy(true)
-    setError(null)
-    task.then(
-      () => setBusy(false),
-      (e: unknown) => {
-        setError(errorText(e))
-        setBusy(false)
-      }
-    )
-  }
-
-  const { generatePanel, deletePanel } = usePanelsStore.getState()
 
   function onClick(e: MouseEvent<HTMLElement>): void {
     // The click that clears the selection on empty strip is not for a card.
@@ -86,7 +68,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): void {
     bind?.onKeyDown?.(e)
-    // Only the card itself: Enter on a toolbar button is that button's.
+    // Only the card itself: Enter on a tool's button is that button's.
     if (e.target !== e.currentTarget) return
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -117,69 +99,31 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
   }
 
   return (
-    <>
-      <article
-        ref={cardRef}
-        className="panel-card panel-shape"
-        data-testid="panel-card"
-        data-panel-id={panel.id}
-        data-selected={String(selected)}
-        data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
-        data-beside={String(panel.beside)}
-        data-gutter={panel.gutter}
-        data-gap={panel.gapAfter}
-        data-slant={slant}
-        style={shape}
-        aria-current={selected ? 'true' : undefined}
-        tabIndex={0}
-        {...bind}
-        onClick={onClick}
-        onDoubleClick={() => useAppStore.getState().focusPanel(panel.id)}
-        onKeyDown={onKeyDown}
-      >
-        <PanelArt panel={panel} />
-        {/* Outside PanelArt, whose export drawing must never show it. */}
-        <PanelCheckBadge panel={panel} problemsOnly />
-        {error !== null && (
-          <p role="alert" className="error panel-error">
-            {error}
-          </p>
-        )}
-        <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-          <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button type="button" className="icon-button" aria-label="Regenerate" title="Regenerate" disabled={busy || generating} onClick={() => run(generatePanel(panel.id))}>
-            <RefreshCw size={15} aria-hidden="true" />
-          </button>
-          <button type="button" className="icon-button icon-button-danger" aria-label="Delete" title="Delete panel" disabled={busy} onClick={() => setConfirming(true)}>
-            <Trash2 size={15} aria-hidden="true" />
-          </button>
-        </div>
-        {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
-      </article>
-
-      {/* A sibling of the card, not a child: a click in the dialog must not select the panel, nor (stopped at the backdrop) reach the strip, whose empty-space click clears the selection. */}
-      {confirming && (
-        <div className="modal-backdrop" onClick={(e) => e.stopPropagation()}>
-          <div className="modal" role="dialog" aria-label="Delete panel">
-            <p>Delete this panel? It moves to the trash.</p>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setConfirming(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => {
-                  setConfirming(false)
-                  run(deletePanel(panel.id))
-                }}
-              >
-                Delete panel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <article
+      ref={cardRef}
+      className="panel-card panel-shape"
+      data-testid="panel-card"
+      data-panel-id={panel.id}
+      data-selected={String(selected)}
+      data-tools={String(selected && alone)}
+      data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
+      data-beside={String(panel.beside)}
+      data-gutter={panel.gutter}
+      data-gap={panel.gapAfter}
+      data-slant={slant}
+      style={shape}
+      aria-current={selected ? 'true' : undefined}
+      tabIndex={0}
+      {...bind}
+      onClick={onClick}
+      onDoubleClick={() => useAppStore.getState().focusPanel(panel.id)}
+      onKeyDown={onKeyDown}
+    >
+      <PanelArt panel={panel} />
+      {/* Outside PanelArt, whose export drawing must never show it. */}
+      <PanelCheckBadge panel={panel} problemsOnly />
+      {selected && alone && <PanelTools panel={panel} />}
+      {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
+    </article>
   )
 }
