@@ -35,6 +35,11 @@ const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
 const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
 const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
+const PlaceSchema = z.object({
+  projectId: z.string(),
+  episodeId: z.string(),
+  moves: z.array(z.object({ panelId: z.string(), placement: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() }) }))
+})
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
 const MAX_SKETCH_BYTES = 8 * 1024 * 1024
@@ -90,6 +95,10 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     'panels:move': async (req) => {
       const { projectId, panelId, toIndex } = parseInput(MoveSchema, req)
       return panels.move(await s.projects.open(projectId), panelId, toIndex)
+    },
+    'panels:place': async (req) => {
+      const { projectId, episodeId, moves } = parseInput(PlaceSchema, req)
+      return panels.place(await s.projects.open(projectId), episodeId, moves)
     },
     'panels:revert': async ({ projectId, panelId, versionId }) => panels.revert(await s.projects.open(projectId), panelId, versionId),
 

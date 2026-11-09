@@ -266,6 +266,16 @@ describe('panels:delete, move and revert', () => {
     expect((await h['panels:list']({ projectId, episodeId: episode.id })).map((p) => p.description)).toEqual(['B', 'C', 'A'])
   })
 
+  it('places panels and reads the episode in that order', async () => {
+    const { h, projectId, draft, episode } = await setup()
+    const a = (await h['panels:create']({ projectId, draft: draft({ description: 'A' }), generate: false })).panel
+    await h['panels:create']({ projectId, draft: draft({ description: 'B' }), generate: false })
+    await h['panels:place']({ projectId, episodeId: episode.id, moves: [{ panelId: a.id, placement: { x: 0, y: 5000, width: 100 } }] })
+    const listed = await h['panels:list']({ projectId, episodeId: episode.id })
+    expect(listed.map((p) => p.description)).toEqual(['B', 'A'])
+    expect(listed.every((p) => p.placement !== null)).toBe(true)
+  })
+
   it('reverts to an earlier ready version, and refuses an unknown or failed one', async () => {
     const { s, ctx, h, projectId, draft } = await setup()
     const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: false })

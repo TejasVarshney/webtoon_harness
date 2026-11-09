@@ -95,6 +95,22 @@ export class EpisodeService {
     })
   }
 
+  /**
+   * Sets the order to `ids`. An id the episode does not hold is dropped, and a panel the episode holds that `ids`
+   * lacks (added while the order was worked out) stays, at the end in its old order. Nothing is written when the
+   * order is unchanged.
+   */
+  setPanelOrder(ctx: ProjectContext, episodeId: string, ids: string[]): Promise<Episode> {
+    return this.mutate(ctx, episodeId, (e) => {
+      const held = new Set(e.panelIds)
+      const ordered = [...new Set(ids)].filter((id) => held.has(id))
+      const listed = new Set(ordered)
+      const panelIds = [...ordered, ...e.panelIds.filter((id) => !listed.has(id))]
+      if (panelIds.every((id, i) => id === e.panelIds[i])) return null
+      return { ...e, panelIds, updatedAt: now() }
+    })
+  }
+
   /** Read-modify-write of one episode under its file lock. `fn` returning null means "no change". */
   private async mutate(ctx: ProjectContext, id: string, fn: (e: Episode) => Episode | null): Promise<Episode> {
     const file = ctx.paths.episodeFile(id)

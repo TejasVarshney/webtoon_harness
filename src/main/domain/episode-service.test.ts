@@ -128,6 +128,20 @@ describe('EpisodeService', () => {
     expect(events).toEqual([])
   })
 
+  it('setPanelOrder reorders, and keeps a panel added meanwhile at the end', async () => {
+    const { svc, ctx, events } = await setup()
+    const [ep] = await svc.list(ctx)
+    for (const id of ['pnl_0000000001', 'pnl_0000000002', 'pnl_0000000003']) await svc.insertPanel(ctx, ep.id, id, undefined)
+    events.length = 0
+    const next = await svc.setPanelOrder(ctx, ep.id, ['pnl_0000000003', 'pnl_ffffffffff', 'pnl_0000000001'])
+    expect(next.panelIds).toEqual(['pnl_0000000003', 'pnl_0000000001', 'pnl_0000000002'])
+    expect(events).toEqual([{ type: 'episode.changed', projectId: ctx.id, episodeId: ep.id }])
+    events.length = 0
+    await svc.setPanelOrder(ctx, ep.id, next.panelIds)
+    expect(events).toEqual([])
+    await expect(svc.setPanelOrder(ctx, 'epi_ffffffffff', [])).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
   it('moves a panel to an index, clamping out-of-range targets', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)

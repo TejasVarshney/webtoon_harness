@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Episode, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
+import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion } from '@shared/types'
 import { api } from '../api'
 import { useAppStore } from './app-store'
 
@@ -42,6 +42,8 @@ export interface PanelsActions {
   generatePanel(id: string): Promise<void>
   deletePanel(id: string): Promise<void>
   movePanel(id: string, toIndex: number): Promise<void>
+  /** Saves where panels sit on the strip, then reloads the episode, whose order follows reading order. */
+  placePanels(episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void>
   revertPanel(id: string, versionId: string): Promise<Panel>
   /** Opens the file dialog in main; resolves to `null` when it is cancelled. */
   uploadPanelImage(id: string): Promise<PanelVersion | null>
@@ -193,6 +195,11 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async movePanel(id, toIndex) {
       await api.invoke('panels:move', { projectId: requireProject(), panelId: id, toIndex })
       await reload(episodeOf(id))
+    },
+
+    async placePanels(episodeId, moves) {
+      await api.invoke('panels:place', { projectId: requireProject(), episodeId, moves })
+      await reload(episodeId)
     },
 
     async revertPanel(id, versionId) {

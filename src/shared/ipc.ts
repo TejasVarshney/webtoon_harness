@@ -27,6 +27,7 @@ import type {
   Panel,
   PanelDraft,
   PanelPatch,
+  PanelPlacement,
   PanelVersion,
   PluginView,
   ProjectMeta,
@@ -159,6 +160,8 @@ export interface IpcContract {
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   'panels:generate': { req: { projectId: string; panelId: string }; res: void }
   'panels:delete': { req: { projectId: string; panelId: string }; res: void }
+  /** Saves where panels sit on the strip (everything else on it is frozen where it is drawn) and the reading order that follows. */
+  'panels:place': { req: { projectId: string; episodeId: string; moves: { panelId: string; placement: PanelPlacement }[] }; res: void }
   'panels:move': { req: { projectId: string; panelId: string; toIndex: number }; res: void }
   /** Makes a ready version current; no version is deleted. */
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
@@ -286,6 +289,7 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:update': true,
   'panels:generate': true,
   'panels:delete': true,
+  'panels:place': true,
   'panels:move': true,
   'panels:revert': true,
   'panels:uploadImage': true,

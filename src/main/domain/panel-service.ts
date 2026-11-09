@@ -3,7 +3,7 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
@@ -17,6 +17,7 @@ import type { ImageGenRequest, ImageService } from './image-service'
 import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
+import { planPlacement } from './panel-placement'
 import { PanelUsageScanner } from './panel-usage'
 import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
@@ -49,7 +50,6 @@ export interface PanelServiceOptions {
   /** Draws packed reference images. Without one, a generation drops the references over the image model's cap. */
   packComposer?: PackComposer
 }
-
 
 /** What the consistency check needs to know about a draw, captured while its prompt was composed. */
 interface DrawContext {
@@ -372,6 +372,13 @@ export class PanelService extends PanelUsageScanner {
     const panel = await this.get(ctx, id)
     await this.opts.episodes.movePanel(ctx, panel.episodeId, id, toIndex)
     this.emit(ctx, id)
+  }
+
+  /** Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own. */
+  async place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
+    const plan = planPlacement(await this.list(ctx, episodeId), moves)
+    for (const write of plan.writes) await this.mutate(ctx, write.panelId, (cur) => ({ ...cur, placement: write.placement, updatedAt: now() }))
+    await this.opts.episodes.setPanelOrder(ctx, episodeId, plan.order)
   }
 
   /**

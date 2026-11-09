@@ -210,6 +210,18 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([edited])
     })
 
+    it('placePanels saves the moves and reloads the episode', async () => {
+      const a = panel({ id: 'pnl_00000000aa' })
+      const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a] })
+      const moves = [{ panelId: a.id, placement: { x: 1, y: 2, width: 100 } }]
+      await usePanelsStore.getState().placePanels(EPISODE_ID, moves)
+      expect(calls.map((c) => [c.channel, c.req])).toEqual([
+        ['panels:place', { projectId, episodeId: EPISODE_ID, moves }],
+        ['panels:list', { projectId, episodeId: EPISODE_ID }]
+      ])
+      expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([a])
+    })
+
     it('generatePanel, movePanel, revertPanel and uploadPanelImage call their channels and reload', async () => {
       const a = panel({ id: 'pnl_00000000aa' })
       const b = panel({ id: 'pnl_00000000bb' })

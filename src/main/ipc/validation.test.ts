@@ -97,6 +97,14 @@ describe('IPC input validation', () => {
     await invoke('panels:move', { projectId, panelId, toIndex: 0 })
   })
 
+  it('panels:place needs finite numbers in every placement', async () => {
+    const { invoke, projectId, panelId, episodeId } = await setup()
+    for (const placement of [{ x: Number.NaN, y: 0, width: 100 }, { x: 0, y: Number.POSITIVE_INFINITY, width: 100 }, { x: 0, y: 0, width: '100' }, { x: 0, y: 0 }]) {
+      expect((await rejection(invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement }] }))).message).toMatch(/^Invalid input: moves/)
+    }
+    await invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement: { x: 0, y: 0, width: 100 } }] })
+  })
+
   it('a schema failure inside any handler reaches the renderer as a short readable message', async () => {
     const { invoke, projectId } = await setup()
     const error = await rejection(invoke('characters:create', { projectId, input: { name: 'Mina', role: 'hero', appearanceLock: 'L' }, generateBase: false }))

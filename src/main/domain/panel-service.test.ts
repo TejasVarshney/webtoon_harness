@@ -3,6 +3,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, PanelLocation, PanelVersion } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
+import { resolveStrip } from '@shared/strip-canvas'
 import { NoModelForRoleError, type ModelRegistry, type ResolvedModel } from '../models/registry'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { ProviderError, type ImageEditRequest, type ImageProvider, type ImageRequest, type ImageResult, type TextProvider, type TextTurnRequest } from '../models/providers/types'
@@ -1891,6 +1892,77 @@ describe('PanelService delete, move and usage', () => {
     expect((await svc.list(ctx, epi.id)).map((p) => p.id)).toEqual([c.id, a.id, b.id])
     expect(events).toEqual(expect.arrayContaining([{ type: 'panel.changed', projectId: ctx.id, panelId: c.id }, { type: 'episode.changed', projectId: ctx.id, episodeId: epi.id }]))
     await expect(svc.move(ctx, 'pnl_ffffffffff', 0)).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  describe('place', () => {
+    const rects = (panels: Panel[]) => resolveStrip(panels).map((r) => ({ id: r.panel.id, x: r.x, y: r.y, width: r.width, height: r.height }))
+    const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+
+    it('first move freezes every unplaced panel', async () => {
+      const { svc, epi, ctx } = await setup()
+      const [a, b, c] = [
+        (await svc.create(ctx, draft(epi.id), USER)).panel,
+        (await svc.create(ctx, draft(epi.id), USER)).panel,
+        (await svc.create(ctx, draft(epi.id), USER)).panel
+      ]
+      const before = rects(await svc.list(ctx, epi.id))
+      await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 10, y: 5, width: 200 } }])
+      const after = await svc.list(ctx, epi.id)
+      expect(after.every((p) => p.placement !== null)).toBe(true)
+      for (const id of [b.id, c.id]) {
+        const was = before.find((r) => r.id === id)!
+        expect(after.find((p) => p.id === id)!.placement).toEqual({ x: was.x, y: was.y, width: was.width })
+      }
+      expect(after.find((p) => p.id === a.id)!.placement).toEqual({ x: 10, y: 5, width: 200 })
+    })
+
+    it('a move keeps a pushed-down panel where it was drawn', async () => {
+      const { svc, epi, ctx } = await setup()
+      const a = (await svc.create(ctx, draft(epi.id), USER)).panel
+      const b = (await svc.create(ctx, draft(epi.id, { afterPanelId: a.id }), USER)).panel
+      const c = (await svc.create(ctx, draft(epi.id), USER)).panel
+      await writeJsonAtomic(ctx.paths.panelFile(a.id), { ...a, placement: { x: 0, y: 0, width: 220 } })
+      await writeJsonAtomic(ctx.paths.panelFile(c.id), { ...c, placement: { x: 0, y: 300, width: 220 } })
+      const drawn = rects(await svc.list(ctx, epi.id))
+      expect(drawn.find((r) => r.id === c.id)!.y).toBeGreaterThan(300)
+      await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 200, y: 0, width: 220 } }])
+      const after = await svc.list(ctx, epi.id)
+      expect(after.find((p) => p.id === c.id)!.placement!.y).toBe(drawn.find((r) => r.id === c.id)!.y)
+      expect(after.find((p) => p.id === b.id)!.placement!.y).toBe(drawn.find((r) => r.id === b.id)!.y)
+      const now = rects(after)
+      for (const x of now) for (const y of now) if (x.id < y.id) expect(intersects(x, y), `${x.id} ${y.id}`).toBe(false)
+    })
+
+    it('rewrites episode order to reading order', async () => {
+      const { svc, episodes, epi, ctx, events } = await setup()
+      const [a, b, c] = [
+        (await svc.create(ctx, draft(epi.id), USER)).panel,
+        (await svc.create(ctx, draft(epi.id), USER)).panel,
+        (await svc.create(ctx, draft(epi.id), USER)).panel
+      ]
+      events.length = 0
+      await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 0, y: 5000, width: 100 } }])
+      expect((await episodes.get(ctx, epi.id)).panelIds).toEqual([b.id, c.id, a.id])
+      expect(events.filter((e) => e.type === 'panel.changed')).toHaveLength(3)
+      expect(events).toContainEqual({ type: 'episode.changed', projectId: ctx.id, episodeId: epi.id })
+    })
+
+    it('clamps what it stores', async () => {
+      const { svc, epi, ctx } = await setup()
+      const a = (await svc.create(ctx, draft(epi.id), USER)).panel
+      await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 900, y: -40, width: 10 } }])
+      expect((await svc.get(ctx, a.id)).placement).toEqual({ x: 360, y: 0, width: 80 })
+    })
+
+    it('throws EntityNotFoundError for a panel outside the episode', async () => {
+      const { svc, episodes, epi, ctx } = await setup()
+      const other = await episodes.create(ctx, { title: 'Two' })
+      const elsewhere = (await svc.create(ctx, draft(other.id), USER)).panel
+      const a = (await svc.create(ctx, draft(epi.id), USER)).panel
+      await expect(svc.place(ctx, epi.id, [{ panelId: elsewhere.id, placement: { x: 0, y: 0, width: 100 } }])).rejects.toBeInstanceOf(EntityNotFoundError)
+      expect((await svc.get(ctx, a.id)).placement).toBeNull()
+    })
   })
 
   it('reports which panels use a character or variation, including cast, speakers and panels outside any episode', async () => {
