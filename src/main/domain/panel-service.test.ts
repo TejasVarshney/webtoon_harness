@@ -22,6 +22,8 @@ import { ImageService } from './image-service'
 import { ItemInUseError, ItemService } from './item-service'
 import { LocationService } from './location-service'
 import { PanelService, PanelValidationError } from './panel-service'
+import { createFakePackComposer } from '../test/fake-pack-composer'
+import type { PackComposer } from './reference-pack'
 
 // Failure injection: while `disk.failJsonWrites > 0`, that many writeJsonAtomic calls reject.
 // Episode writes consume the counter too, so tests arm it at the exact moment they mean.
@@ -99,7 +101,7 @@ function visionRig(timeoutMs?: number) {
   return rig
 }
 
-async function setup(opts: { vision?: boolean; visionTimeoutMs?: number } = {}) {
+async function setup(opts: { vision?: boolean; visionTimeoutMs?: number; packComposer?: PackComposer } = {}) {
   const t = await tempProject()
   tp = t
   const calls: { fn: 'generate' | 'edit'; req: ImageRequest | ImageEditRequest }[] = []
@@ -158,7 +160,7 @@ async function setup(opts: { vision?: boolean; visionTimeoutMs?: number } = {}) 
     trash,
     usage: { panelsUsingLocation: (c, id) => svc.panelsUsingLocation(c, id), panelsUsingLocationState: (c, id) => svc.panelsUsingLocationState(c, id) }
   })
-  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, items, locations, images, trash, checker: opts.vision ? vision.checker : undefined })
+  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, items, locations, images, trash, checker: opts.vision ? vision.checker : undefined, packComposer: opts.packComposer })
   const [epi] = await episodes.list(t.ctx)
   t.events.length = 0
   return { svc, characters, items, locations, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
@@ -2112,5 +2114,124 @@ describe('createServices wiring', () => {
       await s2?.cleanup()
       await s1.cleanup()
     }
+  })
+})
+
+describe('PanelService reference packing', () => {
+  /** Three cast members and the blaster on the second panel of an episode whose first has an image: one reference over the cap of 4. */
+  async function crowded(opts: { vision?: boolean; packComposer?: PackComposer | null } = {}) {
+    const packComposer = opts.packComposer === null ? undefined : (opts.packComposer ?? createFakePackComposer())
+    const t = await setup({ vision: opts.vision, packComposer })
+    const m = await mina(t.ctx)
+    const z = await zed(t.ctx)
+    const k = await addCharacter(t.ctx, 'dddddddddd', 'Kai')
+    const b = await blaster(t.ctx)
+    const first = (await t.svc.create(t.ctx, draft(t.epi.id), USER)).panel
+    const v1 = await t.svc.generate(t.ctx, first.id)
+    const p = (await t.svc.create(t.ctx, draft(t.epi.id, { characters: [castOf(m), castOf(z), castOf(k)], items: [itemOf(b, { heldBy: m.id })] }), USER)).panel
+    t.calls.length = 0
+    t.vision.requests.length = 0
+    return { ...t, m, z, k, b, p, previousImage: v1.imagePath!, composer: packComposer as ReturnType<typeof createFakePackComposer> | undefined }
+  }
+
+  it('packs the last two cast sheets into one image in the panel folder and sends it in their place', async () => {
+    const { svc, ctx, p, m, z, k, b, previousImage, composer, calls } = await crowded()
+    const v = await svc.generate(ctx, p.id)
+    expect(v.status).toBe('ready')
+    const pack = v.referenceImagePaths[1]
+    expect(pack).toMatch(new RegExp(`^panels/${p.id}/pack-[0-9a-f]{16}\.png$`))
+    expect(v.referenceImagePaths).toEqual([m.imagePath, pack, b.imagePath, previousImage])
+    expect(composer!.calls).toHaveLength(1)
+    expect(composer!.calls[0].plan.cells.map((c) => [c.name, c.position])).toEqual([
+      ['Zed', 'left'],
+      ['Kai', 'right']
+    ])
+    expect(composer!.calls[0].sheets.map((s) => s.data)).toEqual([fs.readFileSync(ctx.paths.resolveAsset(z.imagePath)), fs.readFileSync(ctx.paths.resolveAsset(k.imagePath))])
+    // The model got the drawn pack itself.
+    expect(fs.readFileSync(ctx.paths.resolveAsset(pack)).equals(composer!.outputs[0])).toBe(true)
+    expect(calls[0].req.references.map((r) => r.label)).toEqual(['Mina', 'character sheets', 'Kestrel blaster', 'previous panel'])
+    expect(calls[0].req.references[1].data.equals(composer!.outputs[0])).toBe(true)
+    expect(v.prompt).toContain("[CHARACTERS] Reference image 2 holds 2 character sheets, each labeled with the person's name")
+    expect(v.prompt).toContain('- Zed (reference image 2, the sheet labeled Zed): ')
+    expect(v.prompt).toContain('- Kai (reference image 2, the sheet labeled Kai): ')
+    expect(v.prompt).not.toContain('(no reference image)')
+  })
+
+  it('draws a pack once: a redraw reuses the stored file', async () => {
+    const { svc, ctx, p, composer } = await crowded()
+    const v1 = await svc.generate(ctx, p.id)
+    const v2 = await svc.generate(ctx, p.id)
+    expect(v2.referenceImagePaths).toEqual(v1.referenceImagePaths)
+    expect(composer!.calls).toHaveLength(1)
+    expect(panelImages(ctx, p.id).filter((f) => f.startsWith('pack-'))).toHaveLength(1)
+  })
+
+  it('tells the checker whose sheet is where on the pack', async () => {
+    const { svc, ctx, p, m, vision } = await crowded({ vision: true })
+    const v = await svc.generate(ctx, p.id)
+    const sent = vision.requests[0].messages[0] as { text: string; imagePaths: string[] }
+    expect(sent.imagePaths).toEqual([...v.referenceImagePaths, v.imagePath])
+    expect(sent.imagePaths[0]).toBe(m.imagePath)
+    expect(sent.text).toContain("2. Reference: character sheets, each labeled with the person's name: Zed (left), Kai (right)\n")
+    expect(sent.text).not.toContain('(no reference image)')
+  })
+
+  it("follows the image model's cap at every draw: a lower cap packs more of the cast", async () => {
+    const { svc, ctx, p, m, b, previousImage, maxRefs, composer } = await crowded()
+    const packed = (v: { referenceImagePaths: string[] }) => v.referenceImagePaths.map((r) => (r.startsWith(`panels/${p.id}/pack-`) ? 'pack' : r))
+    const cells = () => composer!.calls.at(-1)!.plan.cells.map((c) => c.name)
+
+    expect(packed(await svc.generate(ctx, p.id))).toEqual([m.imagePath, 'pack', b.imagePath, previousImage])
+    expect(cells()).toEqual(['Zed', 'Kai'])
+    maxRefs.image = 2
+    expect(packed(await svc.generate(ctx, p.id))).toEqual(['pack', b.imagePath])
+    expect(cells()).toEqual(['Mina', 'Zed', 'Kai'])
+    maxRefs.image = 1
+    const one = await svc.generate(ctx, p.id)
+    expect(packed(one)).toEqual(['pack'])
+    expect(one.prompt).toContain('- Kestrel blaster (no reference image): ')
+    // The same three sheets: the pack drawn at a cap of 2 is reused.
+    expect(composer!.calls).toHaveLength(2)
+    maxRefs.image = 5
+    expect(packed(await svc.generate(ctx, p.id))).not.toContain('pack')
+    expect(composer!.calls).toHaveLength(2)
+  })
+
+  it('leaves a panel under the cap as it was', async () => {
+    const { svc, ctx, epi, m, z, composer } = await crowded()
+    const p = (await svc.create(ctx, draft(epi.id, { characters: [castOf(m), castOf(z)] }), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    expect(v.referenceImagePaths.slice(0, 2)).toEqual([m.imagePath, z.imagePath])
+    expect(v.prompt).toContain('\n[CHARACTERS]\n')
+    expect(composer!.calls).toEqual([])
+  })
+
+  it('never packs for an edit, which drops over its cap as before', async () => {
+    const { svc, ctx, p, m, z, maxRefs, composer, calls } = await crowded()
+    await svc.generate(ctx, p.id)
+    maxRefs.imageEdit = 2
+    const v = await svc.editImage(ctx, p.id, 'make it rain')
+    expect(v.referenceImagePaths).toEqual([m.imagePath, z.imagePath])
+    expect(calls.find((c) => c.fn === 'edit')!.req.references.map((r) => r.label)).toEqual(['Mina', 'Zed'])
+    expect(composer!.calls).toHaveLength(1)
+  })
+
+  it('drops references as before when the pack cannot be drawn, or with no composer', async () => {
+    const failing = createFakePackComposer()
+    failing.failWith = new Error('no canvas')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const broken = await crowded({ packComposer: failing })
+    const v = await broken.svc.generate(broken.ctx, broken.p.id)
+    expect(v.status).toBe('ready')
+    expect(v.referenceImagePaths).toEqual([broken.m.imagePath, broken.z.imagePath, broken.k.imagePath, broken.b.imagePath])
+    expect(v.prompt).toContain('previous panel (no reference image)')
+    expect(v.prompt).toContain('\n[CHARACTERS]\n')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('the packed reference image could not be drawn'), failing.failWith)
+    expect(panelImages(broken.ctx, broken.p.id).filter((f) => f.startsWith('pack-'))).toEqual([])
+    await tp?.cleanup()
+
+    const none = await crowded({ packComposer: null })
+    const plain = await none.svc.generate(none.ctx, none.p.id)
+    expect(plain.prompt).toBe(v.prompt)
   })
 })

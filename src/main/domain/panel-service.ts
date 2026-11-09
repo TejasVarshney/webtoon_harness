@@ -18,11 +18,12 @@ import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
 import { PanelUsageScanner } from './panel-usage'
-import { readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
+import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
 import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft, validatePanelLocation } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { failureMessage, INTERRUPTED, now, type UploadExt } from './records'
+import type { PackComposer } from './reference-pack'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
 export class PanelValidationError extends Error {
@@ -45,6 +46,8 @@ export interface PanelServiceOptions {
   trash: (absPath: string) => Promise<void>
   /** The vision consistency check. Without one, `generate` never checks or retries. */
   checker?: Pick<ConsistencyChecker, 'check'>
+  /** Draws packed reference images. Without one, a generation drops the references over the image model's cap. */
+  packComposer?: PackComposer
 }
 
 
@@ -257,7 +260,7 @@ export class PanelService extends PanelUsageScanner {
       const locations = await this.locationRoster(ctx)
       const previous = await this.continuityOf(ctx, panel)
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({
+      const composed = await composeWithPacks(ctx, this.opts.packComposer, panel.id, {
         stylePreset: meta.stylePreset,
         panel,
         roster,

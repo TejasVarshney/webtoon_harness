@@ -517,6 +517,47 @@ describe('buildCheckMessage with items', () => {
   })
 })
 
+describe('buildCheckMessage with packed sheets', () => {
+  const person = (key: string, name: string) =>
+    makeCharacter({ id: `chr_${key}`, name, appearanceLock: `${name.toUpperCase()}_LOCK`, variations: [makeVariation({ id: `var_${key}`, characterId: `chr_${key}`, name: 'Base', status: 'ready', imagePath: `characters/${key}.png` })] })
+  const cast = [person('mina', 'Mina'), person('jin', 'Jin'), person('dohyun', 'Dohyun'), person('yuna', 'Yuna')]
+  const panel = makePanel({ description: 'They meet.', shot: 'medium', characters: cast.map((c) => ({ characterId: c.id, variationId: c.variations[0].id, action: '', expression: '', position: 'center' as const })) })
+  const packOf = (people: typeof cast) => ({
+    relPath: 'panels/pnl_1/pack-a.png',
+    label: 'character sheets',
+    subject: { kind: 'pack' as const, members: people.map((c) => ({ subject: { kind: 'character' as const, id: c.id }, name: c.name, relPath: `characters/${c.id}.png` })) }
+  })
+  const single = (c: (typeof cast)[number]) => ({ relPath: `characters/${c.id}.png`, label: c.name, subject: { kind: 'character' as const, id: c.id } })
+
+  it("says whose sheet is where on a pack, and counts its members' references as sent", () => {
+    const text = buildCheckMessage({ references: [single(cast[0]), single(cast[1]), packOf(cast.slice(2))], panel, roster: cast, itemRoster: [] })
+    expect(text.split('\n')).toEqual([
+      'Images, in the order attached:',
+      '1. Reference: Mina',
+      '2. Reference: Jin',
+      "3. Reference: character sheets, each labeled with the person's name: Dohyun (left), Yuna (right)",
+      '4. Generated panel (the image to check)',
+      '',
+      'Cast:',
+      '- Mina — MINA_LOCK — Look: Base',
+      '- Jin — JIN_LOCK — Look: Base',
+      '- Dohyun — DOHYUN_LOCK — Look: Base',
+      '- Yuna — YUNA_LOCK — Look: Base',
+      '',
+      'Panel description: They meet.',
+      'Setting: Apartment hallway, evening',
+      'Shot: medium'
+    ])
+  })
+
+  it('names the cells of a 2 × 2 pack, and marks a cast member left out of every reference', () => {
+    const text = buildCheckMessage({ references: [packOf(cast.slice(0, 3))], panel, roster: cast, itemRoster: [] })
+    expect(text).toContain("1. Reference: character sheets, each labeled with the person's name: Mina (top left), Jin (top right), Dohyun (bottom left)\n2. Generated panel")
+    expect(text).toContain('- Dohyun — DOHYUN_LOCK — Look: Base\n')
+    expect(text).toContain('- Yuna — YUNA_LOCK — Look: Base (no reference image)')
+  })
+})
+
 // ---------------------------------------------------------------------------------------------
 
 describe('buildSheetCheckMessage', () => {

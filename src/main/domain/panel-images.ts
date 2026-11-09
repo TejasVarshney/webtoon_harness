@@ -8,7 +8,9 @@ import { isNotFound } from '../storage/fs-errors'
 import type { ProjectContext } from '../storage/project-store'
 import { getPanel } from './panel-files'
 import { panelImageRelPath } from './panel-recording'
+import { composePanelPrompt, type PanelPromptInput, type PanelPromptResult } from './prompts'
 import { now, UPLOAD_EXTS, type UploadExt } from './records'
+import { packRelPath, storePacks, type PackComposer } from './reference-pack'
 
 // Images the user supplies: uploads and layout sketches. The bytes are in hand, so there is no pending phase.
 
@@ -83,5 +85,22 @@ export async function readSketchFile(ctx: ProjectContext, sketchPath: string): P
   } catch (error) {
     if (isNotFound(error)) return null
     throw error
+  }
+}
+
+/**
+ * The generation prompt, with cast sheets packed over the cap when a composer is set and each pack drawn into the
+ * panel folder (no lock held: see `storePacks`). A pack that cannot be drawn costs only the packing: the prompt is
+ * composed again without it, dropping references as it would with no composer.
+ */
+export async function composeWithPacks(ctx: ProjectContext, composer: PackComposer | undefined, panelId: string, input: PanelPromptInput): Promise<PanelPromptResult> {
+  if (!composer) return composePanelPrompt(input)
+  const packed = composePanelPrompt({ ...input, packing: { path: (members) => packRelPath(panelId, members) } })
+  try {
+    await storePacks(ctx, composer, packed.references)
+    return packed
+  } catch (error) {
+    console.warn(`Panel ${panelId}: the packed reference image could not be drawn, so references over the cap are dropped`, error)
+    return composePanelPrompt(input)
   }
 }

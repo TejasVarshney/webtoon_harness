@@ -1,6 +1,7 @@
 import type { Character, Item, ItemUsage, Location, LocationState, Panel, Variation } from '@shared/types'
 import { drawAspect, isTallAspect } from '@shared/draw-aspect'
 import { hasReadyReference, hasReadyState, hasReadyUsage } from './panel-validation'
+import { chooseCastToPack, type PackMember } from './reference-pack'
 
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
 // to it, and every sheet must say "no text" because dialogue is rendered as HTML (never in the image).
@@ -56,8 +57,11 @@ export function locationStatePrompt(l: Location, state: LocationState, stylePres
 // panel, so `composePanelPrompt` does not even accept it.
 // ---------------------------------------------------------------------------------------------
 
-/** Whose image a reference is. The checker matches references to cast and items by this, never by label. */
-type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
+/**
+ * Whose image a reference is. The checker matches references to cast and items by this, never by label. A pack is one
+ * image holding several members' sheets, in grid order (see `reference-pack.ts`).
+ */
+type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' } | { kind: 'pack'; members: PackMember[] }
 
 export interface PanelPromptReference {
   relPath: string
@@ -79,11 +83,16 @@ export interface PanelPromptInput {
   sketch?: string | null
   /** The image model's reference-image cap. */
   maxReferences: number
+  /**
+   * Set to pack cast sheets onto one image over the cap instead of dropping them (a generation only: the edit prompt
+   * says nothing of a pack). `path` names the file the caller draws the pack into before sending it (see `storePacks`).
+   */
+  packing?: { path: (members: PackMember[]) => string }
 }
 
 export interface PanelPromptResult {
   prompt: string
-  /** In the order claimed: ready cast variations (cast order), then the location's picture, then ready item usages (panel order), then the sketch, then the previous panel. */
+  /** In the order claimed: ready cast variations (cast order, a pack in the place of its first member), then the location's picture, then ready item usages (panel order), then the sketch, then the previous panel. */
   references: PanelPromptReference[]
 }
 
@@ -91,6 +100,11 @@ const TALL_NOTE = 'Tall panel: keep the top fifth and bottom fifth plain backgro
 const BORDERLESS_NOTE = 'Art runs to the edges, no frame.'
 
 const NO_REFERENCE = '(no reference image)'
+
+/** Follows [CHARACTERS] when `sheets` cast sheets are packed onto reference image `n`. */
+function packNote(n: number, sheets: number): string {
+  return `Reference image ${n} holds ${sheets} character sheets, each labeled with the person's name, only to show what each person looks like: never copy its layout, background, poses or labels.`
+}
 
 const LAYOUT_PREFIX = '[LAYOUT] Follow the rough composition of the sketch'
 const LAYOUT_NOTE =
@@ -117,40 +131,77 @@ function cameraSentence(camera: string): string {
   return `Camera: ${said.replace(/\.$/, '')}.`
 }
 
+/** The panel's place. A state with no picture of its own is drawn from the base picture and its words. */
+function placeOf(at: NonNullable<Panel['location']>, locations: Map<string, Location>) {
+  const location = locations.get(at.locationId)
+  if (!location) throw new Error(`Unknown location: ${at.locationId}`)
+  const state = location.states.find((s) => s.id === at.stateId)
+  if (!state) throw new Error(`State ${at.stateId} does not belong to ${location.name}`)
+  const base = location.states.find((s) => s.kind === 'base')
+  return { location, state, camera: at.camera, picture: hasReadyState(state) ? state.imagePath : base && hasReadyState(base) ? base.imagePath : null }
+}
+
 const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
 
 /**
  * Builds the panel prompt and its ordered reference list. References are the cast members'
- * variation images in cast order, then the panel items' usage images in panel order, then the user's
+ * variation images in cast order, then the location's picture, then the panel items' usage images in panel order, then the user's
  * layout sketch (a [LAYOUT] line, left out with its image), then the image the panel continues from (the previous
  * panel, or an earlier one in the same place, each with its own [CONTINUITY] wording; with neither, the line holds only
- * the continuity notes, and is left out when there are none); over
- * `maxReferences` the previous panel is dropped first, then the sketch, then items from the end,
- * then cast members from the end, and a dropped entry reads "(no reference image)" (an item's lock
- * still applies). A cast member or item whose image is not ready reads the same way (validation
- * reports that separately). Throws if a cast entry names a character or variation that is not in
- * `roster`, or an item entry names an item or usage that is not in `itemRoster`: callers validate
- * first. Archived characters and items still compose, so existing panels can be regenerated.
+ * the continuity notes, and is left out when there are none). With `packing`, over `maxReferences` some cast sheets
+ * share one image first (`chooseCastToPack`): the pack takes its first member's place, [CHARACTERS] says what it is,
+ * and each member reads "(reference image N, the sheet labeled Name)". Still over `maxReferences`, the previous panel
+ * is dropped first, then the sketch, then items from the end, then the location's picture, then cast members from the
+ * end, and a dropped entry reads "(no reference image)" (an item's lock still applies). A cast member or item whose
+ * image is not ready reads the same way (validation reports that separately). Throws if a cast entry names a character
+ * or variation that is not in `roster`, or an item entry names an item or usage that is not in `itemRoster`: callers
+ * validate first. Archived characters and items still compose, so existing panels can be regenerated.
  */
 export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
-  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, maxReferences } = input
+  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, maxReferences, packing } = input
   const references: PanelPromptReference[] = []
 
-  /** The "(reference image N)" marker if `file` fits under the cap (and is recorded as a reference), else "(no reference image)". */
-  const refer = (file: string | null, label: string, subject: ReferenceSubject): string => {
-    if (file === null || references.length >= maxReferences) return NO_REFERENCE
+  /** Records `file` as the next reference and gives its number, or null when there is no file or the cap is reached. */
+  const refer = (file: string | null, label: string, subject: ReferenceSubject): number | null => {
+    if (file === null || references.length >= maxReferences) return null
     references.push({ relPath: file, label, subject })
-    return `(reference image ${references.length})`
+    return references.length
   }
+  const markerOf = (n: number | null): string => (n === null ? NO_REFERENCE : `(reference image ${n})`)
 
-  const castLines = panel.characters.map((entry) => {
+  const cast = panel.characters.map((entry) => {
     const character = roster.get(entry.characterId)
     if (!character) throw new Error(`Unknown character: ${entry.characterId}`)
     const variation = character.variations.find((v) => v.id === entry.variationId)
     if (!variation) throw new Error(`Variation ${entry.variationId} does not belong to ${character.name}`)
+    return { entry, character, variation, sheet: hasReadyReference(variation) ? variation.imagePath : null }
+  })
+  const gear = panel.items.map((entry) => {
+    const item = itemRoster.get(entry.itemId)
+    if (!item) throw new Error(`Unknown item: ${entry.itemId}`)
+    const usage = item.usages.find((u) => u.id === entry.usageId)
+    if (!usage) throw new Error(`Usage ${entry.usageId} does not belong to ${item.name}`)
+    return { entry, item, usage, sheet: hasReadyUsage(usage) ? usage.imagePath : null }
+  })
 
-    const marker = refer(hasReadyReference(variation) ? variation.imagePath : null, character.name, { kind: 'character', id: character.id })
+  // Resolved before packing is chosen: the picture takes a slot like any other reference.
+  const place = panel.location && locations ? placeOf(panel.location, locations) : null
+
+  const others = gear.filter((g) => g.sheet !== null).length + (place?.picture ? 1 : 0) + (sketch ? 1 : 0) + (previous ? 1 : 0)
+  const packed = packing ? chooseCastToPack(cast.map((c) => c.sheet !== null), others, maxReferences) : []
+  const members: PackMember[] = packed.map((i) => ({ subject: { kind: 'character', id: cast[i].character.id }, name: cast[i].character.name, relPath: cast[i].sheet ?? '' }))
+  /** The pack's reference number once its first member has sent it (null if the cap left no room). */
+  let pack = null as { n: number | null } | null
+
+  const castLines = cast.map(({ entry, character, variation, sheet }, i) => {
+    let marker: string
+    if (packing && packed.includes(i)) {
+      pack ??= { n: refer(packing.path(members), 'character sheets', { kind: 'pack', members }) }
+      marker = pack.n === null ? NO_REFERENCE : `(reference image ${pack.n}, the sheet labeled ${character.name})`
+    } else {
+      marker = markerOf(refer(sheet, character.name, { kind: 'character', id: character.id }))
+    }
     const look = variation.delta ? `${variation.name} — ${variation.delta}` : variation.name
     const details = [
       character.appearanceLock,
@@ -164,32 +215,21 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
 
   // The location's picture is claimed right after the cast, so over the cap it outlasts items, the sketch and the previous panel.
   let locationLine: string | null = null
-  if (panel.location && locations) {
-    const location = locations.get(panel.location.locationId)
-    if (!location) throw new Error(`Unknown location: ${panel.location.locationId}`)
-    const state = location.states.find((s) => s.id === panel.location!.stateId)
-    if (!state) throw new Error(`State ${panel.location.stateId} does not belong to ${location.name}`)
-    // A state with no picture of its own is drawn from the base picture and its words.
-    const base = location.states.find((s) => s.kind === 'base')
-    const picture = hasReadyState(state) ? state.imagePath : base && hasReadyState(base) ? base.imagePath : null
-    const marker = refer(picture, `${location.name} (the empty place, main camera angle)`, { kind: 'location', id: location.id })
+  if (place) {
+    const { location, state, camera, picture } = place
+    const marker = markerOf(refer(picture, `${location.name} (the empty place, main camera angle)`, { kind: 'location', id: location.id }))
     locationLine = [
       `[LOCATION] ${location.name} ${marker}: ${location.layout.trim()}`,
       state.kind === 'base' ? '' : `State: ${state.delta ? `${state.name} — ${state.delta}` : state.name}.`,
-      cameraSentence(panel.location.camera),
+      cameraSentence(camera),
       marker === NO_REFERENCE ? '' : LOCATION_PICTURE_NOTE
     ]
       .filter(Boolean)
       .join(' ')
   }
 
-  const itemLines = panel.items.map((entry) => {
-    const item = itemRoster.get(entry.itemId)
-    if (!item) throw new Error(`Unknown item: ${entry.itemId}`)
-    const usage = item.usages.find((u) => u.id === entry.usageId)
-    if (!usage) throw new Error(`Usage ${entry.usageId} does not belong to ${item.name}`)
-
-    const marker = refer(hasReadyUsage(usage) ? usage.imagePath : null, item.name, { kind: 'item', id: item.id })
+  const itemLines = gear.map(({ entry, item, usage, sheet }) => {
+    const marker = markerOf(refer(sheet, item.name, { kind: 'item', id: item.id }))
     const look = usage.delta ? `${usage.name} — ${usage.delta}` : usage.name
     const holder = entry.heldBy === null ? 'nobody' : (roster.get(entry.heldBy)?.name ?? entry.heldBy)
     const action = entry.action.trim()
@@ -201,23 +241,23 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     `[SETTING] ${panel.setting}`,
     ...(locationLine === null ? [] : [locationLine]),
     `[ACTION] ${panel.description}`,
-    '[CHARACTERS]',
+    pack?.n ? `[CHARACTERS] ${packNote(pack.n, members.length)}` : '[CHARACTERS]',
     ...castLines
   ]
 
   if (itemLines.length > 0) lines.push(ITEMS_HEADER, ...itemLines)
 
   if (sketch) {
-    const marker = refer(sketch, 'layout sketch', { kind: 'sketch' })
-    if (marker !== NO_REFERENCE) lines.push(`${LAYOUT_PREFIX} ${marker}${LAYOUT_NOTE}`)
+    const n = refer(sketch, 'layout sketch', { kind: 'sketch' })
+    if (n !== null) lines.push(`${LAYOUT_PREFIX} ${markerOf(n)}${LAYOUT_NOTE}`)
   }
 
   const notes = panel.continuityNotes.trim()
   if (previous?.earlier) {
-    const marker = refer(previous.imagePath, EARLIER_LABEL, { kind: 'previous' })
+    const marker = markerOf(refer(previous.imagePath, EARLIER_LABEL, { kind: 'previous' }))
     lines.push([`[CONTINUITY] Same place as an earlier panel ${marker}. Keep the layout of the place and its landmarks consistent with it.`, notes].filter(Boolean).join(' '))
   } else if (previous) {
-    const marker = refer(previous.imagePath, 'previous panel', { kind: 'previous' })
+    const marker = markerOf(refer(previous.imagePath, 'previous panel', { kind: 'previous' }))
     const continuity = `[CONTINUITY] Continues directly from the previous panel ${marker}. Keep setting layout, lighting, time of day and outfits consistent.`
     lines.push([continuity, notes].filter(Boolean).join(' '))
   } else if (notes) {

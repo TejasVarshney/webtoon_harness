@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
 import { electronImageOps } from './domain/electron-image-ops'
+import { electronPackComposer } from './domain/electron-pack-composer'
 import { electronCodec } from './export/electron-codec'
 import { createOffscreenCapturer } from './export/offscreen-capturer'
 import { fixedExportTarget, type ChooseExportTarget } from './ipc/handlers/export'
@@ -110,6 +111,7 @@ if (primary) void app.whenReady().then(async () => {
       encryptor: electronEncryptor,
       templatesDir: join(app.getAppPath(), 'resources', 'agent-docs'),
       imageOps: electronImageOps,
+      packComposer: electronPackComposer,
       createCapturer: () => createOffscreenCapturer({ rendererUrl: rendererUrl(), rendererDir: join(__dirname, '../renderer') }),
       codec: electronCodec
     })

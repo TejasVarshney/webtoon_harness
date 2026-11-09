@@ -81,6 +81,32 @@ describe('ModelsTab', () => {
     expect(await screen.findByText('Unassigned roles: agent')).toBeInTheDocument()
   })
 
+  it('says under Max reference images what happens to a panel over it', async () => {
+    installFakeApi({})
+    render(<ModelsTab />)
+    await userEvent.click(within(screen.getByTestId('model-row-mdl_000000000b')).getByRole('button', { name: 'Edit' }))
+    const field = within(screen.getByRole('form', { name: 'Edit model' })).getByLabelText('Max reference images')
+    expect(field).toHaveValue('4')
+    expect(field).toHaveAccessibleDescription(
+      "The most images sent with one request. When drawing a panel needs more, character sheets are stitched onto one image, each under the character's name, and whatever still does not fit is left out."
+    )
+  })
+
+  it('saves a lower Max reference images for the model', async () => {
+    const { calls } = installFakeApi({
+      'models:updateModel': (req: { id: string; patch: object }) => ({ ...view().models[1], ...req.patch }),
+      'models:get': () => view()
+    })
+    render(<ModelsTab />)
+    await userEvent.click(within(screen.getByTestId('model-row-mdl_000000000b')).getByRole('button', { name: 'Edit' }))
+    const form = screen.getByRole('form', { name: 'Edit model' })
+    await userEvent.clear(within(form).getByLabelText('Max reference images'))
+    await userEvent.type(within(form).getByLabelText('Max reference images'), '2')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save model' }))
+    await waitFor(() => expect(calls.some((c) => c.channel === 'models:updateModel')).toBe(true))
+    expect(calls.find((c) => c.channel === 'models:updateModel')?.req).toMatchObject({ id: 'mdl_000000000b', patch: { maxReferenceImages: 2 } })
+  })
+
   it('reports a model test result', async () => {
     installFakeApi({ 'models:test': () => ({ ok: false, message: 'bad key' }) })
     render(<ModelsTab />)
