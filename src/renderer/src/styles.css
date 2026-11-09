@@ -2477,6 +2477,35 @@ kbd {
   letter-spacing: 0.02em;
 }
 
+/* A fringe: an oval in the fill, inside a ring of thin spikes in the outline's colour. */
+.bubble-fringe {
+  padding: calc(1.9em * var(--bubble-padding, 1)) calc(2.2em * var(--bubble-padding, 1));
+}
+
+.bubble-fringe .bubble-body polygon {
+  fill: var(--bubble-stroke, #111);
+  stroke: none;
+}
+
+.bubble-fringe .bubble-body-fill {
+  stroke: none;
+}
+
+/* A dark burst: one solid spiky oval, with light lettering on it. */
+.bubble-burst {
+  padding: calc(1.7em * var(--bubble-padding, 1)) calc(1.9em * var(--bubble-padding, 1));
+  color: var(--bubble-color, #fff);
+}
+
+.bubble-burst .bubble-body {
+  fill: var(--bubble-fill, #111);
+}
+
+.bubble-burst .bubble-body polygon {
+  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-linejoin: round;
+}
+
 .bubble-tail-down.bubble-speech::before,
 .bubble-tail-down.bubble-whisper::before,
 .bubble-tail-down.bubble-shout::before,

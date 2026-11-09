@@ -207,6 +207,10 @@ describe('bubble look', () => {
     expect(() => DialogueLineSchema.parse({ ...base, style: { width: 1 } })).toThrow()
   })
 
+  it.each(['fringe', 'burst', 'curly'])('accepts the shape %s', (shape) => {
+    expect(BubbleStyleSchema.parse({ shape }).shape).toBe(shape)
+  })
+
   it('takes a padding between 0.3 and 2, and adds none to a style without one', () => {
     expect(BubbleStyleSchema.parse({ padding: 0.3 }).padding).toBe(0.3)
     expect(BubbleStyleSchema.parse({ padding: 2 }).padding).toBe(2)

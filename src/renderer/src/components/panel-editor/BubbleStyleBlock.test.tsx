@@ -114,6 +114,25 @@ describe('BubbleStyleBlock', () => {
     expect(screen.queryByLabelText('Padding')).toBeNull()
   })
 
+  it('offers the new shapes, with no tail controls', () => {
+    const first = mount()
+    fireEvent.click(within(group('Shape')).getByRole('button', { name: 'Dark burst' }))
+    expect(first.onStyle).toHaveBeenCalledWith({ shape: 'burst' })
+    fireEvent.click(within(group('Shape')).getByRole('button', { name: 'Fringe' }))
+    expect(first.onStyle).toHaveBeenCalledWith({ shape: 'fringe' })
+    fireEvent.click(within(group('Shape')).getByRole('button', { name: 'Curly' }))
+    expect(first.onStyle).toHaveBeenCalledWith({ shape: 'curly' })
+    first.view.unmount()
+    mount({ style: { shape: 'fringe' } })
+    expect(screen.queryByRole('group', { name: 'Tail' })).toBeNull()
+    expect(screen.queryByLabelText('Outline width')).toBeNull()
+  })
+
+  it('keeps the outline width for a burst', () => {
+    mount({ style: { shape: 'burst' } })
+    expect(screen.getByLabelText('Outline width')).toBeInTheDocument()
+  })
+
   it('says where a pointed tail points', () => {
     const first = mount({ tail: { x: 0.25, y: 0.5 } })
     expect(screen.getByText('Points at 25% across, 50% down.')).toBeInTheDocument()

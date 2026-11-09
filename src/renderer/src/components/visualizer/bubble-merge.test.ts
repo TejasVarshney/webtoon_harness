@@ -59,5 +59,6 @@ describe('mergeKey', () => {
   it('has no key for a shape that does not merge', () => {
     expect(mergeKey('caption', null)).toBeNull()
     expect(mergeKey('sfx', null)).toBeNull()
+    for (const shape of ['fringe', 'burst', 'curly'] as const) expect(mergeKey(shape, null)).toBeNull()
   })
 })

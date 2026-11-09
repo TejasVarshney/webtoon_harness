@@ -29,6 +29,8 @@ export function bubbleDefaults(shape: BubbleShape): Defaults {
       return { ...base, align: 'left' }
     case 'sfx':
       return { ...base, font: 'bangers', bold: false, color: '#ffffff' }
+    case 'burst':
+      return { ...base, color: '#ffffff', fill: '#111111' }
     default:
       return base
   }

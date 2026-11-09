@@ -5,6 +5,18 @@ import { bubbleShape, layoutBubbles, sideOfPosition } from './bubble-layout'
 const line = (kind: DialogueLine['kind'], text: string, speakerId: string | null = null, id = `dlg_${text.length}${kind}`): DialogueLine => ({ id, kind, text, speakerId, placement: null, style: null, tail: null })
 const cast = (characterId: string, position: PanelCharacter['position']): Pick<PanelCharacter, 'characterId' | 'position'> => ({ characterId, position })
 
+describe('shapes with no tail', () => {
+  it.each(['fringe', 'burst', 'curly'] as const)('%s keeps the speaker\'s side and draws no tail, even with one stored', (shape) => {
+    const [b] = layoutBubbles([{ ...line('speech', 'Hi', 'c1'), style: { shape }, tail: { x: 0.5, y: 0.9 } }], [cast('c1', 'left')])
+    expect(b).toMatchObject({ shape, side: 'left', tail: 'none' })
+  })
+
+  it('draws none for a voice from outside the panel either', () => {
+    const [b] = layoutBubbles([{ ...line('speech', 'Hi'), style: { shape: 'burst' } }], [])
+    expect(b.tail).toBe('none')
+  })
+})
+
 describe('bubbleShape', () => {
   it('draws narration as a caption box and sfx as lettering', () => {
     expect(bubbleShape(line('narration', 'Seoul. Six hours earlier.'))).toBe('caption')

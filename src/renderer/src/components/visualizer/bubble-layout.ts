@@ -1,4 +1,5 @@
 import type { BubbleShape, BubbleStyle, DialogueLine, PanelCharacter } from '@shared/types'
+import { hasTail } from './bubble-tail'
 
 // Pure placement rules for the dialogue overlay: which shape each line is drawn as, which side of the panel it sits
 // on, and where its tail points. The panel data stays as it is; everything here is read from the line's kind and
@@ -79,8 +80,9 @@ export function layoutBubbles(dialogue: DialogueLine[], cast: CastPosition[]): B
     if (shape === 'caption') return { ...base, side: 'left', tail: 'none', offPanel: line.speakerId === null }
     if (shape === 'sfx') return { ...base, side: 'center', tail: 'none', offPanel: true, loud: line.text.includes('!') || mostlyCapitals(line.text) }
 
-    // A stored tail wins over the automatic one: 'none' draws nothing, a point is drawn to that point.
-    const stored: TailDrawing | null = line.tail === null ? null : line.tail === 'none' ? 'none' : 'point'
+    // A stored tail wins over the automatic one: 'none' draws nothing, a point is drawn to that point. A shape with no
+    // tail draws none, and a tail stored on the line waits there for a shape that has one.
+    const stored: TailDrawing | null = !hasTail(shape) || line.tail === 'none' ? 'none' : line.tail === null ? null : 'point'
     const inCast = line.speakerId !== null ? castSide.get(line.speakerId) : undefined
     if (inCast === undefined) return { ...base, side: freeSide, tail: stored ?? 'edge', offPanel: true }
 

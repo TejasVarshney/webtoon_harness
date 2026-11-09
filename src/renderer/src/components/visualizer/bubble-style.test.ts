@@ -10,6 +10,10 @@ describe('bubble style', () => {
     expect(bubbleDefaults('sfx')).toMatchObject({ font: 'bangers', bold: false, color: '#ffffff' })
   })
 
+  it('draws a burst dark with white lettering', () => {
+    expect(bubbleDefaults('burst')).toMatchObject({ fill: '#111111', color: '#ffffff' })
+  })
+
   it('sets nothing for a line with no style', () => {
     expect(bubbleStyleProps(null)).toEqual({})
   })

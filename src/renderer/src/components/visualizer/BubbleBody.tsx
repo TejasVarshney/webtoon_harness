@@ -1,8 +1,13 @@
 import type { BubbleShape } from '@shared/types'
+import { spikyRing } from './bubble-art'
 
-// The outline of a shout (a spiked burst) and a thought (a cloud of circles) is inline SVG, so its fill and stroke
-// follow the bubble's colours. The other shapes are drawn by the stylesheet's own borders. The stylesheet sets the
-// stroke widths and `stroke-linejoin`.
+// The outline of a shout (a spiked burst), a thought (a cloud of circles), a fringe and a dark burst is inline SVG, so
+// its fill and stroke follow the bubble's colours. The other shapes are drawn by the stylesheet's own borders. The
+// stylesheet sets the stroke widths and `stroke-linejoin`.
+
+const RING_VIEW_BOX = '0 0 100 100'
+const FRINGE_POINTS = spikyRing(96, 40, 44, 50)
+const BURST_POINTS = spikyRing(72, 38, 44, 50)
 
 const SHOUT_VIEW_BOX = '-2 -8 104 116'
 const SHOUT_POINTS =
@@ -63,6 +68,21 @@ export function BubbleBody({ shape }: { shape: BubbleShape }) {
       <svg className="bubble-body" viewBox={THOUGHT_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
         <BodyArt shape="thought" pass="outline" />
         <BodyArt shape="thought" pass="fill" />
+      </svg>
+    )
+  }
+  if (shape === 'fringe') {
+    return (
+      <svg className="bubble-body" viewBox={RING_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={FRINGE_POINTS} />
+        <ellipse className="bubble-body-fill" cx="50" cy="50" rx="39" ry="39" />
+      </svg>
+    )
+  }
+  if (shape === 'burst') {
+    return (
+      <svg className="bubble-body" viewBox={RING_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={BURST_POINTS} vectorEffect="non-scaling-stroke" />
       </svg>
     )
   }
