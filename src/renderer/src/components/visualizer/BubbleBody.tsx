@@ -28,24 +28,41 @@ const THOUGHT_CIRCLES: [number, number, number][] = [
   [50, 84, 15]
 ]
 
+export const BODY_VIEW_BOX = { shout: SHOUT_VIEW_BOX, thought: THOUGHT_VIEW_BOX }
+
+/** The two passes of a body that fills over its own outline: the outline first, then the fill on top of it. */
+export type BodyPass = 'outline' | 'fill'
+
+/** One pass of a shout or a thought. Colours are the caller's. A shout's polygon is the same in both passes. */
+export function BodyArt({ shape, pass }: { shape: 'shout' | 'thought'; pass: BodyPass }) {
+  if (shape === 'shout') return <polygon points={SHOUT_POINTS} vectorEffect="non-scaling-stroke" />
+  return (
+    <>
+      {THOUGHT_CIRCLES.map(([cx, cy, r]) =>
+        pass === 'outline' ? (
+          <circle key={`outline-${cx}-${cy}`} className="bubble-body-outline" cx={cx} cy={cy} r={r} vectorEffect="non-scaling-stroke" />
+        ) : (
+          <circle key={`fill-${cx}-${cy}`} className="bubble-body-fill" cx={cx} cy={cy} r={r} />
+        )
+      )}
+    </>
+  )
+}
+
 /** The SVG body of a shout or a thought, behind the text; null for a shape the stylesheet draws itself. */
 export function BubbleBody({ shape }: { shape: BubbleShape }) {
   if (shape === 'shout') {
     return (
       <svg className="bubble-body" viewBox={SHOUT_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
-        <polygon points={SHOUT_POINTS} vectorEffect="non-scaling-stroke" />
+        <BodyArt shape="shout" pass="outline" />
       </svg>
     )
   }
   if (shape === 'thought') {
     return (
       <svg className="bubble-body" viewBox={THOUGHT_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
-        {THOUGHT_CIRCLES.map(([cx, cy, r]) => (
-          <circle key={`outline-${cx}-${cy}`} className="bubble-body-outline" cx={cx} cy={cy} r={r} vectorEffect="non-scaling-stroke" />
-        ))}
-        {THOUGHT_CIRCLES.map(([cx, cy, r]) => (
-          <circle key={`fill-${cx}-${cy}`} className="bubble-body-fill" cx={cx} cy={cy} r={r} />
-        ))}
+        <BodyArt shape="thought" pass="outline" />
+        <BodyArt shape="thought" pass="fill" />
       </svg>
     )
   }

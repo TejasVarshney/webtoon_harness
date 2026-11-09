@@ -10,6 +10,21 @@ function isMergeable(shape: BubbleShape): shape is MergeableShape {
   return (MERGEABLE as readonly BubbleShape[]).includes(shape)
 }
 
+/** What a merged bubble's body is drawn from. */
+export interface MergedLook {
+  shape: MergeableShape
+  fill: string
+  stroke: string
+  strokeWidth: number
+}
+
+/** The look of a bubble that can merge, its style resolved through the shape's defaults; null for one that cannot. */
+export function mergedLook(shape: BubbleShape, style: BubbleStyle | null): MergedLook | null {
+  if (!isMergeable(shape)) return null
+  const { fill, stroke, strokeWidth } = { ...bubbleDefaults(shape), ...style }
+  return { shape, fill, stroke, strokeWidth }
+}
+
 /** A placed bubble's box, in px from the overlay's corner. `index` is the line's place in the dialogue. */
 export interface MergeBox {
   index: number
@@ -22,9 +37,8 @@ export interface MergeBox {
 
 /** What two bubbles must share to merge: the shape and everything about its outline. Null for a shape that never merges. */
 export function mergeKey(shape: BubbleShape, style: BubbleStyle | null): string | null {
-  if (!isMergeable(shape)) return null
-  const { fill, stroke, strokeWidth } = { ...bubbleDefaults(shape), ...style }
-  return [shape, fill.toLowerCase(), stroke.toLowerCase(), strokeWidth].join('|')
+  const look = mergedLook(shape, style)
+  return look && [look.shape, look.fill.toLowerCase(), look.stroke.toLowerCase(), look.strokeWidth].join('|')
 }
 
 /** Strict on both axes, so boxes that only touch stay apart and an empty box (jsdom lays nothing out) overlaps nothing. */
