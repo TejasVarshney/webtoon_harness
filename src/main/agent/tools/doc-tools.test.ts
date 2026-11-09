@@ -26,7 +26,8 @@ const SHIPPED = [
   'workflows/location-creation',
   'workflows/panel-editing',
   'workflows/panel-generation',
-  'workflows/story-direction'
+  'workflows/story-direction',
+  'workflows/style-setup'
 ]
 const template = (name: string): string => fs.readFileSync(path.resolve('resources', 'agent-docs', ...`${name}.md`.split('/')), 'utf8')
 

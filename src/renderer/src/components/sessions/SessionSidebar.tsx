@@ -227,8 +227,8 @@ export function SessionSidebar() {
       {showNewProject && (
         <NewProjectDialog
           onCancel={() => setShowNewProject(false)}
-          onCreate={async (title) => {
-            await createProject(title)
+          onCreate={async (title, stylePreset) => {
+            await createProject(title, stylePreset)
             setShowNewProject(false)
           }}
         />

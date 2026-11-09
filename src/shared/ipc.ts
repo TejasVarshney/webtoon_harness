@@ -58,6 +58,11 @@ export type ModelPatch = Partial<Pick<ModelConfig, 'modelId' | 'label' | 'capabi
 /** One workflow doc of a project: `name` is its path in the project's `agent/` folder without `.md` (`AGENTS`, `workflows/panel-editing`). */
 export type WorkflowDocEntry = { name: string; title: string }
 
+/** One style of the library. `edited`: a built-in the user changed, which Reset to default restores. */
+export type StyleEntry = { id: string; name: string; text: string; builtin: boolean; edited: boolean }
+/** What a project has drawn or is drawing: the art a new style would no longer match. */
+export type StyleUsage = { sheets: number; panels: number }
+
 /** Every request/response pair that crosses the preload bridge. Later tasks add channels here. */
 export interface IpcContract {
   'projects:list': { req: Record<string, never>; res: { projects: ProjectMeta[]; problems: ProjectProblem[] } }
@@ -172,6 +177,15 @@ export interface IpcContract {
   'story:get': { req: { projectId: string; episodeId?: string }; res: { mode: StoryMode; bible: string; beats: Beat[] } }
   /** Returns the updated project meta, so the toggle can follow without waiting for `project.changed`. */
   'story:setMode': { req: { projectId: string; mode: StoryMode }; res: ProjectMeta }
+  /** The style library. `loadError`: `styles.json` is unreadable, so the list holds only the built-ins and saves fail. */
+  'styles:list': { req: Record<string, never>; res: { styles: StyleEntry[]; loadError: string | null } }
+  'styles:create': { req: { name: string; text: string }; res: StyleEntry }
+  'styles:update': { req: { id: string; patch: { name?: string; text?: string } }; res: StyleEntry }
+  'styles:reset': { req: { id: string }; res: StyleEntry }
+  'styles:delete': { req: { id: string }; res: void }
+  'styles:usage': { req: { projectId: string }; res: StyleUsage }
+  /** Copies a library style's text into the project. The user may do this at any time; the agent's `set_style` is the one that locks. */
+  'styles:apply': { req: { projectId: string; styleId: string }; res: ProjectMeta }
   /** Replaces the whole bible with the editor's text. */
   'story:updateBible': { req: { projectId: string; markdown: string }; res: void }
   'story:updateBeat': { req: { projectId: string; beatId: string; patch: BeatPatch }; res: Beat }
@@ -283,6 +297,13 @@ const channelSet: Record<IpcChannel, true> = {
   'panelChat:cancel': true,
   'story:get': true,
   'story:setMode': true,
+  'styles:list': true,
+  'styles:create': true,
+  'styles:update': true,
+  'styles:reset': true,
+  'styles:delete': true,
+  'styles:usage': true,
+  'styles:apply': true,
   'story:updateBible': true,
   'story:updateBeat': true,
   'docs:list': true,

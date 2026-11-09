@@ -5,6 +5,7 @@ import { DuplicateLocationError, DuplicateStateError } from '../../domain/locati
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { joinIssues, sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
+import { FIRST_ART_NOTE } from './style-tools'
 
 // The twin of item-tools.ts: a change here usually belongs there too. No tool deletes a location.
 
@@ -95,7 +96,8 @@ const createLocation = defineTool({
     'The layout is written from that main camera angle: what the camera faces, then each landmark and which side of the frame it is on (frame-left, center, frame-right, foreground, background), ' +
     'for example "Camera faces the back wall. Back door at frame-left; shelves along the right wall at frame-right; a barrel in the center foreground." ' +
     'It is injected verbatim into every panel prompt set there and is what the consistency check judges the staging against. ' +
-    'If the picture fails the location is still created: read baseStatus and baseError, and call regenerate_location_state with baseStateId to retry.',
+    'If the picture fails the location is still created: read baseStatus and baseError, and call regenerate_location_state with baseStateId to retry. ' +
+    FIRST_ART_NOTE,
   input: LocationInputSchema.extend({
     name: z.string().min(1).describe('Unique location name, e.g. "Supermart back stockroom"'),
     layout: z.string().min(1).describe('The landmarks and their sides of the frame, seen from the main camera angle'),

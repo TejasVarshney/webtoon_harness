@@ -12,6 +12,7 @@ import { pluginsHandlers } from './handlers/plugins'
 import { projectsHandlers } from './handlers/projects'
 import { sessionsHandlers } from './handlers/sessions'
 import { storyHandlers } from './handlers/story'
+import { stylesHandlers } from './handlers/styles'
 import { uploadsHandlers, type PickFiles } from './handlers/uploads'
 import { readableError } from './validate'
 
@@ -44,6 +45,7 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...locationsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...panelsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...storyHandlers(services),
+    ...stylesHandlers(services),
     ...docsHandlers(services, { openPath: deps.openPath }),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...exportHandlers(services, { chooseExportTarget: deps.chooseExportTarget, showItemInFolder: deps.showItemInFolder }),

@@ -23,6 +23,7 @@ const REQUIRED: Record<string, string[]> = {
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
   'workflows/location-creation': ['Purpose', 'Location Sheet', 'Writing the Layout', 'Base Picture', 'States', 'Cameras', 'When to Create a Location', 'Using Locations in Panels', 'Examples'],
   'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Attaching Items', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
+  'workflows/style-setup': ['Purpose', 'Choosing a Style', 'Writing a Style', 'When the Style Is Locked', 'Examples'],
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
   'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Panel Layout', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
   'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Location Reference Prompt', 'Location State Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],

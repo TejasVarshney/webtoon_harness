@@ -152,7 +152,7 @@ prj_0123456789/
   project.json            title, style preset, story mode, default aspect, autopilotPanels, consistencyRetries
   agent/                  this project's copy of the workflow docs (editable)
     AGENTS.md
-    workflows/            character-creation, item-creation, panel-generation, panel-editing, story-direction
+    workflows/            character-creation, item-creation, location-creation, panel-generation, panel-editing, story-direction, style-setup
     reference/            consistency-checklist, sheet-checklist, prompt-templates, webtoon-style-guide
   story/
     bible.md              the story bible (markdown, one ## section per topic)
@@ -208,6 +208,14 @@ The link only acts on the project that is open in the app window; with no projec
 ## Story modes
 
 The chat header has a story-mode switch. In **User-led** mode the agent follows your story. In **AI-led** mode it decides what happens next, and a **Continue story** button appears: it asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
+
+## Art styles
+
+Every generated image starts with the project's art style. Pick one when you create a project, or use the **Style** button in the chat header. The app ships ten styles, and you can add your own or edit any of them; **Reset to default** restores a built-in. Your styles and edits are saved in `styles.json` in the app's user data folder and are shared by all projects.
+
+A project keeps its own copy of a style's words, so editing or deleting a library style never changes a project already using it. That project shows **Custom** until you pick the style again. If the project already has art, the app warns you before switching and redraws nothing.
+
+The agent can list styles, add them, edit the ones you or it added, and set a project's style. It can set the style only until the project has its first sheet or panel; after that, only you can switch it.
 
 ## Export
 
