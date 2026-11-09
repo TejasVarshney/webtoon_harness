@@ -45,6 +45,26 @@ const SHAPES: { id: BubbleShape; label: string; glyph: ReactNode }[] = [
     id: 'sfx',
     label: 'Sound effect',
     glyph: <path d="M3 12l3-8 3 6 3-8 3 8 3-6 3 8" />
+  },
+  {
+    id: 'fringe',
+    label: 'Fringe',
+    glyph: (
+      <>
+        <ellipse cx="12" cy="8" rx="6" ry="4" />
+        <path d="M12 1v2M12 13v2M4 8H2M22 8h-2M6 3l1.5 1.5M18 3l-1.5 1.5M6 13l1.5-1.5M18 13l-1.5-1.5" />
+      </>
+    )
+  },
+  {
+    id: 'burst',
+    label: 'Dark burst',
+    glyph: <path fill="currentColor" d="M12 1l2 3.5 4-1.5-1 4 4.5 1-4.5 2 1 4-4-1.5L12 15l-2-3.5-4 1.5 1-4-4.5-2L7 7 6 3l4 1.5z" />
+  },
+  {
+    id: 'curly',
+    label: 'Curly',
+    glyph: <path d="M4 4a2 2 0 0 1 4 0a2 2 0 0 1 4 0a2 2 0 0 1 4 0a2 2 0 0 1 4 0a2 2 0 0 1 0 4a2 2 0 0 1 0 4a2 2 0 0 1-4 0a2 2 0 0 1-4 0a2 2 0 0 1-4 0a2 2 0 0 1-4 0a2 2 0 0 1 0-4a2 2 0 0 1 0-4z" />
   }
 ]
 
@@ -144,6 +164,16 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
             </span>
           )}
         </Field>
+        {shape !== 'sfx' && (
+          <Field label="Padding">
+            {(id) => (
+              <span className="bubble-style-slider">
+                <input id={id} type="range" min={30} max={200} step={5} value={Math.round(look.padding * 100)} onChange={(e) => change({ padding: Number(e.target.value) / 100 })} />
+                <output htmlFor={id}>{`${Math.round(look.padding * 100)}%`}</output>
+              </span>
+            )}
+          </Field>
+        )}
         <div className="bubble-style-buttons" role="group" aria-label="Lettering">
           {toggle('Bold', 'bold', <Bold size={16} aria-hidden="true" />)}
           {toggle('Italic', 'italic', <Italic size={16} aria-hidden="true" />)}
@@ -162,7 +192,7 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
         <Field label="Text colour">{(id) => <input id={id} type="color" value={look.color} onChange={(e) => change({ color: e.target.value })} />}</Field>
         {shape !== 'sfx' && <Field label="Fill">{(id) => <input id={id} type="color" value={look.fill} onChange={(e) => change({ fill: e.target.value })} />}</Field>}
         <Field label="Outline">{(id) => <input id={id} type="color" value={look.stroke} onChange={(e) => change({ stroke: e.target.value })} />}</Field>
-        {shape !== 'sfx' && (
+        {shape !== 'sfx' && shape !== 'fringe' && (
           <Field label="Outline width">
             {(id) => (
               <span className="bubble-style-slider">

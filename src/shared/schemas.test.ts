@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   BeatSchema,
   BubblePlacementSchema,
+  BubbleStyleSchema,
   CharacterInputSchema,
   CharacterPatchSchema,
   CharacterSchema,
@@ -204,6 +205,18 @@ describe('bubble look', () => {
   it('refuses a width the panel cannot hold', () => {
     expect(() => DialogueLineSchema.parse({ ...base, style: { width: 0.05 } })).toThrow()
     expect(() => DialogueLineSchema.parse({ ...base, style: { width: 1 } })).toThrow()
+  })
+
+  it.each(['fringe', 'burst', 'curly'])('accepts the shape %s', (shape) => {
+    expect(BubbleStyleSchema.parse({ shape }).shape).toBe(shape)
+  })
+
+  it('takes a padding between 0.3 and 2, and adds none to a style without one', () => {
+    expect(BubbleStyleSchema.parse({ padding: 0.3 }).padding).toBe(0.3)
+    expect(BubbleStyleSchema.parse({ padding: 2 }).padding).toBe(2)
+    expect(() => BubbleStyleSchema.parse({ padding: 0.2 })).toThrow()
+    expect(() => BubbleStyleSchema.parse({ padding: 2.1 })).toThrow()
+    expect(BubbleStyleSchema.parse({ fill: '#ffffff' })).not.toHaveProperty('padding')
   })
 
   it('says how a colour is written when it refuses one', () => {

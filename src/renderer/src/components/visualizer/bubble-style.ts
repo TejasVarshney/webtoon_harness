@@ -20,7 +20,7 @@ export const FONTS: { id: BubbleFont; label: string; family: string }[] = [
 
 /** What the stylesheet draws for a shape when the line sets nothing. Keep in step with the `.bubble-*` rules. */
 export function bubbleDefaults(shape: BubbleShape): Defaults {
-  const base: Defaults = { font: 'comic', size: 1, bold: true, italic: false, caps: true, align: 'center', color: '#111111', fill: '#ffffff', stroke: '#111111', strokeWidth: 2 }
+  const base: Defaults = { font: 'comic', size: 1, bold: true, italic: false, caps: true, align: 'center', color: '#111111', fill: '#ffffff', stroke: '#111111', strokeWidth: 2, padding: 1 }
   switch (shape) {
     case 'whisper':
     case 'thought':
@@ -29,6 +29,10 @@ export function bubbleDefaults(shape: BubbleShape): Defaults {
       return { ...base, align: 'left' }
     case 'sfx':
       return { ...base, font: 'bangers', bold: false, color: '#ffffff' }
+    case 'burst':
+      return { ...base, color: '#ffffff', fill: '#111111' }
+    case 'curly':
+      return { ...base, strokeWidth: 1 }
     default:
       return base
   }
@@ -39,6 +43,7 @@ export function bubbleStyleProps(style: BubbleStyle | null): CSSProperties {
   if (!style) return {}
   const props: Record<string, string | number> = {}
   if (style.size !== undefined) props['--bubble-size'] = String(style.size)
+  if (style.padding !== undefined) props['--bubble-padding'] = String(style.padding)
   if (style.fill !== undefined) props['--bubble-fill'] = style.fill
   if (style.stroke !== undefined) props['--bubble-stroke'] = style.stroke
   if (style.strokeWidth !== undefined) props['--bubble-stroke-width'] = `${style.strokeWidth}px`

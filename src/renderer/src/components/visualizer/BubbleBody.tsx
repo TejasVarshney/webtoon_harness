@@ -1,8 +1,16 @@
+import { useRef } from 'react'
 import type { BubbleShape } from '@shared/types'
+import { spikyRing } from './bubble-art'
+import { curlyFramePath } from './curly-frame'
+import { useBubbleBox } from './use-bubble-box'
 
-// The outline of a shout (a spiked burst) and a thought (a cloud of circles) is inline SVG, so its fill and stroke
-// follow the bubble's colours. The other shapes are drawn by the stylesheet's own borders. The stylesheet sets the
-// stroke widths and `stroke-linejoin`.
+// The outline of a shout (a spiked burst), a thought (a cloud of circles), a fringe, a dark burst and a curly frame is
+// inline SVG, so its fill and stroke follow the bubble's colours. The other shapes are drawn by the stylesheet's own
+// borders. The stylesheet sets the stroke widths and `stroke-linejoin`.
+
+const RING_VIEW_BOX = '0 0 100 100'
+const FRINGE_POINTS = spikyRing(96, 40, 44, 50)
+const BURST_POINTS = spikyRing(72, 38, 44, 50)
 
 const SHOUT_VIEW_BOX = '-2 -8 104 116'
 const SHOUT_POINTS =
@@ -28,24 +36,72 @@ const THOUGHT_CIRCLES: [number, number, number][] = [
   [50, 84, 15]
 ]
 
-/** The SVG body of a shout or a thought, behind the text; null for a shape the stylesheet draws itself. */
+export const BODY_VIEW_BOX = { shout: SHOUT_VIEW_BOX, thought: THOUGHT_VIEW_BOX }
+
+/** The two passes of a body that fills over its own outline: the outline first, then the fill on top of it. */
+export type BodyPass = 'outline' | 'fill'
+
+/** One pass of a shout or a thought. Colours are the caller's. A shout's polygon is the same in both passes. */
+export function BodyArt({ shape, pass }: { shape: 'shout' | 'thought'; pass: BodyPass }) {
+  if (shape === 'shout') return <polygon points={SHOUT_POINTS} vectorEffect="non-scaling-stroke" />
+  return (
+    <>
+      {THOUGHT_CIRCLES.map(([cx, cy, r]) =>
+        pass === 'outline' ? (
+          <circle key={`outline-${cx}-${cy}`} className="bubble-body-outline" cx={cx} cy={cy} r={r} vectorEffect="non-scaling-stroke" />
+        ) : (
+          <circle key={`fill-${cx}-${cy}`} className="bubble-body-fill" cx={cx} cy={cy} r={r} />
+        )
+      )}
+    </>
+  )
+}
+
+/** A loop's length along the frame, in ems, so the loops grow with the lettering. */
+const CURLY_LOOP_EM = 0.7
+
+/** A curly frame, built in px for the bubble's measured box, so its loops stay round at any width. */
+function CurlyBody() {
+  const ref = useRef<SVGSVGElement>(null)
+  const m = useBubbleBox(ref)
+  const d = m === null ? '' : curlyFramePath(m.box.width, m.box.height, CURLY_LOOP_EM * m.em)
+  return (
+    <svg ref={ref} className="bubble-body" aria-hidden="true">
+      {d !== '' && <path d={d} />}
+    </svg>
+  )
+}
+
+/** The SVG body of a shape that has one, behind the text; null for a shape the stylesheet draws itself. */
 export function BubbleBody({ shape }: { shape: BubbleShape }) {
+  if (shape === 'curly') return <CurlyBody />
   if (shape === 'shout') {
     return (
       <svg className="bubble-body" viewBox={SHOUT_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
-        <polygon points={SHOUT_POINTS} vectorEffect="non-scaling-stroke" />
+        <BodyArt shape="shout" pass="outline" />
       </svg>
     )
   }
   if (shape === 'thought') {
     return (
       <svg className="bubble-body" viewBox={THOUGHT_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
-        {THOUGHT_CIRCLES.map(([cx, cy, r]) => (
-          <circle key={`outline-${cx}-${cy}`} className="bubble-body-outline" cx={cx} cy={cy} r={r} vectorEffect="non-scaling-stroke" />
-        ))}
-        {THOUGHT_CIRCLES.map(([cx, cy, r]) => (
-          <circle key={`fill-${cx}-${cy}`} className="bubble-body-fill" cx={cx} cy={cy} r={r} />
-        ))}
+        <BodyArt shape="thought" pass="outline" />
+        <BodyArt shape="thought" pass="fill" />
+      </svg>
+    )
+  }
+  if (shape === 'fringe') {
+    return (
+      <svg className="bubble-body" viewBox={RING_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={FRINGE_POINTS} />
+        <ellipse className="bubble-body-fill" cx="50" cy="50" rx="39" ry="39" />
+      </svg>
+    )
+  }
+  if (shape === 'burst') {
+    return (
+      <svg className="bubble-body" viewBox={RING_VIEW_BOX} preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={BURST_POINTS} vectorEffect="non-scaling-stroke" />
       </svg>
     )
   }

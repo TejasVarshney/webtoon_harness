@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import type { BubblePlacement, DialogueLine } from '@shared/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BubblePlacement, BubbleShape, BubbleStyle, DialogueLine } from '@shared/types'
 import { DialogueOverlay, type OverlayEditing } from './DialogueOverlay'
 
 function line(id: string, text: string, o: Partial<DialogueLine> = {}): DialogueLine {
@@ -137,5 +137,166 @@ describe('DialogueOverlay', () => {
   it('puts a line shaped as a sound effect in the sound-effect layer', () => {
     const { container } = render(<DialogueOverlay dialogue={[line('dlg_0000000001', 'Thud.', { kind: 'speech', style: { shape: 'sfx' } })]} />)
     expect(bubbleOf(container, 'Thud.').parentElement).toHaveClass('dialogue-sfx')
+  })
+})
+
+describe('DialogueOverlay merging', () => {
+  type Box = [left: number, top: number, width: number, height: number]
+  // jsdom has no layout: each bubble's box comes from its text, and the overlay is 400x600 at the origin.
+  let boxes: Record<string, Box> = {}
+  const rect = ([left, top, width, height]: Box): DOMRect => ({ left, top, width, height, x: left, y: top, right: left + width, bottom: top + height, toJSON: () => ({}) }) as DOMRect
+
+  beforeEach(() => {
+    boxes = { A: [0, 0, 100, 50], B: [60, 0, 100, 50] }
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return rect(this.classList.contains('bubble') ? (boxes[this.textContent ?? ''] ?? [0, 0, 0, 0]) : [0, 0, 400, 600])
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const placed = (text: string, style: BubbleStyle | null = null): DialogueLine => line(`dlg_${text}`, text, { placement: at(0.5, 0.5), style })
+  const shaped = (text: string, shape: BubbleShape, style: BubbleStyle = {}): DialogueLine => placed(text, { ...style, shape })
+  const merged = (container: HTMLElement): number => container.querySelectorAll('.bubble-merged').length
+
+  it('merges two overlapping placed bubbles of the same look, with no editing, as the strip and an export draw them', () => {
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    expect(container.querySelectorAll('.dialogue-merge ellipse')).toHaveLength(4)
+    expect(merged(container)).toBe(2)
+    // Placed bubbles cover the automatic layer and the sound effects, merged or not.
+    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-placed')
+  })
+
+  it('paints every outline before any fill', () => {
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    const fills = [...container.querySelectorAll('.dialogue-merge ellipse')].map((e) => e.getAttribute('fill'))
+    expect(fills).toEqual(['#111111', '#111111', '#ffffff', '#ffffff'])
+  })
+
+  it('draws no layer when nothing overlaps', () => {
+    boxes.B = [200, 0, 100, 50]
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    expect(container.querySelector('.dialogue-merge')).toBeNull()
+    expect(merged(container)).toBe(0)
+  })
+
+  it('leaves bubbles of different looks alone', () => {
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B', { fill: '#ff0000' })]} />)
+    expect(merged(container)).toBe(0)
+  })
+
+  it('merges a placed bubble with an automatic one it overlaps', () => {
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), line('dlg_B', 'B')]} />)
+    expect(merged(container)).toBe(2)
+    expect(bubbleOf(container, 'B').parentElement).toHaveClass('dialogue-flow')
+    // Under the automatic layer, or its fill would cover the automatic member's text.
+    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-flow')
+  })
+
+  it('draws each group in its own place when a panel has both kinds', () => {
+    boxes = { A: [0, 0, 100, 50], B: [60, 0, 100, 50], C: [0, 200, 100, 50], D: [60, 200, 100, 50] }
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B'), placed('C'), line('dlg_D', 'D')]} />)
+    const next = [...container.querySelectorAll('.dialogue-merge')].map((layer) => layer.nextElementSibling!.className)
+    expect(next).toEqual(['dialogue-flow', 'dialogue-placed'])
+    expect(merged(container)).toBe(4)
+  })
+
+  it('measures nothing on a panel with no placed bubble', () => {
+    const measured = vi.mocked(Element.prototype.getBoundingClientRect)
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_A', 'A'), line('dlg_B', 'B')]} />)
+    expect(merged(container)).toBe(0)
+    expect(measured).not.toHaveBeenCalled()
+  })
+
+  it('draws in the overlay own scale when the stage is zoomed', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(200)
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    const outline = container.querySelector('.dialogue-merge ellipse')!
+    expect(outline.getAttribute('rx')).toBe('25')
+    expect(outline.getAttribute('ry')).toBe('12.5')
+    expect(outline.getAttribute('cx')).toBe('25')
+  })
+
+  it('keeps a merged bubble merged while its text is open', () => {
+    // The open bubble's text is the editor now, so its box is found by its empty text.
+    boxes[''] = boxes.B
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} editing={editing({ textEditing: 1, textEditor: <textarea aria-label="typing" /> })} />)
+    expect(merged(container)).toBe(2)
+    expect(container.querySelector('textarea')!.closest('.bubble')).toHaveClass('bubble-merged')
+  })
+
+  it('never gives an ellipse a negative radius', () => {
+    boxes = { A: [0, 0, 4, 4], B: [1, 0, 4, 4] }
+    for (const shape of ['speech', 'whisper'] as const) {
+      const { container, unmount } = render(<DialogueOverlay dialogue={[shaped('A', shape, { strokeWidth: 6 }), shaped('B', shape, { strokeWidth: 6 })]} />)
+      for (const e of container.querySelectorAll('.dialogue-merge ellipse')) {
+        expect(Number(e.getAttribute('rx'))).toBeGreaterThanOrEqual(0)
+        expect(Number(e.getAttribute('ry'))).toBeGreaterThanOrEqual(0)
+      }
+      expect(merged(container)).toBe(2)
+      unmount()
+    }
+  })
+
+  it('merges at an outline width of 0', () => {
+    const { container } = render(<DialogueOverlay dialogue={[placed('A', { strokeWidth: 0 }), placed('B', { strokeWidth: 0 })]} />)
+    expect(merged(container)).toBe(2)
+    const fills = [...container.querySelectorAll('.dialogue-merge ellipse')].map((e) => e.getAttribute('fill'))
+    expect(fills, 'no outline pass: its edge would show through the fill').toEqual(['#ffffff', '#ffffff'])
+  })
+
+  it('draws a cloud with an outline width of 0 from its fill alone', () => {
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'thought', { strokeWidth: 0 }), shaped('B', 'thought', { strokeWidth: 0 })]} />)
+    expect(container.querySelectorAll('.dialogue-merge svg')).toHaveLength(2)
+    expect(container.querySelectorAll('.dialogue-merge svg[stroke="none"]')).toHaveLength(2)
+  })
+
+  it('draws a merged whisper dashed', () => {
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'whisper'), shaped('B', 'whisper')]} />)
+    expect(container.querySelectorAll('.dialogue-merge ellipse[stroke-dasharray="4 3"]')).toHaveLength(2)
+  })
+
+  it('draws a merged shout at three times the outline, and a cloud at two and a half', () => {
+    const shout = render(<DialogueOverlay dialogue={[shaped('A', 'shout'), shaped('B', 'shout')]} />)
+    expect(shout.container.querySelectorAll('.dialogue-merge svg[stroke-width="6"] polygon')).toHaveLength(2)
+    expect(shout.container.querySelectorAll('.dialogue-merge svg[stroke="none"] polygon')).toHaveLength(2)
+    shout.unmount()
+    const thought = render(<DialogueOverlay dialogue={[shaped('A', 'thought'), shaped('B', 'thought')]} />)
+    expect(thought.container.querySelectorAll('.dialogue-merge svg[stroke-width="5"]')).toHaveLength(2)
+    expect(thought.container.querySelectorAll('.dialogue-merge svg[stroke="none"]')).toHaveLength(2)
+  })
+
+  it('survives a merged line being removed', () => {
+    const { container, rerender } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    expect(merged(container)).toBe(2)
+    rerender(<DialogueOverlay dialogue={[placed('A')]} />)
+    expect(merged(container)).toBe(0)
+    expect(container.querySelector('.dialogue-merge')).toBeNull()
+  })
+
+  it('ends a merge when a bubble turns into a shape that cannot merge', () => {
+    const { container, rerender } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
+    rerender(<DialogueOverlay dialogue={[placed('A'), shaped('B', 'caption')]} />)
+    expect(merged(container)).toBe(0)
+  })
+
+  it('draws a curly bubble from its measured box', () => {
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'curly')]} />)
+    expect(container.querySelector('.bubble-body path')!.getAttribute('d')).toContain('C')
+  })
+
+  it('draws a curly bubble with no path while it has no size', () => {
+    boxes.A = [0, 0, 0, 0]
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'curly')]} />)
+    expect(container.querySelector('.bubble-body')).not.toBeNull()
+    expect(container.querySelector('.bubble-body path')).toBeNull()
+  })
+
+  it('merges three bubbles chained through the middle one', () => {
+    boxes.C = [150, 0, 100, 50]
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('C'), placed('B')]} />)
+    expect(merged(container)).toBe(3)
+    expect(container.querySelectorAll('.dialogue-merge g')).toHaveLength(1)
   })
 })

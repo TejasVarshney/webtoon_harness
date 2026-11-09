@@ -743,6 +743,62 @@ test('a press near the middle of a short selected bubble moves it and leaves its
   await app.close()
 })
 
+test('a bubble dragged onto an automatic one merges with it', async () => {
+  const { app, page, stage, stored } = await openPanelWith([
+    { speakerId: null, kind: 'speech', text: 'The first of them' },
+    { speakerId: null, kind: 'speech', text: 'The second of them' }
+  ])
+  await expect(stage.locator('.dialogue-merge')).toHaveCount(0)
+  const media = await boxOf(stage.locator('.panel-media'))
+  const target = await boxOf(stage.locator('[data-line="0"]'))
+
+  await dragBubble(page, stage, stage.locator('[data-line="1"]'), (target.x + target.width - media.x) / media.width, (target.y + target.height / 2 - media.y) / media.height)
+  await expect(stage.locator('.bubble-merged')).toHaveCount(2)
+  await expect(stage.locator('.dialogue-merge')).toBeVisible()
+  await expect.poll(async () => (await stored())[1].placement).not.toBeNull()
+  expect((await stored())[0].placement, 'the bubble it was dropped on stays automatic').toBeNull()
+  await app.close()
+})
+
+// The picker has nine shapes now; at the app's narrowest window they wrap rather than run out of the inspector.
+test('the Shape picker stays inside the inspector in the smallest window', async () => {
+  const { app, page, workspace } = await openPanelWith([{ speakerId: null, kind: 'speech', text: 'One line', placement: { x: 0.5, y: 0.5 } }])
+  await setWindowSize(app, page, 960, 600)
+  await workspace.getByRole('tabpanel').locator('.line-row').first().getByLabel('Text', { exact: true }).click()
+  const picker = workspace.getByRole('group', { name: 'Shape' })
+  await expect(picker).toBeVisible()
+  const inspector = workspace.locator('.panel-inspector')
+  const edge = await boxOf(inspector)
+  const last = await boxOf(picker.getByRole('button', { name: 'Curly' }))
+  expect(last.x + last.width, 'the last shape is inside the inspector').toBeLessThanOrEqual(edge.x + edge.width)
+  const overflow = await workspace.getByRole('tabpanel').evaluate((el: any) => el.scrollWidth - el.clientWidth)
+  expect(overflow, 'no sideways scrolling').toBeLessThanOrEqual(0)
+  await app.close()
+})
+
+test('overlapping bubbles share one outline, and part when dragged apart', async () => {
+  const { app, page, stage } = await openPanelWith([
+    { speakerId: null, kind: 'speech', text: 'The first of them', placement: { x: 0.3, y: 0.3 } },
+    { speakerId: null, kind: 'speech', text: 'The second of them', placement: { x: 0.7, y: 0.7 } }
+  ])
+  const second = stage.locator('[data-line="1"]')
+  await expect(stage.locator('.dialogue-merge')).toHaveCount(0)
+
+  await dragBubble(page, stage, second, 0.4, 0.3)
+  await expect(stage.locator('.bubble-merged')).toHaveCount(2)
+  await expect(stage.locator('.dialogue-merge')).toBeVisible()
+  const body = stage.locator('.dialogue-merge ellipse').first()
+  const placedBox = await boxOf(stage.locator('[data-line="0"]'))
+  const drawn = await boxOf(body)
+  expect(Math.abs(drawn.x - placedBox.x), 'the merged body sits under its bubble').toBeLessThan(1)
+  expect(Math.abs(drawn.width - placedBox.width)).toBeLessThan(1)
+
+  await dragBubble(page, stage, second, 0.7, 0.7)
+  await expect(stage.locator('.bubble-merged')).toHaveCount(0)
+  await expect(stage.locator('.dialogue-merge')).toHaveCount(0)
+  await app.close()
+})
+
 // Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
 test('a selected bubble under another takes the press', async () => {
   const spot = { x: 0.5, y: 0.5 }

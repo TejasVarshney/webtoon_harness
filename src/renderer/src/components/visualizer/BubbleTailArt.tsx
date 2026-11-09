@@ -1,33 +1,11 @@
-import { useLayoutEffect, useRef, useState, type HTMLAttributes, type RefObject } from 'react'
+import { useRef, type HTMLAttributes } from 'react'
 import type { BubblePlacement } from '@shared/types'
 import type { BubbleSide, TailDrawing } from './bubble-layout'
-import { restingTip, tailWedge, thoughtPuffs, type Point, type Size, type TailedShape } from './bubble-tail'
+import { restingTip, tailWedge, thoughtPuffs, type Point, type TailedShape } from './bubble-tail'
+import { useBubbleBox, type BubbleBox } from './use-bubble-box'
 
 // A bubble's tail drawn as SVG, in px from the bubble's centre. The tail has to reach a point in the panel and meet an
-// outline whose size depends on the text and the font, so it is measured from the page, the way `useStageFit` is, and
-// redrawn when the bubble or the overlay changes size.
-
-interface BubbleBox {
-  /** The bubble's size, in px at the overlay's own scale (the stage is scaled with a transform; the strip is not). */
-  box: Size
-  /** The bubble's centre, from the overlay's top left corner. */
-  centre: Point
-  /** The overlay, which is the panel. */
-  panel: Size
-  em: number
-  /** Screen px for each px at the overlay's own scale. */
-  scale: number
-}
-
-const same = (a: BubbleBox, b: BubbleBox): boolean =>
-  a.box.width === b.box.width &&
-  a.box.height === b.box.height &&
-  a.centre.x === b.centre.x &&
-  a.centre.y === b.centre.y &&
-  a.panel.width === b.panel.width &&
-  a.panel.height === b.panel.height &&
-  a.em === b.em &&
-  a.scale === b.scale
+// outline whose size depends on the text and the font, so it is measured from the page and redrawn when either changes.
 
 /** Half the dot's size on screen (`.bubble-tail-handle`). */
 const DOT_RADIUS_PX = 7
@@ -44,43 +22,7 @@ function insidePanel(p: Point, m: BubbleBox): Point {
   }
 }
 
-function useBubbleBox(ref: RefObject<Element | null>): BubbleBox | null {
-  const [measured, setMeasured] = useState<BubbleBox | null>(null)
-  // On every commit: the bubble's text, font or style may have changed without either box being resized yet.
-  useLayoutEffect(() => {
-    const bubble = ref.current?.closest('.bubble')
-    const overlay = ref.current?.closest<HTMLElement>('.dialogue-overlay')
-    if (!bubble || !overlay) return
-    function measure(): void {
-      if (!bubble || !overlay) return
-      const b = bubble.getBoundingClientRect()
-      const o = overlay.getBoundingClientRect()
-      // The overlay's own width, before any transform: the computed width keeps the fraction that offsetWidth rounds
-      // away. jsdom has no layout, so both are empty or 0 there.
-      const layoutWidth = parseFloat(getComputedStyle(overlay).width) || overlay.offsetWidth
-      const scale = layoutWidth > 0 ? o.width / layoutWidth : 1
-      const em = parseFloat(getComputedStyle(bubble).fontSize)
-      const next: BubbleBox = {
-        box: { width: b.width / scale, height: b.height / scale },
-        centre: { x: (b.left + b.width / 2 - o.left) / scale, y: (b.top + b.height / 2 - o.top) / scale },
-        panel: { width: o.width / scale, height: o.height / scale },
-        em: Number.isFinite(em) ? em : 16,
-        scale
-      }
-      setMeasured((prev) => (prev !== null && same(prev, next) ? prev : next))
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(bubble)
-    observer.observe(overlay)
-    // A line above that grows moves this bubble without resizing it, and its layer grows with it.
-    if (bubble.parentElement !== null) observer.observe(bubble.parentElement)
-    return () => observer.disconnect()
-  })
-  return measured
-}
-
-const num = (n: number): string => String(Math.round(n * 100) / 100)
+const num =(n: number): string => String(Math.round(n * 100) / 100)
 
 export interface BubbleTailArtProps {
   shape: TailedShape

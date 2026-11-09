@@ -234,7 +234,7 @@ export const PanelItemSchema = z.object({
 /** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
 export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
 
-export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx'])
+export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx', 'fringe', 'burst', 'curly'])
 export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
 // A refine and not a regex: a regex reaches the tool schemas as `pattern`, sent as it is to every provider.
 const HexColor = z.string().refine((v) => /^#[0-9a-f]{6}$/i.test(v), 'A colour is written as #rrggbb')
@@ -245,6 +245,8 @@ export const BubbleStyleSchema = z.object({
   font: BubbleFontSchema.optional(),
   /** A multiplier of the lettering's size. */
   size: z.number().min(0.5).max(3).optional(),
+  /** A multiplier of the shape's own padding: the room between the text and the outline. */
+  padding: z.number().min(0.3).max(2).optional(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   caps: z.boolean().optional(),

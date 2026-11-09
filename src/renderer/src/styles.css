@@ -1645,9 +1645,17 @@ kbd {
   align-items: center;
 }
 
+/* A row of choices can be wider than the inspector at its narrowest: it shrinks, and its buttons wrap. */
+.bubble-style-group {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .bubble-style-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
+  min-width: 0;
 }
 
 .bubble-style-label,
@@ -2320,6 +2328,26 @@ kbd {
   translate: -50% -50%;
 }
 
+/* Overlapping bubbles drawn as one balloon. A merged bubble's own outline and fill go; its box stays exactly the size
+   it was, since the layer is drawn from that box. */
+.dialogue-merge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bubble.bubble-merged {
+  background: transparent;
+  border-color: transparent;
+}
+
+.bubble-merged > .bubble-body {
+  visibility: hidden;
+}
+
 /* Editing: the bubbles take the pointer, and a dragged one lifts off the art. The selection is the only mark: a
    focused bubble is the selected one, so it shows no focus ring of its own. */
 .dialogue-overlay[data-editing='true'] .bubble {
@@ -2343,6 +2371,11 @@ kbd {
 .dialogue-overlay[data-editing='true'] .bubble[data-dragging='true'] {
   cursor: grabbing;
   box-shadow: var(--float-shadow);
+}
+
+/* The shadow would draw a ring across the balloon a merged bubble is part of. */
+.dialogue-overlay[data-editing='true'] .bubble.bubble-merged[data-dragging='true'] {
+  box-shadow: none;
 }
 
 /* A bubble's text open for typing, in the bubble's own lettering. It grows with what is typed. */
@@ -2422,7 +2455,7 @@ kbd {
 .bubble-speech,
 .bubble-whisper,
 .bubble-shout {
-  padding: 1em 1.35em;
+  padding: calc(1em * var(--bubble-padding, 1)) calc(1.35em * var(--bubble-padding, 1));
   margin-bottom: calc(var(--tail) * 0.6);
 }
 
@@ -2446,10 +2479,50 @@ kbd {
 }
 
 .bubble-shout {
-  padding: 1.7em 1.9em;
+  padding: calc(1.7em * var(--bubble-padding, 1)) calc(1.9em * var(--bubble-padding, 1));
   font-size: calc(clamp(10px, 4cqw, 24px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+/* A fringe: an oval in the fill, inside a ring of thin spikes in the outline's colour. */
+.bubble-fringe {
+  padding: calc(1.9em * var(--bubble-padding, 1)) calc(2.2em * var(--bubble-padding, 1));
+}
+
+.bubble-fringe .bubble-body polygon {
+  fill: var(--bubble-stroke, #111);
+  stroke: none;
+}
+
+.bubble-fringe .bubble-body-fill {
+  stroke: none;
+}
+
+/* A dark burst: one solid spiky oval, with light lettering on it. */
+.bubble-burst {
+  padding: calc(1.7em * var(--bubble-padding, 1)) calc(1.9em * var(--bubble-padding, 1));
+  color: var(--bubble-color, #fff);
+}
+
+.bubble-burst .bubble-body {
+  fill: var(--bubble-fill, #111);
+}
+
+.bubble-burst .bubble-body polygon {
+  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-linejoin: round;
+}
+
+/* A curly frame: its path is built for the bubble's measured box (BubbleBody). The loops stand 0.94em in from the box,
+   so the padding clears them first, and what the Padding control scales is the room left beside the text. */
+.bubble-curly {
+  padding: calc(1em + 0.4em * var(--bubble-padding, 1)) calc(1em + 0.7em * var(--bubble-padding, 1));
+}
+
+.bubble-curly .bubble-body path {
+  stroke-width: var(--bubble-stroke-width, 1px);
+  stroke-linejoin: round;
 }
 
 .bubble-tail-down.bubble-speech::before,
@@ -2537,7 +2610,7 @@ kbd {
 /* The cloud's bumps eat into its box, so its text keeps well inside. */
 .bubble-thought {
   min-width: 7em;
-  padding: 1.9em 2.4em;
+  padding: calc(1.9em * var(--bubble-padding, 1)) calc(2.4em * var(--bubble-padding, 1));
   margin-bottom: 1.4em;
   font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 400;
@@ -2697,7 +2770,7 @@ kbd {
 /* A caption box: square corners and a hard offset shadow, in the top corner. */
 .bubble-caption {
   max-width: 72%;
-  padding: 0.5em 0.75em;
+  padding: calc(0.5em * var(--bubble-padding, 1)) calc(0.75em * var(--bubble-padding, 1));
   font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   text-align: left;
   box-shadow: 0.25em 0.25em 0 var(--bubble-stroke, #111);
