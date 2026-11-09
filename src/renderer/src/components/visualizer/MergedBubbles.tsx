@@ -4,7 +4,8 @@ import type { MergedGroup, MergedMember } from './use-merged-bubbles'
 
 // The bodies of bubbles that overlap, drawn together so that they read as one balloon: every outline of a group first,
 // then every fill on top, so each fill covers the outlines crossing it. It has to be one layer: each placed bubble is
-// its own stacking context, so a bubble's outline could not sit under another bubble's fill.
+// its own stacking context, so a bubble's outline could not sit under another bubble's fill. It goes under every layer
+// that holds text, so no bubble's fill can cover a member's lettering.
 
 /** A radius less the part of the outline inside it. Never negative: the outline can be wider than a small bubble. */
 const inset = (radius: number, by: number): number => Math.max(radius - by, 0)
@@ -12,6 +13,8 @@ const inset = (radius: number, by: number): number => Math.max(radius - by, 0)
 function Pass({ member, look, pass }: { member: MergedMember; look: MergedLook; pass: BodyPass }) {
   const { left: x, top: y, width: w, height: h } = member
   const { shape, fill, stroke, strokeWidth: s } = look
+  // With no outline there is nothing to draw, and a full-size shape in its colour would show at the fill's soft edge.
+  if (pass === 'outline' && s === 0) return null
   if (shape === 'speech' || shape === 'whisper') {
     const oval = { cx: x + w / 2, cy: y + h / 2 }
     if (pass === 'fill') return <ellipse {...oval} rx={inset(w / 2, s)} ry={inset(h / 2, s)} fill={fill} />

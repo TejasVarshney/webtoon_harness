@@ -1645,9 +1645,17 @@ kbd {
   align-items: center;
 }
 
+/* A row of choices can be wider than the inspector at its narrowest: it shrinks, and its buttons wrap. */
+.bubble-style-group {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .bubble-style-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
+  min-width: 0;
 }
 
 .bubble-style-label,

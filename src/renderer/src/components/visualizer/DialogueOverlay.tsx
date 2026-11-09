@@ -52,8 +52,8 @@ export interface DialogueOverlayProps {
  * still the layout's. A stored tail tip is drawn by `BubbleTailArt`, measured from the page. A line's `style` is drawn
  * as inline variables, with `bubble-sized` when it sets a width, and a line shaped as a sound effect sits in the
  * sound-effect layer whatever its kind. While editing, the selected bubble has the tail's dot and the width handles,
- * unless its text is open. Placed bubbles of the same look that overlap are drawn as one balloon by `MergedBubbles`:
- * each keeps its box, text and handles, and gives up only its own outline and fill.
+ * unless its text is open. Bubbles of the same look that overlap are drawn as one balloon by `MergedBubbles`, under
+ * every layer that holds text: each keeps its box, text and handles, and gives up only its own outline and fill.
  */
 export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverlayProps) {
   const roster = useRoster(dialogue.some((line) => line.speakerId !== null))
@@ -80,8 +80,7 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
     const handles = editing !== undefined && editing.selected === i && editing.textEditing !== i
     const dot = handles && hasTail(b.shape)
     const speaker = line.speakerId === null ? undefined : roster.find((c) => c.id === line.speakerId)?.name
-    // Only a placed bubble can reach another; the automatic layout is a column with gaps.
-    const key = placement ? mergeKey(b.shape, line.style) : null
+    const key = mergeKey(b.shape, line.style)
     const merged = key !== null && inGroup.has(i)
     return (
       <div
@@ -114,9 +113,9 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
   const sfx = indexed.filter((l) => !l.placed && l.sfx)
   return (
     <div ref={overlay} className="dialogue-overlay" data-editing={editing ? 'true' : undefined}>
+      {groups.length > 0 && <MergedBubbles groups={groups} lookOf={lookOf} />}
       <div className="dialogue-flow">{flow.map(({ line, i }) => bubble(line, i))}</div>
       {sfx.length > 0 && <div className="dialogue-sfx">{sfx.map(({ line, i }, n) => bubble(line, i, n % 2 === 1 ? ' bubble-tilt-right' : ''))}</div>}
-      {groups.length > 0 && <MergedBubbles groups={groups} lookOf={lookOf} />}
       {placed.length > 0 && <div className="dialogue-placed">{placed.map(({ line, i }) => bubble(line, i))}</div>}
     </div>
   )

@@ -22,13 +22,14 @@ strip and an exported image. Every bubble that overlaps nothing looks exactly as
 
 ### Which bubbles merge
 
-Two placed bubbles merge when their boxes overlap and they have the same **merge key**: shape, fill, outline colour and
+Two bubbles merge when their boxes overlap and they have the same **merge key**: shape, fill, outline colour and
 outline width, each resolved through `bubbleDefaults`. Grouping is transitive, so A touching B and B touching C is one
 group.
 
 - Mergeable shapes: `speech`, `whisper`, `shout`, `thought`. `caption`, `sfx` and the new shapes have no merge key.
 - Bubbles with different keys stack as they do today, since nothing says which colour should win.
-- Only bubbles with a placement take part. The automatic layout is a column with gaps, so its bubbles cannot overlap.
+- Automatic bubbles take part, so a bubble dragged onto an automatic one merges with it, and most panels start out
+  automatic. Two automatic bubbles stand apart in their column, so a panel with no placed bubble measures nothing.
 - Box overlap is enough, with no finer shape test: two bubbles whose boxes touch but whose shapes do not are drawn the
   same either way.
 
@@ -38,13 +39,14 @@ All of a group's outlines are drawn first and all of its fills on top, so each f
 `BubbleBody` already draws a thought cloud this way. No polygon union and no new dependency.
 
 This cannot be done inside each bubble: `translate` makes every `.bubble-placed` its own stacking context, so one
-bubble's outline cannot sit under another's fill. A shared layer does it:
+bubble's outline cannot sit under another's fill. A shared layer does it, under every layer that holds text, so that
+no fill can cover a member's lettering:
 
 ```
 .dialogue-overlay
+  svg.dialogue-merge     <- new: only when a group exists
   .dialogue-flow
   .dialogue-sfx
-  svg.dialogue-merge     <- new: only when a group exists
   .dialogue-placed
 ```
 
@@ -63,13 +65,16 @@ handles and tail still render in its own element, above the layer, so no bubble'
 | thought | `THOUGHT_CIRCLES` with the outline | The same circles in the fill | Exact |
 | shout | `SHOUT_POINTS` stroked at 3x the outline width | The polygon in the fill, no stroke | Visible weight is unchanged; the outer edge sits 0.75x the outline width further out |
 
+At an outline width of 0 the outline pass is skipped, since a full-size shape in the outline colour would show at the
+fill's antialiased edge.
+
 `BubbleBody.tsx` exposes its art by pass so the layer reuses the same points and circles. Shout and thought use a nested
 `<svg>` at the member's box with `preserveAspectRatio="none"`, as they do today.
 
 ### Measuring
 
-A hook in `DialogueOverlay` measures the placed bubbles the way `useBubbleBox` does: on every commit in a layout effect,
-and from a `ResizeObserver` on the overlay and each placed bubble, dividing out the stage's scale. It stores the result
+A hook in `DialogueOverlay` measures the mergeable bubbles the way `useBubbleBox` does: on every commit in a layout
+effect, and from a `ResizeObserver` on the overlay, each bubble and its layer, dividing out the stage's scale. It stores the result
 only when it changed. The layout effect runs before paint, so bubbles merge live during a drag with no flash of the
 unmerged look, and an export has the layer before capture. A late font load is picked up by the observer. jsdom has no
 layout, so every box is empty, nothing overlaps and existing tests see no change. The hook has to be called above the
@@ -87,8 +92,8 @@ overlay's early return.
 - Selecting, typing in, resizing and dragging work per bubble as they do now.
 - Tails stay in each bubble's element. A tail that crosses a neighbouring member draws over its fill. Rare, left as it is.
 - With automatic merging, one bubble of the same look cannot sit in front of another.
-- An unmerged bubble overlapping a merged group always paints above the group, because the layer sits under
-  `.dialogue-placed`. Today that order follows the dialogue.
+- An unmerged bubble or sound effect overlapping a merged group always paints above the group, because the layer sits
+  under them all. Today that order follows the dialogue.
 
 ## 2. Padding
 

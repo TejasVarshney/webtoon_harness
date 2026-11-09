@@ -164,7 +164,8 @@ describe('DialogueOverlay merging', () => {
     const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
     expect(container.querySelectorAll('.dialogue-merge ellipse')).toHaveLength(4)
     expect(merged(container)).toBe(2)
-    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-placed')
+    // Under the automatic layer as well as the placed one, so no member's text can end up beneath a fill.
+    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-flow')
   })
 
   it('paints every outline before any fill', () => {
@@ -185,9 +186,17 @@ describe('DialogueOverlay merging', () => {
     expect(merged(container)).toBe(0)
   })
 
-  it('leaves a bubble in the automatic layout alone', () => {
+  it('merges a placed bubble with an automatic one it overlaps', () => {
     const { container } = render(<DialogueOverlay dialogue={[placed('A'), line('dlg_B', 'B')]} />)
+    expect(merged(container)).toBe(2)
+    expect(bubbleOf(container, 'B').parentElement).toHaveClass('dialogue-flow')
+  })
+
+  it('measures nothing on a panel with no placed bubble', () => {
+    const measured = vi.mocked(Element.prototype.getBoundingClientRect)
+    const { container } = render(<DialogueOverlay dialogue={[line('dlg_A', 'A'), line('dlg_B', 'B')]} />)
     expect(merged(container)).toBe(0)
+    expect(measured).not.toHaveBeenCalled()
   })
 
   it('draws in the overlay own scale when the stage is zoomed', () => {
@@ -223,7 +232,14 @@ describe('DialogueOverlay merging', () => {
   it('merges at an outline width of 0', () => {
     const { container } = render(<DialogueOverlay dialogue={[placed('A', { strokeWidth: 0 }), placed('B', { strokeWidth: 0 })]} />)
     expect(merged(container)).toBe(2)
-    expect(container.querySelector('.dialogue-merge ellipse')!.getAttribute('rx')).toBe('50')
+    const fills = [...container.querySelectorAll('.dialogue-merge ellipse')].map((e) => e.getAttribute('fill'))
+    expect(fills, 'no outline pass: its edge would show through the fill').toEqual(['#ffffff', '#ffffff'])
+  })
+
+  it('draws a cloud with an outline width of 0 from its fill alone', () => {
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'thought', { strokeWidth: 0 }), shaped('B', 'thought', { strokeWidth: 0 })]} />)
+    expect(container.querySelectorAll('.dialogue-merge svg')).toHaveLength(2)
+    expect(container.querySelectorAll('.dialogue-merge svg[stroke="none"]')).toHaveLength(2)
   })
 
   it('draws a merged whisper dashed', () => {

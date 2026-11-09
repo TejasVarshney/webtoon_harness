@@ -35,15 +35,16 @@ function measureGroups(overlay: HTMLElement, bubbles: HTMLElement[]): MergedGrou
 }
 
 /**
- * The merged groups among the overlay's placed bubbles. Measured on every commit, before paint, so a drag merges with
- * no flash of the unmerged look; and again when a bubble or the overlay changes size, as when a font arrives.
+ * The merged groups among the overlay's bubbles. Measured on every commit, before paint, so a drag merges with no flash
+ * of the unmerged look; and again when a bubble or the overlay changes size, as when a font arrives. A panel with no
+ * placed bubble measures nothing: its bubbles stand apart in their column, and most panels are like that.
  */
 export function useMergedBubbles(overlay: RefObject<HTMLElement | null>): MergedGroup[] {
   const [groups, setGroups] = useState<MergedGroup[]>(NONE)
   useLayoutEffect(() => {
     const root = overlay.current
-    const bubbles = root ? [...root.querySelectorAll<HTMLElement>('.dialogue-placed > .bubble[data-merge-key]')] : []
-    if (!root || bubbles.length < 2) {
+    const bubbles = root ? [...root.querySelectorAll<HTMLElement>('.bubble[data-merge-key]')] : []
+    if (!root || bubbles.length < 2 || !bubbles.some((b) => b.classList.contains('bubble-placed'))) {
       setGroups(NONE)
       return
     }
@@ -55,7 +56,11 @@ export function useMergedBubbles(overlay: RefObject<HTMLElement | null>): Merged
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(root)
-    for (const bubble of bubbles) observer.observe(bubble)
+    for (const bubble of bubbles) {
+      observer.observe(bubble)
+      // An automatic line above that grows moves this bubble without resizing it, and its layer grows with it.
+      if (bubble.parentElement !== null) observer.observe(bubble.parentElement)
+    }
     return () => observer.disconnect()
   })
   return groups
