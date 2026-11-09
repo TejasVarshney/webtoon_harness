@@ -30,6 +30,25 @@
 4. More panels are selected than the image model takes: the page says how many will not be sent. (Task 16)
 5. A selected panel is deleted before drawing, or the user presses Back with a sketch drawn: drawing still works, and work is not silently lost. (Tasks 15, 17)
 
+## Core Requirements
+
+The user's own words, and where each is delivered and proved.
+
+| Requirement | Task | Proved by |
+|---|---|---|
+| When the app starts, show the home page | 1 | `loadProjects lists projects and opens none` |
+| See my previous projects | 1 | `shows a card per project, newest first` |
+| Create a new one | 1 | `with no projects invites the first one`, `new-project` on the home page |
+| Once I create the new project I enter the harness | 1 | `creating a project enters the harness` |
+| Create or open another project from a File dropdown | 2 | `New project opens the dialog`, `lists every project and opens the one clicked` |
+| Manhwa panels at the left | 2 | `puts the visualizer before the chat` |
+| AI chatbot at the right | 2 | `puts the visualizer before the chat` |
+| New session, previous sessions and bookmarks in the chatbot | 3 | `lists bookmarked sessions first under their own heading`, `New session and Ctrl+N make a session` |
+| Remove the sessions section | 3 | `has no sessions sidebar` |
+| Required editing tools in the panel view | 10, 11 | `PanelTools.test.tsx` |
+| Directly edit a panel without entering editing mode | 8, 10, 11 | `a click does not open the editor, a double-click does`, `Scene opens the panel's scene fields in place`, `a bubble can be pressed on a panel that is not selected` |
+| Editing mode becomes focus mode | 8, 10 | `is named Focus mode`, `Focus opens focus mode` |
+
 ## File Structure
 
 | Path | Responsibility |
@@ -75,7 +94,7 @@ it('loadProjects lists projects and opens none', async () => {
 })
 ```
 
-In `HomePage.test.tsx`: `shows a card per project, newest first` (`getAllByTestId('project-card')` text order); `clicking a card opens that project` (`projects:open` called with its id); `with no projects invites the first one` (heading `Start your first project`, button with testid `new-project`).
+In `HomePage.test.tsx`: `shows a card per project, newest first` (`getAllByTestId('project-card')` text order); `clicking a card opens that project` (`projects:open` called with its id); `with no projects invites the first one` (heading `Start your first project`, button with testid `new-project`); `creating a project enters the harness` (after the dialog's Create, `projectId` is the new project's id and `App` no longer renders `HomePage`).
 
 - [ ] **Step 2: Run to confirm they fail**
 
@@ -121,7 +140,7 @@ Expected: FAIL (modules not found).
 
 - [ ] **Step 3: Implement**
 
-Left panel `pane-visualizer` default 60%, min 40%; right panel `pane-chat` default 40%, min 26%. Header: `FileMenu`, project title, then `StyleButton`, `ContinueStoryButton`. `ProjectProblems` appears in the header as a warning control when there are problems. Update the `minWidth` comment in `main/index.ts`.
+Left panel `pane-visualizer` default 60%, min 40%; right panel `pane-chat` default 40%, min 26%. Header: `FileMenu`, project title, then `StyleButton`, `ContinueStoryButton`. `ProjectProblems` appears in the header as a warning control when there are problems. Update the `minWidth` comment in `main/index.ts`. Until Task 3, `SessionSidebar` mounts above `ChatPane` in the right pane so sessions stay reachable; remove its brand, project switcher, New project and Settings now, with their tests, since the File menu has them.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -156,7 +175,7 @@ it('records a bookmark without changing updatedAt', async () => {
 it('the latest bookmark record wins', async () => { /* true then false reads false */ })
 ```
 
-`ChatSessions.test.tsx`: `lists bookmarked sessions first under their own heading` (headings `Bookmarked`, `Previous sessions`; a bookmarked session is not repeated); `the star toggles the bookmark`; `New session and Ctrl+N make a session`; `rename and delete still work`.
+`ChatSessions.test.tsx`: `lists bookmarked sessions first under their own heading` (headings `Bookmarked`, `Previous sessions`; a bookmarked session is not repeated); `the star toggles the bookmark`; `New session and Ctrl+N make a session`; `rename and delete still work`. In `App` or `WorkspaceLayout` tests: `has no sessions sidebar` (`queryByTestId('pane-sessions')` is null, and `session-item` appears only inside `pane-chat`).
 
 - [ ] **Step 2: Run to confirm they fail**
 
@@ -451,11 +470,11 @@ git commit -m "feat: drag, resize and group-move panels on the strip"
 - Modify: `panel-editor/PanelWorkspace.tsx`, `SceneTab.tsx:23-25,145,161-170`, `PanelInspector.tsx:85-86`, `PanelStage.tsx`, `SketchStage.tsx`, `use-field-autosave.ts`, `src/shared/schemas.ts:361`, `src/main/domain/panel-service.ts:129,182`, `src/main/agent/tools/panel-tools.ts:59-61,114-116`, `panel-chat-tools.ts:27-29`, `src/main/agent/system-prompt.ts:90-93`, `resources/agent-docs/{AGENTS.md,reference/webtoon-style-guide.md,workflows/panel-editing.md,workflows/panel-generation.md,workflows/story-direction.md}`, `tests/e2e/panel-editing.spec.ts`, `tests/e2e/panel-chat.spec.ts`
 
 **Interfaces:**
-- Produces: `PanelTools({ panel })`, rendered by `PanelCard` when exactly one panel is selected. Contains Cast, Items, Scene (each opening `PanelInspector` on that tab in a popover), Redraw, Sketch (`focusPanel` with sketch on), Focus (aria-label `Focus`), Delete. Add bubble arrives in Task 11. `PanelInspector` gains `initialTab?: Tab`.
+- Produces: `PanelTools({ panel })`, rendered by `PanelCard` when exactly one panel is selected. Contains Lines, Cast, Items, Scene (each opening `PanelInspector` on that tab in a popover), Versions (`VersionSwitcher`), Upload image, Redraw, Sketch, Focus (aria-label `Focus`), Delete. Add bubble arrives in Task 11. `PanelInspector` gains `initialTab?: Tab`. `focusPanel(id, opts?: { sketch?: boolean })` opens focus mode on the sketch canvas, the one tool that needs the larger stage.
 
 - [ ] **Step 1: Write the failing tests**
 
-`PanelTools.test.tsx`: `Redraw starts a generation`; `Scene opens the panel's scene fields in place`; `Focus opens focus mode`; `Delete asks first`. `PanelWorkspace.test.tsx`: `the back button says Back to the strip and clears focus only, leaving the selection`. `SceneTab`: `has no Beside, Gap after or Gutter field`. Panel tool schema: `has no gutter`.
+`PanelTools.test.tsx`: `Redraw starts a generation`; `Scene opens the panel's scene fields in place`; `Focus opens focus mode`; `Delete asks first`; `Lines edits a line in place`; `Upload image stores a new version without opening focus mode`; `Versions switches the current image in place`; `Sketch opens focus mode on the canvas`. `PanelWorkspace.test.tsx`: `is named Focus mode` (`getByRole('region', { name: 'Focus mode' })`); `the back button says Back to the strip and clears focus only, leaving the selection`. `SceneTab`: `has no Beside, Gap after or Gutter field`. Panel tool schema: `has no gutter`.
 
 - [ ] **Step 2: Run to confirm they fail**
 
@@ -464,7 +483,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-`backToStrip` calls `focusPanel(null)`. Stage background is the neutral surface, since `gutter` is gone. Delete `gutter` from `PanelDraftSchema` and `PanelPatchSchema` (`PanelSchema` keeps it). Delete the `gutter` lines from the agent docs, and change "move and delete are on each panel's toolbar" to "drag a panel on the strip to move it; delete is in its tools".
+`backToStrip` calls `focusPanel(null)`. Rename the workspace's accessible name from `Panel editor` to `Focus mode`, and "editing mode" to "focus mode" in code comments and `resources/agent-docs/`. Stage background is the neutral surface, since `gutter` is gone. Delete `gutter` from `PanelDraftSchema` and `PanelPatchSchema` (`PanelSchema` keeps it). Delete the `gutter` lines from the agent docs, and change "move and delete are on each panel's toolbar" to "drag a panel on the strip to move it; delete is in its tools".
 
 - [ ] **Step 4: Verify and commit**
 
@@ -496,7 +515,7 @@ it('with bounds it stays inside the strip', () => { /* pointer x 900 clamps so t
 it('without bounds it stays inside the panel', () => { /* existing test unchanged */ })
 ```
 
-`StripBubbles.test.tsx`: `draws a placed bubble below its panel`; `a bubble can be pressed on a panel that is not selected`; `the empty layer lets clicks through to the panel`; `pressing a bubble does not start a panel drag`.
+`StripBubbles.test.tsx`: `draws a placed bubble below its panel`; `a bubble can be pressed on a panel that is not selected`; `the empty layer lets clicks through to the panel`; `pressing a bubble does not start a panel drag`; `double-clicking a bubble retypes it on the strip`; `selecting a bubble opens its text and style controls in the panel's tools`; `Add bubble adds a line on the strip`.
 
 - [ ] **Step 2: Run to confirm they fail**
 
@@ -505,7 +524,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-Each panel gets an absolutely positioned wrapper at its rectangle holding a transparent `.panel-media` (`overflow: visible`) and a `DialogueOverlay` with `useBubbleEditing`'s `editing`. Wrapper and overlay are `pointer-events: none`; `.bubble` and its handles are `auto`. Render all wrappers after all cards so bubbles sit on top. `PanelCard` draws `PanelArt` with `lettering={false}`. `PanelTools` is now rendered by `StripBubbles`, whose hook supplies new props `add` and `adding` for an `AddBubbleMenu` in the tools.
+Each panel gets an absolutely positioned wrapper at its rectangle holding a transparent `.panel-media` (`overflow: visible`) and a `DialogueOverlay` with `useBubbleEditing`'s `editing`. Wrapper and overlay are `pointer-events: none`; `.bubble` and its handles are `auto`. Render all wrappers after all cards so bubbles sit on top. `PanelCard` draws `PanelArt` with `lettering={false}`. `PanelTools` is now rendered by `StripBubbles`, whose hook supplies new props `add` and `adding` for an `AddBubbleMenu` in the tools, and `selectedLine` and `onSelectLine`, so selecting a bubble selects its panel and opens Lines on that line.
 
 - [ ] **Step 4: Verify and commit**
 

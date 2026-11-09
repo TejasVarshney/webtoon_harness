@@ -64,7 +64,7 @@ Old episodes convert on read: one gutter colour becomes `solid`; mixed gutters b
 
 **Workspace.** Top bar with File menu (New project, Open project list, Home, Settings), project name, Style, Continue story. Left: tabs, episode bar, strip. Right: chat with New session, a session dropdown (Bookmarked, then Previous sessions), rename, delete and star.
 
-**Strip.** Click selects and shows tools on the panel (Add bubble, Cast, Items, Scene, Redraw, Sketch, Focus, Delete). Drag moves, the corner handle resizes, arrows nudge (Shift for 10). Dragging any selected panel moves the whole selection rigidly. Double-click or Focus opens focus mode, which is today's editor. Bubbles are draggable on first press on any panel and may leave their panel.
+**Strip.** Click selects and shows tools on the panel (Add bubble, Lines, Cast, Items, Scene, Versions, Upload image, Redraw, Sketch, Focus, Delete). All of them work in place except Sketch, which opens focus mode for its larger canvas. Selecting a bubble opens its text and style controls; double-clicking retypes it. Drag moves, the corner handle resizes, arrows nudge (Shift for 10). Dragging any selected panel moves the whole selection rigidly. Double-click or Focus opens focus mode, which is today's editor. Bubbles are draggable on first press on any panel and may leave their panel.
 
 **Selection bar.** Shift-click toggles panels into the selection and adds the previously selected one. The bar shows `Generate from N panel(s)`, counting panels with a ready image. Panels without one are not references.
 
