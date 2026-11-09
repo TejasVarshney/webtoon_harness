@@ -32,47 +32,64 @@ export function panelHeight(width: number, aspect: PanelAspect): number {
 }
 
 /**
- * Every panel's box, in the order of `panels`. Rows are walked top to bottom holding a `cursor`, where the next
- * flowing row starts (the lowest bottom so far plus the previous row's gap), and a `shift`, the height and gap of every
- * flowing row so far, which moves each later placed panel down so a panel inserted into the flow never lands on top of
- * one the user has placed below it. A row shares its width by `rowShares` whether or not some of its panels are placed.
+ * Every panel's box, in the order of `panels`. A placed panel holds its spot and never shares a row. Each run of
+ * consecutive unplaced panels flows as rows of its own (`beside` only joins panels of the same run), starting below
+ * everything above it plus the gap of the panel before it. Placed panels after a run move down together by one shift,
+ * enough that the highest of them clears the run and its gap, and never less than the run's own height, so a panel
+ * inserted into the flow never lands on top of one placed below it. Slants are numbered over the whole list.
  */
 export function resolveStrip(panels: Panel[]): PlacedPanel[] {
-  const byId = new Map<string, PlacedPanel>()
+  const slants: Record<string, 'left' | 'right'> = {}
+  for (const row of layoutStrip(panels)) Object.assign(slants, row.slants)
+
+  const out: PlacedPanel[] = []
   let lowest = 0
   let previousGap = 0
   let shift = 0
-
-  for (const row of layoutStrip(panels)) {
-    const cursor = lowest + previousGap
-    const gap = GAP_PX[row.gapAfter]
-    const available = STRIP_CSS_WIDTH - ROW_GAP * (row.panels.length - 1)
-    const shares = rowShares(row.panels)
-    let flowX = 0
-    let flowHeight = 0
-    let flows = false
-
-    for (const panel of row.panels) {
-      const flowWidth = shares[panel.id] * available
-      const { placement } = panel
-      const width = placement ? placement.width : flowWidth
-      const x = placement ? placement.x : flowX
-      const y = placement ? placement.y + shift : cursor
-      const height = panelHeight(width, panel.aspect)
-      byId.set(panel.id, { panel, x, y, width, height, share: width / STRIP_CSS_WIDTH, slant: row.slants[panel.id] })
-      lowest = Math.max(lowest, y + height)
-      if (!placement) {
-        flows = true
-        flowHeight = panelHeight(flowWidth, panel.aspect)
-      }
-      flowX += flowWidth + ROW_GAP
-    }
-
-    if (flows) shift += flowHeight + gap
-    previousGap = gap
+  const box = (panel: Panel, x: number, y: number, width: number): PlacedPanel => {
+    const height = panelHeight(width, panel.aspect)
+    lowest = Math.max(lowest, y + height)
+    return { panel, x, y, width, height, share: width / STRIP_CSS_WIDTH, slant: slants[panel.id] }
   }
 
-  return panels.map((panel) => byId.get(panel.id) as PlacedPanel)
+  let i = 0
+  while (i < panels.length) {
+    const first = panels[i]
+    if (first.placement) {
+      out.push(box(first, first.placement.x, first.placement.y + shift, first.placement.width))
+      previousGap = GAP_PX[first.gapAfter]
+      i += 1
+      continue
+    }
+    let end = i
+    while (end < panels.length && !panels[end].placement) end += 1
+    let cursor = lowest + previousGap
+    let height = 0
+    let gap = previousGap
+    for (const row of layoutStrip(panels.slice(i, end))) {
+      const available = STRIP_CSS_WIDTH - ROW_GAP * (row.panels.length - 1)
+      const shares = rowShares(row.panels)
+      let x = 0
+      let rowHeight = 0
+      for (const panel of row.panels) {
+        const placed = box(panel, x, cursor, shares[panel.id] * available)
+        out.push(placed)
+        rowHeight = placed.height
+        x += placed.width + ROW_GAP
+      }
+      gap = GAP_PX[row.gapAfter]
+      height += rowHeight + gap
+      cursor += rowHeight + gap
+    }
+    const later = panels.slice(end).filter((p) => p.placement)
+    if (later.length > 0) {
+      const minY = Math.min(...later.map((p) => (p.placement as PanelPlacement).y))
+      shift = Math.max(shift + height, cursor - minY)
+    }
+    previousGap = gap
+    i = end
+  }
+  return out
 }
 
 /** The lowest bottom edge of the placed panels; 0 when there are none. */

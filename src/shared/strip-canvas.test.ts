@@ -61,6 +61,63 @@ describe('resolveStrip', () => {
   })
 })
 
+/** Asserts no two resolved rectangles overlap: the invariant every layout must keep. */
+function expectNoOverlap(placed: ReturnType<typeof resolveStrip>) {
+  for (let i = 0; i < placed.length; i++) {
+    for (let j = i + 1; j < placed.length; j++) {
+      const a = placed[i]
+      const b = placed[j]
+      const apart = a.x + a.width <= b.x + 1e-6 || b.x + b.width <= a.x + 1e-6 || a.y + a.height <= b.y + 1e-6 || b.y + b.height <= a.y + 1e-6
+      expect(apart, `panel ${i} overlaps panel ${j}`).toBe(true)
+    }
+  }
+}
+
+describe('resolveStrip with placed and unplaced panels mixed', () => {
+  it('a beside panel after a placed one starts a new row below it', () => {
+    const placed = resolveStrip([
+      panel({ aspect: '1:1', placement: { x: 0, y: 0, width: 440 } }),
+      panel({ aspect: '1:1', beside: true })
+    ])
+    expect(placed[1]).toMatchObject({ x: 0, y: 488, width: 440 })
+    expectNoOverlap(placed)
+  })
+
+  it('an unplaced panel after a placed one stays clear of a later placed sibling', () => {
+    const placed = resolveStrip([
+      panel({ aspect: '1:1', placement: { x: 0, y: 0, width: 200 } }),
+      panel({ aspect: '1:1' }),
+      panel({ aspect: '1:1', beside: true, placement: { x: 0, y: 260, width: 200 } })
+    ])
+    expectNoOverlap(placed)
+  })
+
+  it('an unplaced panel between a frozen beside pair takes the full width', () => {
+    const placed = resolveStrip([
+      panel({ aspect: '1:1', placement: { x: 0, y: 0, width: 217 } }),
+      panel({ aspect: '1:1', beside: true, placement: { x: 223, y: 0, width: 217 } }),
+      panel({ aspect: '1:1' })
+    ])
+    expect(placed[2].width).toBe(440)
+    const between = resolveStrip([
+      placed[0].panel,
+      panel({ aspect: '1:1' }),
+      placed[1].panel
+    ])
+    expect(between[1]).toMatchObject({ x: 0, width: 440 })
+    expectNoOverlap(between)
+  })
+
+  it('an inserted panel clears placed panels that sit side by side above the cursor', () => {
+    const placed = resolveStrip([
+      panel({ aspect: '1:1', placement: { x: 0, y: 0, width: 200 } }),
+      panel({ aspect: '1:1' }),
+      panel({ aspect: '1:1', placement: { x: 220, y: 0, width: 200 } })
+    ])
+    expectNoOverlap(placed)
+  })
+})
+
 describe('panelHeight', () => {
   it('follows the aspect', () => {
     expect(panelHeight(200, '1:1')).toBe(200)
