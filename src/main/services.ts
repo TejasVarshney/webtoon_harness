@@ -12,6 +12,7 @@ import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
 import { ItemService, type ItemUsageLookup } from './domain/item-service'
 import { PanelService } from './domain/panel-service'
+import type { PackComposer } from './domain/reference-pack'
 import { StoryService } from './domain/story-service'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
@@ -32,6 +33,8 @@ export interface ServicesOptions {
   /** Folder holding the shipped workflow doc templates (`AGENTS.md` at its root). */
   templatesDir: string
   imageOps: ImageOps
+  /** Draws packed reference images (an offscreen canvas). Without it, panels drop the references over an image model's cap. */
+  packComposer?: PackComposer
   bus?: EventBus
   /** A fresh strip capturer per export job. Without it, using export throws. */
   createCapturer?: () => StripCapturer
@@ -92,7 +95,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   }
   const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash, sheetChecker: checker })
   const episodes = new EpisodeService({ bus })
-  const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash })
+  const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash, packComposer: opts.packComposer })
   const story = new StoryService({ bus, projects })
   const unavailable = (): never => {
     throw new Error('Export is not available in this build')

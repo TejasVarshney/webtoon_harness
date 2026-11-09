@@ -45,7 +45,7 @@ Two optional sentences end the `[STYLE]` line, each after a space. A panel gets 
 
 How the template bends:
 
-- **[CHARACTERS]** has one line per cast entry, in cast order. With an empty cast, nothing follows the [CHARACTERS] line.
+- **[CHARACTERS]** has one line per cast entry, in cast order. With an empty cast, nothing follows the [CHARACTERS] line. When character sheets are packed onto one image, a sentence follows it on the same line (see Panel Prompt with packed character sheets).
 - **Empty parts are left out** of a cast line. A variation with no delta reads "Look: Base." (no dash). An empty `action` leaves out "Action: ...", An empty `expression` leaves out "Expression: ...", an empty `position` leaves out "Position: ..." (the default is center).
 - **No reference image:** when the variation has no ready image, or its image was dropped for the reference limit, "(reference image {n})" reads "(no reference image)".
 - **[CONTINUITY]** appears only when the previous panel in the episode has a ready image. Without it (first panel of an episode, or a previous panel with no ready image), your `continuityNotes` are not in the prompt at all. An empty `continuityNotes` leaves the line ending at "consistent."
@@ -55,12 +55,12 @@ How the template bends:
 
 Reference images, in this order:
 
-1. each cast member's variation image, in cast order;
+1. each cast member's variation image, in cast order (packed sheets share one image, in the place of the first of them);
 2. the image of the usage each attached item uses, in panel order (only when the panel has items);
 3. the user's layout sketch (only when the panel has one);
 4. the previous panel's current image.
 
-The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
+The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the app first packs character sheets: it draws the sheets of the last cast members side by side on one image, each under the character's name, and sends them as one reference image. It packs as few as it takes (at least 2, at most 4), so the first characters keep a sheet of their own (see Panel Prompt with packed character sheets). If there are still too many, or the packed image cannot be drawn, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. A packed sheet is drawn smaller than a sheet of its own, and small details can drift between neighbors. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
 
 Worked example. The project style is the default, Jin wears his base variation (no delta) and Mina wears "Outfit: School uniform"; the previous panel has a ready image:
 
@@ -115,7 +115,32 @@ Worked example. Jin fires the Kestrel blaster (usage "Firing") while Mina ducks;
 [CONTINUITY] Continues directly from the previous panel (reference image 4). Keep setting layout, lighting, time of day and outfits consistent. Same night bus interior and dim light as the previous panel.
 ```
 
-Reference images sent: 1 = Jin's base image, 2 = Mina's school-uniform image, 3 = the blaster's "Firing" image, 4 = the previous panel's current image. With a cap of 3, the previous panel is dropped first: the [CONTINUITY] line then reads "the previous panel (no reference image)". With a cap of 2, the blaster is dropped too: its line reads "- Kestrel blaster (no reference image): ..." and keeps its lock, but its look and use can drift.
+Reference images sent: 1 = Jin's base image, 2 = Mina's school-uniform image, 3 = the blaster's "Firing" image, 4 = the previous panel's current image. With a cap of 3, Jin's and Mina's sheets are packed onto reference image 1, and the blaster and the previous panel become 2 and 3. With a cap of 2, the previous panel is dropped too: the [CONTINUITY] line then reads "the previous panel (no reference image)". With a cap of 1, the blaster is dropped as well: its line reads "- Kestrel blaster (no reference image): ..." and keeps its lock, but its look and use can drift.
+
+### Panel Prompt with packed character sheets
+
+When the references are over the image model's limit and at least 2 cast members have a ready image, the sheets of the last cast members are packed onto one image. The pack takes the place of its first member, a sentence follows [CHARACTERS], and each packed member's line names its sheet:
+
+```
+[STYLE] {stylePreset}. Vertical-scroll webtoon panel, {aspect} aspect ratio, {shot} shot. No text, no speech bubbles, no captions, no watermark.
+[SETTING] {setting}
+[ACTION] {description}
+[CHARACTERS] Reference image {p} holds {count} character sheets, each labeled with the person's name, only to show what each person looks like: never copy its layout, background, poses or labels.
+- {name} (reference image {n}): {appearanceLock} Look: {variation.name} — {variation.delta}. Action: {action}. Expression: {expression}. Position: {position}.
+- {name} (reference image {p}, the sheet labeled {name}): {appearanceLock} Look: {variation.name} — {variation.delta}. Action: {action}. Expression: {expression}. Position: {position}.
+- {name} (reference image {p}, the sheet labeled {name}): {appearanceLock} Look: {variation.name} — {variation.delta}. Action: {action}. Expression: {expression}. Position: {position}.
+[CONTINUITY] Continues directly from the previous panel (reference image {m}). Keep setting layout, lighting, time of day and outfits consistent. {continuityNotes}
+```
+
+{p} is the number of the packed image and {count} the number of sheets on it.
+
+- **As few as it takes.** Each sheet packed with another frees one slot, so the app packs just enough of the last ready cast members to fit the limit, at least 2 and at most 4. With 4 references allowed, 3 cast members, an item and the previous panel pack the last two characters; 4 cast members, an item, a sketch and the previous panel pack all four. When even 4 on one image leave more cast than slots (a limit of 1 or 2 with a big cast), the first ones are packed instead, and the last ones are dropped.
+- **Layout.** Two sheets sit side by side; three or four fill a 2 × 2 grid, left to right, then top to bottom, in cast order (three leave the last corner blank). A white band above each sheet holds the character's name in large bold type. The name is only on the reference image: the panel itself is still drawn with no text.
+- **Only character sheets are packed,** and only for a generation. Item images are never packed, and an edit drops references over its limit as before.
+- **The packed image is stored in the panel's folder** and reused by every redraw with the same sheets and names. A version's reference images list it like any other.
+- If the packed image cannot be drawn, the panel is drawn without it, dropping references as described above.
+
+Worked example. With 4 references allowed, Jin, Mina and Dohyun are cast, Jin holds the Kestrel blaster, and the previous panel has a ready image. That is 5 references, so Mina's and Dohyun's sheets are packed: 1 = Jin's image, 2 = one image with Mina's sheet on the left and Dohyun's on the right, 3 = the blaster's image, 4 = the previous panel. The [CHARACTERS] line reads "[CHARACTERS] Reference image 2 holds 2 character sheets, ...", Jin's line reads "- Jin (reference image 1): ...", and Mina's reads "- Mina (reference image 2, the sheet labeled Mina): ...".
 
 ### Panel Prompt with a layout sketch
 
@@ -210,7 +235,7 @@ Edit the first image: {instruction}. Keep everything else unchanged — composit
 When a model is assigned to the vision role (Settings → Models), the app checks every newly generated panel image (not edits, not uploads) with that model:
 
 - **System prompt:** the project's `reference/consistency-checklist` doc, word for word. Editing that doc changes how the checker judges.
-- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, then the usage images of the panel's items, then the previous panel, then the generated image last), the cast, the items (only when the panel has any), the panel description and the shot:
+- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, or a packed image of several of them, then the usage images of the panel's items, then the previous panel, then the generated image last), the cast, the items (only when the panel has any), the panel description and the shot:
 
 ```
 Images, in the order attached:
@@ -247,6 +272,26 @@ Shot: {shot}
 ```
 
   The items block has one line per item, in panel order, and is left out when the panel has no items. A usage with no delta reads "Use: {usage.name}". "Held by:" is the holder's name or "nobody". An item whose reference image was not sent ends the line with "(no reference image)" and has no entry in the image list. References are matched to cast members and items by who they belong to, never by label, so an item may share a name with a character.
+
+  When character sheets were packed onto one image (see Panel Prompt with packed character sheets), that image is one entry in the list, naming whose sheet is where. Its members count as sent, so their cast lines have no "(no reference image)":
+
+```
+Images, in the order attached:
+1. Reference: {name}
+2. Reference: character sheets, each labeled with the person's name: {name} (left), {name} (right)
+3. Reference: previous panel
+4. Generated panel (the image to check)
+
+Cast:
+- {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
+- {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
+- {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
+
+Panel description: {description}
+Shot: {shot}
+```
+
+  With three or four sheets on the image, the places read "top left", "top right", "bottom left" and "bottom right".
 - **Images:** the reference images in the same order, then the generated image last. All are downscaled to at most 1568 px on the long edge.
 - **Expected answer:** one JSON object, `{"passed": true|false, "issues": ["…"]}`, as the checklist's Output Format says.
 

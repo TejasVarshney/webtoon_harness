@@ -3200,6 +3200,16 @@ kbd {
   gap: 4px;
 }
 
+.model-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-form-field .hint {
+  margin: 0;
+}
+
 .endpoint-form .inline-label,
 .model-form .inline-label {
   flex-direction: row;

@@ -18,8 +18,9 @@ import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files
 import { readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
 import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft } from './panel-validation'
-import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
+import { composePanelPrompt, editPanelPrompt, type PanelPromptInput, type PanelPromptReference, type PanelPromptResult } from './prompts'
 import { failureMessage, INTERRUPTED, now, type UploadExt } from './records'
+import { packRelPath, storePacks, type PackComposer } from './reference-pack'
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
 export class PanelValidationError extends Error {
@@ -40,6 +41,8 @@ export interface PanelServiceOptions {
   trash: (absPath: string) => Promise<void>
   /** The vision consistency check. Without one, `generate` never checks or retries. */
   checker?: Pick<ConsistencyChecker, 'check'>
+  /** Draws packed reference images. Without one, a generation drops the references over the image model's cap. */
+  packComposer?: PackComposer
 }
 
 
@@ -239,7 +242,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const itemRoster = await this.itemRoster(ctx)
       const previous = readyImage(await this.previousOf(ctx, panel))
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
+      const composed = await this.composeWithPacks(ctx, panel.id, { stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
@@ -250,6 +253,24 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       return { version: await recordAttempt(this.emit, ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
     return { version: await recordAttempt(this.emit, ctx, id, attempt, { call: () => this.opts.images.generate(ctx, request) }), context }
+  }
+
+  /**
+   * The generation prompt, with cast sheets packed over the cap when a composer is set and each pack drawn into the
+   * panel folder (no lock held: see `storePacks`). A pack that cannot be drawn costs only the packing: the prompt is
+   * composed again without it, dropping references as it would with no composer.
+   */
+  private async composeWithPacks(ctx: ProjectContext, panelId: string, input: PanelPromptInput): Promise<PanelPromptResult> {
+    const composer = this.opts.packComposer
+    if (!composer) return composePanelPrompt(input)
+    const packed = composePanelPrompt({ ...input, packing: { path: (members) => packRelPath(panelId, members) } })
+    try {
+      await storePacks(ctx, composer, packed.references)
+      return packed
+    } catch (error) {
+      console.warn(`Panel ${panelId}: the packed reference image could not be drawn, so references over the cap are dropped`, error)
+      return composePanelPrompt(input)
+    }
   }
 
   /** Edits the current ready image into a child version. Same recording rules as `generate`. */

@@ -1,7 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import type { Capability, EndpointConfig, ModelConfig } from '@shared/types'
 import { useModelsStore } from '../../stores/models-store'
 import { KIND_CAPABILITIES } from './presets'
+
+/** What the cap does when this model draws panels: over it, cast sheets are packed onto one image (`reference-pack.ts`). */
+const MAX_REFS_HINT =
+  "The most images sent with one request. When drawing a panel needs more, character sheets are stitched onto one image, each under the character's name, and whatever still does not fit is left out."
 
 export interface ModelFormProps {
   endpoint: EndpointConfig
@@ -20,6 +24,7 @@ export function ModelForm({ endpoint, model, onDone, onCancel }: ModelFormProps)
   const [params, setParams] = useState(JSON.stringify(model?.params ?? {}, null, 2))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const maxRefsHintId = useId()
 
   const allowed = KIND_CAPABILITIES[endpoint.kind]
 
@@ -76,10 +81,15 @@ export function ModelForm({ endpoint, model, onDone, onCancel }: ModelFormProps)
           </label>
         ))}
       </fieldset>
-      <label>
-        Max reference images
-        <input inputMode="numeric" value={maxRefs} onChange={(e) => setMaxRefs(e.target.value)} />
-      </label>
+      <div className="model-form-field">
+        <label>
+          Max reference images
+          <input inputMode="numeric" aria-describedby={maxRefsHintId} value={maxRefs} onChange={(e) => setMaxRefs(e.target.value)} />
+        </label>
+        <p id={maxRefsHintId} className="hint">
+          {MAX_REFS_HINT}
+        </p>
+      </div>
       <label>
         Params (JSON)
         <textarea rows={3} value={params} onChange={(e) => setParams(e.target.value)} />
