@@ -39,16 +39,20 @@ All of a group's outlines are drawn first and all of its fills on top, so each f
 `BubbleBody` already draws a thought cloud this way. No polygon union and no new dependency.
 
 This cannot be done inside each bubble: `translate` makes every `.bubble-placed` its own stacking context, so one
-bubble's outline cannot sit under another's fill. A shared layer does it, under every layer that holds text, so that
-no fill can cover a member's lettering:
+bubble's outline cannot sit under another's fill. A shared layer does it, under the layers that hold its members' text,
+so that no fill can cover their lettering. A group of placed bubbles keeps today's place above the automatic layer and
+the sound effects; only a group with an automatic member goes lower:
 
 ```
 .dialogue-overlay
-  svg.dialogue-merge     <- new: only when a group exists
+  svg.dialogue-merge     <- new: groups with an automatic member
   .dialogue-flow
   .dialogue-sfx
+  svg.dialogue-merge     <- new: groups of placed bubbles only
   .dialogue-placed
 ```
+
+Each layer is drawn only when it has a group.
 
 `svg.dialogue-merge` fills the overlay, ignores the pointer, and is drawn in px at the overlay's own scale. For each
 group, in dialogue order, it paints every member's outline pass and then every member's fill pass.
@@ -92,8 +96,9 @@ overlay's early return.
 - Selecting, typing in, resizing and dragging work per bubble as they do now.
 - Tails stay in each bubble's element. A tail that crosses a neighbouring member draws over its fill. Rare, left as it is.
 - With automatic merging, one bubble of the same look cannot sit in front of another.
-- An unmerged bubble or sound effect overlapping a merged group always paints above the group, because the layer sits
-  under them all. Today that order follows the dialogue.
+- An unmerged placed bubble overlapping a merged group always paints above the group, because the layers sit under
+  `.dialogue-placed`. Today that order follows the dialogue.
+- A group with an automatic member also paints under sound-effect lettering and unmerged automatic bubbles it overlaps.
 
 ## 2. Padding
 

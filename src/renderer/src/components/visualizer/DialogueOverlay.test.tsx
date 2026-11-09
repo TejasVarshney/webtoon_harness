@@ -164,8 +164,8 @@ describe('DialogueOverlay merging', () => {
     const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B')]} />)
     expect(container.querySelectorAll('.dialogue-merge ellipse')).toHaveLength(4)
     expect(merged(container)).toBe(2)
-    // Under the automatic layer as well as the placed one, so no member's text can end up beneath a fill.
-    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-flow')
+    // Placed bubbles cover the automatic layer and the sound effects, merged or not.
+    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-placed')
   })
 
   it('paints every outline before any fill', () => {
@@ -190,6 +190,16 @@ describe('DialogueOverlay merging', () => {
     const { container } = render(<DialogueOverlay dialogue={[placed('A'), line('dlg_B', 'B')]} />)
     expect(merged(container)).toBe(2)
     expect(bubbleOf(container, 'B').parentElement).toHaveClass('dialogue-flow')
+    // Under the automatic layer, or its fill would cover the automatic member's text.
+    expect(container.querySelector('.dialogue-merge')!.nextElementSibling).toHaveClass('dialogue-flow')
+  })
+
+  it('draws each group in its own place when a panel has both kinds', () => {
+    boxes = { A: [0, 0, 100, 50], B: [60, 0, 100, 50], C: [0, 200, 100, 50], D: [60, 200, 100, 50] }
+    const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('B'), placed('C'), line('dlg_D', 'D')]} />)
+    const next = [...container.querySelectorAll('.dialogue-merge')].map((layer) => layer.nextElementSibling!.className)
+    expect(next).toEqual(['dialogue-flow', 'dialogue-placed'])
+    expect(merged(container)).toBe(4)
   })
 
   it('measures nothing on a panel with no placed bubble', () => {

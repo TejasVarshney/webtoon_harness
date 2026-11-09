@@ -8,7 +8,7 @@ import { layoutBubbles } from './bubble-layout'
 import { mergedLook, mergeKey } from './bubble-merge'
 import { bubbleStyleProps } from './bubble-style'
 import { hasTail } from './bubble-tail'
-import { useMergedBubbles } from './use-merged-bubbles'
+import { useMergedBubbles, type MergedGroup } from './use-merged-bubbles'
 import { useRoster } from './use-roster'
 
 /**
@@ -53,7 +53,7 @@ export interface DialogueOverlayProps {
  * as inline variables, with `bubble-sized` when it sets a width, and a line shaped as a sound effect sits in the
  * sound-effect layer whatever its kind. While editing, the selected bubble has the tail's dot and the width handles,
  * unless its text is open. Bubbles of the same look that overlap are drawn as one balloon by `MergedBubbles`, under
- * every layer that holds text: each keeps its box, text and handles, and gives up only its own outline and fill.
+ * the layers that hold their text: each keeps its box, text and handles, and gives up only its own outline and fill.
  */
 export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverlayProps) {
   const roster = useRoster(dialogue.some((line) => line.speakerId !== null))
@@ -111,11 +111,17 @@ export function DialogueOverlay({ dialogue, cast = [], editing }: DialogueOverla
   const placed = indexed.filter((l) => l.placed)
   const flow = indexed.filter((l) => !l.placed && !l.sfx)
   const sfx = indexed.filter((l) => !l.placed && l.sfx)
+  // A group with an automatic member goes under the automatic layer, or its fill would cover that member's text. The
+  // rest stay where placed bubbles have always been, over the automatic layer and the sound effects.
+  const hasAutomatic = (group: MergedGroup): boolean => group.some((m) => m.index < dialogue.length && placementOf(dialogue[m.index], m.index) === null)
+  const belowFlow = groups.filter(hasAutomatic)
+  const belowPlaced = groups.filter((group) => !hasAutomatic(group))
   return (
     <div ref={overlay} className="dialogue-overlay" data-editing={editing ? 'true' : undefined}>
-      {groups.length > 0 && <MergedBubbles groups={groups} lookOf={lookOf} />}
+      {belowFlow.length > 0 && <MergedBubbles groups={belowFlow} lookOf={lookOf} />}
       <div className="dialogue-flow">{flow.map(({ line, i }) => bubble(line, i))}</div>
       {sfx.length > 0 && <div className="dialogue-sfx">{sfx.map(({ line, i }, n) => bubble(line, i, n % 2 === 1 ? ' bubble-tilt-right' : ''))}</div>}
+      {belowPlaced.length > 0 && <MergedBubbles groups={belowPlaced} lookOf={lookOf} />}
       {placed.length > 0 && <div className="dialogue-placed">{placed.map(({ line, i }) => bubble(line, i))}</div>}
     </div>
   )

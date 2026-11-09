@@ -4,8 +4,8 @@ import type { MergedGroup, MergedMember } from './use-merged-bubbles'
 
 // The bodies of bubbles that overlap, drawn together so that they read as one balloon: every outline of a group first,
 // then every fill on top, so each fill covers the outlines crossing it. It has to be one layer: each placed bubble is
-// its own stacking context, so a bubble's outline could not sit under another bubble's fill. It goes under every layer
-// that holds text, so no bubble's fill can cover a member's lettering.
+// its own stacking context, so a bubble's outline could not sit under another bubble's fill. It goes under the layers
+// that hold its members' text, so no fill can cover their lettering.
 
 /** A radius less the part of the outline inside it. Never negative: the outline can be wider than a small bubble. */
 const inset = (radius: number, by: number): number => Math.max(radius - by, 0)
