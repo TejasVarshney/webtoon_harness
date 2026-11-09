@@ -2506,13 +2506,14 @@ kbd {
   stroke-linejoin: round;
 }
 
-/* A curly frame: its path is built for the bubble's measured box (BubbleBody). */
+/* A curly frame: its path is built for the bubble's measured box (BubbleBody). The loops stand 0.94em in from the box,
+   so the padding clears them first, and what the Padding control scales is the room left beside the text. */
 .bubble-curly {
-  padding: calc(1.3em * var(--bubble-padding, 1)) calc(1.6em * var(--bubble-padding, 1));
+  padding: calc(1em + 0.4em * var(--bubble-padding, 1)) calc(1em + 0.7em * var(--bubble-padding, 1));
 }
 
 .bubble-curly .bubble-body path {
-  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-width: var(--bubble-stroke-width, 1px);
   stroke-linejoin: round;
 }
 

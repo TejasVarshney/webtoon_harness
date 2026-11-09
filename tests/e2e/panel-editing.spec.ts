@@ -743,6 +743,29 @@ test('a press near the middle of a short selected bubble moves it and leaves its
   await app.close()
 })
 
+test('overlapping bubbles share one outline, and part when dragged apart', async () => {
+  const { app, page, stage } = await openPanelWith([
+    { speakerId: null, kind: 'speech', text: 'The first of them', placement: { x: 0.3, y: 0.3 } },
+    { speakerId: null, kind: 'speech', text: 'The second of them', placement: { x: 0.7, y: 0.7 } }
+  ])
+  const second = stage.locator('[data-line="1"]')
+  await expect(stage.locator('.dialogue-merge')).toHaveCount(0)
+
+  await dragBubble(page, stage, second, 0.4, 0.3)
+  await expect(stage.locator('.bubble-merged')).toHaveCount(2)
+  await expect(stage.locator('.dialogue-merge')).toBeVisible()
+  const body = stage.locator('.dialogue-merge ellipse').first()
+  const placedBox = await boxOf(stage.locator('[data-line="0"]'))
+  const drawn = await boxOf(body)
+  expect(Math.abs(drawn.x - placedBox.x), 'the merged body sits under its bubble').toBeLessThan(1)
+  expect(Math.abs(drawn.width - placedBox.width)).toBeLessThan(1)
+
+  await dragBubble(page, stage, second, 0.7, 0.7)
+  await expect(stage.locator('.bubble-merged')).toHaveCount(0)
+  await expect(stage.locator('.dialogue-merge')).toHaveCount(0)
+  await app.close()
+})
+
 // Two bubbles on one spot: the one underneath, selected from its row, comes to the front and takes the press.
 test('a selected bubble under another takes the press', async () => {
   const spot = { x: 0.5, y: 0.5 }

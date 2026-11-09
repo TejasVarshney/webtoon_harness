@@ -233,6 +233,70 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   await app.close()
 })
 
+test('an export draws overlapping bubbles as one balloon', async () => {
+  // A wide outline to sample, and short lines in wide padding so that no lettering lies on the sampled pixels.
+  const style = { strokeWidth: 6, padding: 2 }
+  const script = {
+    turns: [
+      {
+        toolCalls: [
+          {
+            name: 'create_panel',
+            input: {
+              episodeId: { $episode: 'current' },
+              description: 'An empty street.',
+              setting: 'Street at night',
+              shot: 'wide',
+              characters: [],
+              dialogue: [
+                { speakerId: null, kind: 'speech', text: 'Yo', placement: { x: 0.4, y: 0.4 }, style },
+                { speakerId: null, kind: 'speech', text: 'Hi', placement: { x: 0.55, y: 0.4 }, style }
+              ]
+            }
+          }
+        ]
+      },
+      { text: 'Drew a panel.' }
+    ]
+  }
+  const target = await mkdtemp(join(tmpdir(), 'webtoon-export-merged-'))
+  const { app, page } = await launchApp({ script, exportTarget: target })
+  await createProjectAndSession(page, 'Moon Diary')
+  await sendChat(page, 'Draw a panel', 'Drew a panel.')
+  await openTab(page, 'webtoon')
+  await expect(page.getByTestId('panel-card').locator('img')).toHaveCount(1)
+
+  type Box = { left: number; top: number; width: number; height: number }
+  await recordExportGeometry(
+    app,
+    `(() => {
+      const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top + scrollY, width: r.width, height: r.height } }
+      return { layer: document.querySelectorAll('.dialogue-merge').length, merged: document.querySelectorAll('.bubble-merged').length, bubbles: [...document.querySelectorAll('.dialogue-placed > .bubble')].map(box) }
+    })()`
+  )
+  await exportActiveEpisode(page, 'webtoon', false)
+  const geometry = await exportGeometry<{ layer: number; merged: number; bubbles: Box[] }>(app)
+  expect(geometry).toMatchObject({ layer: 1, merged: 2 })
+  const [first, second] = geometry!.bubbles
+
+  const folder = (await readdir(target)).find((n) => n.startsWith('Moon Diary - 01 - '))!
+  const slices = await slicesOf(app, join(target, folder))
+  const scale = slices[0].width / 440
+  /** The brightest channel of the output pixel at this point of the export's page, in CSS px. */
+  const brightness = async (x: number, y: number): Promise<number> => {
+    const outY = Math.round(y * scale)
+    const slice = slices[Math.floor(outY / 1280)]
+    const bgra = await app.evaluate(({ nativeImage }, [p, x, y]) => nativeImage.createFromPath(p as string).crop({ x: x as number, y: y as number, width: 1, height: 1 }).toBitmap(), [slice.path, Math.round(x * scale), outY % 1280])
+    return Math.max(...Array.from(bgra as Uint8Array).slice(0, 3))
+  }
+  const middle = first.top + first.height / 2
+  // The middle of the first bubble's left edge, which nothing overlaps: this is what an outline looks like here.
+  expect(await brightness(first.left + 3, middle), 'an outline outside the overlap is dark').toBeLessThan(64)
+  // The later bubble's left edge inside the first: drawn in front of it, separately, this would be just as dark.
+  expect(await brightness(second.left + 3, middle), 'no outline runs through the overlap').toBeGreaterThan(200)
+  await app.close()
+})
+
 test('Without lettering draws no bubble and no tail', async () => {
   const mina = { $character: 'Mina' }
   const script = {

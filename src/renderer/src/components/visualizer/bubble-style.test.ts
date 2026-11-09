@@ -14,6 +14,10 @@ describe('bubble style', () => {
     expect(bubbleDefaults('burst')).toMatchObject({ fill: '#111111', color: '#ffffff' })
   })
 
+  it('draws a curly frame in a thin line, so its loops stay open', () => {
+    expect(bubbleDefaults('curly').strokeWidth).toBe(1)
+  })
+
   it('sets nothing for a line with no style', () => {
     expect(bubbleStyleProps(null)).toEqual({})
   })

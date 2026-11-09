@@ -58,7 +58,7 @@ export function BodyArt({ shape, pass }: { shape: 'shout' | 'thought'; pass: Bod
 }
 
 /** A loop's length along the frame, in ems, so the loops grow with the lettering. */
-const CURLY_LOOP_EM = 0.55
+const CURLY_LOOP_EM = 0.7
 
 /** A curly frame, built in px for the bubble's measured box, so its loops stay round at any width. */
 function CurlyBody() {

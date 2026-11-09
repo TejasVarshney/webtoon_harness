@@ -31,6 +31,8 @@ export function bubbleDefaults(shape: BubbleShape): Defaults {
       return { ...base, font: 'bangers', bold: false, color: '#ffffff' }
     case 'burst':
       return { ...base, color: '#ffffff', fill: '#111111' }
+    case 'curly':
+      return { ...base, strokeWidth: 1 }
     default:
       return base
   }
