@@ -40,7 +40,8 @@ describe('docs IPC handlers', () => {
       'workflows/location-creation',
       'workflows/panel-editing',
       'workflows/panel-generation',
-      'workflows/story-direction'
+      'workflows/story-direction',
+      'workflows/style-setup'
     ])
     expect(docs[0].title).toBe('Webtoon Agent')
     expect(docs.every((d) => d.title !== '' && d.title !== d.name)).toBe(true)
