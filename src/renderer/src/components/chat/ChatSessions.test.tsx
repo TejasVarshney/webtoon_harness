@@ -99,6 +99,23 @@ describe('ChatSessions', () => {
     await waitFor(() => expect(calls.find((c) => c.channel === 'sessions:delete')?.req).toEqual({ projectId: P, sessionId: 'ses_0000000001' }))
   })
 
+  it('does not leave a rename open when the list closes', async () => {
+    seed([session('ses_0000000001', 'Old')])
+    installFakeApi({})
+    render(<ChatSessions />)
+    for (const close of [() => userEvent.keyboard('{Escape}'), () => userEvent.click(document.body)]) {
+      await openList()
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByTestId('session-item') })
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+      expect(screen.getByRole('textbox', { name: 'Session title' })).toBeInTheDocument()
+      await close()
+      expect(screen.queryByTestId('session-item')).toBeNull()
+      await openList()
+      expect(screen.queryByRole('textbox', { name: 'Session title' })).toBeNull()
+      await userEvent.click(screen.getByTestId('sessions-toggle'))
+    }
+  })
+
   it('shows a running dot for running sessions', async () => {
     seed([session('ses_0000000001', 'A'), session('ses_0000000002', 'B')])
     useAppStore.setState({ runningThreads: { ses_0000000001: 'run_1' } })

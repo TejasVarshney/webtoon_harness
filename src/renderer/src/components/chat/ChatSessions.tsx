@@ -45,11 +45,11 @@ export function ChatSessions() {
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         if (useAppStore.getState().projectId !== null) {
-          setOpen(false)
+          close()
           run(useAppStore.getState().newSession())
         }
       } else if (e.key === 'Escape') {
-        setOpen(false)
+        close()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -59,7 +59,7 @@ export function ChatSessions() {
   useEffect(() => {
     if (!open) return
     function onPointerDown(e: PointerEvent): void {
-      if (root.current !== null && !root.current.contains(e.target as Node)) setOpen(false)
+      if (root.current !== null && !root.current.contains(e.target as Node)) close()
     }
     window.addEventListener('pointerdown', onPointerDown)
     return () => window.removeEventListener('pointerdown', onPointerDown)
@@ -71,6 +71,12 @@ export function ChatSessions() {
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [menu])
+
+  /** Closing the list drops a half-typed rename: an unmounted input never fires its blur. */
+  function close(): void {
+    setOpen(false)
+    setRenamingId(null)
+  }
 
   function startRename(s: SessionSummary): void {
     setMenu(null)
@@ -91,7 +97,7 @@ export function ChatSessions() {
 
   function choose(s: SessionSummary): void {
     selectSession(s.id)
-    setOpen(false)
+    close()
   }
 
   function renderItem(s: SessionSummary) {
@@ -159,7 +165,7 @@ export function ChatSessions() {
           aria-expanded={open}
           aria-haspopup="true"
           disabled={projectId === null}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => (open ? close() : setOpen(true))}
         >
           <span className="sessions-toggle-title">{current?.title ?? 'No session'}</span>
           <ChevronDown size={16} aria-hidden="true" />
