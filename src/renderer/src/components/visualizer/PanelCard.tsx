@@ -41,6 +41,9 @@ export interface PanelCardProps {
 export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position, bind, bindResize }: PanelCardProps) {
   // The tools are for one panel at a time: with several selected, the selection bar acts on them.
   const alone = useAppStore((s) => s.selectedPanelIds.length <= 1)
+  // Focus mode is the one editor of its panel: no popover of the strip may float over it with a second one.
+  const focusing = useAppStore((s) => s.focusedPanelId !== null)
+  const showTools = selected && alone && !focusing
   const cardRef = useRef<HTMLElement>(null)
 
   // Selecting from elsewhere (a chat thumbnail) must bring the card into view, and its tools, which hang below it.
@@ -49,7 +52,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
     if (!selected) return
     cardRef.current?.scrollIntoView?.({ block: 'nearest' })
     cardRef.current?.querySelector('.panel-tools')?.scrollIntoView?.({ block: 'nearest' })
-  }, [selected, alone])
+  }, [selected, showTools])
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height. On the canvas it has a
   // box of its own, and the height follows its aspect.
@@ -105,10 +108,9 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
       data-testid="panel-card"
       data-panel-id={panel.id}
       data-selected={String(selected)}
-      data-tools={String(selected && alone)}
+      data-tools={String(showTools)}
       data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
       data-beside={String(panel.beside)}
-      data-gutter={panel.gutter}
       data-gap={panel.gapAfter}
       data-slant={slant}
       style={shape}
@@ -122,7 +124,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
       <PanelArt panel={panel} />
       {/* Outside PanelArt, whose export drawing must never show it. */}
       <PanelCheckBadge panel={panel} problemsOnly />
-      {selected && alone && <PanelTools panel={panel} />}
+      {showTools && <PanelTools panel={panel} />}
       {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
     </article>
   )

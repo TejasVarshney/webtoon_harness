@@ -105,7 +105,7 @@ describe('PanelCard', () => {
       expect(card).toHaveAttribute('data-slant', 'right')
       expect(card).toHaveAttribute('data-beside', 'true')
       expect(card).toHaveAttribute('data-gap', 'long')
-      expect(card).toHaveAttribute('data-gutter', 'black')
+      expect(card).not.toHaveAttribute('data-gutter')
     })
 
     it('has no slant unless given one', () => {
@@ -242,6 +242,31 @@ describe('PanelCard', () => {
       rerender(<PanelCard panel={p} selected={true} />)
       expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
       expect(screen.getByTestId('panel-card')).toHaveAttribute('data-tools', 'false')
+    })
+
+    it.each(['Focus', 'Sketch'])('%s closes an open popover: focus mode holds the only editor of the panel', async (name) => {
+      installFakeApi({})
+      const p = panel()
+      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
+      render(<PanelCard panel={p} selected={true} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Scene' }))
+      expect(screen.getByRole('dialog', { name: 'Scene' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name }))
+      expect(useAppStore.getState().focusedPanelId).toBe(p.id)
+      expect(screen.queryByRole('dialog', { name: 'Scene' })).toBeNull()
+      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
+    })
+
+    it('has none while any panel is open in focus mode, however it was opened', () => {
+      installFakeApi({})
+      const p = panel()
+      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
+      render(<PanelCard panel={p} selected={true} />)
+      expect(screen.getByRole('toolbar', { name: 'Panel tools' })).toBeInTheDocument()
+      act(() => useAppStore.getState().focusPanel(p.id))
+      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
+      act(() => useAppStore.getState().focusPanel(null))
+      expect(screen.getByRole('toolbar', { name: 'Panel tools' })).toBeInTheDocument()
     })
 
     it('clicking a tool does not select, open or clear anything on the strip', async () => {

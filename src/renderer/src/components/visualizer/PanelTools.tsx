@@ -44,18 +44,22 @@ function spotFor(button: Element): { left: number; top?: number; bottom?: number
 interface ToolPopoverProps {
   label: string
   anchor: Element
+  /** Where its button's card is along the strip, so it is placed again when the bar moves. */
+  shift: number
   /** Closes it, and `focusBack` says the focus should return to the button that opened it. */
   onClose(focusBack: boolean): void
   children: ReactNode
 }
 
 /** A panel of controls beside a tool's button, in the window's own layer. A press elsewhere or Escape closes it. */
-function ToolPopover({ label, anchor, onClose, children }: ToolPopoverProps) {
+function ToolPopover({ label, anchor, shift, onClose, children }: ToolPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [spot, setSpot] = useState(() => spotFor(anchor))
 
   // The first focus goes in, so the next Tab is in the controls: the popover is at the end of the page, not by its button.
   useEffect(() => ref.current?.focus({ preventScroll: true }), [])
+  // The bar slides along the card when the card is moved or the strip is resized: the button is somewhere else now.
+  useLayoutEffect(() => setSpot(spotFor(anchor)), [anchor, shift])
 
   useEffect(() => {
     function onPress(e: PointerEvent): void {
@@ -203,7 +207,7 @@ export function PanelTools({ panel }: PanelToolsProps) {
       )}
 
       {open !== null && (
-        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} onClose={close}>
+        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} shift={shift} onClose={close}>
           {open.tool === 'versions' ? (
             <VersionSwitcher panel={panel} />
           ) : (
