@@ -302,6 +302,9 @@ export const PanelVersionSchema = z.object({
   createdAt: IsoTimestamp
 })
 
+/** Where a panel sits on the free strip, in strip px (the strip is 440 wide): its top-left corner and its width. Height follows from the aspect. */
+export const PanelPlacementSchema = z.object({ x: z.number(), y: z.number(), width: z.number() })
+
 export const PanelSchema = z.object({
   id: Id,
   episodeId: Id,
@@ -319,6 +322,8 @@ export const PanelSchema = z.object({
   beside: z.boolean().default(false),
   gapAfter: PanelGapSchema.default('normal'),
   gutter: PanelGutterSchema.default('white'),
+  /** Null: the panel flows with the rows around it (see `resolveStrip`). Set: it holds that place on the strip. */
+  placement: PanelPlacementSchema.nullable().default(null),
   characters: z.array(PanelCharacterSchema).default([]),
   items: z.array(PanelItemSchema).default([]),
   dialogue: z.array(DialogueLineSchema),

@@ -38,6 +38,7 @@ export function panel(o: Partial<Panel> = {}): Panel {
     beside: false,
     gapAfter: 'normal',
     gutter: 'white',
+    placement: null,
     characters: [],
     items: [],
     dialogue: [],

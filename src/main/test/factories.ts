@@ -108,6 +108,7 @@ export function makePanel(o: Overrides<typeof PanelSchema> = {}): Panel {
     beside: false,
     gapAfter: 'normal',
     gutter: 'white',
+    placement: null,
     dialogue: [],
     createdBy: 'user',
     createdAt: T,
