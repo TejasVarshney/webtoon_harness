@@ -25,7 +25,7 @@ describe('BubbleStyleBlock', () => {
     expect(screen.getByLabelText('Font')).toHaveValue('comic')
     expect(screen.getByLabelText('Font').querySelector('option:checked')).toHaveTextContent('Comic Neue')
     expect(screen.getByLabelText('Size')).toHaveValue('100')
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getAllByText('100%')).toHaveLength(2)
     expect(pressed(screen.getByRole('button', { name: 'Bold' }))).toBe('true')
     expect(pressed(screen.getByRole('button', { name: 'Capitals' }))).toBe('true')
     expect(pressed(screen.getByRole('button', { name: 'Italic' }))).toBe('false')
@@ -102,6 +102,16 @@ describe('BubbleStyleBlock', () => {
     expect(screen.queryByLabelText('Fill')).toBeNull()
     expect(screen.queryByLabelText('Outline width')).toBeNull()
     expect(screen.getByLabelText('Outline')).toBeInTheDocument()
+  })
+
+  it('sets the padding, and has no padding for a sound effect', () => {
+    const first = mount()
+    expect(screen.getByLabelText('Padding')).toHaveValue('100')
+    fireEvent.change(screen.getByLabelText('Padding'), { target: { value: '150' } })
+    expect(first.onStyle).toHaveBeenCalledWith({ padding: 1.5 })
+    first.view.unmount()
+    mount({ autoShape: 'sfx' })
+    expect(screen.queryByLabelText('Padding')).toBeNull()
   })
 
   it('says where a pointed tail points', () => {

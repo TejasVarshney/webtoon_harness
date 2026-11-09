@@ -2422,7 +2422,7 @@ kbd {
 .bubble-speech,
 .bubble-whisper,
 .bubble-shout {
-  padding: 1em 1.35em;
+  padding: calc(1em * var(--bubble-padding, 1)) calc(1.35em * var(--bubble-padding, 1));
   margin-bottom: calc(var(--tail) * 0.6);
 }
 
@@ -2446,7 +2446,7 @@ kbd {
 }
 
 .bubble-shout {
-  padding: 1.7em 1.9em;
+  padding: calc(1.7em * var(--bubble-padding, 1)) calc(1.9em * var(--bubble-padding, 1));
   font-size: calc(clamp(10px, 4cqw, 24px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -2537,7 +2537,7 @@ kbd {
 /* The cloud's bumps eat into its box, so its text keeps well inside. */
 .bubble-thought {
   min-width: 7em;
-  padding: 1.9em 2.4em;
+  padding: calc(1.9em * var(--bubble-padding, 1)) calc(2.4em * var(--bubble-padding, 1));
   margin-bottom: 1.4em;
   font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   font-weight: 400;
@@ -2697,7 +2697,7 @@ kbd {
 /* A caption box: square corners and a hard offset shadow, in the top corner. */
 .bubble-caption {
   max-width: 72%;
-  padding: 0.5em 0.75em;
+  padding: calc(0.5em * var(--bubble-padding, 1)) calc(0.75em * var(--bubble-padding, 1));
   font-size: calc(clamp(9px, 3.1cqw, 18px) * var(--lettering) * var(--bubble-size, 1));
   text-align: left;
   box-shadow: 0.25em 0.25em 0 var(--bubble-stroke, #111);

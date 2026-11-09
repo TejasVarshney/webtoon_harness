@@ -144,6 +144,16 @@ export function BubbleStyleBlock({ autoShape, style, tail, onStyle, onTail }: Bu
             </span>
           )}
         </Field>
+        {shape !== 'sfx' && (
+          <Field label="Padding">
+            {(id) => (
+              <span className="bubble-style-slider">
+                <input id={id} type="range" min={30} max={200} step={5} value={Math.round(look.padding * 100)} onChange={(e) => change({ padding: Number(e.target.value) / 100 })} />
+                <output htmlFor={id}>{`${Math.round(look.padding * 100)}%`}</output>
+              </span>
+            )}
+          </Field>
+        )}
         <div className="bubble-style-buttons" role="group" aria-label="Lettering">
           {toggle('Bold', 'bold', <Bold size={16} aria-hidden="true" />)}
           {toggle('Italic', 'italic', <Italic size={16} aria-hidden="true" />)}

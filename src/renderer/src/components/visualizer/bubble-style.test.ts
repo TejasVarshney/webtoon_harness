@@ -3,7 +3,7 @@ import { bubbleDefaults, bubbleStyleProps, withStyleChange } from './bubble-styl
 
 describe('bubble style', () => {
   it("knows each shape's default look", () => {
-    expect(bubbleDefaults('speech')).toEqual({ font: 'comic', size: 1, bold: true, italic: false, caps: true, align: 'center', color: '#111111', fill: '#ffffff', stroke: '#111111', strokeWidth: 2 })
+    expect(bubbleDefaults('speech')).toEqual({ font: 'comic', size: 1, bold: true, italic: false, caps: true, align: 'center', color: '#111111', fill: '#ffffff', stroke: '#111111', strokeWidth: 2, padding: 1 })
     expect(bubbleDefaults('whisper').bold).toBe(false)
     expect(bubbleDefaults('thought').bold).toBe(false)
     expect(bubbleDefaults('caption').align).toBe('left')
@@ -32,6 +32,11 @@ describe('bubble style', () => {
     expect(withStyleChange(null, { bold: false }, d)).toEqual({ bold: false })
     expect(withStyleChange({ bold: false }, { bold: true }, d)).toBeNull()
     expect(withStyleChange({ shape: 'shout', fill: '#ff0000' }, { shape: undefined }, d)).toEqual({ fill: '#ff0000' })
+  })
+
+  it('draws a padding as a variable and drops it at the default', () => {
+    expect(bubbleStyleProps({ padding: 1.5 })).toEqual({ '--bubble-padding': '1.5' })
+    expect(withStyleChange({ padding: 1.5 }, { padding: 1 }, bubbleDefaults('speech'))).toBeNull()
   })
 
   it('draws a width as a share of the panel, keeps it through other changes, and drops it when cleared', () => {

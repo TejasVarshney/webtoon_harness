@@ -245,6 +245,8 @@ export const BubbleStyleSchema = z.object({
   font: BubbleFontSchema.optional(),
   /** A multiplier of the lettering's size. */
   size: z.number().min(0.5).max(3).optional(),
+  /** A multiplier of the shape's own padding: the room between the text and the outline. */
+  padding: z.number().min(0.3).max(2).optional(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   caps: z.boolean().optional(),
