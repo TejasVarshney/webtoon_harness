@@ -222,29 +222,26 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([a])
     })
 
-    it('generatePanel, movePanel, revertPanel and uploadPanelImage call their channels and reload', async () => {
+    it('generatePanel, revertPanel and uploadPanelImage call their channels and reload', async () => {
       const a = panel({ id: 'pnl_00000000aa' })
       const b = panel({ id: 'pnl_00000000bb' })
       const version = panelVersion({ id: 'ver_0000000007', source: 'upload' })
       const { calls } = installFakeApi({
         'panels:generate': () => undefined,
-        'panels:move': () => undefined,
         'panels:revert': () => a,
         'panels:uploadImage': () => version,
         'panels:list': () => [a, b]
       })
       usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [a, b] } })
       await usePanelsStore.getState().generatePanel(a.id)
-      await usePanelsStore.getState().movePanel(b.id, 0)
       await usePanelsStore.getState().revertPanel(a.id, 'ver_0000000001')
       await expect(usePanelsStore.getState().uploadPanelImage(a.id)).resolves.toEqual(version)
       expect(calls.filter((c) => c.channel !== 'panels:list').map((c) => [c.channel, c.req])).toEqual([
         ['panels:generate', { projectId, panelId: a.id }],
-        ['panels:move', { projectId, panelId: b.id, toIndex: 0 }],
         ['panels:revert', { projectId, panelId: a.id, versionId: 'ver_0000000001' }],
         ['panels:uploadImage', { projectId, panelId: a.id }]
       ])
-      expect(calls.filter((c) => c.channel === 'panels:list').length).toBeGreaterThanOrEqual(4)
+      expect(calls.filter((c) => c.channel === 'panels:list').length).toBeGreaterThanOrEqual(3)
     })
 
     it('uploadPanelImage does not reload when the file dialog was cancelled', async () => {

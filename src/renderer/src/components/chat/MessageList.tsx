@@ -19,7 +19,7 @@ export interface MessageListProps {
 export function MessageList({
   threadKey,
   emptyTitle = 'Start with the premise, a character or the next scene.',
-  emptyHint = 'The agent writes the story bible, designs the cast and draws the panels into the strip on the right.'
+  emptyHint = 'The agent writes the story bible, designs the cast and draws the panels into the strip on the left.'
 }: MessageListProps) {
   const messages = useChatStore((s) => s.messages[threadKey] ?? NO_MESSAGES)
   const streaming = useChatStore((s) => s.streaming[threadKey] ?? '')

@@ -11,7 +11,7 @@ import { useModelsStore } from './stores/models-store'
 import { usePluginsStore } from './stores/plugins-store'
 
 export function App() {
-  const selectedPanelId = useAppStore((s) => s.selectedPanelId)
+  const focusedPanelId = useAppStore((s) => s.focusedPanelId)
   const projectId = useAppStore((s) => s.projectId)
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function App() {
       header={<ChatHeader />}
       left={<StudioPane />}
       right={<ChatPane />}
-      overlay={selectedPanelId === null ? undefined : <PanelWorkspace panelId={selectedPanelId} />}
+      overlay={focusedPanelId === null ? undefined : <PanelWorkspace panelId={focusedPanelId} />}
     />
   )
 }

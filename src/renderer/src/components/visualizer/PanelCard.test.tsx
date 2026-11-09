@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { assetUrl } from '@shared/asset-url'
@@ -19,7 +19,7 @@ beforeEach(() => {
   useCharactersStore.setState({ ...initialCharactersState, projectId, characters: [mina], loaded: true })
 })
 
-/** The strip a card sits in, so Move up/down know the panel's place. */
+/** The strip a card sits in, so its toolbar knows the panel's number. */
 function strip(...panels: Panel[]): void {
   usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: panels } })
 }
@@ -186,6 +186,25 @@ describe('PanelCard', () => {
     expect(card).toHaveTextContent('<img src=x onerror=alert(1)><b>bold</b>')
   })
 
+  it('a double click opens the panel in the editing mode, a click does not', async () => {
+    installFakeApi({})
+    const p = panel()
+    render(<PanelCard panel={p} selected={false} />)
+    await userEvent.click(screen.getByTestId('panel-card'))
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+    await userEvent.dblClick(screen.getByTestId('panel-card'))
+    expect(useAppStore.getState().focusedPanelId).toBe(p.id)
+  })
+
+  it('shift-click adds the panel to the selection', async () => {
+    installFakeApi({})
+    const p = panel()
+    useAppStore.getState().selectPanel('pnl_00000000aa')
+    render(<PanelCard panel={p} selected={false} />)
+    fireEvent.click(screen.getByTestId('panel-card'), { shiftKey: true })
+    expect(useAppStore.getState().selectedPanelIds).toEqual(['pnl_00000000aa', p.id])
+  })
+
   it('click selects the panel', async () => {
     installFakeApi({})
     const p = panel()
@@ -197,7 +216,7 @@ describe('PanelCard', () => {
     expect(screen.getByTestId('panel-card')).toHaveAttribute('data-selected', 'true')
   })
 
-  it('selects when the image is clicked and from the keyboard', async () => {
+  it('selects when the image is clicked, and opens from the keyboard', async () => {
     installFakeApi({})
     const p = panel()
     render(<PanelCard panel={p} selected={false} />)
@@ -206,66 +225,17 @@ describe('PanelCard', () => {
     useAppStore.getState().selectPanel(null)
     screen.getByTestId('panel-card').focus()
     await userEvent.keyboard('{Enter}')
+    expect(useAppStore.getState().focusedPanelId).toBe(p.id)
     expect(useAppStore.getState().selectedPanelId).toBe(p.id)
   })
 
   describe('hover toolbar', () => {
-    it('has no Edit button: the card itself opens the panel for editing', () => {
+    it('has no Edit, Beside or Move buttons: the strip places panels, and the card opens for editing', () => {
       installFakeApi({})
       render(<PanelCard panel={panel()} selected={false} />)
       const toolbar = screen.getByRole('group', { name: 'Panel actions' })
       expect(within(toolbar).queryByRole('button', { name: 'Edit' })).toBeNull()
-      expect(within(toolbar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete'])
-    })
-
-    it('toggles Beside previous with exactly the flag, without selecting the panel', async () => {
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb' })
-      const { calls } = installFakeApi({ 'panels:update': () => ({ panel: panel({ id: 'pnl_00000000bb', beside: true }), warnings: [] }), 'panels:list': () => [a, b] })
-      strip(a, b)
-      render(<PanelCard panel={b} selected={false} />)
-      const toggle = screen.getByRole('button', { name: 'Beside previous' })
-      expect(toggle).toHaveAttribute('aria-pressed', 'false')
-      await userEvent.click(toggle)
-      await waitFor(() => expect(calls.some((c) => c.channel === 'panels:update')).toBe(true))
-      expect(calls.find((c) => c.channel === 'panels:update')?.req).toEqual({ projectId, panelId: 'pnl_00000000bb', patch: { beside: true } })
-      expect(useAppStore.getState().selectedPanelId).toBeNull()
-    })
-
-    it('turns Beside previous off when it is on', async () => {
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb', beside: true })
-      const { calls } = installFakeApi({ 'panels:update': () => ({ panel: b, warnings: [] }), 'panels:list': () => [a, b] })
-      strip(a, b)
-      render(<PanelCard panel={b} selected={false} />)
-      const toggle = screen.getByRole('button', { name: 'Beside previous' })
-      expect(toggle).toHaveAttribute('aria-pressed', 'true')
-      await userEvent.click(toggle)
-      await waitFor(() => expect(calls.some((c) => c.channel === 'panels:update')).toBe(true))
-      expect(calls.find((c) => c.channel === 'panels:update')?.req).toEqual({ projectId, panelId: 'pnl_00000000bb', patch: { beside: false } })
-    })
-
-    it('disables Beside previous on the first panel of the episode', () => {
-      installFakeApi({})
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb' })
-      strip(a, b)
-      render(<PanelCard panel={a} selected={false} />)
-      expect(screen.getByRole('button', { name: 'Beside previous' })).toBeDisabled()
-    })
-
-    it('shows a failed Beside previous on the card', async () => {
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb' })
-      installFakeApi({
-        'panels:update': () => {
-          throw new Error('Unknown panel: pnl_00000000bb')
-        }
-      })
-      strip(a, b)
-      render(<PanelCard panel={b} selected={false} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Beside previous' }))
-      expect(await within(screen.getByTestId('panel-card')).findByRole('alert')).toHaveTextContent('Unknown panel: pnl_00000000bb')
+      expect(within(toolbar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Regenerate', 'Delete'])
     })
 
     it('regenerates through panels:generate', async () => {
@@ -282,37 +252,6 @@ describe('PanelCard', () => {
       const pending = panelVersion({ id: 'ver_0000000002', status: 'pending', imagePath: null })
       render(<PanelCard panel={panel({ versions: [panelVersion(), pending] })} selected={false} />)
       expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
-    })
-
-    it('moves one place up or down, and not past the ends', async () => {
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb' })
-      const c = panel({ id: 'pnl_00000000cc' })
-      const { calls } = installFakeApi({ 'panels:move': () => undefined, 'panels:list': () => [a, b, c] })
-      strip(a, b, c)
-      const { unmount } = render(<PanelCard panel={b} selected={false} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Move up' }))
-      await userEvent.click(screen.getByRole('button', { name: 'Move down' }))
-      const moves = calls.filter((x) => x.channel === 'panels:move').map((x) => x.req)
-      expect(moves).toEqual([
-        { projectId, panelId: 'pnl_00000000bb', toIndex: 0 },
-        { projectId, panelId: 'pnl_00000000bb', toIndex: 2 }
-      ])
-      unmount()
-
-      render(<PanelCard panel={a} selected={false} />)
-      expect(screen.getByRole('button', { name: 'Move up' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Move down' })).toBeEnabled()
-    })
-
-    it('disables Move down on the last panel', () => {
-      installFakeApi({})
-      const a = panel({ id: 'pnl_00000000aa' })
-      const b = panel({ id: 'pnl_00000000bb' })
-      strip(a, b)
-      render(<PanelCard panel={b} selected={false} />)
-      expect(screen.getByRole('button', { name: 'Move down' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Move up' })).toBeEnabled()
     })
 
     it('asks before deleting, and deleting clears the selection', async () => {

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion } from '@shared/types'
 import { api } from '../api'
-import { useAppStore } from './app-store'
+import { NO_PANEL_SELECTION, useAppStore } from './app-store'
 
 export interface PanelsData {
   /** The project `episodes` and `panelsByEpisode` belong to. */
@@ -41,7 +41,6 @@ export interface PanelsActions {
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   generatePanel(id: string): Promise<void>
   deletePanel(id: string): Promise<void>
-  movePanel(id: string, toIndex: number): Promise<void>
   /** Saves where panels sit on the strip, then reloads the episode, whose order follows reading order. */
   placePanels(episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void>
   revertPanel(id: string, versionId: string): Promise<Panel>
@@ -138,7 +137,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     },
 
     selectEpisode(id) {
-      useAppStore.setState({ activeEpisodeId: id, selectedPanelId: null })
+      useAppStore.setState({ activeEpisodeId: id, ...NO_PANEL_SELECTION })
       void get().load(id)
     },
 
@@ -157,7 +156,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
 
     async createEpisode(title) {
       const created = await api.invoke('episodes:create', { projectId: requireProject(), title })
-      useAppStore.setState({ activeEpisodeId: created.id, selectedPanelId: null })
+      useAppStore.setState({ activeEpisodeId: created.id, ...NO_PANEL_SELECTION })
       await get().loadEpisodes()
       return created
     },
@@ -188,13 +187,13 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async deletePanel(id) {
       const episodeId = episodeOf(id)
       await api.invoke('panels:delete', { projectId: requireProject(), panelId: id })
-      if (useAppStore.getState().selectedPanelId === id) useAppStore.getState().selectPanel(null)
+      const app = useAppStore.getState()
+      if (app.focusedPanelId === id) app.focusPanel(null)
+      if (app.selectedPanelId === id || app.selectedPanelIds.includes(id)) {
+        const left = app.selectedPanelIds.filter((x) => x !== id)
+        useAppStore.setState({ selectedPanelIds: left, selectedPanelId: left.at(-1) ?? null, shiftSelecting: app.shiftSelecting && left.length > 0 })
+      }
       await reload(episodeId)
-    },
-
-    async movePanel(id, toIndex) {
-      await api.invoke('panels:move', { projectId: requireProject(), panelId: id, toIndex })
-      await reload(episodeOf(id))
     },
 
     async placePanels(episodeId, moves) {

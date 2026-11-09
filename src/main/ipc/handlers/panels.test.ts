@@ -257,15 +257,6 @@ describe('panels:delete, move and revert', () => {
     await expect(h['panels:delete']({ projectId, panelId: GHOST_PANEL })).rejects.toThrow(`Unknown panel: ${GHOST_PANEL}`)
   })
 
-  it('moves a panel to an index', async () => {
-    const { h, projectId, draft, episode } = await setup()
-    const a = (await h['panels:create']({ projectId, draft: draft({ description: 'A' }), generate: false })).panel
-    await h['panels:create']({ projectId, draft: draft({ description: 'B' }), generate: false })
-    await h['panels:create']({ projectId, draft: draft({ description: 'C' }), generate: false })
-    await h['panels:move']({ projectId, panelId: a.id, toIndex: 2 })
-    expect((await h['panels:list']({ projectId, episodeId: episode.id })).map((p) => p.description)).toEqual(['B', 'C', 'A'])
-  })
-
   it('places panels and reads the episode in that order', async () => {
     const { h, projectId, draft, episode } = await setup()
     const a = (await h['panels:create']({ projectId, draft: draft({ description: 'A' }), generate: false })).panel

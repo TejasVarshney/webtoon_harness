@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { ArrowDown, ArrowUp, Columns2, RefreshCw, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react'
+import { RefreshCw, Trash2 } from 'lucide-react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
@@ -16,6 +16,8 @@ export interface PanelCardProps {
   slant?: 'left' | 'right'
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
+  /** Where it sits on the strip canvas, in strip px (see `resolveStrip`). Without it the card flows in its row. */
+  place?: { x: number; y: number; width: number }
   /** `export` draws only the picture and lettering: no toolbar, handlers, focus or selection. Default `edit`. */
   mode?: 'edit' | 'export'
   /** Export mode: whether the dialogue is drawn. Default true. */
@@ -28,12 +30,12 @@ export interface PanelCardProps {
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
  * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), a badge when
  * that image failed its consistency check or was not checked, and a toolbar on hover.
- * Clicking the card selects the panel, which opens it in the editing mode; the toolbar's buttons and the delete
- * confirmation it opens do not.
+ * Clicking the card selects the panel (shift adds it to the selection) and double-clicking opens it in the editing
+ * mode; the toolbar's buttons and the delete confirmation it opens do neither.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', lettering = true, position }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position }: PanelCardProps) {
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -46,12 +48,16 @@ export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', le
   }, [selected])
 
   const index = siblings?.findIndex((p) => p.id === panel.id) ?? -1
-  const count = siblings?.length ?? 0
   // The newest attempt, which may not be ready yet (see PanelArt, which shows its status).
   const generating = panel.versions.at(-1)?.status === 'pending'
 
-  // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height.
-  const shape = { '--ar': String(aspectRatio(panel.aspect)), '--share': String(share) } as CSSProperties
+  // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height. On the canvas it has a
+  // box of its own, and the height follows its aspect.
+  const shape = {
+    '--ar': String(aspectRatio(panel.aspect)),
+    '--share': String(share),
+    ...(place === undefined ? {} : { position: 'absolute', left: `${place.x}px`, top: `${place.y}px`, width: `${place.width}px` })
+  } as CSSProperties
 
   function run(task: Promise<unknown>): void {
     setBusy(true)
@@ -65,14 +71,24 @@ export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', le
     )
   }
 
-  const { generatePanel, movePanel, deletePanel, updatePanel } = usePanelsStore.getState()
-  const select = (): void => useAppStore.getState().selectPanel(panel.id)
+  const { generatePanel, deletePanel } = usePanelsStore.getState()
+
+  function onClick(e: MouseEvent<HTMLElement>): void {
+    // The click that clears the selection on empty strip is not for a card.
+    e.stopPropagation()
+    if (e.shiftKey) useAppStore.getState().togglePanelSelection(panel.id)
+    else useAppStore.getState().selectPanel(panel.id)
+  }
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): void {
     // Only the card itself: Enter on a toolbar button is that button's.
-    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'Enter') {
       e.preventDefault()
-      select()
+      useAppStore.getState().focusPanel(panel.id)
+    } else if (e.key === ' ') {
+      e.preventDefault()
+      useAppStore.getState().selectPanel(panel.id)
     }
   }
 
@@ -111,7 +127,8 @@ export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', le
         style={shape}
         aria-current={selected ? 'true' : undefined}
         tabIndex={0}
-        onClick={select}
+        onClick={onClick}
+        onDoubleClick={() => useAppStore.getState().focusPanel(panel.id)}
         onKeyDown={onKeyDown}
       >
         <PanelArt panel={panel} />
@@ -122,34 +139,10 @@ export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', le
             {error}
           </p>
         )}
-        <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()}>
+        <div className="panel-toolbar" role="group" aria-label="Panel actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
           <span className="panel-number">{index >= 0 ? `Panel ${index + 1}` : ''}</span>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Beside previous"
-            title="Beside previous"
-            aria-pressed={panel.beside}
-            disabled={busy || index <= 0}
-            onClick={() => run(updatePanel(panel.id, { beside: !panel.beside }))}
-          >
-            <Columns2 size={15} aria-hidden="true" />
-          </button>
           <button type="button" className="icon-button" aria-label="Regenerate" title="Regenerate" disabled={busy || generating} onClick={() => run(generatePanel(panel.id))}>
             <RefreshCw size={15} aria-hidden="true" />
-          </button>
-          <button type="button" className="icon-button" aria-label="Move up" title="Move up" disabled={busy || index <= 0} onClick={() => run(movePanel(panel.id, index - 1))}>
-            <ArrowUp size={15} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Move down"
-            title="Move down"
-            disabled={busy || index < 0 || index >= count - 1}
-            onClick={() => run(movePanel(panel.id, index + 1))}
-          >
-            <ArrowDown size={15} aria-hidden="true" />
           </button>
           <button type="button" className="icon-button icon-button-danger" aria-label="Delete" title="Delete panel" disabled={busy} onClick={() => setConfirming(true)}>
             <Trash2 size={15} aria-hidden="true" />

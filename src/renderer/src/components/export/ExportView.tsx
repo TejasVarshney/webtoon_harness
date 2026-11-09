@@ -14,5 +14,5 @@ export function ExportView({ snapshot }: { snapshot: ExportSnapshot }) {
   const rows = exportRows(snapshot.panels)
   document.documentElement.style.setProperty('--export-strip-width', `${STRIP_CSS_WIDTH}px`)
   document.body.style.background = rows[0]?.gutter === 'black' ? '#000' : '#fff'
-  return <WebtoonStrip episodeId={snapshot.episode.id} panels={snapshot.panels} rows={rows} mode="export" lettering={snapshot.lettering} />
+  return <WebtoonStrip panels={snapshot.panels} rows={rows} lettering={snapshot.lettering} />
 }

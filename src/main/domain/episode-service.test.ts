@@ -142,22 +142,6 @@ describe('EpisodeService', () => {
     await expect(svc.setPanelOrder(ctx, 'epi_ffffffffff', [])).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
-  it('moves a panel to an index, clamping out-of-range targets', async () => {
-    const { svc, ctx } = await setup()
-    const [ep] = await svc.list(ctx)
-    for (const n of [1, 2, 3, 4]) await svc.insertPanel(ctx, ep.id, `pnl_000000000${n}`, undefined)
-    const order = async () => (await svc.get(ctx, ep.id)).panelIds.map((id) => id.slice(-1))
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000004', 0)
-    expect(await order()).toEqual(['4', '1', '2', '3'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000004', 2)
-    expect(await order()).toEqual(['1', '2', '4', '3'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000001', 99)
-    expect(await order()).toEqual(['2', '4', '3', '1'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000001', -5)
-    expect(await order()).toEqual(['1', '2', '4', '3'])
-    await expect(svc.movePanel(ctx, ep.id, 'pnl_ffffffffff', 0)).rejects.toThrow('Unknown panel: pnl_ffffffffff')
-  })
-
   it('skips and reports a corrupt episode file', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)

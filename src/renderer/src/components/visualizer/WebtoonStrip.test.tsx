@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { exportRows } from '@shared/strip-layout'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
@@ -10,45 +10,34 @@ import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { WebtoonStrip } from './WebtoonStrip'
 
 const a = panel({ id: 'pnl_00000000aa', description: 'Mina arrives.' })
-const b = panel({ id: 'pnl_00000000bb', description: 'Jin waits.' })
+const b = panel({ id: 'pnl_00000000bb', description: 'Jin waits.', beside: true })
 
 beforeEach(() => {
-  useAppStore.setState({ ...initialAppState, projectId, activeEpisodeId: EPISODE_ID })
+  useAppStore.setState({ ...initialAppState, projectId, activeEpisodeId: EPISODE_ID, selectedPanelId: a.id, selectedPanelIds: [a.id] })
   usePanelsStore.setState({ ...initialPanelsState, projectId, panelsByEpisode: { [EPISODE_ID]: [a, b] } })
   useCharactersStore.setState({ ...initialCharactersState, projectId, characters: [character()], loaded: true })
 })
 
-/** The strip as the pane drives it: panels read from the store, so a save that reloads them re-renders the rows. */
-function Harness() {
-  const panels = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID] ?? [])
-  return <WebtoonStrip episodeId={EPISODE_ID} panels={panels} />
-}
-
 describe('WebtoonStrip', () => {
-  it('opens no editor of its own: a click on a card selects the panel, for the editing mode', async () => {
+  it('draws the export rows with positions and none of the editing chrome', () => {
     installFakeApi({})
-    render(<Harness />)
-    const second = screen.getAllByTestId('panel-card')[1]
-    expect(within(second).queryByRole('button', { name: 'Edit' })).toBeNull()
-    await userEvent.click(second)
-    expect(useAppStore.getState().selectedPanelId).toBe(b.id)
-    expect(screen.queryByTestId('panel-editor')).toBeNull()
-    expect(screen.queryByRole('dialog')).toBeNull()
+    render(<WebtoonStrip panels={[a, b]} rows={exportRows([a, b])} />)
+    const cards = screen.getAllByTestId('panel-card')
+    expect(cards.map((c) => c.getAttribute('data-position'))).toEqual(['1', '2'])
+    expect(document.querySelectorAll('.strip-row')).toHaveLength(1)
+    expect(screen.queryByTestId('add-panel')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Panel actions' })).toBeNull()
+    // Whatever the screen has selected stays out of the export.
+    expect(cards[0].getAttribute('data-selected')).toBeNull()
+    expect(within(cards[0]).getAllByRole('img')).toHaveLength(1)
   })
 
-  it('keeps the end "+" the last child of the strip', () => {
+  it('leaves the lettering out when asked', () => {
     installFakeApi({})
-    render(<Harness />)
-    expect(document.querySelector('.webtoon-strip > .insert-panel:last-child')).not.toBeNull()
-  })
-
-  it('edit mode is unchanged: the "+" buttons, the toolbar and the selection stay', () => {
-    installFakeApi({})
-    useAppStore.setState({ selectedPanelId: a.id })
-    render(<Harness />)
-    expect(document.querySelectorAll('.insert-panel').length).toBe(2)
-    expect(screen.getAllByRole('group', { name: 'Panel actions' }).length).toBe(2)
-    expect(screen.getAllByTestId('panel-card')[0].getAttribute('data-selected')).toBe('true')
-    expect(screen.getAllByTestId('panel-card')[0].getAttribute('data-position')).toBeNull()
+    const lettered = panel({ id: 'pnl_00000000cc', dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'Hello there', placement: null, style: null, tail: null }] })
+    const { rerender } = render(<WebtoonStrip panels={[lettered]} />)
+    expect(screen.getByText('Hello there')).toBeInTheDocument()
+    rerender(<WebtoonStrip panels={[lettered]} lettering={false} />)
+    expect(screen.queryByText('Hello there')).toBeNull()
   })
 })

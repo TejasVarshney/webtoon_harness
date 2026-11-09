@@ -24,8 +24,8 @@ export interface PanelWorkspaceProps {
  * until the overlay is gone, so the focus waits a frame.
  */
 function backToStrip(): void {
-  const id = useAppStore.getState().selectedPanelId
-  useAppStore.getState().selectPanel(null)
+  const id = useAppStore.getState().focusedPanelId
+  useAppStore.getState().focusPanel(null)
   if (id !== null) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-panel-id="${id}"]`)?.focus())
 }
 
@@ -121,7 +121,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
     setSketchChoice(null)
     run(id, () => usePanelsStore.getState().generatePanel(id))
   }
-  const select = (id: string): void => useAppStore.getState().selectPanel(id)
+  const select = (id: string): void => useAppStore.getState().focusPanel(id)
   const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
   const previewStyle = (preview: StylePreview | null): void => setPreviewState({ panelId, preview })
 

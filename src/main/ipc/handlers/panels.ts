@@ -34,7 +34,6 @@ async function showIssues<T>(task: Promise<T>): Promise<T> {
 const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
 const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
-const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
 const PlaceSchema = z.object({
   projectId: z.string(),
   episodeId: z.string(),
@@ -92,10 +91,6 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     },
 
     'panels:delete': async ({ projectId, panelId }) => panels.delete(await s.projects.open(projectId), panelId),
-    'panels:move': async (req) => {
-      const { projectId, panelId, toIndex } = parseInput(MoveSchema, req)
-      return panels.move(await s.projects.open(projectId), panelId, toIndex)
-    },
     'panels:place': async (req) => {
       const { projectId, episodeId, moves } = parseInput(PlaceSchema, req)
       return panels.place(await s.projects.open(projectId), episodeId, moves)

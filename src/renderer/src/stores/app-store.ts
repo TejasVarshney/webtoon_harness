@@ -10,7 +10,14 @@ export interface AppData {
   problems: ProjectProblem[]
   sessions: SessionSummary[]
   sessionId: string | null
+  /** The last panel selected, or null. */
   selectedPanelId: string | null
+  /** Every selected panel, in the order they were added. */
+  selectedPanelIds: string[]
+  /** True once a shift-click added to the selection; the selection bar shows for it. A plain click ends it. */
+  shiftSelecting: boolean
+  /** The panel open in the editing mode, which covers the strip. */
+  focusedPanelId: string | null
   activeEpisodeId: string | null
   studioTab: StudioTab
   /** Thread key (a session id, or `panel:<panelId>`) to the id of its running agent run. */
@@ -39,9 +46,20 @@ export interface AppActions {
   renameSession(id: string, title: string): Promise<void>
   bookmarkSession(id: string, bookmarked: boolean): Promise<void>
   deleteSession(id: string): Promise<void>
+  /** A plain click: the selection becomes this panel alone, or nothing for null. */
   selectPanel(id: string | null): void
+  /** A shift-click: adds the panel to the selection, or takes it out when it is already in. */
+  togglePanelSelection(id: string): void
+  /** Opens a panel in the editing mode (selecting it alone), or closes the editing mode for null. */
+  focusPanel(id: string | null): void
   setStudioTab(tab: StudioTab): void
 }
+
+/** What no selection and no open panel look like: where a new project or episode starts. */
+export const NO_PANEL_SELECTION = { selectedPanelId: null, selectedPanelIds: [], shiftSelecting: false, focusedPanelId: null } satisfies Pick<
+  AppData,
+  'selectedPanelId' | 'selectedPanelIds' | 'shiftSelecting' | 'focusedPanelId'
+>
 
 export const initialAppState: AppData = {
   projects: [],
@@ -49,7 +67,7 @@ export const initialAppState: AppData = {
   problems: [],
   sessions: [],
   sessionId: null,
-  selectedPanelId: null,
+  ...NO_PANEL_SELECTION,
   activeEpisodeId: null,
   studioTab: 'webtoon',
   runningThreads: {}
@@ -78,14 +96,14 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
       problems,
       sessions: [],
       sessionId: null,
-      selectedPanelId: null,
+      ...NO_PANEL_SELECTION,
       activeEpisodeId: null
     }))
     await get().loadSessions()
   },
 
   closeProject() {
-    set({ projectId: null, problems: [], sessions: [], sessionId: null, selectedPanelId: null, activeEpisodeId: null })
+    set({ projectId: null, problems: [], sessions: [], sessionId: null, ...NO_PANEL_SELECTION, activeEpisodeId: null })
   },
 
   async refreshMeta() {
@@ -155,7 +173,21 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
   },
 
   selectPanel(id) {
-    set({ selectedPanelId: id })
+    set({ selectedPanelId: id, selectedPanelIds: id === null ? [] : [id], shiftSelecting: false })
+  },
+
+  togglePanelSelection(id) {
+    set((s) => {
+      // A selection made by a plain click or by the agent's thumbnail may not be in the list yet.
+      const base = s.selectedPanelIds.length === 0 && s.selectedPanelId !== null ? [s.selectedPanelId] : s.selectedPanelIds
+      const ids = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
+      return { selectedPanelIds: ids, selectedPanelId: ids.at(-1) ?? null, shiftSelecting: true }
+    })
+  },
+
+  focusPanel(id) {
+    if (id === null) set({ focusedPanelId: null })
+    else set({ focusedPanelId: id, selectedPanelId: id, selectedPanelIds: [id], shiftSelecting: false })
   },
 
   setStudioTab(tab) {

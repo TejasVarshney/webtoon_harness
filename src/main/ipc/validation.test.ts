@@ -89,14 +89,6 @@ describe('IPC input validation', () => {
     expect(await invoke('episodes:update', { projectId, episodeId, patch: { synopsis: 'Night' } })).toMatchObject({ synopsis: 'Night' })
   })
 
-  it('panels:move needs a whole, non-negative index', async () => {
-    const { invoke, projectId, panelId } = await setup()
-    for (const toIndex of [-1, 1.5, '0', Number.NaN]) {
-      expect((await rejection(invoke('panels:move', { projectId, panelId, toIndex }))).message, String(toIndex)).toMatch(/^Invalid input: toIndex: /)
-    }
-    await invoke('panels:move', { projectId, panelId, toIndex: 0 })
-  })
-
   it('panels:place needs finite numbers in every placement', async () => {
     const { invoke, projectId, panelId, episodeId } = await setup()
     for (const placement of [{ x: Number.NaN, y: 0, width: 100 }, { x: 0, y: Number.POSITIVE_INFINITY, width: 100 }, { x: 0, y: 0, width: '100' }, { x: 0, y: 0 }]) {

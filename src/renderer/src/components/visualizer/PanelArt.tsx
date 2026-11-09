@@ -14,7 +14,7 @@ export interface PanelArtProps {
   editing?: OverlayEditing
   /** `export` draws the picture and lettering only: no "No image yet", status, Retry or error. Default `edit`. */
   mode?: 'edit' | 'export'
-  /** Export mode: false leaves the dialogue out. Default true. */
+  /** False leaves the dialogue out, in either mode. Default true. */
   lettering?: boolean
 }
 
@@ -78,7 +78,7 @@ export function PanelArt({ panel, editing, mode = 'edit', lettering = true }: Pa
           <div className="panel-sketch-preview" data-testid="panel-sketch-preview" style={{ backgroundImage: `url("${assetUrl(projectId, panel.sketchPath)}")` }} />
         )}
         {panel.versions.length === 0 && <div className="panel-empty">{panel.sketchPath ? 'Sketch only' : 'No image yet'}</div>}
-        <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} editing={editing} />
+        {lettering && <DialogueOverlay dialogue={panel.dialogue} cast={panel.characters} editing={editing} />}
         {generating && (
           <div className="panel-status" data-testid="panel-status" data-status="pending" role="status">
             <LoaderCircle size={14} className="spin" aria-hidden="true" />

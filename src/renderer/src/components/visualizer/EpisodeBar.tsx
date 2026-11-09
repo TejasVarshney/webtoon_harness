@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
 import { ExportDialog } from '../export/ExportDialog'
+import { AddPanelButton } from './AddPanelButton'
 
 /** Picks which episode the strip shows, and starts a new one. */
 export function EpisodeBar() {
@@ -63,6 +64,11 @@ export function EpisodeBar() {
         <button type="button" onClick={startCreating}>
           New episode
         </button>
+      )}
+      {activeEpisodeId !== null && (
+        <AddPanelButton episodeId={activeEpisodeId} className="add-panel-text-button">
+          Add panel
+        </AddPanelButton>
       )}
       <button type="button" data-testid="export-open" disabled={episodes.length === 0} onClick={() => setExporting(true)}>
         Export

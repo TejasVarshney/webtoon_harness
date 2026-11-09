@@ -2141,19 +2141,6 @@ kbd {
   height: 120px;
 }
 
-/* Centred on the gap, and over the panels when the gap is narrower than the button. The button is raised, not its
-   wrapper: the wrapper also holds the editor the button opens, which must not be shut inside a stacking context. */
-.strip-gap .insert-panel {
-  position: absolute;
-  inset: 0;
-  width: auto;
-  height: auto;
-}
-
-.strip-gap .insert-panel-button {
-  position: relative;
-  z-index: 1;
-}
 
 .panel-card {
   position: relative;
@@ -2346,13 +2333,6 @@ kbd {
     transform 0.14s var(--ease);
 }
 
-/* Wider than a narrow card, so it grows towards the row: the first card of a row has nothing to its left (and the pane
-   cannot scroll that way), so its toolbar is anchored on the left and grows over its neighbours instead. */
-.strip-row > .panel-card:first-child:not(:only-child) .panel-toolbar {
-  right: auto;
-  left: 10px;
-}
-
 /* A toolbar that grows over its neighbour must stay above the neighbour's own (hidden, but still hit-testable) one. */
 .panel-card:focus-within,
 .panel-card[data-selected='true'] {
@@ -2382,56 +2362,88 @@ kbd {
   height: 28px;
 }
 
-.insert-panel {
+/* The strip canvas: panels placed at their own coordinates on a strip 440px wide, centred on a neutral pane. Its 440px
+   is STRIP_CSS_WIDTH in src/shared/strip-width.ts. It is the size container the lettering is measured against (`cqw`),
+   like the export's row, so the lettering of a panel keeps its size wherever the panel sits. */
+.strip-canvas-pane {
   display: flex;
+  flex: 1;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  width: min(100%, 440px);
-  height: 48px;
+  padding: 28px 20px 0;
+  background: var(--raised);
 }
 
-.insert-panel-button {
-  width: 30px;
-  height: 30px;
+.strip-canvas-pane > .placeholder {
+  max-width: 300px;
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+.strip-canvas {
+  position: relative;
+  flex: none;
+  width: 440px;
+  container-type: inline-size;
+}
+
+.strip-canvas > .panel-card {
+  flex: none;
+}
+
+/* Under the lowest panel, where the next one would go. */
+.strip-canvas-add {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.add-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-panel-button {
+  width: 44px;
+  height: 44px;
   padding: 0;
   color: var(--muted);
   background: var(--surface);
   border: 1px dashed var(--control);
   border-radius: 50%;
-  opacity: 0;
   transition:
-    opacity 0.14s var(--ease),
+    color 0.14s var(--ease),
     transform 0.14s var(--ease);
 }
 
-.webtoon-strip:hover .insert-panel-button,
-.insert-panel-button:focus-visible {
-  opacity: 1;
-}
-
-.insert-panel-button:hover:not(:disabled) {
+.add-panel-button:hover:not(:disabled) {
   color: var(--text);
-  background: var(--surface);
   border-style: solid;
   border-color: var(--text);
   transform: scale(1.08);
 }
 
-/* The append "+" closes the strip and is always shown: it is how an empty episode starts. */
-.webtoon-strip > .insert-panel:last-child {
-  height: auto;
-  margin-top: 20px;
+.add-panel-error {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: var(--fs-small);
+  text-align: center;
 }
 
-/* After the last row, its own gap is the space. Not adjacent: an open editor sits between them. */
-.strip-band ~ .insert-panel:last-child {
-  margin-top: 0;
-}
-
-.webtoon-strip > .insert-panel:last-child .insert-panel-button {
-  width: 44px;
-  height: 44px;
-  opacity: 1;
+/* What the shift selection can be used for, after the strip and pinned to the bottom of the view while it scrolls. */
+.selection-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 8px 16px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 
 /* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
@@ -3723,17 +3735,6 @@ kbd {
   inset: 0;
   background: #fff center / contain no-repeat;
   opacity: 0.45;
-}
-
-.insert-panel {
-  flex-wrap: wrap;
-}
-
-.insert-panel-error {
-  flex-basis: 100%;
-  margin: 4px 0 0;
-  font-size: var(--fs-small);
-  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {

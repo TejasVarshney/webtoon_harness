@@ -85,16 +85,6 @@ export class EpisodeService {
     return this.mutate(ctx, episodeId, (e) => (e.panelIds.includes(panelId) ? { ...e, panelIds: e.panelIds.filter((id) => id !== panelId), updatedAt: now() } : null))
   }
 
-  /** `toIndex` is clamped to the episode's range. */
-  movePanel(ctx: ProjectContext, episodeId: string, panelId: string, toIndex: number): Promise<Episode> {
-    return this.mutate(ctx, episodeId, (e) => {
-      if (!e.panelIds.includes(panelId)) throw new EntityNotFoundError('panel', panelId)
-      const rest = e.panelIds.filter((id) => id !== panelId)
-      const index = Math.min(Math.max(Math.trunc(toIndex), 0), rest.length)
-      return { ...e, panelIds: [...rest.slice(0, index), panelId, ...rest.slice(index)], updatedAt: now() }
-    })
-  }
-
   /**
    * Sets the order to `ids`. An id the episode does not hold is dropped, and a panel the episode holds that `ids`
    * lacks (added while the order was worked out) stays, at the end in its old order. Nothing is written when the

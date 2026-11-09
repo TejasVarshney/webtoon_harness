@@ -1880,20 +1880,6 @@ describe('PanelService delete, move and usage', () => {
     expect(trashed).toEqual([ctx.paths.panelFile('pnl_5555555555')])
   })
 
-  it('move reorders within the episode and announces both', async () => {
-    const { svc, epi, ctx, events } = await setup()
-    const [a, b, c] = [
-      (await svc.create(ctx, draft(epi.id, { description: 'a' }), USER)).panel,
-      (await svc.create(ctx, draft(epi.id, { description: 'b' }), USER)).panel,
-      (await svc.create(ctx, draft(epi.id, { description: 'c' }), USER)).panel
-    ]
-    events.length = 0
-    await svc.move(ctx, c.id, 0)
-    expect((await svc.list(ctx, epi.id)).map((p) => p.id)).toEqual([c.id, a.id, b.id])
-    expect(events).toEqual(expect.arrayContaining([{ type: 'panel.changed', projectId: ctx.id, panelId: c.id }, { type: 'episode.changed', projectId: ctx.id, episodeId: epi.id }]))
-    await expect(svc.move(ctx, 'pnl_ffffffffff', 0)).rejects.toBeInstanceOf(EntityNotFoundError)
-  })
-
   describe('place', () => {
     const rects = (panels: Panel[]) => resolveStrip(panels).map((r) => ({ id: r.panel.id, x: r.x, y: r.y, width: r.width, height: r.height }))
     const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>

@@ -368,12 +368,6 @@ export class PanelService extends PanelUsageScanner {
     this.emit(ctx, id)
   }
 
-  async move(ctx: ProjectContext, id: string, toIndex: number): Promise<void> {
-    const panel = await this.get(ctx, id)
-    await this.opts.episodes.movePanel(ctx, panel.episodeId, id, toIndex)
-    this.emit(ctx, id)
-  }
-
   /** Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own. */
   async place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
     const plan = planPlacement(await this.list(ctx, episodeId), moves)
