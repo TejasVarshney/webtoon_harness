@@ -486,6 +486,13 @@ kbd {
   gap: 8px;
 }
 
+.style-button {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .story-mode {
   display: inline-flex;
   align-items: center;
@@ -790,6 +797,68 @@ kbd {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+.style-dialog {
+  width: 620px;
+  max-height: 85vh;
+}
+
+.style-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.style-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.style-row[data-current='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.style-row-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.style-row-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.style-row-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.style-row-current {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 @keyframes fade-in {

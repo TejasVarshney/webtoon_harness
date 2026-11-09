@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { useAppStore } from '../../stores/app-store'
+import { StyleButton } from '../styles/StyleButton'
 import { ContinueStoryButton } from './ContinueStoryButton'
 import { StoryModeToggle } from './StoryModeToggle'
 
@@ -18,6 +19,7 @@ export function ChatHeader() {
         <h1 className="breadcrumb-current">{sessionTitle ?? (projectTitle === undefined ? 'No project open' : 'No session open')}</h1>
       </nav>
       <div className="chat-header-actions">
+        <StyleButton />
         <StoryModeToggle />
         <ContinueStoryButton />
       </div>

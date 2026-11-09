@@ -37,7 +37,8 @@ export interface AppData {
 
 export interface AppActions {
   loadProjects(): Promise<void>
-  createProject(title: string): Promise<void>
+  /** `stylePreset` left out gives the project the default style. */
+  createProject(title: string, stylePreset?: string): Promise<void>
   openProject(id: string): Promise<void>
   /** Re-reads the open project's meta and problems (what `project.changed` calls). Leaves the sessions and the selection alone. */
   refreshMeta(): Promise<void>
@@ -48,6 +49,8 @@ export interface AppActions {
   refreshProblems(): Promise<void>
   /** Saves the story mode and shows it at once from the meta main returns. Rejects when main refuses. */
   setStoryMode(mode: StoryMode): Promise<void>
+  /** Copies a library style into the open project and shows it at once. Rejects when main refuses. */
+  applyStyle(styleId: string): Promise<void>
   loadSessions(): Promise<void>
   newSession(): Promise<void>
   selectSession(id: string | null): void
@@ -81,8 +84,8 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     }
   },
 
-  async createProject(title) {
-    const meta = await api.invoke('projects:create', { title })
+  async createProject(title, stylePreset) {
+    const meta = await api.invoke('projects:create', stylePreset === undefined ? { title } : { title, stylePreset })
     set((s) => ({ projects: [meta, ...s.projects.filter((p) => p.id !== meta.id)] }))
     await get().openProject(meta.id)
   },
@@ -123,6 +126,13 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     const projectId = get().projectId
     if (projectId === null) return
     const meta = await api.invoke('story:setMode', { projectId, mode })
+    set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)) }))
+  },
+
+  async applyStyle(styleId) {
+    const projectId = get().projectId
+    if (projectId === null) return
+    const meta = await api.invoke('styles:apply', { projectId, styleId })
     set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)) }))
   },
 
