@@ -7,7 +7,7 @@ import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 const AUTOSAVE_MS = 600
 
 /** The panel's fields the editing mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
-export type AutosaveField = 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'beside' | 'gapAfter' | 'gutter' | 'characters' | 'items'
+export type AutosaveField = 'description' | 'setting' | 'location' | 'shot' | 'aspect' | 'frame' | 'beside' | 'gapAfter' | 'gutter' | 'characters' | 'items'
 
 /** What became of a sent value: stored, refused by the service, or not sent after all (the line changed, the panel is gone). */
 type AutosaveOutcome = 'saved' | 'refused' | 'dropped'
@@ -141,6 +141,7 @@ function normalizeField<K extends AutosaveField>(field: K, value: Panel[K]): Pan
   switch (field) {
     case 'description':
     case 'setting':
+    case 'location':
       return (value as string).trim() as Panel[K]
     case 'characters':
       return (value as PanelCharacter[]).map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position.trim() })) as Panel[K]

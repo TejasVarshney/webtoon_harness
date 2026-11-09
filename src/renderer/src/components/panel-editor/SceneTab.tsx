@@ -15,6 +15,7 @@ const GUTTERS = PanelGutterSchema.options
 export interface SceneFields {
   description: FieldAutosave<Panel['description']>
   setting: FieldAutosave<Panel['setting']>
+  location: FieldAutosave<Panel['location']>
   shot: FieldAutosave<Panel['shot']>
   aspect: FieldAutosave<Panel['aspect']>
   frame: FieldAutosave<Panel['frame']>
@@ -37,7 +38,7 @@ function Choice<T extends string>({ id, field, options, disabled, describedBy }:
 }
 
 /**
- * What the panel shows and where it sits in the strip: description, setting, shot and aspect, then the layout group
+ * What the panel shows and where it sits in the strip: description, setting, location, shot and aspect, then the layout group
  * from the old panel dialog. Each field saves on its own; the text fields at once when they are left. Layout changes
  * never redraw.
  */
@@ -45,13 +46,25 @@ export function SceneTab({ fields }: { fields: SceneFields }) {
   const tallNoteId = useId()
   // A tall panel fades at its edges instead of having a frame, whatever its frame says.
   const tall = isTallAspect(fields.aspect.value)
-  const { description, setting, shot, aspect, frame, beside, gapAfter, gutter } = fields
+  const { description, setting, location, shot, aspect, frame, beside, gapAfter, gutter } = fields
   return (
     <div className="scene-tab">
       <Field label="Description">
         {(id) => <textarea id={id} rows={3} value={description.value} placeholder="What happens in this panel" onChange={(e) => description.set(e.target.value)} onBlur={description.flush} />}
       </Field>
       <Field label="Setting">{(id) => <input id={id} value={setting.value} placeholder="Where and when" onChange={(e) => setting.set(e.target.value)} onBlur={setting.flush} />}</Field>
+      <Field label="Location">
+        {(id) => (
+          <input
+            id={id}
+            value={location.value}
+            placeholder="Same name in every panel of this place"
+            title="The image continues from the last panel with this location, preferring a wide or medium shot. Empty: it continues from the panel before."
+            onChange={(e) => location.set(e.target.value)}
+            onBlur={location.flush}
+          />
+        )}
+      </Field>
       <div className="field-row">
         <Field label="Shot">{(id) => <Choice id={id} field={shot} options={SHOTS} />}</Field>
         <Field label="Aspect">{(id) => <Choice id={id} field={aspect} options={ASPECTS} />}</Field>

@@ -163,6 +163,19 @@ describe('create_panel', () => {
     expect(r.images).toEqual([stored.versions[1].imagePath])
   })
 
+  it('create_panel warns when the consistency check could not run, and says to stop when the vision model failed', async () => {
+    const { run, s, character, draft } = await setup()
+    const mina = await character('Mina')
+    const check = vi.spyOn(s.checker, 'check').mockResolvedValueOnce({ passed: true, issues: ['Consistency check failed to run: 402 Insufficient Balance'], skipped: true })
+    const out = json(await run('create_panel', draft([mina])))
+    // A skipped check is never redrawn for.
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(out.warnings).toEqual([
+      'This image was not checked: the vision model failed (402 Insufficient Balance). The next panels will not be checked either until it works. Stop after this panel and tell the user, who can fix the vision model or pick another one in Settings → Models.'
+    ])
+    expect(out.check).toEqual({ passed: true, issues: ['Consistency check failed to run: 402 Insufficient Balance'], skipped: true })
+  })
+
   it('create_panel returns the image and continuity', async () => {
     const { run, character, created, draft, panel } = await setup()
     const mina = await character('Mina')
@@ -325,6 +338,7 @@ describe('list_panels and get_panel', () => {
     expect(panels[0]).toEqual({
       id: made.panelId,
       index: 0,
+      location: '',
       shot: 'close-up',
       aspect: '1:1',
       frame: 'bordered',
@@ -333,6 +347,7 @@ describe('list_panels and get_panel', () => {
       gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
+      continuityNotes: '',
       dialogue: [{ id: expect.stringMatching(/^dlg_/), speakerId: mina.id, kind: 'thought', text: 'Not again.', placement: null, style: null, tail: null }],
       currentVersion: { id: made.versionId, status: 'ready', imagePath: made.imagePath }
     })

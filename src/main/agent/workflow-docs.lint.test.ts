@@ -205,6 +205,20 @@ describe('workflow docs lint', () => {
     expect(extractSection(read('reference/prompt-templates'), 'Panel Prompt')).toContain(prompt)
   })
 
+  it('prompt templates reproduce the other two [CONTINUITY] lines verbatim', () => {
+    const base = {
+      stylePreset: '{stylePreset}',
+      panel: { description: '{description}', setting: '{setting}', shot: '{shot}' as never, aspect: '{aspect}' as never, frame: 'bordered' as const, characters: [], items: [], continuityNotes: '{continuityNotes}' },
+      roster: new Map(),
+      itemRoster: new Map(),
+      maxReferences: 4
+    }
+    const lastLine = (previous: Parameters<typeof composePanelPrompt>[0]['previous']) => composePanelPrompt({ ...base, previous }).prompt.split('\n').at(-1)!
+    const section = extractSection(read('reference/prompt-templates'), 'Panel Prompt')
+    expect(section).toContain(lastLine({ panelId: 'pnl_0000000002', imagePath: 'panels/b.png', earlier: true }).replace('(reference image 1)', '(reference image {m})'))
+    expect(section).toContain(lastLine(null))
+  })
+
   it('prompt templates reproduce a panel edit prompt with items verbatim', () => {
     const edit = editPanelPrompt('{instruction}', [{ name: '{name}', appearanceLock: '{appearanceLock}' }], [{ name: '{item.name}', appearanceLock: '{item.appearanceLock}' }])
     expect(extractSection(read('reference/prompt-templates'), 'Panel Edit Prompt')).toContain(edit)
@@ -224,7 +238,9 @@ describe('workflow docs lint', () => {
       panel: {
         ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }] }),
         description: '{description}',
-        shot: '{shot}' as never
+        setting: '{setting}',
+        shot: '{shot}' as never,
+        continuityNotes: '{continuityNotes}'
       },
       roster: [character],
       itemRoster: []
@@ -243,7 +259,9 @@ describe('workflow docs lint', () => {
       panel: {
         ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }], items: [{ ...entry, action: '' }] }),
         description: '{description}',
-        shot: '{shot}' as never
+        setting: '{setting}',
+        shot: '{shot}' as never,
+        continuityNotes: '{continuityNotes}'
       },
       roster: [character],
       itemRoster: [item]

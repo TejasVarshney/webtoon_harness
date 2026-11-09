@@ -313,6 +313,11 @@ export const PanelSchema = z.object({
   episodeId: Id,
   description: z.string(),
   setting: z.string(),
+  /**
+   * A short name for the place ("stockroom"), the same in every panel set there. It picks the image a draw continues
+   * from (see `pickContinuity`); empty, the panel continues from the one before it.
+   */
+  location: z.string().default(''),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
   frame: PanelFrameSchema.default('bordered'),
@@ -349,6 +354,7 @@ export const PanelDraftSchema = z.object({
   afterPanelId: Id.nullable().optional(),
   description: z.string(),
   setting: z.string(),
+  location: z.string().optional(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema.optional(),
   frame: PanelFrameSchema.optional(),

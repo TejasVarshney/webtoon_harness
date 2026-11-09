@@ -87,11 +87,17 @@ export function layoutTag(p: Panel): string {
   return [p.shot, p.aspect, ...layoutParts(p)].join(', ')
 }
 
-/** One line: id, shot and layout, cast, the first 160 characters of the description, the dialogue and, only when it has any, its items. `detail` is what follows a cast member's name. */
+/**
+ * One line: id, shot and layout, the location when it has one, cast, the first 160 characters of the description, the
+ * dialogue and, only when it has any, its items and the first 160 characters of its continuity notes (which carry a
+ * scene's layout from panel to panel). `detail` is what follows a cast member's name.
+ */
 function panelSummary(p: Panel, names: Map<string, string>, items: Item[], detail: (cast: PanelCharacter) => string): string {
   const cast = p.characters.map((pc) => `${names.get(pc.characterId) ?? pc.characterId} (${detail(pc)})`).join(', ')
   const shown = p.items.map((entry) => itemNames(entry, items)).map((n) => `${n.name} (${n.usageName})`)
-  return `${p.id} [${layoutTag(p)}] cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}`
+  const at = p.location.trim() === '' ? '' : ` at ${oneLine(p.location)}`
+  const notes = p.continuityNotes.trim() === '' ? '' : ` | notes: ${oneLine(p.continuityNotes).slice(0, 160)}`
+  return `${p.id} [${layoutTag(p)}]${at} cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}${notes}`
 }
 
 /** The dialogue on one line. With `withPlacement`, a placed line ends ` @x,y` (two decimals); neighbor summaries leave it off. */
@@ -142,6 +148,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
     `aspect: ${panel.aspect}`,
     ...(layoutParts(panel).length > 0 ? [`layout: ${layoutParts(panel).join(', ')}`] : []),
     `setting: ${oneLine(panel.setting)}`,
+    ...(panel.location.trim() === '' ? [] : [`location: ${oneLine(panel.location)}`]),
     `description: ${oneLine(panel.description)}`,
     `cast: ${cast || 'none'}`,
     `dialogue: ${dialogueLine(panel, names, true) || 'none'}`

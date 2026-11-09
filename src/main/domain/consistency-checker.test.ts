@@ -18,6 +18,7 @@ import {
   CHECK_TIMEOUT_MS,
   ConsistencyChecker,
   parseCheckResponse,
+  skippedCheckWarning,
   type ConsistencyCheckInput,
   type SheetCheckInput
 } from './consistency-checker'
@@ -73,6 +74,28 @@ describe('parseCheckResponse', () => {
 
   it('judges only the first JSON object: a later valid one does not rescue a malformed first', () => {
     expect(parseCheckResponse('{"passed": "maybe", "issues": []} {"passed": true, "issues": []}')).toEqual(UNPARSEABLE)
+  })
+})
+
+describe('skippedCheckWarning', () => {
+  const skippedWith = (issue: string) => ({ passed: true, issues: [issue], skipped: true })
+
+  it('says nothing for no check, a check that ran and a cancelled one', () => {
+    expect(skippedCheckWarning(null)).toBeNull()
+    expect(skippedCheckWarning({ passed: true, issues: [], skipped: false })).toBeNull()
+    expect(skippedCheckWarning({ passed: false, issues: ['Mina hair is black'], skipped: false })).toBeNull()
+    expect(skippedCheckWarning(skippedWith('Consistency check failed to run: Cancelled'))).toBeNull()
+  })
+
+  it('says to stop when the vision model failed, since the next checks will fail too', () => {
+    expect(skippedCheckWarning(skippedWith('Consistency check failed to run: 402 Insufficient Balance'))).toBe(
+      'This image was not checked: the vision model failed (402 Insufficient Balance). The next panels will not be checked either until it works. Stop after this panel and tell the user, who can fix the vision model or pick another one in Settings → Models.'
+    )
+  })
+
+  it('only says to tell the user about a timeout or an answer that could not be read', () => {
+    expect(skippedCheckWarning(skippedWith('Consistency check timed out after 180s'))).toBe('This image was not checked: consistency check timed out after 180s. Tell the user.')
+    expect(skippedCheckWarning(UNPARSEABLE)).toBe('This image was not checked: checker response could not be parsed. Tell the user.')
   })
 })
 
@@ -236,7 +259,7 @@ describe('ConsistencyChecker', () => {
     expect(message.imagePaths).toEqual([MINA_REF, JIN_REF, PREVIOUS, GENERATED])
   })
 
-  it('lists the references, the cast with its looks, the description and the shot', async () => {
+  it('lists the references, the cast with its looks, the description, the setting and the shot', async () => {
     const { checker, ctx, turns } = await setup()
     await checker.check(ctx, await input(ctx))
     const text = (turns[0].req.messages[0] as Extract<ChatMessage, { role: 'user' }>).text
@@ -253,6 +276,7 @@ describe('ConsistencyChecker', () => {
         '- Jin — JIN LOCK — Look: Base',
         '',
         'Panel description: Mina and Jin wait at the bus stop.',
+        'Setting: Apartment hallway, evening',
         'Shot: close-up'
       ].join('\n')
     )
@@ -440,8 +464,17 @@ describe('buildCheckMessage with items', () => {
       '- Nova — NOVA ITEM LOCK — Use: Firing — cyan beam — Held by: Nova',
       '',
       'Panel description: Nova draws.',
+      'Setting: Apartment hallway, evening',
       'Shot: medium'
     ])
+  })
+
+  it('ends with the continuity notes when the panel has any, so the layout they state can be judged', () => {
+    const noted = { ...panel, continuityNotes: ' Layout: the back door is at the left edge of the frame. ' }
+    const earlier = { relPath: 'panels/pnl_4/v.png', label: 'earlier panel in the same place', subject: { kind: 'previous' as const } }
+    const lines = buildCheckMessage({ references: [characterRef, itemRef, earlier], panel: noted, roster: [novaCharacter], itemRoster: [novaItem] }).split('\n')
+    expect(lines).toContain('3. Reference: earlier panel in the same place')
+    expect(lines.slice(-3)).toEqual(['Setting: Apartment hallway, evening', 'Shot: medium', 'Continuity notes: Layout: the back door is at the left edge of the frame.'])
   })
 
   it('matches references by subject, not label, when a character and an item share a name', () => {

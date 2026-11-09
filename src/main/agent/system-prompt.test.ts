@@ -105,6 +105,12 @@ describe('system prompt', () => {
     expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast: none | Mina opens the apartment door. | dialogue: none | items: Kestrel blaster (Firing)\n')
   })
 
+  it("adds a panel's location and continuity notes to its recent_panels line only when it has them", () => {
+    const placed = makePanel({ location: 'stockroom', continuityNotes: 'Layout: the back door is at the left edge of the frame.' })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], episode: null, recentPanels: [placed] })
+    expect(s).toContain('- pnl_0000000001 [medium, 2:3] at stockroom cast: none | Mina opens the apartment door. | dialogue: none | notes: Layout: the back door is at the left edge of the frame.\n')
+  })
+
   it('extracts a section body', () => {
     const md = '# T\n\n## Mission\nGo.\n\n## Hard Rules\nR1 a\nR2 b\n\n## Other\nz\n'
     expect(extractSection(md, 'Hard Rules')).toBe('R1 a\nR2 b')

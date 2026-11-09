@@ -719,6 +719,32 @@ describe('PanelService generate', () => {
     expect(v3.referenceImagePaths).not.toContain(v1.imagePath)
   })
 
+  it('with a location, continues from the last open shot of that place, and from nothing in a new place', async () => {
+    const { svc, epi, ctx, calls } = await setup()
+    const wide = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: 'stockroom' }), USER)).panel
+    const low = (await svc.create(ctx, draft(epi.id, { shot: 'worms-eye', location: ' Stockroom' }), USER)).panel
+    const next = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: 'stockroom' }), USER)).panel
+    const outside = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: 'street', continuityNotes: 'Layout: the mart door is on the right.' }), USER)).panel
+    expect(low.location).toBe('Stockroom')
+    const v1 = await svc.generate(ctx, wide.id)
+    await svc.generate(ctx, low.id)
+    const v3 = await svc.generate(ctx, next.id)
+    expect(v3.referenceImagePaths).toEqual([v1.imagePath])
+    expect(calls[2].req.references.map((r) => r.label)).toEqual(['earlier panel in the same place'])
+    expect(v3.prompt).toContain('[CONTINUITY] Same place as an earlier panel (reference image 1).')
+    const v4 = await svc.generate(ctx, outside.id)
+    expect(v4.referenceImagePaths).toEqual([])
+    expect(v4.prompt.split('\n').at(-1)).toBe('[CONTINUITY] Layout: the mart door is on the right.')
+  })
+
+  it('keeps a location through an update that does not name it, and trims a new one', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id, { location: 'stockroom' }), USER)).panel
+    expect((await svc.update(ctx, p.id, { description: 'Snow blows in.' }, USER)).panel.location).toBe('stockroom')
+    expect((await svc.update(ctx, p.id, { location: '  back alley ' }, USER)).panel.location).toBe('back alley')
+    expect((await svc.create(ctx, draft(epi.id), USER)).panel.location).toBe('')
+  })
+
   it('references the previous panel’s current ready version, not its latest failed attempt', async () => {
     const { svc, epi, ctx, behavior } = await setup()
     const p1 = (await svc.create(ctx, draft(epi.id), USER)).panel

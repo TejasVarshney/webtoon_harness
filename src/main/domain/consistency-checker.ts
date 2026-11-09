@@ -60,7 +60,30 @@ export interface SheetCheckInput {
   signal?: AbortSignal
 }
 
+/** How the one issue of a check that did not run begins, written once here: `skippedCheckWarning` tells them apart. */
+const FAILED_TO_RUN = 'Consistency check failed to run: '
+const TIMED_OUT = 'Consistency check timed out after '
+const CANCELLED = 'Cancelled'
+
 const UNPARSEABLE: CheckResult = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
+
+/**
+ * What the agent is told about a check that did not run, or null: for a check that ran, for no check (no vision model,
+ * an edit, an upload) and for a cancelled one (the user stopped the run). A vision model that failed (out of credit,
+ * signed out, unreachable) will fail for the next panels too, so that warning says to stop; a timeout or an answer that
+ * could not be read may be a one-off. The text says what to do because a project keeps its own copy of the agent docs,
+ * which only a reset brings up to date.
+ */
+export function skippedCheckWarning(check: CheckResult | null): string | null {
+  if (check === null || !check.skipped) return null
+  const issue = check.issues[0] ?? ''
+  if (issue === FAILED_TO_RUN + CANCELLED) return null
+  if (issue.startsWith(FAILED_TO_RUN)) {
+    return `This image was not checked: the vision model failed (${issue.slice(FAILED_TO_RUN.length)}). The next panels will not be checked either until it works. Stop after this panel and tell the user, who can fix the vision model or pick another one in Settings → Models.`
+  }
+  const reason = issue === '' ? 'the check was skipped' : issue.charAt(0).toLowerCase() + issue.slice(1)
+  return `This image was not checked: ${reason}. Tell the user.`
+}
 
 /**
  * The end index (exclusive) of the JSON object that starts at `start`, found by matching braces while
@@ -113,7 +136,8 @@ export function parseCheckResponse(text: string): CheckResult {
  * The text half of the checker's user message: the images in the order they are attached, the cast
  * (`Name — appearanceLock — Look: variation`, plus "(no reference image)" for a cast member whose
  * reference was not sent), the items when the panel has any (`Name — appearanceLock — Use: usage —
- * Held by: holder`, with the same marker), the panel description and the shot.
+ * Held by: holder`, with the same marker), the panel description, the setting, the shot and, when it has any, the
+ * continuity notes.
  * `reference/prompt-templates` documents it. A reference belongs to a cast member or item by its
  * `subject`, never by label (a character and an item may share a name).
  */
@@ -150,7 +174,10 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     ...(items.length > 0 ? ['', 'Items:', ...items] : []),
     '',
     `Panel description: ${panel.description}`,
-    `Shot: ${panel.shot}`
+    `Setting: ${panel.setting}`,
+    `Shot: ${panel.shot}`,
+    // The notes carry the scene's layout in frame terms ("the back door is at the left edge"), which the checklist's staging item judges.
+    ...(panel.continuityNotes.trim() === '' ? [] : [`Continuity notes: ${panel.continuityNotes.trim()}`])
   ].join('\n')
 }
 
@@ -209,11 +236,11 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 function skipped(message: string): CheckResult {
-  return { passed: true, issues: [`Consistency check failed to run: ${message}`], skipped: true }
+  return { passed: true, issues: [FAILED_TO_RUN + message], skipped: true }
 }
 
 function failureMessage(error: unknown, signal: AbortSignal | undefined): string {
-  if (signal?.aborted || (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError'))) return 'Cancelled'
+  if (signal?.aborted || (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError'))) return CANCELLED
   return error instanceof Error && error.message ? error.message : String(error)
 }
 
@@ -311,7 +338,7 @@ export class ConsistencyChecker {
       const turn = await abortable(provider.runTurn({ system, messages: [message], tools: [], loadImage: run.loadImage, signal }), signal)
       return parseCheckResponse(turn.text)
     } catch (error) {
-      if (timeout.aborted && !run.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${timeoutMs / 1000}s`], skipped: true }
+      if (timeout.aborted && !run.signal?.aborted) return { passed: true, issues: [`${TIMED_OUT}${timeoutMs / 1000}s`], skipped: true }
       return skipped(failureMessage(error, run.signal))
     }
   }

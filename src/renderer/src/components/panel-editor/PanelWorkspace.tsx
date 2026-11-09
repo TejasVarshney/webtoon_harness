@@ -7,6 +7,7 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { PanelThread } from '../panel-chat/PanelThread'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
+import { PanelCheckBadge } from '../visualizer/PanelCheckBadge'
 import { layoutStrip, rowShares } from '@shared/strip-layout'
 import { PanelInspector } from './PanelInspector'
 import { whenSaved } from './panel-save-queue'
@@ -148,6 +149,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                   <div className="editing-actions">
                     {/* Keyed, so a revert that failed or is still running stays with the panel it ran for. */}
                     <VersionSwitcher key={panel.id} panel={panel} />
+                    <PanelCheckBadge panel={panel} />
                     <button type="button" aria-pressed={sketching} title="Scribble the scene as a layout guide for the image" onClick={() => setSketchChoice({ panelId: panel.id, on: !sketching })}>
                       <PencilLine size={14} aria-hidden="true" />
                       Sketch

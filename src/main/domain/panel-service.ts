@@ -10,6 +10,7 @@ import { writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import type { CharacterService, PanelUsageLookup } from './character-service'
 import type { ConsistencyChecker } from './consistency-checker'
+import { pickContinuity, type ContinuityImage } from './continuity'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageService } from './image-service'
@@ -106,6 +107,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       episodeId: draft.episodeId,
       description: draft.description,
       setting: draft.setting,
+      location: draft.location?.trim() ?? '',
       shot: draft.shot,
       aspect: draft.aspect ?? meta.defaultAspect,
       frame: draft.frame,
@@ -157,6 +159,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const merged = {
         description: patch.description ?? current.description,
         setting: patch.setting ?? current.setting,
+        location: patch.location?.trim() ?? current.location,
         shot: patch.shot ?? current.shot,
         aspect: patch.aspect ?? current.aspect,
         frame: patch.frame ?? current.frame,
@@ -237,7 +240,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const meta = await this.opts.projects.getMeta(ctx)
       const roster = await this.roster(ctx)
       const itemRoster = await this.itemRoster(ctx)
-      const previous = readyImage(await this.previousOf(ctx, panel))
+      const previous = await this.continuityOf(ctx, panel)
       const maxReferences = this.opts.images.maxReferences('image')
       const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
       const fix = opts.extraInstruction
@@ -415,6 +418,24 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     return index > 0 ? tryReadPanel(ctx, episode.panelIds[index - 1]) : null
   }
 
+  /**
+   * The image a draw of the panel continues from (see `pickContinuity`). Without a location only the panel right before
+   * can be it, so only that one is read.
+   */
+  private async continuityOf(ctx: ProjectContext, panel: Panel): Promise<ContinuityImage | null> {
+    let episode: Episode
+    try {
+      episode = await this.opts.episodes.get(ctx, panel.episodeId)
+    } catch (error) {
+      if (error instanceof EntityNotFoundError) return null
+      throw error
+    }
+    const index = episode.panelIds.indexOf(panel.id)
+    if (index <= 0) return null
+    const ids = panel.location.trim() === '' ? [episode.panelIds[index - 1]] : episode.panelIds.slice(0, index)
+    return pickContinuity(panel, await Promise.all(ids.map((id) => tryReadPanel(ctx, id))))
+  }
+
   /** Every character, archived ones included: existing panels keep regenerating after a character is archived. */
   private async roster(ctx: ProjectContext): Promise<Map<string, Character>> {
     return new Map((await this.opts.characters.list(ctx, { includeArchived: true })).map((c) => [c.id, c]))
@@ -428,12 +449,6 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   private readonly emit: EmitPanelChanged = (ctx, panelId) => {
     this.opts.bus.emit({ type: 'panel.changed', projectId: ctx.id, panelId })
   }
-}
-
-/** The previous panel's current image, if that version is ready. */
-function readyImage(panel: Panel | null): { panelId: string; imagePath: string } | null {
-  const version = panel?.versions.find((v) => v.id === panel.currentVersionId)
-  return panel && version && version.status === 'ready' && version.imagePath ? { panelId: panel.id, imagePath: version.imagePath } : null
 }
 
 /** The checker never throws, but a stand-in might: a check that fails to run is no check (the version keeps `check: null`). */

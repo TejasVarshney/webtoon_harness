@@ -121,7 +121,7 @@ describe('edit_image and regenerate_image', () => {
     const out = json(r)
     const stored = await panel(p2.id)
     // An edit is never consistency-checked, so its check is null.
-    expect(out).toEqual({ versionId: stored.currentVersionId, label: 'v2', status: 'ready', error: null, imagePath: stored.versions[1].imagePath, check: null })
+    expect(out).toEqual({ versionId: stored.currentVersionId, label: 'v2', status: 'ready', error: null, imagePath: stored.versions[1].imagePath, warnings: [], check: null })
     expect(out.imagePath).toMatch(/^panels\/pnl_[0-9a-f]{10}\/ver_[0-9a-f]{10}\.png$/)
     expect(r.images).toEqual([out.imagePath])
     expect(stored.versions[1]).toMatchObject({ source: 'edit', instruction: 'make her smile', parentVersionId: p2.currentVersionId })
@@ -134,7 +134,7 @@ describe('edit_image and regenerate_image', () => {
     expect(r.ok, r.content).toBe(true)
     const out = json(r)
     expect(out).toMatchObject({ label: 'v2', status: 'ready', error: null, check: null })
-    expect(Object.keys(out).sort()).toEqual(['check', 'error', 'imagePath', 'label', 'status', 'versionId'])
+    expect(Object.keys(out).sort()).toEqual(['check', 'error', 'imagePath', 'label', 'status', 'versionId', 'warnings'])
     expect(r.images).toEqual([out.imagePath])
     expect(generate).toHaveBeenCalledTimes(1)
     const stored = await panel(p2.id)
@@ -158,8 +158,15 @@ describe('edit_image and regenerate_image', () => {
     expect(stored.versions[2].prompt).toContain('[FIX] Fix these consistency issues: Mina hair is black')
     expect(stored.versions.map((v) => v.check?.passed)).toEqual([undefined, false, true])
     expect(stored.currentVersionId).toBe(stored.versions[2].id)
-    expect(out).toEqual({ versionId: stored.versions[2].id, label: 'v3', status: 'ready', error: null, imagePath: stored.versions[2].imagePath, check: { passed: true, issues: [], skipped: false } })
+    expect(out).toEqual({ versionId: stored.versions[2].id, label: 'v3', status: 'ready', error: null, imagePath: stored.versions[2].imagePath, warnings: [], check: { passed: true, issues: [], skipped: false } })
     expect(r.images).toEqual([stored.versions[2].imagePath])
+  })
+
+  it('regenerate_image warns when the consistency check timed out', async () => {
+    const { run, s } = await setup()
+    vi.spyOn(s.checker, 'check').mockResolvedValueOnce({ passed: true, issues: ['Consistency check timed out after 180s'], skipped: true })
+    const out = json(await run('regenerate_image'))
+    expect(out.warnings).toEqual(['This image was not checked: consistency check timed out after 180s. Tell the user.'])
   })
 
   it('regenerate_image reports the last attempt and its failed check when the redraw does not pass either', async () => {
@@ -228,13 +235,23 @@ describe('edit_image and regenerate_image', () => {
 })
 
 describe('revert_to_version', () => {
+  it('never warns about the old check of the version it goes back to', async () => {
+    const { run, s } = await setup()
+    vi.spyOn(s.checker, 'check').mockResolvedValueOnce({ passed: true, issues: ['Consistency check failed to run: 402 Insufficient Balance'], skipped: true })
+    const drawn = json(await run('regenerate_image'))
+    expect(drawn.warnings).toHaveLength(1)
+    await run('edit_image', { instruction: 'make her smile' })
+    const back = json(await run('revert_to_version', { versionId: drawn.versionId }))
+    expect(back).toMatchObject({ versionId: drawn.versionId, warnings: [], check: { skipped: true } })
+  })
+
   it('makes an earlier ready version current and returns it with its label and image', async () => {
     const { run, p2, panel } = await setup()
     await run('edit_image', { instruction: 'make her smile' })
     const first = p2.versions[0]
     const r = await run('revert_to_version', { versionId: first.id })
     expect(r.ok, r.content).toBe(true)
-    expect(json(r)).toEqual({ versionId: first.id, label: 'v1', status: 'ready', error: null, imagePath: first.imagePath, check: null })
+    expect(json(r)).toEqual({ versionId: first.id, label: 'v1', status: 'ready', error: null, imagePath: first.imagePath, warnings: [], check: null })
     expect(r.images).toEqual([first.imagePath])
     const stored = await panel(p2.id)
     expect(stored.currentVersionId).toBe(first.id)

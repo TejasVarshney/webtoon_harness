@@ -77,6 +77,7 @@ export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewSty
   const scene: SceneFields = {
     description: useFieldAutosave(panel, 'description'),
     setting: useFieldAutosave(panel, 'setting'),
+    location: useFieldAutosave(panel, 'location'),
     shot: useFieldAutosave(panel, 'shot'),
     aspect: useFieldAutosave(panel, 'aspect'),
     frame: useFieldAutosave(panel, 'frame'),

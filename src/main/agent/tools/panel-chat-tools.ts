@@ -2,12 +2,13 @@ import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
 import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Episode, Item, Panel, PanelVersion } from '@shared/types'
+import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
 import { castNames, itemNames, speakerName, type PanelNeighbor } from '../system-prompt'
-import { layoutFields } from './panel-tools'
+import { layoutFields, locationField } from './panel-tools'
 import { ToolError, ToolRegistry, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 
 /*
@@ -27,6 +28,7 @@ function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
     gapAfter: panel.gapAfter,
     gutter: panel.gutter,
     setting: panel.setting,
+    location: panel.location,
     description: panel.description,
     continuityNotes: panel.continuityNotes,
     offPanelMentions: panel.offPanelMentions,
@@ -136,10 +138,10 @@ function asToolError(error: unknown): unknown {
   return error instanceof PanelValidationError ? new ToolError(error.issues.join('\n')) : error
 }
 
-/** The outcome of an image attempt. A `failed` status is a result for the model to read, not a thrown error. */
-function versionResult(v: PanelVersion, label: string | null): ToolOutput {
+/** The outcome of an image attempt, or of a revert. A `failed` status is a result for the model to read, not a thrown error. */
+function versionResult(v: PanelVersion, label: string | null, warnings: string[] = []): ToolOutput {
   return {
-    content: { versionId: v.id, label, status: v.status, error: v.error, imagePath: v.imagePath, check: v.check },
+    content: { versionId: v.id, label, status: v.status, error: v.error, imagePath: v.imagePath, warnings, check: v.check },
     images: v.status === 'ready' && v.imagePath !== null ? [v.imagePath] : []
   }
 }
@@ -148,12 +150,15 @@ function versionResult(v: PanelVersion, label: string | null): ToolOutput {
  * A new version's label counts the ready versions after the attempt was recorded, so the panel is read back.
  * A ready result always carries its label: if the panel cannot be read back (it was deleted, or the
  * read failed) or no longer lists the version as ready, the call fails with that reason instead.
+ * A check that did not run on this draw adds a warning; a revert never does, since an old skipped check says nothing
+ * about the vision model now.
  */
 async function recordedResult(ctx: ToolContext, panelId: string, v: PanelVersion): Promise<ToolOutput> {
   if (v.status !== 'ready') return versionResult(v, null)
   const label = versionLabel(await ctx.services.panels.get(ctx.project, panelId), v.id)
   if (label === null) throw new ToolError(`Version ${v.id} is no longer a ready version of this panel`)
-  return versionResult(v, label)
+  const unchecked = skippedCheckWarning(v.check)
+  return versionResult(v, label, unchecked === null ? [] : [unchecked])
 }
 
 const getPanelContext = (panelId: string): ToolDefinition =>
@@ -196,6 +201,7 @@ const viewCurrentImage = (panelId: string): ToolDefinition =>
 const patchInput = PanelPatchSchema.extend({
   description: PanelPatchSchema.shape.description.describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
   setting: PanelPatchSchema.shape.setting.describe('Where and when, e.g. "Apartment hallway, evening"'),
+  location: locationField,
   aspect: PanelPatchSchema.shape.aspect.describe('1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
   ...layoutFields,
   characters: PanelPatchSchema.shape.characters.describe('Who is in the panel (characterId and variationId from the roster), replacing the whole cast. Empty for a scene without characters.'),
@@ -203,7 +209,7 @@ const patchInput = PanelPatchSchema.extend({
     'Items in the panel (itemId, a ready usageId, heldBy a cast member or null, action), replacing the whole list. Removing a cast member who holds an item is rejected: change heldBy too.'
   ),
   dialogue: PanelPatchSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
-  continuityNotes: PanelPatchSchema.shape.continuityNotes.describe('What must match the previous panel: lighting, time of day, props, outfits.'),
+  continuityNotes: PanelPatchSchema.shape.continuityNotes.describe("What must match: the scene's layout in frame terms, lighting, time of day, props, outfits."),
   offPanelMentions: PanelPatchSchema.shape.offPanelMentions.describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
 })
 

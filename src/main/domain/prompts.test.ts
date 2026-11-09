@@ -243,17 +243,26 @@ describe('composePanelPrompt', () => {
     })
   })
 
-  it('has no continuity line when there is no previous panel', () => {
+  it('without a panel to continue from, has a continuity line only for the notes', () => {
+    const input = { stylePreset: 'STYLE', roster, itemRoster, previous: null, maxReferences: 4 }
+    const bare = composePanelPrompt({ ...input, panel: panel({ characters: [cast(mina, 'var_m0')] }) })
+    expect(bare.prompt).not.toContain('[CONTINUITY]')
+    const noted = composePanelPrompt({ ...input, panel: panel({ characters: [cast(mina, 'var_m0')], continuityNotes: ' Layout: the back door is at the left edge of the frame. ' }) })
+    expect(noted.prompt.split('\n').at(-1)).toBe('[CONTINUITY] Layout: the back door is at the left edge of the frame.')
+    expect(noted.references).toEqual([{ relPath: 'characters/chr_mina/base.png', label: 'Mina', subject: { kind: 'character', id: 'chr_mina' } }])
+  })
+
+  it('names an earlier panel of the same place as such, and asks only for its layout', () => {
     const { prompt, references } = composePanelPrompt({
       stylePreset: 'STYLE',
-      panel: panel({ characters: [cast(mina, 'var_m0')], continuityNotes: 'ignored without a previous panel' }),
+      panel: panel({ characters: [cast(mina, 'var_m0')], continuityNotes: 'Door still open.' }),
       roster,
       itemRoster,
-      previous: null,
+      previous: { panelId: 'pnl_earlier', imagePath: 'panels/pnl_earlier/v.png', earlier: true },
       maxReferences: 4
     })
-    expect(prompt).not.toContain('[CONTINUITY]')
-    expect(references).toEqual([{ relPath: 'characters/chr_mina/base.png', label: 'Mina', subject: { kind: 'character', id: 'chr_mina' } }])
+    expect(prompt.split('\n').at(-1)).toBe('[CONTINUITY] Same place as an earlier panel (reference image 2). Keep the layout of the place and its landmarks consistent with it. Door still open.')
+    expect(references.at(-1)).toEqual({ relPath: 'panels/pnl_earlier/v.png', label: 'earlier panel in the same place', subject: { kind: 'previous' } })
   })
 
   it('drops previous panel first, then trailing cast, when over the cap', () => {

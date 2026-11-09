@@ -31,7 +31,7 @@ Where each part comes from:
 | {appearanceLock} | The character's appearance lock, verbatim. |
 | {variation.name}, {variation.delta} | The name and delta of the variation the character wears in this panel. |
 | {action}, {expression}, {position} | The cast entry's fields. |
-| {m} | The number of the previous panel's reference image. |
+| {m} | The number of the reference image the panel continues from: the previous panel, or an earlier panel in the same place. |
 | {continuityNotes} | The panel's `continuityNotes`. |
 | {item.name}, {item.appearanceLock} | The name and item lock of an item attached to the panel (only in the panel prompt with items, below). |
 | {k} | The number of that item's reference image. |
@@ -48,7 +48,19 @@ How the template bends:
 - **[CHARACTERS]** has one line per cast entry, in cast order. With an empty cast, nothing follows the [CHARACTERS] line.
 - **Empty parts are left out** of a cast line. A variation with no delta reads "Look: Base." (no dash). An empty `action` leaves out "Action: ...", An empty `expression` leaves out "Expression: ...", an empty `position` leaves out "Position: ..." (the default is center).
 - **No reference image:** when the variation has no ready image, or its image was dropped for the reference limit, "(reference image {n})" reads "(no reference image)".
-- **[CONTINUITY]** appears only when the previous panel in the episode has a ready image. Without it (first panel of an episode, or a previous panel with no ready image), your `continuityNotes` are not in the prompt at all. An empty `continuityNotes` leaves the line ending at "consistent."
+- **[CONTINUITY]** depends on the image the panel continues from (`workflows/panel-generation`, Using the Previous Panel, says how the app picks it):
+  - **The previous panel:** the line shown above, with your `continuityNotes` after it. An empty `continuityNotes` leaves the line ending at "consistent."
+  - **An earlier panel in the same place**, when the panel has a `location` and the panel right before is a tight shot of that place or another place:
+
+    ```
+    [CONTINUITY] Same place as an earlier panel (reference image {m}). Keep the layout of the place and its landmarks consistent with it. {continuityNotes}
+    ```
+
+  - **None** (the first panel of an episode, a previous panel with no ready image, or a `location` no earlier panel has): the line holds only your notes, and is left out when they are empty:
+
+    ```
+    [CONTINUITY] {continuityNotes}
+    ```
 - **[FIX]** is added as a last line only when the app redraws a panel after a failed consistency check: "[FIX] Fix these consistency issues: {issue 1}; {issue 2}".
 - **Dialogue is never in the prompt.** It is drawn over the image by the app.
 - **Periods are added for you.** The app writes a period after the variation look, the action, the expression and the position. End `delta`, `action` and `expression` without a period, or the prompt gets "..".
@@ -58,7 +70,7 @@ Reference images, in this order:
 1. each cast member's variation image, in cast order;
 2. the image of the usage each attached item uses, in panel order (only when the panel has items);
 3. the user's layout sketch (only when the panel has one);
-4. the previous panel's current image.
+4. the image the panel continues from: the previous panel's current image, or an earlier panel's in the same place.
 
 The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
 
@@ -210,7 +222,7 @@ Edit the first image: {instruction}. Keep everything else unchanged — composit
 When a model is assigned to the vision role (Settings → Models), the app checks every newly generated panel image (not edits, not uploads) with that model:
 
 - **System prompt:** the project's `reference/consistency-checklist` doc, word for word. Editing that doc changes how the checker judges.
-- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, then the usage images of the panel's items, then the previous panel, then the generated image last), the cast, the items (only when the panel has any), the panel description and the shot:
+- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, then the usage images of the panel's items, then the image the panel continues from, then the generated image last), the cast, the items (only when the panel has any), the panel description, the setting, the shot and the continuity notes (only when the panel has any):
 
 ```
 Images, in the order attached:
@@ -222,10 +234,12 @@ Cast:
 - {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
 
 Panel description: {description}
+Setting: {setting}
 Shot: {shot}
+Continuity notes: {continuityNotes}
 ```
 
-  The cast has one line per character, in cast order. A variation with no delta reads "Look: {variation.name}". A character whose reference image was not sent (the variation has no ready image, or it was dropped for the reference limit) ends the line with "(no reference image)" and has no entry in the image list. With an empty cast, "Cast:" is followed by "(none)". The Panel Prompt's dialogue, setting and continuity notes are not in this message.
+  The cast has one line per character, in cast order. A variation with no delta reads "Look: {variation.name}". A character whose reference image was not sent (the variation has no ready image, or it was dropped for the reference limit) ends the line with "(no reference image)" and has no entry in the image list. With an empty cast, "Cast:" is followed by "(none)". The "Continuity notes:" line is left out when the panel has none. The image the panel continues from is listed as "Reference: previous panel", or as "Reference: earlier panel in the same place" when it is an earlier one. The Panel Prompt's dialogue is not in this message.
 
   With items, the image list gains one entry per item that has a reference image, after the cast and before the previous panel, and an "Items:" block follows the cast:
 
@@ -243,7 +257,9 @@ Items:
 - {item.name} — {item.appearanceLock} — Use: {usage.name} — {usage.delta} — Held by: {name}
 
 Panel description: {description}
+Setting: {setting}
 Shot: {shot}
+Continuity notes: {continuityNotes}
 ```
 
   The items block has one line per item, in panel order, and is left out when the panel has no items. A usage with no delta reads "Use: {usage.name}". "Held by:" is the holder's name or "nobody". An item whose reference image was not sent ends the line with "(no reference image)" and has no entry in the image list. References are matched to cast members and items by who they belong to, never by label, so an item may share a name with a character.

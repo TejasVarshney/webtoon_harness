@@ -738,6 +738,17 @@ describe('PanelInspector', () => {
       expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
     })
 
+    it('saves the location, trimmed, when it is left', async () => {
+      const { calls } = mount()
+      open('Scene')
+      expect(field('Location')).toHaveValue('')
+      act(() => field('Location').focus())
+      fireEvent.change(field('Location'), { target: { value: ' stockroom ' } })
+      act(() => field('Location').blur())
+      await waitFor(() => expect(updates(calls)).toEqual([{ location: 'stockroom' }]))
+      expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+
     it('replaces the frame with a note for a tall aspect', async () => {
       const { calls } = mount()
       open('Scene')

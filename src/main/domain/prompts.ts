@@ -55,7 +55,8 @@ export interface PanelPromptInput {
   /** Characters; resolves cast entries and the holders of items. */
   roster: Map<string, Character>
   itemRoster: Map<string, Item>
-  previous: { panelId: string; imagePath: string } | null
+  /** The image the panel continues from: the panel right before it, or with `earlier` an earlier panel in the same location. */
+  previous: { panelId: string; imagePath: string; earlier?: boolean } | null
   /** The user's layout sketch, for a generation only (an edit keeps the image's own composition). */
   sketch?: string | null
   /** The image model's reference-image cap. */
@@ -83,13 +84,18 @@ function shapeNote(panel: Pick<Panel, 'aspect' | 'frame'>): string {
   return panel.frame === 'borderless' ? ` ${BORDERLESS_NOTE}` : ''
 }
 
+/** How the checker's image list names a continuity image that is not the panel right before. */
+const EARLIER_LABEL = 'earlier panel in the same place'
+
 const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
 
 /**
  * Builds the panel prompt and its ordered reference list. References are the cast members'
  * variation images in cast order, then the panel items' usage images in panel order, then the user's
- * layout sketch (a [LAYOUT] line, left out with its image), then the previous panel's image; over
+ * layout sketch (a [LAYOUT] line, left out with its image), then the image the panel continues from (the previous
+ * panel, or an earlier one in the same place, each with its own [CONTINUITY] wording; with neither, the line holds only
+ * the continuity notes, and is left out when there are none); over
  * `maxReferences` the previous panel is dropped first, then the sketch, then items from the end,
  * then cast members from the end, and a dropped entry reads "(no reference image)" (an item's lock
  * still applies). A cast member or item whose image is not ready reads the same way (validation
@@ -154,10 +160,17 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     if (marker !== NO_REFERENCE) lines.push(`${LAYOUT_PREFIX} ${marker}${LAYOUT_NOTE}`)
   }
 
-  if (previous) {
+  const notes = panel.continuityNotes.trim()
+  if (previous?.earlier) {
+    const marker = refer(previous.imagePath, EARLIER_LABEL, { kind: 'previous' })
+    lines.push([`[CONTINUITY] Same place as an earlier panel ${marker}. Keep the layout of the place and its landmarks consistent with it.`, notes].filter(Boolean).join(' '))
+  } else if (previous) {
     const marker = refer(previous.imagePath, 'previous panel', { kind: 'previous' })
     const continuity = `[CONTINUITY] Continues directly from the previous panel ${marker}. Keep setting layout, lighting, time of day and outfits consistent.`
-    lines.push([continuity, panel.continuityNotes.trim()].filter(Boolean).join(' '))
+    lines.push([continuity, notes].filter(Boolean).join(' '))
+  } else if (notes) {
+    // Nothing to continue from (a first panel, a new place), but the notes may still carry the scene's layout.
+    lines.push(`[CONTINUITY] ${notes}`)
   }
 
   return { prompt: lines.join('\n'), references }
