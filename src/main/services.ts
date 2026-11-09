@@ -15,6 +15,7 @@ import { LocationService, type LocationUsageLookup } from './domain/location-ser
 import { PanelService } from './domain/panel-service'
 import type { PackComposer } from './domain/reference-pack'
 import { StoryService } from './domain/story-service'
+import { StyleLibrary } from './domain/style-library'
 import { EventBus } from './events/bus'
 import { ModelRegistry } from './models/registry'
 import { SecretStore, type Encryptor } from './models/secrets'
@@ -61,6 +62,7 @@ export interface Services {
   episodes: EpisodeService
   panels: PanelService
   story: StoryService
+  styleLibrary: StyleLibrary
   exports: ExportService
   agent: AgentRunner
   panelChat: PanelChatRunner
@@ -105,6 +107,8 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const episodes = new EpisodeService({ bus })
   const panels = new PanelService({ bus, projects, episodes, characters, items, locations, images, checker, trash: opts.trash, packComposer: opts.packComposer })
   const story = new StoryService({ bus, projects })
+  const styleLibrary = new StyleLibrary(join(opts.userDataDir, 'styles.json'))
+  await styleLibrary.load()
   const unavailable = (): never => {
     throw new Error('Export is not available in this build')
   }
@@ -124,7 +128,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => locations.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, locations, episodes, panels, story, exports } as Services
+  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, locations, episodes, panels, story, styleLibrary, exports } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   services.activeContext = new ActiveContext()
