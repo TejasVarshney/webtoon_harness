@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
-import { contentBottom, resolveStrip } from '@shared/strip-canvas'
+import { contentBottom, panelHeight, resolveStrip } from '@shared/strip-canvas'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { AddPanelButton } from './AddPanelButton'
 import { PanelCard } from './PanelCard'
+import { useStripDrag } from './use-strip-drag'
 
 /** How far the canvas runs past the lowest panel, so a panel can be dragged further down. */
 const TRAILING_SPACE = 1600
@@ -30,11 +31,17 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   const selectedIds = useAppStore((s) => s.selectedPanelIds)
   const exporting = mode === 'export'
   const placed = useMemo(() => resolveStrip(panels), [panels])
-  const bottom = contentBottom(placed)
+  const drag = useStripDrag(placed)
+  // A panel being moved is drawn where it is dragged to, and the strip grows to hold it.
+  const drawn = placed.map((p) => {
+    const preview = drag.previews[p.panel.id]
+    return preview === undefined ? p : { ...p, ...preview, height: panelHeight(preview.width, p.panel.aspect), share: preview.width / STRIP_CSS_WIDTH }
+  })
+  const bottom = contentBottom(drawn)
 
   const canvas = (
     <div className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? {} : { background }) }}>
-      {placed.map((p, i) => (
+      {drawn.map((p, i) => (
         <PanelCard
           key={p.panel.id}
           panel={p.panel}
@@ -45,6 +52,8 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
           mode={mode}
           lettering={lettering}
           position={exporting ? i + 1 : undefined}
+          bind={exporting ? undefined : drag.bindCard(p.panel.id)}
+          bindResize={exporting ? undefined : drag.bindResize(p.panel.id)}
         />
       ))}
       {!exporting && (
@@ -59,6 +68,11 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   return (
     // Clicks on the card stop here (see PanelCard), so this one is a click on empty strip.
     <div className="strip-canvas-pane" onClick={() => useAppStore.getState().selectPanel(null)}>
+      {drag.error !== null && (
+        <p role="alert" className="error">
+          {drag.error}
+        </p>
+      )}
       {panels.length === 0 && <p className="placeholder">No panels yet. Add one, or ask the agent to draw it.</p>}
       {canvas}
     </div>

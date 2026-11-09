@@ -2389,6 +2389,34 @@ kbd {
 
 .strip-canvas > .panel-card {
   flex: none;
+  /* The card is dragged with the pointer, so the browser must not scroll, select or drag the picture instead. */
+  touch-action: none;
+  user-select: none;
+}
+
+.strip-canvas > .panel-card img {
+  -webkit-user-drag: none;
+}
+
+/* The corner that sets a card's width. It shows with the toolbar, and stays inside the card so no neighbour covers it. */
+.panel-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
+  border-radius: 0 0 2px;
+  opacity: 0;
+  transition: opacity 0.14s var(--ease);
+}
+
+.panel-card:hover .panel-resize,
+.panel-card:focus-within .panel-resize,
+.panel-card[data-selected='true'] .panel-resize {
+  opacity: 1;
 }
 
 /* Under the lowest panel, where the next one would go. */

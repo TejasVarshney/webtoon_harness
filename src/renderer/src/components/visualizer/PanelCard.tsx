@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
@@ -24,6 +24,10 @@ export interface PanelCardProps {
   lettering?: boolean
   /** Export mode: the panel's 1-based place in the whole episode, for naming it when its image fails to load. */
   position?: number
+  /** Handlers that move the card on the strip (see `useStripDrag`). Presses on its buttons and dialogs are left to them. */
+  bind?: HTMLAttributes<HTMLElement>
+  /** Handlers of the corner handle that resizes the card. Without them there is no handle. */
+  bindResize?: HTMLAttributes<HTMLElement>
 }
 
 /**
@@ -35,7 +39,7 @@ export interface PanelCardProps {
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
-export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position }: PanelCardProps) {
+export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position, bind, bindResize }: PanelCardProps) {
   const siblings = usePanelsStore((s) => s.panelsByEpisode[panel.episodeId])
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -81,6 +85,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): void {
+    bind?.onKeyDown?.(e)
     // Only the card itself: Enter on a toolbar button is that button's.
     if (e.target !== e.currentTarget) return
     if (e.key === 'Enter') {
@@ -127,6 +132,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
         style={shape}
         aria-current={selected ? 'true' : undefined}
         tabIndex={0}
+        {...bind}
         onClick={onClick}
         onDoubleClick={() => useAppStore.getState().focusPanel(panel.id)}
         onKeyDown={onKeyDown}
@@ -148,6 +154,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
             <Trash2 size={15} aria-hidden="true" />
           </button>
         </div>
+        {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
       </article>
 
       {/* A sibling of the card, not a child: a click in the dialog must not select the panel, nor (stopped at the backdrop) reach the strip, whose empty-space click clears the selection. */}
