@@ -28,10 +28,11 @@ describe('loadProjects and closeProject', () => {
     expect(calls.some((c) => c.channel === 'projects:open')).toBe(false)
   })
 
-  it('closeProject empties the open project, its sessions and the selection', () => {
+  it('closeProject empties the open project, its problems, sessions and the selection', () => {
     useAppStore.setState({
       projects: [meta],
       projectId: P,
+      problems: [{ path: 'panels/pnl_0000000bad.json', message: 'Unexpected token' }],
       sessions: [{ id: 'ses_0000000001' }] as never,
       sessionId: 'ses_0000000001',
       selectedPanelId: 'pnl_0000000001',
@@ -39,7 +40,7 @@ describe('loadProjects and closeProject', () => {
     })
     useAppStore.getState().closeProject()
     const s = useAppStore.getState()
-    expect([s.projectId, s.sessions, s.sessionId, s.selectedPanelId, s.activeEpisodeId]).toEqual([null, [], null, null, null])
+    expect([s.projectId, s.problems, s.sessions, s.sessionId, s.selectedPanelId, s.activeEpisodeId]).toEqual([null, [], [], null, null, null])
     expect(s.projects).toEqual([meta])
   })
 })
@@ -72,7 +73,7 @@ describe('active context sync', () => {
 
     // Other state changes do not repeat the call.
     useAppStore.getState().selectPanel('pnl_0000000001')
-    useAppStore.getState().setRightTab('story')
+    useAppStore.getState().setStudioTab('story')
     expect(contexts(calls)).toHaveLength(3)
   })
 

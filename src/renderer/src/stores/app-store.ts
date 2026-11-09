@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
 import { api } from '../api'
 
-export type RightTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
+export type StudioTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
 
 export interface AppData {
   projects: ProjectMeta[]
@@ -12,7 +12,7 @@ export interface AppData {
   sessionId: string | null
   selectedPanelId: string | null
   activeEpisodeId: string | null
-  rightTab: RightTab
+  studioTab: StudioTab
   /** Thread key (a session id, or `panel:<panelId>`) to the id of its running agent run. */
   runningThreads: Record<string, string>
 }
@@ -41,7 +41,7 @@ export interface AppActions {
   renameSession(id: string, title: string): Promise<void>
   deleteSession(id: string): Promise<void>
   selectPanel(id: string | null): void
-  setRightTab(tab: RightTab): void
+  setStudioTab(tab: StudioTab): void
 }
 
 export const initialAppState: AppData = {
@@ -52,7 +52,7 @@ export const initialAppState: AppData = {
   sessionId: null,
   selectedPanelId: null,
   activeEpisodeId: null,
-  rightTab: 'webtoon',
+  studioTab: 'webtoon',
   runningThreads: {}
 }
 
@@ -86,7 +86,7 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
   },
 
   closeProject() {
-    set({ projectId: null, sessions: [], sessionId: null, selectedPanelId: null, activeEpisodeId: null })
+    set({ projectId: null, problems: [], sessions: [], sessionId: null, selectedPanelId: null, activeEpisodeId: null })
   },
 
   async refreshMeta() {
@@ -159,8 +159,8 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     set({ selectedPanelId: id })
   },
 
-  setRightTab(tab) {
-    set({ rightTab: tab })
+  setStudioTab(tab) {
+    set({ studioTab: tab })
   }
 }))
 

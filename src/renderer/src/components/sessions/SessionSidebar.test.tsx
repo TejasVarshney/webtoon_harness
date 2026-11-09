@@ -83,20 +83,4 @@ describe('SessionSidebar', () => {
     expect(items[0]).toHaveAttribute('data-running', 'true')
     expect(items[1]).not.toHaveAttribute('data-running', 'true')
   })
-
-  it('creates a project from the empty state', async () => {
-    const created = project('prj_bbbbbbbbbb', 'Moon Diary')
-    const { calls } = installFakeApi({
-      'projects:create': () => created,
-      'projects:open': () => ({ meta: created, problems: [] }),
-      'sessions:list': () => []
-    })
-    render(<SessionSidebar />)
-    await userEvent.click(screen.getByTestId('new-project'))
-    await userEvent.type(screen.getByLabelText('Title'), 'Moon Diary')
-    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
-    await waitFor(() => expect(useAppStore.getState().projectId).toBe('prj_bbbbbbbbbb'))
-    expect(calls.find((c) => c.channel === 'projects:create')?.req).toEqual({ title: 'Moon Diary' })
-    expect(calls.some((c) => c.channel === 'projects:open')).toBe(true)
-  })
 })

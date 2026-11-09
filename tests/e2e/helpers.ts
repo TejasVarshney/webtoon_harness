@@ -118,3 +118,17 @@ export async function openTab(page: Page, tab: 'webtoon' | 'characters' | 'items
   await button.click()
   await expect(button).toHaveAttribute('aria-selected', 'true')
 }
+
+/** Switches to a project by its title, through the File menu. */
+export async function openProjectFromMenu(page: Page, title: string): Promise<void> {
+  await page.getByTestId('file-menu').click()
+  await page.getByRole('menuitem', { name: title, exact: true }).click()
+  await expect(page.getByTestId('pane-chat')).toBeVisible()
+}
+
+/** Opens the Settings dialog from the File menu. */
+export async function openSettings(page: Page): Promise<void> {
+  await page.getByTestId('file-menu').click()
+  await page.getByTestId('settings-open').click()
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+}

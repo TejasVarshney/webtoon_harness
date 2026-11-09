@@ -8,10 +8,10 @@ import { installFakeApi } from '../../test/fake-api'
 import { HomePage } from './HomePage'
 
 // The harness itself is not under test here, only that App leaves the home page for it.
-vi.mock('../layout/ThreePaneLayout', () => ({ ThreePaneLayout: () => <div data-testid="harness" /> }))
+vi.mock('../layout/WorkspaceLayout', () => ({ WorkspaceLayout: () => <div data-testid="harness" /> }))
 vi.mock('../chat/ChatHeader', () => ({ ChatHeader: () => null }))
 vi.mock('../chat/ChatPane', () => ({ ChatPane: () => null }))
-vi.mock('../layout/RightPane', () => ({ RightPane: () => null }))
+vi.mock('../layout/StudioPane', () => ({ StudioPane: () => null }))
 vi.mock('../sessions/SessionSidebar', () => ({ SessionSidebar: () => null }))
 
 const project = (id: string, title: string, updatedAt: string): ProjectMeta => ({ id, title, updatedAt }) as unknown as ProjectMeta

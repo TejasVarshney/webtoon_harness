@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { ChatHeader } from './components/chat/ChatHeader'
 import { ChatPane } from './components/chat/ChatPane'
 import { HomePage } from './components/home/HomePage'
-import { RightPane } from './components/layout/RightPane'
-import { ThreePaneLayout } from './components/layout/ThreePaneLayout'
+import { StudioPane } from './components/layout/StudioPane'
+import { WorkspaceLayout } from './components/layout/WorkspaceLayout'
 import { PanelWorkspace } from './components/panel-editor/PanelWorkspace'
 import { SessionSidebar } from './components/sessions/SessionSidebar'
 import { startEventSync } from './events'
@@ -31,11 +31,16 @@ export function App() {
   if (projectId === null) return <HomePage />
 
   return (
-    <ThreePaneLayout
+    <WorkspaceLayout
       header={<ChatHeader />}
-      left={<SessionSidebar />}
-      middle={<ChatPane />}
-      right={<RightPane />}
+      left={<StudioPane />}
+      // The sessions sit above the chat until they get a place of their own.
+      right={
+        <div className="chat-column">
+          <SessionSidebar />
+          <ChatPane />
+        </div>
+      }
       overlay={selectedPanelId === null ? undefined : <PanelWorkspace panelId={selectedPanelId} />}
     />
   )

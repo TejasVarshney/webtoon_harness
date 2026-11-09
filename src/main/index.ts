@@ -38,7 +38,7 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
-    // Below this the sidebar, the chat and the strip no longer fit side by side.
+    // Below this the strip and the chat no longer fit side by side.
     minWidth: 960,
     minHeight: 600,
     title: 'Webtoon AI Harness',

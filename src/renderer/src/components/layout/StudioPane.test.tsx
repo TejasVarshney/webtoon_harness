@@ -9,7 +9,7 @@ import { PROJECT_ID as projectId, character } from '../../test/character-fixture
 import { installFakeApi } from '../../test/fake-api'
 import { item } from '../../test/item-fixtures'
 import { episode, panel } from '../../test/panel-fixtures'
-import { RightPane } from './RightPane'
+import { StudioPane } from './StudioPane'
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId })
@@ -18,7 +18,7 @@ beforeEach(() => {
   usePanelsStore.setState({ ...initialPanelsState })
 })
 
-describe('RightPane', () => {
+describe('StudioPane', () => {
   it('switches between the Webtoon, Characters, Items and Story tabs', async () => {
     installFakeApi({
       'characters:list': () => [character()],
@@ -27,33 +27,33 @@ describe('RightPane', () => {
       'panels:list': () => [],
       'story:get': () => ({ mode: 'user', bible: '# Story Bible\n', beats: [] })
     })
-    render(<RightPane />)
+    render(<StudioPane />)
     expect(screen.getByTestId('tab-webtoon')).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByTestId('character-card')).toBeNull()
 
     await userEvent.click(screen.getByTestId('tab-characters'))
     expect(screen.getByTestId('tab-characters')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('tab-webtoon')).toHaveAttribute('aria-selected', 'false')
-    expect(useAppStore.getState().rightTab).toBe('characters')
+    expect(useAppStore.getState().studioTab).toBe('characters')
     expect(await screen.findByTestId('character-card')).toBeInTheDocument()
 
     await userEvent.click(screen.getByTestId('tab-items'))
     expect(screen.getByTestId('tab-items')).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('tab-characters')).toHaveAttribute('aria-selected', 'false')
-    expect(useAppStore.getState().rightTab).toBe('items')
+    expect(useAppStore.getState().studioTab).toBe('items')
     expect(screen.queryByTestId('character-card')).toBeNull()
     expect(await screen.findByTestId('item-card')).toBeInTheDocument()
 
     await userEvent.click(screen.getByTestId('tab-story'))
     expect(screen.queryByTestId('item-card')).toBeNull()
-    expect(useAppStore.getState().rightTab).toBe('story')
+    expect(useAppStore.getState().studioTab).toBe('story')
     expect(screen.queryByTestId('character-card')).toBeNull()
     expect(await screen.findByTestId('bible-editor')).toHaveValue('# Story Bible\n')
   })
 
   it('shows the webtoon strip on the Webtoon tab', async () => {
     installFakeApi({ 'characters:list': () => [character()], 'episodes:list': () => [episode({ panelIds: ['pnl_0000000001'] })], 'panels:list': () => [panel()] })
-    render(<RightPane />)
+    render(<StudioPane />)
     expect(await screen.findByTestId('panel-card')).toBeInTheDocument()
     expect(screen.getByLabelText('Episode')).toBeInTheDocument()
     await userEvent.click(screen.getByTestId('tab-characters'))
@@ -62,7 +62,7 @@ describe('RightPane', () => {
 
   it('labels the tabs', () => {
     installFakeApi({ 'characters:list': () => [], 'episodes:list': () => [episode()], 'panels:list': () => [] })
-    render(<RightPane />)
+    render(<StudioPane />)
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Webtoon', 'Characters', 'Items', 'Locations', 'Story'])
   })

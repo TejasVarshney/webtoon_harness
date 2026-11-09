@@ -331,25 +331,17 @@ kbd {
 
 /* --- The shell: frame, top bar, sheet ----------------------------------------------------------------- */
 
-.three-pane {
-  height: 100%;
-  background: var(--frame);
-}
-
 .pane-content {
   height: 100%;
   overflow: auto;
-}
-
-.pane-sidebar {
-  padding: 14px 12px 12px;
 }
 
 .workspace {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0 var(--sheet-inset) var(--sheet-inset) 0;
+  padding: 0 var(--sheet-inset) var(--sheet-inset);
+  background: var(--frame);
 }
 
 .top-bar {
@@ -400,10 +392,6 @@ kbd {
   outline: none;
 }
 
-.pane-separator-frame {
-  width: 6px;
-}
-
 .pane-separator-sheet {
   width: 1px;
   background: var(--border);
@@ -418,12 +406,6 @@ kbd {
 .pane-separator:hover,
 .pane-separator[data-separator='active'] {
   background: var(--accent);
-}
-
-.pane-separator-frame:hover,
-.pane-separator-frame[data-separator='active'] {
-  background: transparent;
-  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 .placeholder {
@@ -447,31 +429,17 @@ kbd {
   min-width: 0;
 }
 
-.breadcrumb {
+.chat-header-actions {
   display: flex;
-  flex: 1;
+  flex: none;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+
+.project-title {
+  flex: 1;
   min-width: 0;
-  font-size: var(--fs-title);
-}
-
-.breadcrumb-project {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.breadcrumb-sep {
-  flex: none;
-  color: var(--faint);
-}
-
-.breadcrumb-current {
-  min-width: 0;
+  margin: 0;
   overflow: hidden;
   font-size: var(--fs-title);
   font-weight: 600;
@@ -479,11 +447,93 @@ kbd {
   white-space: nowrap;
 }
 
-.chat-header-actions {
-  display: flex;
+.file-menu {
+  position: relative;
   flex: none;
-  align-items: center;
-  gap: 8px;
+}
+
+.file-menu-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  max-height: 60vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+.file-menu-popup button {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+
+.file-menu-popup button:hover {
+  background: var(--hover);
+}
+
+.file-menu-popup button span:not(.file-menu-check) {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-menu-check {
+  display: inline-flex;
+  flex: none;
+  width: 15px;
+}
+
+.file-menu-rule {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.file-menu-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  white-space: nowrap;
+}
+
+/* The problems warning sits in the top bar and opens its list under it. */
+.chat-header .project-problems {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-header .project-problems summary {
+  padding: 5px 10px;
+}
+
+.chat-header .project-problems ul {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 420px;
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  background: var(--pill-warning-bg);
+  border: 1px solid var(--pill-warning-edge);
+  border-radius: var(--radius-control);
 }
 
 .style-button {
@@ -503,22 +553,13 @@ kbd {
   background-color: transparent;
 }
 
-/* --- Sidebar ------------------------------------------------------------------------------------------ */
+/* --- Sessions, above the chat ------------------------------------------------------------------------------------------ */
 
 .session-sidebar {
   display: flex;
   flex-direction: column;
   gap: 4px;
   height: 100%;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 26px;
-  padding: 0 6px;
-  margin-bottom: 14px;
 }
 
 .brand-mark {
@@ -539,40 +580,25 @@ kbd {
   white-space: nowrap;
 }
 
-.sidebar-header {
+.chat-column {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 6px;
+  flex-direction: column;
+  height: 100%;
 }
 
-.new-project-first {
+.chat-column > .session-sidebar {
+  flex: none;
+  height: auto;
+  max-height: 170px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-column > .chat-pane {
   flex: 1;
-  height: 36px;
-}
-
-.project-switcher {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.project-switcher select {
-  width: 100%;
-  height: 36px;
-  padding-left: 10px;
-  font-weight: 500;
-  background-image: none;
-  border-color: var(--border);
-}
-
-.project-switcher-icon {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: var(--muted);
-  pointer-events: none;
-  transform: translateY(-50%);
+  height: auto;
+  min-height: 0;
 }
 
 .new-session {
@@ -597,10 +623,6 @@ kbd {
 
 .new-session kbd {
   background: transparent;
-}
-
-.sidebar-note {
-  padding: 4px 8px;
 }
 
 /* --- Home page ---------------------------------------------------------------------------------------- */
@@ -669,7 +691,7 @@ kbd {
 }
 
 .sidebar-group {
-  margin: 18px 8px 6px;
+  margin: 8px 8px 4px;
   font-size: var(--fs-small);
   font-weight: 500;
   color: var(--muted);
@@ -749,23 +771,6 @@ kbd {
   100% {
     box-shadow: 0 0 0 7px transparent;
   }
-}
-
-.settings-open {
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  margin-top: 6px;
-  color: var(--muted);
-  background: transparent;
-  border-color: transparent;
-}
-
-.settings-open:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
 }
 
 .project-problems {
@@ -1948,7 +1953,7 @@ kbd {
 
 /* --- Visualizer: tabs, then each tab ----------------------------------------------------------------- */
 
-.right-pane {
+.studio-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -2004,7 +2009,7 @@ kbd {
   overflow: auto;
 }
 
-.right-pane > .tab-panel > .placeholder {
+.studio-pane > .tab-panel > .placeholder {
   padding: 24px;
 }
 
