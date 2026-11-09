@@ -1,12 +1,11 @@
 import { create } from 'zustand'
-import type { Beat, BeatPatch, StoryMode } from '@shared/types'
+import type { Beat, BeatPatch } from '@shared/types'
 import { api } from '../api'
 import { useAppStore } from './app-store'
 
 export interface StoryData {
   /** The project `bible` and `beats` belong to. */
   projectId: string | null
-  mode: StoryMode
   /** The bible markdown as stored. The editor keeps its own unsaved copy. */
   bible: string
   /** Every beat of the project, in the order they were added; the beat list shows the active episode's. */
@@ -25,7 +24,7 @@ export interface StoryActions {
   updateBeat(beatId: string, patch: BeatPatch): Promise<void>
 }
 
-export const initialStoryState: StoryData = { projectId: null, mode: 'user', bible: '', beats: [], loaded: false, error: null }
+export const initialStoryState: StoryData = { projectId: null, bible: '', beats: [], loaded: false, error: null }
 
 /** Only the response to the latest `load` is applied: several events can arrive close together. */
 let latestLoad = 0

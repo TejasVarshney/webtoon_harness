@@ -543,16 +543,6 @@ kbd {
   white-space: nowrap;
 }
 
-.story-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.story-mode select {
-  background-color: transparent;
-}
-
 /* --- Sessions, at the top of the chat --------------------------------------------------------------------------------------- */
 
 .chat-sessions {

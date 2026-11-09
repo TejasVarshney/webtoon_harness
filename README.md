@@ -149,7 +149,7 @@ Projects live under the projects folder, by default `Documents/Webtoon AI Harnes
 
 ```text
 prj_0123456789/
-  project.json            title, style preset, story mode, default aspect, autopilotPanels, consistencyRetries
+  project.json            title, style preset, default aspect, autopilotPanels, consistencyRetries
   agent/                  this project's copy of the workflow docs (editable)
     AGENTS.md
     workflows/            character-creation, item-creation, location-creation, panel-generation, panel-editing, story-direction, style-setup
@@ -205,9 +205,9 @@ The [Claude Code plugin](integrations/claude-code-plugin/README.md) in `integrat
 
 The link only acts on the project that is open in the app window; with no project open, calls fail with "Open a project in the Webtoon AI Harness window first." It listens on `127.0.0.1` only and every request needs the token (stored in the app's secret store). **Regenerate token** in Settings → Plugins disconnects every client that has the old one.
 
-## Story modes
+## Story direction
 
-The chat header has a story-mode switch. In **User-led** mode the agent follows your story. In **AI-led** mode it decides what happens next, and a **Continue story** button appears: it asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
+The agent decides what happens next, inside your story bible, and a direct instruction from you always wins. The **Continue story** button in the chat header asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
 
 ## Art styles
 
@@ -270,4 +270,4 @@ npm run build
 npx playwright test tests/e2e/full-flow.spec.ts
 ```
 
-`tests/e2e/full-flow.spec.ts` is the full-product check: story bible, characters, variations, panels, a side-chat edit, AI-led continuation, and a relaunch that finds everything again. For a single unit test file, use `npx vitest run <path>`.
+`tests/e2e/full-flow.spec.ts` is the full-product check: story bible, characters, variations, panels, a side-chat edit, a continuation, and a relaunch that finds everything again. For a single unit test file, use `npx vitest run <path>`.

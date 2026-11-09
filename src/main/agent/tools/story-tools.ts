@@ -29,7 +29,7 @@ function asToolError(ctx: ToolContext, error: unknown): unknown {
 const getStory = defineTool({
   name: 'get_story',
   description:
-    'Read the story: the story mode (user = the user leads, ai = you lead), the story bible as markdown (## sections), and the beat outline. ' +
+    'Read the story: the story bible as markdown (## sections), and the beat outline. ' +
     'Pass episodeId to see only the beats of that episode; leave it out for all beats. Read it before planning anything.',
   input: z.object({ episodeId: episodeId.optional() }),
   handler: async ({ episodeId }, ctx) => {

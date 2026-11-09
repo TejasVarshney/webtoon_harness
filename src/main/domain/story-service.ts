@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { newId } from '@shared/ids'
 import { BeatSchema, OutlineSchema } from '@shared/schemas'
-import type { Beat, BeatPatch, ProjectMeta, StoryMode } from '@shared/types'
+import type { Beat, BeatPatch } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, stripBom, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import { isNotFound } from '../storage/fs-errors'
@@ -21,7 +21,6 @@ export interface StoryServiceOptions {
 }
 
 export type StoryView = {
-  mode: StoryMode
   bible: string
   beats: Beat[]
 }
@@ -33,8 +32,7 @@ interface OutlineRead {
 }
 
 /**
- * The story bible (`story/bible.md`), the beat outline (`story/outline.json`) and the story mode (a
- * `project.json` field, so that goes through the ProjectStore).
+ * The story bible (`story/bible.md`) and the beat outline (`story/outline.json`).
  *
  * Locking: each file is read, created when missing and written inside `ctx.mutex.run(<its path>)`, so the
  * first-access template can never overwrite a write that raced it. The two locks are never held together,
@@ -45,23 +43,15 @@ export class StoryService {
   constructor(private readonly opts: StoryServiceOptions) {}
 
   /**
-   * The mode, the bible and the beats (those of `episodeId` when given, else all, in the order they were added).
+   * The bible and the beats (those of `episodeId` when given, else all, in the order they were added).
    * The first call in a project creates the bible template and an empty outline. It announces nothing, even then:
    * what it returns is what it wrote, and a reload triggered by it would only read it again.
    */
   async get(ctx: ProjectContext, episodeId?: string): Promise<StoryView> {
-    const meta = await this.opts.projects.getMeta(ctx)
     const bible = await ctx.mutex.run(ctx.paths.storyBible(), () => this.bibleLocked(ctx))
     const outline = await ctx.mutex.run(ctx.paths.storyOutline(), () => this.outlineLocked(ctx))
     const beats = episodeId === undefined ? outline.beats : outline.beats.filter((b) => b.episodeId === episodeId)
-    return { mode: meta.storyMode, bible, beats }
-  }
-
-  /** Persists the mode in `project.json` (announced as `project.changed`) and announces `story.changed` too. */
-  async setMode(ctx: ProjectContext, mode: StoryMode): Promise<ProjectMeta> {
-    const meta = await this.opts.projects.updateMeta(ctx, { storyMode: mode })
-    this.emit(ctx)
-    return meta
+    return { bible, beats }
   }
 
   /**

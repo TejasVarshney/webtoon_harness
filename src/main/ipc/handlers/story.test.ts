@@ -22,19 +22,10 @@ describe('story IPC handlers', () => {
     await services.story.addBeats(ctx, 'epi_0000000001', ['a'])
     await services.story.addBeats(ctx, 'epi_0000000002', ['b'])
     const all = await h['story:get']({ projectId })
-    expect(all.mode).toBe('user')
+    expect(all).not.toHaveProperty('mode')
     expect(all.bible.startsWith('# Story Bible')).toBe(true)
     expect(all.beats.map((b) => b.summary)).toEqual(['a', 'b'])
     expect((await h['story:get']({ projectId, episodeId: 'epi_0000000002' })).beats.map((b) => b.summary)).toEqual(['b'])
-  })
-
-  it('sets the mode and returns the new project meta', async () => {
-    const { projectId, h } = await setup()
-    const meta = await h['story:setMode']({ projectId, mode: 'ai' })
-    expect(meta).toMatchObject({ id: projectId, storyMode: 'ai' })
-    expect((await h['story:get']({ projectId })).mode).toBe('ai')
-    await expect(h['story:setMode']({ projectId, mode: 'robot' as never })).rejects.toThrow()
-    expect((await h['story:get']({ projectId })).mode).toBe('ai')
   })
 
   it('replaces the bible with the editor text', async () => {

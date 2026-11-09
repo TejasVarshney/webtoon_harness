@@ -12,7 +12,7 @@ const NOW = '2026-10-21T10:00:00.000Z'
 const KOREAN = 'Clean webtoon'
 
 function meta(stylePreset: string): ProjectMeta {
-  return { id: P, title: 'Moon', logline: '', stylePreset, storyMode: 'user', defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, createdAt: NOW, updatedAt: NOW }
+  return { id: P, title: 'Moon', logline: '', stylePreset, defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, createdAt: NOW, updatedAt: NOW }
 }
 
 function library(): StyleEntry[] {

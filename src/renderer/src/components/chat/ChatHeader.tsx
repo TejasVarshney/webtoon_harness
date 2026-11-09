@@ -3,11 +3,10 @@ import { FileMenu } from '../layout/FileMenu'
 import { ProjectProblems } from '../sessions/ProjectProblems'
 import { StyleButton } from '../styles/StyleButton'
 import { ContinueStoryButton } from './ContinueStoryButton'
-import { StoryModeToggle } from './StoryModeToggle'
 
 export const MOCK_BANNER_TEXT = "You're using the offline mock model. Add a real endpoint in Settings → Models."
 
-/** The top bar: the File menu, the open project, and what shapes the story (style, who leads, continue). */
+/** The top bar: the File menu, the open project, and what shapes the story (style, continue). */
 export function ChatHeader() {
   const projectTitle = useAppStore((s) => s.projects.find((p) => p.id === s.projectId)?.title)
 
@@ -18,7 +17,6 @@ export function ChatHeader() {
       <ProjectProblems />
       <div className="chat-header-actions">
         <StyleButton />
-        <StoryModeToggle />
         <ContinueStoryButton />
       </div>
     </div>

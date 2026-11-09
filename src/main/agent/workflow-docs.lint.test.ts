@@ -17,8 +17,8 @@ const DOCS_DIR = path.resolve('resources', 'agent-docs')
 const read = (name: string): string => fs.readFileSync(path.join(DOCS_DIR, ...`${name}.md`.split('/')), 'utf8')
 
 const REQUIRED: Record<string, string[]> = {
-  AGENTS: ['Mission', 'Operating Loop', 'Story Modes', 'Hard Rules', 'Tool Catalog', 'Workflow Docs Index', 'Communication Style', 'Failure Handling'],
-  'workflows/story-direction': ['Purpose', 'User-Led Mode', 'AI-Led Mode', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
+  AGENTS: ['Mission', 'Operating Loop', 'Story Direction', 'Hard Rules', 'Tool Catalog', 'Workflow Docs Index', 'Communication Style', 'Failure Handling'],
+  'workflows/story-direction': ['Purpose', 'Directing the Story', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
   'workflows/character-creation': ['Purpose', 'Character Sheet', 'Writing the Appearance Lock', 'Base Reference Image', 'Variations', 'Variation Naming', 'When Not to Create a Variation', 'Automating Creation from Chat', 'Updating Characters', 'Examples'],
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
   'workflows/location-creation': ['Purpose', 'Location Sheet', 'Writing the Layout', 'Base Picture', 'States', 'Cameras', 'When to Create a Location', 'Using Locations in Panels', 'Examples'],
@@ -33,7 +33,7 @@ const REQUIRED: Record<string, string[]> = {
 const DOCS = Object.keys(REQUIRED)
 
 /** Snake-case keys the code itself writes into `<project_state>` / `<panel_context>`: the only backticked snake_case that is not a tool. */
-const NON_TOOL_TOKENS = ['story_mode', 'current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions']
+const NON_TOOL_TOKENS = ['current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions']
 
 const CHECK_CONTRACT = 'Respond with only one JSON object: {"passed": true|false, "issues": ["…"]}'
 

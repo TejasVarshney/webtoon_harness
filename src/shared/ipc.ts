@@ -33,14 +33,13 @@ import type {
   ProjectProblem,
   Role,
   SessionSummary,
-  StoryMode,
   Variation,
   VariationInput
 } from './types'
 
 /** The `project.json` fields a caller may change. */
 type ProjectPatch = Partial<
-  Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'storyMode' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
+  Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
 >
 
 export type EndpointInput = { name: string; kind: EndpointKind; baseUrl: string; options?: EndpointConfig['options'] }
@@ -175,9 +174,8 @@ export interface IpcContract {
   'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
   'panelChat:cancel': { req: { runId: string }; res: void }
   /** The mode, the bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
-  'story:get': { req: { projectId: string; episodeId?: string }; res: { mode: StoryMode; bible: string; beats: Beat[] } }
+  'story:get': { req: { projectId: string; episodeId?: string }; res: { bible: string; beats: Beat[] } }
   /** Returns the updated project meta, so the toggle can follow without waiting for `project.changed`. */
-  'story:setMode': { req: { projectId: string; mode: StoryMode }; res: ProjectMeta }
   /** The style library. `loadError`: `styles.json` is unreadable, so the list holds only the built-ins and saves fail. */
   'styles:list': { req: Record<string, never>; res: { styles: StyleEntry[]; loadError: string | null } }
   'styles:create': { req: { name: string; text: string }; res: StyleEntry }
@@ -298,7 +296,6 @@ const channelSet: Record<IpcChannel, true> = {
   'panelChat:send': true,
   'panelChat:cancel': true,
   'story:get': true,
-  'story:setMode': true,
   'styles:list': true,
   'styles:create': true,
   'styles:update': true,

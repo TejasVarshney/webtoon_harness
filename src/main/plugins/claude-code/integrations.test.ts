@@ -81,7 +81,7 @@ describe('Claude Code plugin files', () => {
   it('continue-story uses the Continue story sentence with $ARGUMENTS and defaults to 4', () => {
     const body = readText(pluginDir, 'commands', 'continue-story.md')
     expect(body).toContain(continueStoryPrompt(0).replace('0', '$ARGUMENTS'))
-    expect(body).toContain('Continue the story (AI-led): plan the next beats and draw the next $ARGUMENTS panels.')
+    expect(body).toContain('Continue the story: plan the next beats and draw the next $ARGUMENTS panels.')
     expect(body).toMatch(/default is 4/i)
     expect(body).toContain('workflows/story-direction')
   })

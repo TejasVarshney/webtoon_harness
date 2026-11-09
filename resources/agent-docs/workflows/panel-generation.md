@@ -48,7 +48,7 @@ Rules:
 - **Visible means cast.** If a named character can be seen, even small or from behind, cast them (R2). If they cannot be seen, do not cast them.
 - **At most 3 in the foreground.** More faces means less likeness for each. Put a fourth person in `background`, or split the moment into two panels.
 - **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4; the user sets it as the image model's Max reference images in Settings → Models). The cast comes first, then the location's picture, then items, then the previous panel. When there are too many, the app packs the sheets of the last cast members onto one shared image first, each under the character's name, and only then drops the previous panel's image, then items from the end, then the location's picture, then cast members from the end of the list. A packed sheet is drawn smaller, so the first characters keep the sharpest likeness. With 3 cast members plus a location picture you are at that limit; each attached item takes one more slot (see Attaching Items).
-- **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1; in user-led mode, ask first).
+- **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1).
 - **A scene with nobody in it** (an establishing shot, an object close-up) has `"characters": []`.
 
 ## Choosing Variations

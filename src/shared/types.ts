@@ -47,7 +47,6 @@ import type {
   ProjectMetaSchema,
   RoleAssignmentsSchema,
   RoleSchema,
-  StoryModeSchema,
   ToolCallSchema,
   ToolMessageSchema,
   ToolResultSchema,
@@ -114,7 +113,6 @@ export type PanelAspect = z.infer<typeof PanelAspectSchema>
 export type DrawAspect = z.infer<typeof DrawAspectSchema>
 export type PanelGap = z.infer<typeof PanelGapSchema>
 export type PanelGutter = z.infer<typeof PanelGutterSchema>
-export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>
 
 export type Role = z.infer<typeof RoleSchema>

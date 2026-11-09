@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat } from './helpers'
 
 // Milestone 5 checkpoint: the whole product on the offline mock models. One scripted conversation builds the story
-// bible, two characters, a variation and two panels; the panel chat edits a panel; AI-led mode continues the story;
+// bible, two characters, a variation and two panels; the panel chat edits a panel; Continue story continues the story;
 // and everything is still there after a relaunch. Every id in the script is a placeholder the mock provider resolves
 // from the <project_state> of the user message that triggered the turn, so characters are created one message before
 // any panel casts them. The script has one cursor for the whole app, so its turns are consumed in the order the runs ask.
@@ -72,7 +72,7 @@ const script = {
     // 3. panel chat on panel 2: "make Jin frown"
     { toolCalls: [{ name: 'edit_image', input: { instruction: 'make Jin frown' } }] },
     { text: 'Done.' },
-    // 4. AI-led mode, "Continue story"
+    // 4. "Continue story"
     {
       toolCalls: [
         { name: 'add_beats', input: { episodeId: currentEpisode, beats: ['Jin reveals the moon map'] } },
@@ -93,7 +93,7 @@ const script = {
   ]
 }
 
-test('a story from setup to AI-led continuation survives a relaunch', async () => {
+test('a story from setup to continuation survives a relaunch', async () => {
   const first = await launchApp({ script })
   const { page, projectsRoot } = first
   await createProjectAndSession(page, 'Moon Diary')
@@ -138,9 +138,7 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   await openTab(page, 'story')
   await expect(page.getByTestId('bible-editor')).toHaveValue(/A girl who can hear the moon\./)
 
-  // 5. AI-led mode offers Continue story, which draws a third panel.
-  await expect(page.getByTestId('continue-story')).toHaveCount(0)
-  await page.getByTestId('story-mode-toggle').selectOption('AI-led')
+  // 5. Continue story draws a third panel.
   await expect(page.getByTestId('continue-story')).toBeVisible()
   await page.getByTestId('continue-story').click()
   const main = page.getByTestId('pane-chat').locator('.main-chat')
@@ -165,7 +163,6 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   expect(panels.map((p: { versions: unknown[] }) => p.versions.length)).toEqual([1, 2, 1])
   expect(panels[1].versions.map((v: { source: string; status: string }) => `${v.source}:${v.status}`)).toEqual(['generate:ready', 'edit:ready'])
   expect(panels[1].currentVersionId).toBe(panels[1].versions[1].id)
-  expect((await readProjectJson(projectsRoot, 'project.json')).storyMode).toBe('ai')
   await first.app.close()
 
   // 6. A second launch on the same folders finds the sessions, the panels and the characters.

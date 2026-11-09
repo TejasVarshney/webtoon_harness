@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
+import type { ProjectMeta, ProjectProblem, SessionSummary } from '@shared/types'
 import { api } from '../api'
 
 export type StudioTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
@@ -31,8 +31,6 @@ export interface AppActions {
    * panels, sessions, story), so this runs after those lists load; see `startEventSync`.
    */
   refreshProblems(): Promise<void>
-  /** Saves the story mode and shows it at once from the meta main returns. Rejects when main refuses. */
-  setStoryMode(mode: StoryMode): Promise<void>
   /** Copies a library style into the open project and shows it at once. Rejects when main refuses. */
   applyStyle(styleId: string): Promise<void>
   loadSessions(): Promise<void>
@@ -105,13 +103,6 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     const { problems } = await api.invoke('projects:open', { projectId })
     if (get().projectId !== projectId) return
     set({ problems })
-  },
-
-  async setStoryMode(mode) {
-    const projectId = get().projectId
-    if (projectId === null) return
-    const meta = await api.invoke('story:setMode', { projectId, mode })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)) }))
   },
 
   async applyStyle(styleId) {

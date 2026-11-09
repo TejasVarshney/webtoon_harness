@@ -35,7 +35,7 @@ function handleEvent(event: AppEvent): void {
     case 'episode.changed':
       if (event.projectId === state.projectId) void usePanelsStore.getState().loadEpisodes()
       break
-    // The story mode lives in project.json, so the toggle follows `project.changed`; `story.changed` is the bible and the beats.
+    // `project.changed` is project.json (title, style, defaults); `story.changed` is the bible and the beats.
     case 'project.changed':
       if (event.projectId === state.projectId) state.refreshMeta().catch((e: unknown) => console.error('Failed to refresh the project', e))
       break

@@ -25,7 +25,7 @@ describe('StudioPane', () => {
       'items:list': () => [item()],
       'episodes:list': () => [episode()],
       'panels:list': () => [],
-      'story:get': () => ({ mode: 'user', bible: '# Story Bible\n', beats: [] })
+      'story:get': () => ({ bible: '# Story Bible\n', beats: [] })
     })
     render(<StudioPane />)
     expect(screen.getByTestId('tab-webtoon')).toHaveAttribute('aria-selected', 'true')

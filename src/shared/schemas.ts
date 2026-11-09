@@ -28,7 +28,6 @@ function withoutDefaults<S extends z.ZodRawShape>(shape: S): WithoutDefaults<S> 
 // Enums
 // ---------------------------------------------------------------------------------------------
 
-export const StoryModeSchema = z.enum(['user', 'ai'])
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
 const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
@@ -70,7 +69,6 @@ export const ProjectMetaSchema = z.object({
   title: z.string(),
   logline: z.string().default(''),
   stylePreset: z.string().default(DEFAULT_STYLE_PRESET),
-  storyMode: StoryModeSchema.default('user'),
   defaultAspect: PanelAspectSchema.default('2:3'),
   autopilotPanels: z.number().int().min(1).default(4),
   consistencyRetries: z.number().int().min(0).default(1),

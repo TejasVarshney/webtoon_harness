@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This doc tells you how to plan and advance the story: who decides what happens (the story mode), where the story is written down (the story bible and the beat outline), how an episode is shaped, and what to do when the user's wishes and the bible disagree.
+This doc tells you how to plan and advance the story: who decides what happens (you do, inside the bible), where the story is written down (the story bible and the beat outline), how an episode is shaped, and what to do when the user's wishes and the bible disagree.
 
 Read it before you:
 
-- plan the next beats, or answer `Continue the story (AI-led): plan the next beats and draw the next N panels.`
+- plan the next beats, or answer `Continue the story: plan the next beats and draw the next N panels.`
 - write or change the story bible,
 - start a new episode,
 - handle a request that changes something already established.
@@ -21,48 +21,14 @@ The story lives in three places. Keep all three in step:
 
 All examples use a project called "Moon Diary": Mina, a high-school girl who can hear the moon talk; Jin, a quiet boy who rides the last night bus; Grandma Oksun, Mina's grandmother (alias "Grandma"). Every id is an example: use the ids from your own `<project_state>` and tool results.
 
-## User-Led Mode
+## Directing the Story
 
-`story_mode: user` means the user is the author. You are the co-writer and the artist.
-
-Do:
-
-1. Carry out what the user asks, in the order they ask it.
-2. Break a direction into beats yourself when it covers several moments ("draw the scene where Mina meets Jin" is about 4 to 6 beats). Those beats are the user's events, so you may plan them without asking.
-3. Fill small details that change nothing in the plot: a background extra, a prop, the weather, a reaction panel, a transition panel.
-4. Offer options when the direction is unclear or the user asks "what should happen next?".
-
-Never do on your own (propose it and wait for a yes):
-
-- a major plot event: a secret revealed, a betrayal, a confession, a fight with lasting harm, a time skip, a change to a new arc;
-- a new named character (you may draw unnamed extras);
-- a death, or an injury that lasts.
-
-How to offer options:
-
-- Give 2 or 3 options, numbered, one line each.
-- Each option: a bold short name, then what happens and what it sets up.
-- Make them really different (not three versions of the same idea).
-- End with one question. Then stop and wait; do not draw before the user picks.
-
-Example:
-
-> The bus stops at a dark road. What happens?
-> 1. **Jin wakes up** and warns Mina not to get off here; sets up that he knows the moon's route.
-> 2. **The driver vanishes** and the bus drives on by itself; a mystery for the next episode.
-> 3. **Grandma is waiting at the stop**, which should be impossible; a family secret.
-> Which one, or your own idea?
-
-When the user answers "you choose" or "surprise me", pick one, say which one in one sentence, and continue.
-
-## AI-Led Mode
-
-`story_mode: ai` means you are the author, inside what the story bible says. The user can still give direct instructions, and those win over your plans.
+You are the author, inside what the story bible says. The user can still give direct instructions, and those win over your plans.
 
 The "Continue story" button sends exactly:
 
 ```
-Continue the story (AI-led): plan the next beats and draw the next N panels.
+Continue the story: plan the next beats and draw the next N panels.
 ```
 
 N is the project's autopilot panel count (4 unless the user changed it). When you get this message, run the autopilot loop:
@@ -78,7 +44,7 @@ N is the project's autopilot panel count (4 unless the user changed it). When yo
 
 When the next Continue arrives after a finished episode: call `list_episodes`. If a later episode already exists, continue in it. Otherwise `create_episode` with a title and a one-sentence synopsis, plan its first beats (hook first), then draw.
 
-Choosing beats well in AI-led mode:
+Choosing beats well:
 
 - Every beat must move something: the plot, a relationship, or a mystery.
 - Pay off at least one Open Thread every episode, and open at most one new one.
@@ -172,7 +138,7 @@ An episode is one chapter the reader scrolls in one sitting, usually 20 to 50 pa
 
 Starting an episode:
 
-1. In user-led mode, ask before you create a new episode. In AI-led mode, create it when the previous one has its cliffhanger.
+1. Create the next episode when the previous one has its cliffhanger.
 2. Call `create_episode` with a title and a one-sentence synopsis.
 3. Plan the hook beats with `add_beats`.
 4. The first panel usually re-establishes the place: an establishing or wide shot (see `reference/webtoon-style-guide`).
@@ -220,13 +186,13 @@ A conflict is a request that contradicts the bible or panels already drawn. Exam
 What to do:
 
 1. Name the conflict in one sentence and quote the bible line.
-2. Offer options:
+2. If the request is unclear, offer these options; otherwise do what the user asked:
    1. **Retcon:** follow the new direction and change the bible.
    2. **Keep the bible:** adjust the request so it fits (for example, "at noon, Mina remembers what the moon said last night").
    3. **Explain it in-story:** keep both, and add an Open Thread (for example, "something is wrong with the moon").
-3. In user-led mode, wait for the user's choice. In AI-led mode, the user's direct instruction wins: do what they asked, and say which bible lines you changed.
+3. The user's direct instruction wins: do what they asked, and say which bible lines you changed.
 
-How to retcon once the user agreed:
+How to retcon:
 
 1. `get_story`, then `update_story_bible` every section the change touches.
 2. `update_beat` with `dropped` for planned beats that no longer fit, then `add_beats` for the new plan.
@@ -236,36 +202,9 @@ Small slips are not conflicts. If a panel drew a wrong prop or a wrong time of d
 
 ## Examples
 
-### Example 1: user-led, unclear direction
+### Example 1: the Continue button with N = 2
 
-User: "Something weird should happen on the bus."
-
-1. This is unclear and could add a major event, so offer options:
-
-> Here are three weird things that could happen:
-> 1. **The stops are wrong:** the display shows stations that closed decades ago.
-> 2. **Jin talks in his sleep** and repeats exactly what the moon told Mina.
-> 3. **The bus leaves the road** and drives along the river, quietly.
-> Which one?
-
-2. User: "2". Plan the beats and draw (the beats are now the user's choice):
-
-```
-add_beats {"episodeId": "epi_5d0c3b9a12", "beats": ["Jin mutters in his sleep.", "Mina leans closer and hears him repeat the moon's words.", "Mina backs away, shaken."]}
-```
-
-3. Draw three panels with `create_panel` (see `workflows/panel-generation`), and mark each beat `drawn`.
-4. Jin hearing the moon is a reveal, so update the bible (R9):
-
-```
-update_story_bible {"section": "Open Threads", "content": "- Why does the moon talk to Mina?\n- Jin repeats the moon's words in his sleep. Does he hear it too?"}
-```
-
-5. Reply: what you drew and the open question it sets up.
-
-### Example 2: AI-led autopilot with N = 2
-
-User message: `Continue the story (AI-led): plan the next beats and draw the next 2 panels.`
+User message: `Continue the story: plan the next beats and draw the next 2 panels.`
 
 1. Read the story for the current episode:
 
@@ -273,7 +212,7 @@ User message: `Continue the story (AI-led): plan the next beats and draw the nex
 get_story {"episodeId": "epi_5d0c3b9a12"}
 ```
 
-Result (shortened): mode `ai`; Open Threads "- Why does Grandma know the bus route?"; beats: "Mina steps onto the empty night bus." (drawn), "Mina notices Jin asleep in the back row." (drawn). No planned beats remain.
+Result (shortened): Open Threads "- Why does Grandma know the bus route?"; beats: "Mina steps onto the empty night bus." (drawn), "Mina notices Jin asleep in the back row." (drawn). No planned beats remain.
 
 2. Read where the panels stand:
 
@@ -341,21 +280,18 @@ update_story_bible {"section": "Arcs", "content": "- Episode 1: Mina rides the n
 
 > Drew 2 panels: the bus stops on a dark road, and Grandma Oksun is waiting at the stop. Both beats are marked drawn and the Arcs section is updated. Next time: Grandma steps on the bus and Mina has questions.
 
-### Example 3: the user contradicts the bible
+### Example 2: the user contradicts the bible
 
-User (user-led): "Make Jin Mina's cousin."
+User: "Make Jin Mina's cousin."
 
-The bible's Characters & Relationships says "Jin: a stranger Mina met on the night bus." Reply:
+The bible's Characters & Relationships says "Jin: a stranger Mina met on the night bus." The user's instruction wins, so retcon. Reply:
 
-> The bible says Jin is a stranger Mina met on the bus, and panel 4 shows them not recognizing each other. Options:
-> 1. **Retcon:** Jin is her cousin; I update the bible, and panel 4 can stay as "they had not met since they were small".
-> 2. **Keep them strangers**, but make Jin a friend of the family.
-> Which one?
+> Done: Jin is Mina's cousin now. I changed Characters & Relationships ("Jin: a stranger Mina met on the night bus" became "Jin: Mina's cousin, who she had not seen since they were small"). Panel 4 shows them not recognizing each other; it can stay as "they had not met since they were small", or I can redraw it.
 
-After the user picks 1: `get_story`, `update_story_bible` for Characters & Relationships (and Open Threads if it creates a question), and no panel changes unless the user asks.
+Steps: `get_story`, then `update_story_bible` for Characters & Relationships (and Open Threads if it creates a question), and no panel changes unless the user asks.
 
-### Example 4: first message of a new session
+### Example 3: first message of a new session
 
 User: "Let's keep going."
 
-1. `get_story` with the current episode id. 2. `list_panels` for the current episode. 3. In user-led mode, summarize where the story stands in two sentences and offer 2 or 3 options for the next beat. In AI-led mode, treat it like a Continue with the autopilot panel count and run the autopilot loop.
+1. `get_story` with the current episode id. 2. `list_panels` for the current episode. 3. Treat it like a Continue with the autopilot panel count and run the autopilot loop.

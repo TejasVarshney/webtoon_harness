@@ -11,8 +11,7 @@ Set the style before the first character, item, location or panel is drawn. The 
 Call `list_styles` to see the library and whether the style can still change.
 
 - If the user named a look ("make it watercolor"), pick the closest style, or write one if nothing fits.
-- **User-led:** when the user has not named a look, offer 2 or 3 styles that suit the story and ask which one to use. Do not set one until they answer.
-- **AI-led:** pick the style that suits the story, set it and say which one you chose.
+- If the user has not named a look, pick the style that suits the story, set it and say which one you chose.
 - The default is Korean webtoon. If `style` is anything else, someone chose it: change it only when the user asks.
 
 Use `styleId` for a library style. Use `text` only when you write a one-off style for this project.

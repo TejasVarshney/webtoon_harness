@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildStateSnapshot } from '../agent/system-prompt'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import { listSections } from './markdown-sections'
@@ -31,7 +30,7 @@ describe('StoryService', () => {
   it('creates the bible template and tracks beats', async () => {
     const { svc, ctx, outlineFile } = await setup()
     const first = await svc.get(ctx)
-    expect(first.mode).toBe('user')
+    expect(first).not.toHaveProperty('mode')
     expect(first.beats).toEqual([])
     expect(first.bible.startsWith('# Story Bible\n')).toBe(true)
     expect(listSections(first.bible)).toEqual(SECTIONS)
@@ -84,20 +83,6 @@ describe('StoryService', () => {
     await svc.get(ctx)
     await svc.get(ctx)
     expect(events).toEqual([])
-  })
-
-  it('setMode persists, announces, and shows in get and the state snapshot', async () => {
-    const { svc, ctx, t, storyEvents, events } = await setup()
-    const meta = await svc.setMode(ctx, 'ai')
-    expect(meta.storyMode).toBe('ai')
-    expect((await t.store.getMeta(ctx)).storyMode).toBe('ai')
-    expect((await svc.get(ctx)).mode).toBe('ai')
-    expect(storyEvents()).toEqual([{ type: 'story.changed', projectId: ctx.id }])
-    expect(events).toContainEqual({ type: 'project.changed', projectId: ctx.id })
-    const snapshot = buildStateSnapshot({ meta: await t.store.getMeta(ctx), characters: [], items: [], episode: null, recentPanels: [] })
-    expect(snapshot).toContain('story_mode: ai')
-    await svc.setMode(ctx, 'user')
-    expect((await svc.get(ctx)).mode).toBe('user')
   })
 
   describe('bible', () => {

@@ -161,8 +161,6 @@ Do not create an item for:
 | Furniture and background props | Describe them in the setting. |
 | A one-time object nobody will look at closely | Describe it in the description. |
 
-In user-led mode, an item that changes the plot (a new weapon, a key artifact) is a story decision (R7): suggest it, and create it when the user agrees or asked for it. A small prop that does not change the plot you may create yourself.
-
 Give every item a **distinctive name**. The app finds an item in a description by its name and aliases (whole words), and an item named like a character, a place or a common word is matched in the wrong places. "Kestrel blaster", "Moon lantern" and "Harbor Key" are good; "blaster", "lantern" and "key" are not.
 
 ## Using Items in Panels
@@ -211,7 +209,7 @@ Renaming is safe for panels (they store ids, not names). You cannot archive or d
 
 ### Example 1: a new signature item
 
-User (user-led): "Jin carries a Kestrel blaster, a small brass-and-gray pistol with a cyan glow. Please make it."
+User: "Jin carries a Kestrel blaster, a small brass-and-gray pistol with a cyan glow. Please make it."
 
 The user asked for it, so create it now. Jin already exists (chr_9f61b2d47a), so he is the owner.
 

@@ -17,7 +17,7 @@ describe('system prompt', () => {
     const s = buildStateSnapshot({ meta: makeMeta({ title: 'Moon Diary' }), characters: [], items: [], episode: null, recentPanels: [] })
     expect(s.split('\n')[0]).toBe('<project_state>')
     expect(s).toContain('title: Moon Diary')
-    expect(s).toContain('story_mode: user')
+    expect(s).not.toMatch(/mode/i)
     expect(s).toContain('current_episode: none')
     expect(s).toContain('characters: none')
     expect(s).toContain('items: none')

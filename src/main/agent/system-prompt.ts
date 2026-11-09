@@ -46,7 +46,7 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
   // Archived characters are left out of the roster but still name the speakers of existing panels.
   const names = new Map(s.characters.map((c) => [c.id, c.name]))
   const roster = s.characters.filter((c) => !c.archived)
-  const lines = ['<project_state>', `title: ${oneLine(s.meta.title)}`, `story_mode: ${s.meta.storyMode}`, `style: ${oneLine(s.meta.stylePreset)}`]
+  const lines = ['<project_state>', `title: ${oneLine(s.meta.title)}`, `style: ${oneLine(s.meta.stylePreset)}`]
   lines.push(s.episode ? `current_episode: ${s.episode.id} "${oneLine(s.episode.title)}" (${s.episode.panelIds.length} panels)` : 'current_episode: none')
   if (roster.length === 0) lines.push('characters: none')
   else {

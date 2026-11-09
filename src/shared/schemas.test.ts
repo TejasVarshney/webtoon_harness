@@ -388,13 +388,14 @@ describe('Episode, Beat, Outline, ProjectMeta', () => {
 
   it('project meta defaults', () => {
     const m = ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', createdAt: T, updatedAt: T })
-    expect(m).toMatchObject({ storyMode: 'user', defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, logline: '' })
+    expect(m).toMatchObject({ defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, logline: '' })
     expect(m.stylePreset).toContain('Korean webtoon style')
     expect(m.stylePreset).toBe('Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces')
   })
 
-  it('rejects an unknown story mode', () => {
-    expect(() => ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', storyMode: 'both', createdAt: T, updatedAt: T })).toThrow()
+  it('reads a project saved with the old mode field and drops it', () => {
+    const m = ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', storyMode: 'user', createdAt: T, updatedAt: T })
+    expect(m).not.toHaveProperty('storyMode')
   })
 })
 

@@ -33,7 +33,7 @@ afterEach(() => stopSync?.())
 
 function mount(handlers: Parameters<typeof installFakeApi>[0] = {}) {
   const api = installFakeApi({
-    'story:get': () => ({ mode: 'user', bible, beats }),
+    'story:get': () => ({ bible, beats }),
     'story:updateBible': (req: { markdown: string }) => {
       bible = req.markdown
     },
@@ -161,7 +161,7 @@ describe('StoryTab', () => {
     mount({
       'story:get': () =>
         new Promise((resolve) => {
-          releases.push((bible) => resolve({ mode: 'user', bible, beats: [] }))
+          releases.push((bible) => resolve({ bible, beats: [] }))
         })
     })
     await waitFor(() => expect(releases).toHaveLength(1))
