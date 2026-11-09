@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, openFirstProject, openTab, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat } from './helpers'
 
 // Milestone 5 checkpoint: the whole product on the offline mock models. One scripted conversation builds the story
 // bible, two characters, a variation and two panels; the panel chat edits a panel; AI-led mode continues the story;
@@ -172,6 +172,7 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot })
   const again = second.page
   await openFirstProject(again)
+  await openSessions(again)
   await expect(again.getByTestId('session-item')).toHaveCount(1)
   await again.getByTestId('session-item').click()
   await expect(again.getByTestId('pane-chat').locator('.main-chat').getByTestId('message-assistant').last()).toContainText('Continued.')

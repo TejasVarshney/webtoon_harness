@@ -39,6 +39,7 @@ export interface AppActions {
   newSession(): Promise<void>
   selectSession(id: string | null): void
   renameSession(id: string, title: string): Promise<void>
+  bookmarkSession(id: string, bookmarked: boolean): Promise<void>
   deleteSession(id: string): Promise<void>
   selectPanel(id: string | null): void
   setStudioTab(tab: StudioTab): void
@@ -146,6 +147,13 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     if (projectId === null) return
     await api.invoke('sessions:rename', { projectId, sessionId: id, title })
     set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, title } : x)) }))
+  },
+
+  async bookmarkSession(id, bookmarked) {
+    const projectId = get().projectId
+    if (projectId === null) return
+    await api.invoke('sessions:bookmark', { projectId, sessionId: id, bookmarked })
+    set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, bookmarked } : x)) }))
   },
 
   async deleteSession(id) {

@@ -24,7 +24,9 @@ const TitleRecord = z.object({ type: z.literal('title'), title: z.string(), at: 
 const MessageRecord = z.object({ type: z.literal('message'), message: ChatMessageSchema })
 /** The Claude Code session this chat continues (`--resume`); the last one wins, and '' clears it. */
 const LinkRecord = z.object({ type: z.literal('link'), claudeSessionId: z.string(), at: z.string() })
-const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord, LinkRecord])
+/** Pins the whole session to the top of the list; the last one wins. */
+const BookmarkRecord = z.object({ type: z.literal('bookmark'), bookmarked: z.boolean(), at: z.string() })
+const RecordSchema = z.discriminatedUnion('type', [MetaRecord, TitleRecord, MessageRecord, LinkRecord, BookmarkRecord])
 type SessionRecord = z.infer<typeof RecordSchema>
 
 function summarize(records: SessionRecord[]): SessionSummary | null {
@@ -34,6 +36,7 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
   let updatedAt = meta.createdAt
   let messageCount = 0
   let claudeSessionId: string | null = null
+  let bookmarked = false
   for (const record of records) {
     if (record.type === 'title') {
       title = record.title
@@ -43,9 +46,11 @@ function summarize(records: SessionRecord[]): SessionSummary | null {
       updatedAt = record.message.createdAt
     } else if (record.type === 'link') {
       claudeSessionId = record.claudeSessionId === '' ? null : record.claudeSessionId
+    } else if (record.type === 'bookmark') {
+      bookmarked = record.bookmarked
     }
   }
-  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null, claudeSessionId }
+  return { id: meta.id, title, createdAt: meta.createdAt, updatedAt, messageCount, driver: meta.driver ?? null, claudeSessionId, bookmarked }
 }
 
 /** Chat transcripts, one JSONL file per session under `sessions/`. */
@@ -91,7 +96,7 @@ export class SessionStore {
     const file = ctx.paths.sessionFile(id)
     await ctx.mutex.run(file, () => appendJsonl(file, [{ type: 'meta', id, title, createdAt, driver }]))
     this.emit(ctx, id)
-    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0, driver, claudeSessionId: null }
+    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0, driver, claudeSessionId: null, bookmarked: false }
   }
 
   async load(ctx: ProjectContext, sessionId: string): Promise<ChatMessage[]> {
@@ -131,6 +136,16 @@ export class SessionStore {
     await ctx.mutex.run(file, async () => {
       await this.read(ctx, sessionId)
       await appendJsonl(file, [{ type: 'link', claudeSessionId, at: new Date().toISOString() }])
+    })
+    this.emit(ctx, sessionId)
+  }
+
+  /** Pins or unpins a session. Like the Claude Code link, it does not change `updatedAt`. */
+  async setBookmarked(ctx: ProjectContext, sessionId: string, bookmarked: boolean): Promise<void> {
+    const file = ctx.paths.sessionFile(sessionId)
+    await ctx.mutex.run(file, async () => {
+      await this.read(ctx, sessionId)
+      await appendJsonl(file, [{ type: 'bookmark', bookmarked, at: new Date().toISOString() }])
     })
     this.emit(ctx, sessionId)
   }

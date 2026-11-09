@@ -57,7 +57,7 @@ describe('SessionStore', () => {
     await fs.promises.mkdir(ctx.paths.sessionsDir(), { recursive: true })
     await fs.promises.writeFile(ctx.paths.sessionFile(id), `${JSON.stringify({ type: 'meta', id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z' })}\n`)
     expect(await sessions.list(ctx)).toEqual([
-      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null, claudeSessionId: null }
+      { id, title: 'Old chat', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', messageCount: 0, driver: null, claudeSessionId: null, bookmarked: false }
     ])
   })
 
@@ -78,6 +78,26 @@ describe('SessionStore', () => {
     expect((await sessions.list(ctx))[0].claudeSessionId).toBeNull()
     await sessions.setClaudeSessionId(ctx, a.id, 'cc-2')
     await expect(sessions.setClaudeSessionId(ctx, 'ses_missing000', 'cc-3')).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  it('records a bookmark without changing updatedAt', async () => {
+    const { ctx } = t
+    await sessions.create(ctx)
+    const before = (await sessions.list(ctx))[0]
+    expect(before.bookmarked).toBe(false)
+    await sessions.setBookmarked(ctx, before.id, true)
+    const after = (await sessions.list(ctx))[0]
+    expect(after.bookmarked).toBe(true)
+    expect(after.updatedAt).toBe(before.updatedAt)
+    await expect(sessions.setBookmarked(ctx, 'ses_missing000', true)).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  it('the latest bookmark record wins', async () => {
+    const { ctx } = t
+    const a = await sessions.create(ctx)
+    await sessions.setBookmarked(ctx, a.id, true)
+    await sessions.setBookmarked(ctx, a.id, false)
+    expect((await sessions.list(ctx))[0].bookmarked).toBe(false)
   })
 
   it('does not retitle once titled', async () => {

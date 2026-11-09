@@ -553,13 +553,71 @@ kbd {
   background-color: transparent;
 }
 
-/* --- Sessions, above the chat ------------------------------------------------------------------------------------------ */
+/* --- Sessions, at the top of the chat --------------------------------------------------------------------------------------- */
 
-.session-sidebar {
+.chat-sessions {
+  position: relative;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-sessions-bar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessions-toggle {
+  flex: 1;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.sessions-toggle:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.sessions-toggle-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-popup {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 12px;
+  left: 12px;
+  z-index: 20;
+  max-height: 50vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+.session-star {
+  flex: none;
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--faint);
+  background: transparent;
+  border-color: transparent;
+}
+
+.session-star:hover,
+.session-star[data-on='true'] {
+  color: var(--accent);
 }
 
 .brand-mark {
@@ -580,31 +638,10 @@ kbd {
   white-space: nowrap;
 }
 
-.chat-column {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.chat-column > .session-sidebar {
-  flex: none;
-  height: auto;
-  max-height: 170px;
-  padding: 8px 12px;
-  overflow-y: auto;
-  border-bottom: 1px solid var(--border);
-}
-
-.chat-column > .chat-pane {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
-
 .new-session {
+  flex: none;
   justify-content: flex-start;
   gap: 10px;
-  width: 100%;
   height: 36px;
   padding: 0 8px;
   color: var(--text);
@@ -699,7 +736,7 @@ kbd {
 
 .session-list {
   display: flex;
-  flex: 1;
+  flex: none;
   flex-direction: column;
   gap: 1px;
   margin: 0;

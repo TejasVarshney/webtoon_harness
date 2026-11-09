@@ -115,7 +115,7 @@ describe('story mode toggle and continue button', () => {
   it('is disabled in a session Claude Code drives', async () => {
     useAppStore.setState({
       projects: [meta({ storyMode: 'ai' })],
-      sessions: [{ id: S, title: 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver: 'claude-code', claudeSessionId: null }]
+      sessions: [{ id: S, title: 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver: 'claude-code', claudeSessionId: null, bookmarked: false }]
     })
     const { calls } = installFakeApi({ 'sessions:load': () => [] })
     renderChat()

@@ -68,6 +68,13 @@ describe('IPC input validation', () => {
     expect((await s.sessions.list(await s.projects.open(projectId)))[0].title).toBe('Night walk')
   })
 
+  it('sessions:bookmark needs a boolean and pins the session', async () => {
+    const { s, invoke, projectId, sessionId } = await setup()
+    expect((await rejection(invoke('sessions:bookmark', { projectId, sessionId, bookmarked: 'yes' }))).message).toMatch(/^Invalid input: bookmarked: /)
+    await invoke('sessions:bookmark', { projectId, sessionId, bookmarked: true })
+    expect((await s.sessions.list(await s.projects.open(projectId)))[0].bookmarked).toBe(true)
+  })
+
   it('projects:create checks its input', async () => {
     const { invoke } = await setup()
     expect((await rejection(invoke('projects:create', { title: '' }))).message).toMatch(/^Invalid input: title: /)

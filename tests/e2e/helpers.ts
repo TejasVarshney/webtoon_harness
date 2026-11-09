@@ -68,7 +68,15 @@ export async function createProjectAndSession(page: Page, title: string): Promis
   await page.getByLabel('Title').fill(title)
   await page.getByRole('button', { name: 'Create' }).click()
   await page.getByTestId('new-session').click()
+  await openSessions(page)
   await expect(page.getByTestId('session-item')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+}
+
+/** Opens the session list at the top of the chat. Choosing a session, or Escape, closes it again. */
+export async function openSessions(page: Page): Promise<void> {
+  await page.getByTestId('sessions-toggle').click()
+  await expect(page.getByTestId('sessions-popup')).toBeVisible()
 }
 
 /**

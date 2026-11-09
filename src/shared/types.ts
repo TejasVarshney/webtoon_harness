@@ -132,6 +132,8 @@ export interface SessionSummary {
   driver: 'claude-code' | null
   /** The Claude Code session the next run resumes (phase 2 backend); null until its first run. */
   claudeSessionId: string | null
+  /** Pinned under the Bookmarked heading in the chat's session list. */
+  bookmarked: boolean
 }
 
 /** A project file that failed to load (corrupt JSON, schema mismatch); the project still opens. */

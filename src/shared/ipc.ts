@@ -72,6 +72,7 @@ export interface IpcContract {
   'sessions:list': { req: { projectId: string }; res: SessionSummary[] }
   'sessions:create': { req: { projectId: string }; res: SessionSummary }
   'sessions:rename': { req: { projectId: string; sessionId: string; title: string }; res: void }
+  'sessions:bookmark': { req: { projectId: string; sessionId: string; bookmarked: boolean }; res: void }
   'sessions:delete': { req: { projectId: string; sessionId: string }; res: void }
   'sessions:load': { req: { projectId: string; sessionId: string }; res: ChatMessage[] }
   'models:get': { req: Record<string, never>; res: ModelRegistryView }
@@ -230,6 +231,7 @@ const channelSet: Record<IpcChannel, true> = {
   'sessions:list': true,
   'sessions:create': true,
   'sessions:rename': true,
+  'sessions:bookmark': true,
   'sessions:delete': true,
   'sessions:load': true,
   'models:get': true,

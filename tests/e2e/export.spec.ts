@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { readZip } from '../../src/main/test/read-zip'
-import { createProjectAndSession, launchApp, openFirstProject, openTab, readProjectJson, sendChat, writeProjectJson } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat, writeProjectJson } from './helpers'
 
 /** Runs the export dialog for the active episode with one preset, confirms the "unfinished panels" warning when `expectUnfinished` (and asserts it is absent otherwise), and waits for it to finish. */
 async function exportActiveEpisode(page: Page, preset: string, expectUnfinished: boolean, withoutLettering = false): Promise<void> {
@@ -200,6 +200,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
 
   const { app, page } = await launchApp({ userDataDir, projectsRoot, exportTarget: targetB, script: { turns: [{ text: 'Unused.' }] } })
   await openFirstProject(page)
+  await openSessions(page)
   await page.getByTestId('session-item').click()
   await openTab(page, 'webtoon')
   await expect(page.getByTestId('panel-card')).toHaveCount(4)

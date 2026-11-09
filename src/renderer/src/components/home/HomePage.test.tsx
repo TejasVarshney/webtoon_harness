@@ -12,7 +12,6 @@ vi.mock('../layout/WorkspaceLayout', () => ({ WorkspaceLayout: () => <div data-t
 vi.mock('../chat/ChatHeader', () => ({ ChatHeader: () => null }))
 vi.mock('../chat/ChatPane', () => ({ ChatPane: () => null }))
 vi.mock('../layout/StudioPane', () => ({ StudioPane: () => null }))
-vi.mock('../sessions/SessionSidebar', () => ({ SessionSidebar: () => null }))
 
 const project = (id: string, title: string, updatedAt: string): ProjectMeta => ({ id, title, updatedAt }) as unknown as ProjectMeta
 const older = project('prj_aaaaaaaaaa', 'Moon Diary', '2026-11-01T10:00:00.000Z')

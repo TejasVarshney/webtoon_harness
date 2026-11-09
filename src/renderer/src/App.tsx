@@ -5,7 +5,6 @@ import { HomePage } from './components/home/HomePage'
 import { StudioPane } from './components/layout/StudioPane'
 import { WorkspaceLayout } from './components/layout/WorkspaceLayout'
 import { PanelWorkspace } from './components/panel-editor/PanelWorkspace'
-import { SessionSidebar } from './components/sessions/SessionSidebar'
 import { startEventSync } from './events'
 import { startActiveContextSync, useAppStore } from './stores/app-store'
 import { useModelsStore } from './stores/models-store'
@@ -34,13 +33,7 @@ export function App() {
     <WorkspaceLayout
       header={<ChatHeader />}
       left={<StudioPane />}
-      // The sessions sit above the chat until they get a place of their own.
-      right={
-        <div className="chat-column">
-          <SessionSidebar />
-          <ChatPane />
-        </div>
-      }
+      right={<ChatPane />}
       overlay={selectedPanelId === null ? undefined : <PanelWorkspace panelId={selectedPanelId} />}
     />
   )

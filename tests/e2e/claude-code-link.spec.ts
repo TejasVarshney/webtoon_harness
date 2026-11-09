@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { expect, test } from '@playwright/test'
 // A free port that the SDK client's fetch connects to (port 0 can hand out one of fetch's "bad ports").
 import { freePort } from '../../src/main/test/free-port'
-import { createProjectAndSession, launchApp, openSettings, openTab } from './helpers'
+import { createProjectAndSession, launchApp, openSessions, openSettings, openTab } from './helpers'
 
 // Phase-1 acceptance: an outside MCP client drives the open project through the plugin's link.
 test('an MCP client creates a character through the Claude Code link and the app shows it', async () => {
@@ -39,6 +39,7 @@ test('an MCP client creates a character through the Claude Code link and the app
     await openTab(page, 'characters')
     await expect(page.getByTestId('character-card').filter({ hasText: 'Mina' })).toBeVisible()
 
+    await openSessions(page)
     const driven = page.getByTestId('session-item').filter({ hasText: 'Claude Code' })
     await expect(driven).toHaveCount(1)
     await driven.click()
