@@ -255,6 +255,18 @@ describe('DialogueOverlay merging', () => {
     expect(merged(container)).toBe(0)
   })
 
+  it('draws a curly bubble from its measured box', () => {
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'curly')]} />)
+    expect(container.querySelector('.bubble-body path')!.getAttribute('d')).toContain('C')
+  })
+
+  it('draws a curly bubble with no path while it has no size', () => {
+    boxes.A = [0, 0, 0, 0]
+    const { container } = render(<DialogueOverlay dialogue={[shaped('A', 'curly')]} />)
+    expect(container.querySelector('.bubble-body')).not.toBeNull()
+    expect(container.querySelector('.bubble-body path')).toBeNull()
+  })
+
   it('merges three bubbles chained through the middle one', () => {
     boxes.C = [150, 0, 100, 50]
     const { container } = render(<DialogueOverlay dialogue={[placed('A'), placed('C'), placed('B')]} />)

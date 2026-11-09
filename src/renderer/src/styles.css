@@ -2506,6 +2506,16 @@ kbd {
   stroke-linejoin: round;
 }
 
+/* A curly frame: its path is built for the bubble's measured box (BubbleBody). */
+.bubble-curly {
+  padding: calc(1.3em * var(--bubble-padding, 1)) calc(1.6em * var(--bubble-padding, 1));
+}
+
+.bubble-curly .bubble-body path {
+  stroke-width: var(--bubble-stroke-width, 2px);
+  stroke-linejoin: round;
+}
+
 .bubble-tail-down.bubble-speech::before,
 .bubble-tail-down.bubble-whisper::before,
 .bubble-tail-down.bubble-shout::before,
