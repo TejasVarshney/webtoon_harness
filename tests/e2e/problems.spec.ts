@@ -1,7 +1,7 @@
 import { readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject } from './helpers'
 
 // A hand-edited, corrupt project file is reported to the user and the project still opens.
 // An episode file is only read when the episodes are listed, after the project has opened, so this also shows
@@ -15,6 +15,7 @@ test('a corrupt project file is shown as a problem and the project still opens',
   await writeFile(join(first.projectsRoot, projectDir, 'episodes', 'epi_0000000bad.json'), '{ "id": "epi_0000000bad", ', 'utf8')
 
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot: first.projectsRoot })
+  await openFirstProject(second.page)
   const problems = second.page.getByTestId('project-problems')
   await expect(problems).toContainText('1 file could not be read')
   await problems.locator('summary').click()

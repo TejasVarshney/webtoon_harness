@@ -4,24 +4,6 @@ import { api } from '../api'
 
 export type RightTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
 
-const LAST_PROJECT_KEY = 'webtoon.lastProjectId'
-
-function readLastProject(): string | null {
-  try {
-    return localStorage.getItem(LAST_PROJECT_KEY)
-  } catch {
-    return null
-  }
-}
-
-function writeLastProject(id: string): void {
-  try {
-    localStorage.setItem(LAST_PROJECT_KEY, id)
-  } catch {
-    // Storage can be unavailable; remembering the last project is only a convenience.
-  }
-}
-
 export interface AppData {
   projects: ProjectMeta[]
   projectId: string | null
@@ -40,6 +22,8 @@ export interface AppActions {
   /** `stylePreset` left out gives the project the default style. */
   createProject(title: string, stylePreset?: string): Promise<void>
   openProject(id: string): Promise<void>
+  /** Leaves the open project and goes back to the home page. */
+  closeProject(): void
   /** Re-reads the open project's meta and problems (what `project.changed` calls). Leaves the sessions and the selection alone. */
   refreshMeta(): Promise<void>
   /**
@@ -77,11 +61,8 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
 
   async loadProjects() {
     const { projects, problems } = await api.invoke('projects:list', {})
+    // The app starts on the home page: the user picks a project, none is opened for them.
     set({ projects, problems })
-    if (get().projectId === null && projects.length > 0) {
-      const last = readLastProject()
-      await get().openProject(projects.find((p) => p.id === last)?.id ?? projects[0].id)
-    }
   },
 
   async createProject(title, stylePreset) {
@@ -92,7 +73,6 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
 
   async openProject(id) {
     const { meta, problems } = await api.invoke('projects:open', { projectId: id })
-    writeLastProject(meta.id)
     set((s) => ({
       projects: s.projects.some((p) => p.id === meta.id) ? s.projects.map((p) => (p.id === meta.id ? meta : p)) : [meta, ...s.projects],
       projectId: meta.id,
@@ -103,6 +83,10 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
       activeEpisodeId: null
     }))
     await get().loadSessions()
+  },
+
+  closeProject() {
+    set({ projectId: null, sessions: [], sessionId: null, selectedPanelId: null, activeEpisodeId: null })
   },
 
   async refreshMeta() {

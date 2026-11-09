@@ -56,6 +56,12 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<LaunchedApp> 
   return { app, page, userDataDir, projectsRoot }
 }
 
+/** The app starts on the home page, so a relaunch opens the project it should show by clicking its card. */
+export async function openFirstProject(page: Page): Promise<void> {
+  await page.getByTestId('project-card').first().click()
+  await expect(page.getByTestId('pane-chat')).toBeVisible()
+}
+
 /** Runs the new-project dialog, then creates a session. Leaves the new session selected. */
 export async function createProjectAndSession(page: Page, title: string): Promise<void> {
   await page.getByTestId('new-project').click()

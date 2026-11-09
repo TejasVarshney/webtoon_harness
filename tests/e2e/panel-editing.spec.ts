@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, openTab, readProjectJson, sendChat } from './helpers'
 
 const shots = resolve(__dirname, '..', '..', 'test-results', 'panel-editing')
 
@@ -124,6 +124,7 @@ test('edit a panel in editing mode and find the changes on the strip', async () 
       ]
     }
   })
+  await openFirstProject(page)
   await page.getByTestId('session-item').click()
   await openTab(page, 'webtoon')
   const card = page.getByTestId('panel-card').first()

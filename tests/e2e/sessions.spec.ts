@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { launchApp } from './helpers'
+import { launchApp, openFirstProject } from './helpers'
 
 test('sessions persist across relaunch', async () => {
   const first = await launchApp()
@@ -11,6 +11,7 @@ test('sessions persist across relaunch', async () => {
   await first.app.close()
 
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot: first.projectsRoot })
+  await openFirstProject(second.page)
   await expect(second.page.getByTestId('session-item')).toHaveCount(1)
   await second.app.close()
 })

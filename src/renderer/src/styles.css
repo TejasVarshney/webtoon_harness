@@ -603,6 +603,71 @@ kbd {
   padding: 4px 8px;
 }
 
+/* --- Home page ---------------------------------------------------------------------------------------- */
+
+.home {
+  box-sizing: border-box;
+  max-width: 880px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 40px var(--pad);
+  overflow-y: auto;
+}
+
+.home-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 32px;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.home-projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  height: auto;
+  min-height: 96px;
+  padding: 14px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.project-card:hover {
+  background: var(--raised);
+}
+
+.project-card-title {
+  font-size: var(--fs-section);
+  font-weight: 600;
+}
+
+.project-card-time {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
 .sidebar-group {
   margin: 18px 8px 6px;
   font-size: var(--fs-small);

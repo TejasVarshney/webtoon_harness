@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ChatHeader } from './components/chat/ChatHeader'
 import { ChatPane } from './components/chat/ChatPane'
+import { HomePage } from './components/home/HomePage'
 import { RightPane } from './components/layout/RightPane'
 import { ThreePaneLayout } from './components/layout/ThreePaneLayout'
 import { PanelWorkspace } from './components/panel-editor/PanelWorkspace'
@@ -12,6 +13,7 @@ import { usePluginsStore } from './stores/plugins-store'
 
 export function App() {
   const selectedPanelId = useAppStore((s) => s.selectedPanelId)
+  const projectId = useAppStore((s) => s.projectId)
 
   useEffect(() => {
     const stopEvents = startEventSync()
@@ -25,6 +27,8 @@ export function App() {
       stopContext()
     }
   }, [])
+
+  if (projectId === null) return <HomePage />
 
   return (
     <ThreePaneLayout

@@ -17,6 +17,33 @@ afterEach(() => {
   stop = null
 })
 
+describe('loadProjects and closeProject', () => {
+  const second = { id: 'prj_bbbbbbbbbb', title: 'Sun' } as unknown as ProjectMeta
+
+  it('loadProjects lists projects and opens none', async () => {
+    const { calls } = installFakeApi({ 'projects:list': () => ({ projects: [meta, second], problems: [] }) })
+    await useAppStore.getState().loadProjects()
+    expect(useAppStore.getState().projects).toHaveLength(2)
+    expect(useAppStore.getState().projectId).toBeNull()
+    expect(calls.some((c) => c.channel === 'projects:open')).toBe(false)
+  })
+
+  it('closeProject empties the open project, its sessions and the selection', () => {
+    useAppStore.setState({
+      projects: [meta],
+      projectId: P,
+      sessions: [{ id: 'ses_0000000001' }] as never,
+      sessionId: 'ses_0000000001',
+      selectedPanelId: 'pnl_0000000001',
+      activeEpisodeId: E
+    })
+    useAppStore.getState().closeProject()
+    const s = useAppStore.getState()
+    expect([s.projectId, s.sessions, s.sessionId, s.selectedPanelId, s.activeEpisodeId]).toEqual([null, [], null, null, null])
+    expect(s.projects).toEqual([meta])
+  })
+})
+
 function contexts(calls: { channel: string; req: unknown }[]): unknown[] {
   return calls.filter((c) => c.channel === 'app:setActiveContext').map((c) => c.req)
 }

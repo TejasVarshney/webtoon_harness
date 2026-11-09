@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createProjectAndSession, launchApp, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, readProjectJson, sendChat } from './helpers'
 
 const panelInput = {
   episodeId: { $episode: 'current' },
@@ -67,6 +67,7 @@ test('a style the user adds is kept after a restart', async () => {
   await first.app.close()
 
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot: first.projectsRoot })
+  await openFirstProject(second.page)
   await styleButton(second.page).click()
   await expect(row(second.page, 'Rainy city')).toHaveCount(1)
   await second.app.close()
