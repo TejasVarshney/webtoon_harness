@@ -3,22 +3,24 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
-import type { CharacterService, PanelUsageLookup } from './character-service'
+import type { CharacterService } from './character-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import { pickContinuity, type ContinuityImage } from './continuity'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageService } from './image-service'
-import type { ItemService, ItemUsageLookup } from './item-service'
+import type { ItemService } from './item-service'
+import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
+import { PanelUsageScanner } from './panel-usage'
 import { readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
-import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft } from './panel-validation'
+import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft, validatePanelLocation } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { failureMessage, INTERRUPTED, now, type UploadExt } from './records'
 
@@ -36,6 +38,8 @@ export interface PanelServiceOptions {
   episodes: EpisodeService
   characters: CharacterService
   items: ItemService
+  /** The project's locations. Without it the project has none, and a panel that names one is refused. */
+  locations?: Pick<LocationService, 'list'>
   images: ImageService
   /** Moves a path to the OS trash. */
   trash: (absPath: string) => Promise<void>
@@ -50,6 +54,8 @@ interface DrawContext {
   roster: Character[]
   /** Every item, archived ones included. */
   itemRoster: Item[]
+  /** Every location, archived ones included. */
+  locations: Location[]
   /** The references the image model got, in prompt order, with their labels. */
   references: PanelPromptReference[]
   /** The project's `consistencyRetries` when the draw started. */
@@ -67,8 +73,10 @@ interface Draw {
  * Lock discipline: a panel's file lock is never held together with an episode lock, and
  * no lock is ever held across an image call.
  */
-export class PanelService implements PanelUsageLookup, ItemUsageLookup {
-  constructor(private readonly opts: PanelServiceOptions) {}
+export class PanelService extends PanelUsageScanner {
+  constructor(private readonly opts: PanelServiceOptions) {
+    super()
+  }
 
   /** The episode's panels in episode order. Unreadable panel files are reported in `ctx.problems` and skipped. */
   async list(ctx: ProjectContext, episodeId: string): Promise<Panel[]> {
@@ -96,7 +104,9 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
 
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
-    const check = validatePanelDraft(draft, roster, itemRoster, { strictMentions: opts.strictMentions, strictSheets: opts.strictSheets })
+    const cast = validatePanelDraft(draft, roster, itemRoster, { strictMentions: opts.strictMentions, strictSheets: opts.strictSheets })
+    const place = validatePanelLocation(draft.location ?? null, await this.locationRoster(ctx), { changed: true })
+    const check = { errors: [...cast.errors, ...place.errors], warnings: [...cast.warnings, ...place.warnings] }
     if (check.errors.length > 0) throw new PanelValidationError(check.errors)
 
     const meta = await this.opts.projects.getMeta(ctx)
@@ -107,7 +117,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       episodeId: draft.episodeId,
       description: draft.description,
       setting: draft.setting,
-      location: draft.location?.trim() ?? '',
+      location: draft.location ?? null,
       shot: draft.shot,
       aspect: draft.aspect ?? meta.defaultAspect,
       frame: draft.frame,
@@ -154,12 +164,13 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     const file = ctx.paths.panelFile(id)
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
+    const locationRoster = await this.locationRoster(ctx)
     const out = await ctx.mutex.run(file, async () => {
       const current = await this.get(ctx, id)
       const merged = {
         description: patch.description ?? current.description,
         setting: patch.setting ?? current.setting,
-        location: patch.location?.trim() ?? current.location,
+        location: patch.location === undefined ? current.location : patch.location,
         shot: patch.shot ?? current.shot,
         aspect: patch.aspect ?? current.aspect,
         frame: patch.frame ?? current.frame,
@@ -173,10 +184,13 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
         continuityNotes: patch.continuityNotes ?? current.continuityNotes,
         offPanelMentions: patch.offPanelMentions ?? current.offPanelMentions
       }
-      const check = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters, opts.strictSheets), grandfatherUnchangedItems(itemRoster, current.items, merged.items, opts.strictSheets), {
+      const cast = validatePanelDraft(merged, grandfatherUnchangedCast(roster, current.characters, merged.characters, opts.strictSheets), grandfatherUnchangedItems(itemRoster, current.items, merged.items, opts.strictSheets), {
         strictMentions: opts.strictMentions,
         strictSheets: opts.strictSheets
       })
+      // An unchanged location is grandfathered like an unchanged cast: archiving it later must not lock the panel.
+      const place = validatePanelLocation(merged.location, locationRoster, { changed: JSON.stringify(merged.location) !== JSON.stringify(current.location) })
+      const check = { errors: [...cast.errors, ...place.errors], warnings: [...cast.warnings, ...place.warnings] }
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
@@ -207,8 +221,8 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     let landed = draw.version
     let retriesLeft = draw.context?.retries ?? 0
     while (draw.context && landed.status === 'ready' && landed.imagePath !== null && !opts.signal?.aborted) {
-      const { panel, roster, itemRoster, references } = draw.context
-      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, itemRoster, signal: opts.signal })
+      const { panel, roster, itemRoster, locations, references } = draw.context
+      const check = await runCheck(checker, ctx, { imageRelPath: landed.imagePath, references, panel, roster, itemRoster, locations, signal: opts.signal })
       if (check === null) return landed
       const stored = await recordCheck(this.emit, ctx, id, landed.id, check)
       landed = { ...landed, check }
@@ -240,15 +254,25 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const meta = await this.opts.projects.getMeta(ctx)
       const roster = await this.roster(ctx)
       const itemRoster = await this.itemRoster(ctx)
+      const locations = await this.locationRoster(ctx)
       const previous = await this.continuityOf(ctx, panel)
       const maxReferences = this.opts.images.maxReferences('image')
-      const composed = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster: new Map(itemRoster.map((i) => [i.id, i])), previous, sketch: panel.sketchPath ?? null, maxReferences })
+      const composed = composePanelPrompt({
+        stylePreset: meta.stylePreset,
+        panel,
+        roster,
+        itemRoster: new Map(itemRoster.map((i) => [i.id, i])),
+        locations: new Map(locations.map((l) => [l.id, l])),
+        previous,
+        sketch: panel.sketchPath ?? null,
+        maxReferences
+      })
       const fix = opts.extraInstruction
       attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
       // The checker compares the picture with the cast, items and previous panel; the sketch is only a layout guide.
-      context = { panel, roster: [...roster.values()], itemRoster, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
+      context = { panel, roster: [...roster.values()], itemRoster, locations, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await recordAttempt(this.emit, ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -268,7 +292,8 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
       const itemRoster = new Map((await this.itemRoster(ctx)).map((i) => [i.id, i]))
       const maxReferences = this.opts.images.maxReferences('imageEdit')
       // The cast and item references (and the unknown-cast and unknown-item errors) come from composePanelPrompt so an edit
-      // sees exactly the images a generation would; the edit has no previous panel and its own prompt.
+      // sees exactly the images a generation would; the edit has no previous panel, no location picture (it keeps the
+      // image's own place) and its own prompt.
       const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster, previous: null, maxReferences })
       const cast = panel.characters.flatMap((entry) => {
         const character = roster.get(entry.characterId)
@@ -346,28 +371,6 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     this.emit(ctx, id)
   }
 
-  /** Panels that cast the character or give it a dialogue line, whether or not an episode lists them. */
-  async panelsUsingCharacter(ctx: ProjectContext, characterId: string): Promise<string[]> {
-    const panels = await scanPanels(ctx)
-    return panels.filter((p) => p.characters.some((c) => c.characterId === characterId) || p.dialogue.some((d) => d.speakerId === characterId)).map((p) => p.id)
-  }
-
-  async panelsUsingVariation(ctx: ProjectContext, variationId: string): Promise<string[]> {
-    const panels = await scanPanels(ctx)
-    return panels.filter((p) => p.characters.some((c) => c.variationId === variationId)).map((p) => p.id)
-  }
-
-  /** Panels that attach the item, whether or not an episode lists them. */
-  async panelsUsingItem(ctx: ProjectContext, itemId: string): Promise<string[]> {
-    const panels = await scanPanels(ctx)
-    return panels.filter((p) => p.items.some((i) => i.itemId === itemId)).map((p) => p.id)
-  }
-
-  async panelsUsingItemUsage(ctx: ProjectContext, usageId: string): Promise<string[]> {
-    const panels = await scanPanels(ctx)
-    return panels.filter((p) => p.items.some((i) => i.usageId === usageId)).map((p) => p.id)
-  }
-
   /**
    * Startup repair: a generation cannot survive the app closing, so every `pending` version becomes
    * `failed`. Never throws: an unreadable panel (or folder) is reported in `ctx.problems` and skipped.
@@ -432,7 +435,7 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
     }
     const index = episode.panelIds.indexOf(panel.id)
     if (index <= 0) return null
-    const ids = panel.location.trim() === '' ? [episode.panelIds[index - 1]] : episode.panelIds.slice(0, index)
+    const ids = panel.location === null ? [episode.panelIds[index - 1]] : episode.panelIds.slice(0, index)
     return pickContinuity(panel, await Promise.all(ids.map((id) => tryReadPanel(ctx, id))))
   }
 
@@ -444,6 +447,11 @@ export class PanelService implements PanelUsageLookup, ItemUsageLookup {
   /** Every item, archived ones included: existing panels keep regenerating after an item is archived. */
   private itemRoster(ctx: ProjectContext): Promise<Item[]> {
     return this.opts.items.list(ctx, { includeArchived: true })
+  }
+
+  /** Every location, archived ones included, for the same reason. */
+  private async locationRoster(ctx: ProjectContext): Promise<Location[]> {
+    return this.opts.locations ? this.opts.locations.list(ctx, { includeArchived: true }) : []
   }
 
   private readonly emit: EmitPanelChanged = (ctx, panelId) => {

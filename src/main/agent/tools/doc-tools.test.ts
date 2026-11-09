@@ -23,6 +23,7 @@ const SHIPPED = [
   'reference/webtoon-style-guide',
   'workflows/character-creation',
   'workflows/item-creation',
+  'workflows/location-creation',
   'workflows/panel-editing',
   'workflows/panel-generation',
   'workflows/story-direction'

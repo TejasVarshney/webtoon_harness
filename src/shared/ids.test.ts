@@ -8,7 +8,7 @@ describe('newId', () => {
   })
 
   it('knows every prefix from the spec', () => {
-    expect([...ID_PREFIXES]).toEqual(['prj', 'ses', 'chr', 'var', 'epi', 'pnl', 'ver', 'msg', 'run', 'end', 'mdl', 'bt', 'dlg', 'upl', 'itm', 'use', 'call'])
+    expect([...ID_PREFIXES]).toEqual(['prj', 'ses', 'chr', 'var', 'epi', 'pnl', 'ver', 'msg', 'run', 'end', 'mdl', 'bt', 'dlg', 'upl', 'itm', 'use', 'loc', 'lst', 'call'])
     for (const prefix of ID_PREFIXES) expect(newId(prefix)).toMatch(new RegExp(`^${prefix}_[0-9a-f]{10}$`))
   })
 })

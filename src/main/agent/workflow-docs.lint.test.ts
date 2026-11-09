@@ -3,8 +3,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildCheckMessage } from '../domain/consistency-checker'
 import { listSections } from '../domain/markdown-sections'
-import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, variationPrompt } from '../domain/prompts'
-import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
+import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, locationReferencePrompt, locationStatePrompt, variationPrompt } from '../domain/prompts'
+import { makeCharacter, makeItem, makeItemUsage, makeLocation, makeLocationState, makePanel, makeVariation } from '../test/factories'
 import { extractSection } from './system-prompt'
 import { ALL_TOOL_NAMES, buildAgentTools } from './tools'
 import { buildPanelChatTools } from './tools/panel-chat-tools'
@@ -21,10 +21,11 @@ const REQUIRED: Record<string, string[]> = {
   'workflows/story-direction': ['Purpose', 'User-Led Mode', 'AI-Led Mode', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
   'workflows/character-creation': ['Purpose', 'Character Sheet', 'Writing the Appearance Lock', 'Base Reference Image', 'Variations', 'Variation Naming', 'When Not to Create a Variation', 'Automating Creation from Chat', 'Updating Characters', 'Examples'],
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
+  'workflows/location-creation': ['Purpose', 'Location Sheet', 'Writing the Layout', 'Base Picture', 'States', 'Cameras', 'When to Create a Location', 'Using Locations in Panels', 'Examples'],
   'workflows/panel-generation': ['Purpose', 'Pipeline', 'Selecting the Cast', 'Choosing Variations', 'Using the Previous Panel', 'Shot and Aspect Selection', 'Attaching Items', 'Writing the Description', 'Dialogue and SFX', 'Off-Panel Mentions', 'Reading the Consistency Check', 'Examples'],
   'workflows/panel-editing': ['Purpose', 'Scope', 'Edit vs Regenerate', 'Preserving Identity', 'Versions and Revert', 'Dialogue-Only Changes', 'Reporting Changes', 'Examples'],
   'reference/webtoon-style-guide': ['Format', 'Panel Aspects', 'Panel Layout', 'Shot Vocabulary', 'Pacing and Gutters', 'Dialogue Conventions', 'Color and Lighting Continuity', 'Genre Notes'],
-  'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
+  'reference/prompt-templates': ['Panel Prompt', 'Base Reference Prompt', 'Variation Prompt', 'Item Reference Prompt', 'Item Usage Prompt', 'Location Reference Prompt', 'Location State Prompt', 'Panel Edit Prompt', 'Consistency Check Prompt'],
   'reference/consistency-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance'],
   'reference/sheet-checklist': ['Checklist', 'Output Format', 'Severity', 'Retry Guidance']
 }
@@ -217,6 +218,64 @@ describe('workflow docs lint', () => {
     const section = extractSection(read('reference/prompt-templates'), 'Panel Prompt')
     expect(section).toContain(lastLine({ panelId: 'pnl_0000000002', imagePath: 'panels/b.png', earlier: true }).replace('(reference image 1)', '(reference image {m})'))
     expect(section).toContain(lastLine(null))
+  })
+
+  /** A location written in placeholders, in a state with a ready picture of its own. */
+  function placeholderLocation() {
+    const state = makeLocationState({ id: 'lst_0000000002', name: '{state.name}', kind: 'state', delta: '{state.delta}', status: 'ready', imagePath: 'locations/b.png' })
+    return makeLocation({ name: '{location.name}', layout: '{location.layout}', states: [makeLocationState({ status: 'ready', imagePath: 'locations/a.png' }), state] })
+  }
+
+  it('prompt templates reproduce the location prompts and the [LOCATION] line verbatim', () => {
+    const doc = read('reference/prompt-templates')
+    const location = placeholderLocation()
+    expect(extractSection(doc, 'Location Reference Prompt')).toContain(locationReferencePrompt(location, '{stylePreset}'))
+    expect(extractSection(doc, 'Location State Prompt')).toContain(locationStatePrompt(location, location.states[1], '{stylePreset}'))
+    const line = (camera: string): string =>
+      composePanelPrompt({
+        stylePreset: '{stylePreset}',
+        panel: { description: '{description}', setting: '{setting}', shot: '{shot}' as never, aspect: '{aspect}' as never, frame: 'bordered', characters: [], items: [], continuityNotes: '', location: { locationId: location.id, stateId: 'lst_0000000002', camera } },
+        roster: new Map(),
+        itemRoster: new Map(),
+        locations: new Map([[location.id, location]]),
+        previous: null,
+        maxReferences: 4
+      })
+        .prompt.split('\n')
+        .slice(1, 4)
+        .join('\n')
+        .replace('(reference image 1)', '(reference image {l})')
+    const section = extractSection(doc, 'Panel Prompt')
+    expect(section).toContain(line('main'))
+    const reverse = line('reverse').split('\n')[1]
+    expect(section).toContain(reverse.slice(reverse.indexOf('Camera:'), reverse.indexOf(' The reference shows')))
+  })
+
+  it('prompt templates reproduce the consistency checker user message with a location verbatim', () => {
+    const character = makeCharacter({
+      name: '{name}',
+      appearanceLock: '{appearanceLock}',
+      variations: [makeVariation({ name: '{variation.name}', delta: '{variation.delta}', status: 'ready', imagePath: 'characters/a.png' })]
+    })
+    const location = placeholderLocation()
+    const message = buildCheckMessage({
+      references: [
+        { relPath: 'characters/a.png', label: '{name}', subject: { kind: 'character', id: character.id } },
+        { relPath: 'locations/b.png', label: '{location.name} (the empty place, main camera angle)', subject: { kind: 'location', id: location.id } },
+        { relPath: 'panels/b.png', label: 'previous panel', subject: { kind: 'previous' } }
+      ],
+      panel: {
+        ...makePanel({ characters: [{ characterId: character.id, variationId: character.variations[0].id }], location: { locationId: location.id, stateId: 'lst_0000000002', camera: '{camera}' } }),
+        description: '{description}',
+        setting: '{setting}',
+        shot: '{shot}' as never,
+        continuityNotes: '{continuityNotes}'
+      },
+      roster: [character],
+      itemRoster: [],
+      locations: [location]
+    })
+    expect(extractSection(read('reference/prompt-templates'), 'Consistency Check Prompt')).toContain(message)
   })
 
   it('prompt templates reproduce a panel edit prompt with items verbatim', () => {

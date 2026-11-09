@@ -93,8 +93,8 @@ describe('panel tools: the tool set', () => {
   })
 
   it('offers exactly the panel tools, view_panel_image only with vision', () => {
-    // The six character tools and the six item tools come first (character-tools.test.ts, item-tools.test.ts), then the panel tools, then the four story tools (story-tools.test.ts) and read_workflow_doc (doc-tools.test.ts).
-    expect(buildAgentTools({ vision: true }).names().slice(12, -5)).toEqual([
+    // The six character, item and location tools come first (character-tools.test.ts, item-tools.test.ts, location-tools.test.ts), then the panel tools, then the four story tools (story-tools.test.ts) and read_workflow_doc (doc-tools.test.ts).
+    expect(buildAgentTools({ vision: true }).names().slice(18, -5)).toEqual([
       'list_episodes',
       'create_episode',
       'list_panels',
@@ -105,7 +105,7 @@ describe('panel tools: the tool set', () => {
       'regenerate_panel',
       'edit_panel_image'
     ])
-    expect(buildAgentTools({ vision: false }).names().slice(12, -5)).toEqual([
+    expect(buildAgentTools({ vision: false }).names().slice(18, -5)).toEqual([
       'list_episodes',
       'create_episode',
       'list_panels',
@@ -338,7 +338,7 @@ describe('list_panels and get_panel', () => {
     expect(panels[0]).toEqual({
       id: made.panelId,
       index: 0,
-      location: '',
+      location: null,
       shot: 'close-up',
       aspect: '1:1',
       frame: 'bordered',

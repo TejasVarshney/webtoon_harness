@@ -1,6 +1,6 @@
 import { versionPosition } from '@shared/panel-versions'
 import { sheetCheckFailure } from '../domain/panel-validation'
-import type { Character, DialogueLine, Episode, Item, Panel, PanelCharacter, PanelItem, ProjectMeta } from '@shared/types'
+import type { Character, DialogueLine, Episode, Item, Location, Panel, PanelCharacter, PanelItem, PanelLocation, ProjectMeta } from '@shared/types'
 
 /** AGENTS.md plus the index of the other workflow docs. Stable for a given input. */
 export function buildAgentSystemPrompt(agentsMd: string, index: { name: string; title: string }[]): string {
@@ -30,6 +30,8 @@ export interface StateSnapshotInput {
   characters: Character[]
   /** Every item, archived ones included: the snapshot drops them from the list but they still name the items of existing panels. */
   items: Item[]
+  /** Every location, archived ones included, for the same reason. Left out, the project has none. */
+  locations?: Location[]
   episode: Episode | null
   recentPanels: Panel[]
 }
@@ -63,10 +65,20 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
       lines.push(`- ${i.id} ${oneLine(i.name)} usages: ${usages || 'none'}`)
     }
   }
+  const locations = s.locations ?? []
+  const activeLocations = locations.filter((l) => !l.archived)
+  if (activeLocations.length === 0) lines.push('locations: none')
+  else {
+    lines.push('locations:')
+    for (const l of activeLocations) {
+      const states = l.states.map((st) => `${st.id} ${oneLine(st.name)} (${statusLabel(st)})`).join(', ')
+      lines.push(`- ${l.id} ${oneLine(l.name)} states: ${states || 'none'}`)
+    }
+  }
   if (s.recentPanels.length === 0) lines.push('recent_panels: none')
   else {
     lines.push('recent_panels:')
-    for (const p of s.recentPanels) lines.push(`- ${panelSummary(p, names, s.items, (pc) => pc.variationId)}`)
+    for (const p of s.recentPanels) lines.push(`- ${panelSummary(p, names, s.items, locations, (pc) => pc.variationId)}`)
   }
   lines.push('</project_state>')
   return lines.join('\n')
@@ -92,10 +104,10 @@ export function layoutTag(p: Panel): string {
  * dialogue and, only when it has any, its items and the first 160 characters of its continuity notes (which carry a
  * scene's layout from panel to panel). `detail` is what follows a cast member's name.
  */
-function panelSummary(p: Panel, names: Map<string, string>, items: Item[], detail: (cast: PanelCharacter) => string): string {
+function panelSummary(p: Panel, names: Map<string, string>, items: Item[], locations: Location[], detail: (cast: PanelCharacter) => string): string {
   const cast = p.characters.map((pc) => `${names.get(pc.characterId) ?? pc.characterId} (${detail(pc)})`).join(', ')
   const shown = p.items.map((entry) => itemNames(entry, items)).map((n) => `${n.name} (${n.usageName})`)
-  const at = p.location.trim() === '' ? '' : ` at ${oneLine(p.location)}`
+  const at = p.location === null ? '' : ` at ${locationLabel(p.location, locations)}`
   const notes = p.continuityNotes.trim() === '' ? '' : ` | notes: ${oneLine(p.continuityNotes).slice(0, 160)}`
   return `${p.id} [${layoutTag(p)}]${at} cast: ${cast || 'none'} | ${oneLine(p.description).slice(0, 160)} | dialogue: ${dialogueLine(p, names) || 'none'}${shown.length > 0 ? ` | items: ${shown.join(', ')}` : ''}${notes}`
 }
@@ -114,6 +126,13 @@ export function castNames(entry: PanelCharacter, roster: Character[]): { name: s
 }
 
 /** The names a panel's item entry shows under: the item's, and the name of the usage it is used as. Ids when the roster lacks them. */
+/** Where a panel is set, as the agent reads it: `Name (State, camera main)`, with the ids for a location that is gone. */
+function locationLabel(entry: PanelLocation, locations: Location[]): string {
+  const location = locations.find((l) => l.id === entry.locationId)
+  const state = location?.states.find((st) => st.id === entry.stateId)
+  return `${location ? oneLine(location.name) : entry.locationId} (${state ? oneLine(state.name) : entry.stateId}, camera ${oneLine(entry.camera) || 'main'})`
+}
+
 export function itemNames(entry: PanelItem, items: Item[]): { name: string; usageName: string } {
   const item = items.find((i) => i.id === entry.itemId)
   const usage = item?.usages.find((u) => u.id === entry.usageId)
@@ -134,12 +153,12 @@ export type PanelNeighbor = Panel | 'unreadable' | null
  * The `<panel_context>` block stored with each message of a panel's chat. `roster` should include archived
  * characters and `itemRoster` every item, archived ones too: they still name the cast, speakers and items of panels drawn before they were archived.
  */
-export function buildPanelContext(panel: Panel, roster: Character[], itemRoster: Item[], prev: PanelNeighbor, next: PanelNeighbor): string {
+export function buildPanelContext(panel: Panel, roster: Character[], itemRoster: Item[], prev: PanelNeighbor, next: PanelNeighbor, locations: Location[] = []): string {
   const names = new Map(roster.map((c) => [c.id, oneLine(c.name)]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
   const position = versionPosition(panel, panel.currentVersionId)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
-  const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, itemRoster, variationOf))
+  const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, itemRoster, locations, variationOf))
   const lines = [
     '<panel_context>',
     `panel: ${panel.id}`,
@@ -148,7 +167,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
     `aspect: ${panel.aspect}`,
     ...(layoutParts(panel).length > 0 ? [`layout: ${layoutParts(panel).join(', ')}`] : []),
     `setting: ${oneLine(panel.setting)}`,
-    ...(panel.location.trim() === '' ? [] : [`location: ${oneLine(panel.location)}`]),
+    ...(panel.location === null ? [] : [`location: ${locationLabel(panel.location, locations)}`]),
     `description: ${oneLine(panel.description)}`,
     `cast: ${cast || 'none'}`,
     `dialogue: ${dialogueLine(panel, names, true) || 'none'}`

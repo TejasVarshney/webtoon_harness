@@ -1,5 +1,5 @@
 import { newId } from '@shared/ids'
-import type { Character, ChatMessage, CheckResult, Item, ItemUsage, Panel, Variation } from '@shared/types'
+import type { Character, ChatMessage, CheckResult, Item, ItemUsage, Location, LocationState, Panel, Variation } from '@shared/types'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { createTextProvider as defaultCreateTextProvider } from '../models/providers/factory'
 import { ImageUnavailableError, type TextProvider } from '../models/providers/types'
@@ -33,6 +33,8 @@ export interface ConsistencyCheckInput {
   roster: Character[]
   /** Every item, archived ones included. */
   itemRoster: Item[]
+  /** Every location, archived ones included. Left out, the panel's location (if any) is not described. */
+  locations?: Location[]
   /** The run's signal: aborting it ends the vision call. */
   signal?: AbortSignal
 }
@@ -47,8 +49,11 @@ export interface ConsistencyCheckerOptions {
   timeoutMs?: number
 }
 
-/** What a sheet check judges: a character variation or an item usage, with its owner (which holds the lock). */
-type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
+/** What a sheet check judges: a character variation, an item usage or a location state, with its owner (which holds the lock). */
+type SheetSubject =
+  | { kind: 'character'; character: Character; variation: Variation }
+  | { kind: 'item'; item: Item; usage: ItemUsage }
+  | { kind: 'location'; location: Location; state: LocationState }
 
 export interface SheetCheckInput {
   /** The candidate sheet, not yet on disk. */
@@ -141,11 +146,11 @@ export function parseCheckResponse(text: string): CheckResult {
  * `reference/prompt-templates` documents it. A reference belongs to a cast member or item by its
  * `subject`, never by label (a character and an item may share a name).
  */
-export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster'>): string {
-  const { references, panel, roster, itemRoster } = input
+export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster' | 'locations'>): string {
+  const { references, panel, roster, itemRoster, locations } = input
   const images = [...references.map((r, i) => `${i + 1}. Reference: ${r.label}`), `${references.length + 1}. Generated panel (the image to check)`]
 
-  const sent = (kind: 'character' | 'item', id: string): boolean => references.some((r) => r.subject.kind === kind && r.subject.id === id)
+  const sent = (kind: 'character' | 'item' | 'location', id: string): boolean => references.some((r) => r.subject.kind === kind && r.subject.id === id)
 
   const cast = panel.characters.map((entry) => {
     const character = roster.find((c) => c.id === entry.characterId)
@@ -165,6 +170,17 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     return `- ${item.name} — ${item.appearanceLock} — Use: ${look} — Held by: ${holder}${sent('item', item.id) ? '' : ' (no reference image)'}`
   })
 
+  // The location's layout is what the checklist's staging item judges the landmarks against.
+  let place: string | null = null
+  if (panel.location && locations) {
+    const location = locations.find((l) => l.id === panel.location!.locationId)
+    const state = location?.states.find((s) => s.id === panel.location!.stateId)
+    if (!location || !state) throw new Error(`Unknown location entry: ${panel.location.locationId}/${panel.location.stateId}`)
+    const look = state.delta ? `${state.name} — ${state.delta}` : state.name
+    const camera = panel.location.camera.trim() || 'main'
+    place = `${location.name} — Layout: ${location.layout.trim()} — State: ${look} — Camera: ${camera}${sent('location', location.id) ? '' : ' (no reference image)'}`
+  }
+
   return [
     'Images, in the order attached:',
     ...images,
@@ -172,6 +188,7 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     'Cast:',
     ...(cast.length > 0 ? cast : ['(none)']),
     ...(items.length > 0 ? ['', 'Items:', ...items] : []),
+    ...(place === null ? [] : ['', `Location: ${place}`]),
     '',
     `Panel description: ${panel.description}`,
     `Setting: ${panel.setting}`,
@@ -199,13 +216,19 @@ export function buildSheetCheckMessage(input: Pick<SheetCheckInput, 'subject' | 
     name = character.name
     lock = character.appearanceLock
     if (variation.kind !== 'base') detail = `Look: ${named(variation.name, variation.delta)}`
-  } else {
+  } else if (subject.kind === 'item') {
     const { item, usage } = subject
     sheet = usage.kind === 'action' ? 'Item usage reference sheet' : 'Item reference sheet'
     name = item.name
     lock = item.appearanceLock
     if (usage.kind === 'state') detail = `State: ${named(usage.name, usage.delta)}`
     else if (usage.kind === 'action') detail = `Usage: ${named(usage.name, usage.delta)}`
+  } else {
+    const { location, state } = subject
+    sheet = 'Location reference picture'
+    name = location.name
+    lock = location.layout
+    if (state.kind !== 'base') detail = `State: ${named(state.name, state.delta)}`
   }
   const images = [...(baseImageRelPath === null ? [] : [`Base reference: ${subject.kind} ${name}`]), 'Generated sheet (the image to check)']
   return [

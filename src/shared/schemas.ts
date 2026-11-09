@@ -12,9 +12,11 @@
 //    one place each (`Id`, `IsoTimestamp`) should they ever need tightening.
 
 import { z } from 'zod'
+import { PanelLocationSchema } from './location-schemas'
+import { CheckResultSchema, CreatedBySchema, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
 
-const Id = z.string()
-const IsoTimestamp = z.string()
+export { CheckResultSchema } from './schema-primitives'
+export * from './location-schemas'
 
 /** Re-declare an object shape without its `.default()` wrappers, so `.partial()` can't fill them. */
 type WithoutDefaults<S extends z.ZodRawShape> = { [K in keyof S]: S[K] extends z.ZodDefault<infer Inner> ? Inner : S[K] }
@@ -27,11 +29,9 @@ function withoutDefaults<S extends z.ZodRawShape>(shape: S): WithoutDefaults<S> 
 // ---------------------------------------------------------------------------------------------
 
 export const StoryModeSchema = z.enum(['user', 'ai'])
-const CreatedBySchema = z.enum(['user', 'ai'])
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
 const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
-const ImageStatusSchema = z.enum(['pending', 'ready', 'failed'])
 export const ShotTypeSchema = z.enum([
   'establishing',
   'wide',
@@ -81,14 +81,6 @@ export const ProjectMetaSchema = z.object({
 // ---------------------------------------------------------------------------------------------
 // Characters
 // ---------------------------------------------------------------------------------------------
-
-const text = () => z.string().default('')
-
-export const CheckResultSchema = z.object({
-  passed: z.boolean(),
-  issues: z.array(z.string()),
-  skipped: z.boolean().default(false)
-})
 
 const CharacterizationSchema = z.object({
   personality: text(),
@@ -289,7 +281,9 @@ export const VisualFieldsSchema = z.object({
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
   characters: z.array(PanelCharacterSchema),
-  items: z.array(PanelItemSchema)
+  items: z.array(PanelItemSchema),
+  /** Missing in a version recorded before panels had locations. */
+  location: PanelLocationSchema.nullable().default(null)
 })
 
 export const PanelVersionSchema = z.object({
@@ -314,10 +308,11 @@ export const PanelSchema = z.object({
   description: z.string(),
   setting: z.string(),
   /**
-   * A short name for the place ("stockroom"), the same in every panel set there. It picks the image a draw continues
-   * from (see `pickContinuity`); empty, the panel continues from the one before it.
+   * The saved location the panel is set in, its state and the camera; null when it has none. It writes the prompt's
+   * [LOCATION] line and picks the image a draw continues from (see `pickContinuity`). Without one, the panel continues
+   * from the one before it. A plain name (a build before locations were saved) reads as none.
    */
-  location: z.string().default(''),
+  location: z.preprocess((v) => (typeof v === 'string' ? null : v), PanelLocationSchema.nullable()).default(null),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
   frame: PanelFrameSchema.default('bordered'),
@@ -354,7 +349,8 @@ export const PanelDraftSchema = z.object({
   afterPanelId: Id.nullable().optional(),
   description: z.string(),
   setting: z.string(),
-  location: z.string().optional(),
+  /** Null clears it. */
+  location: PanelLocationSchema.nullable().optional(),
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema.optional(),
   frame: PanelFrameSchema.optional(),

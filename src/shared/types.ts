@@ -28,6 +28,11 @@ import type {
   ItemSchema,
   ItemUsageInputSchema,
   ItemUsageSchema,
+  LocationInputSchema,
+  LocationPatchSchema,
+  LocationSchema,
+  LocationStateInputSchema,
+  LocationStateSchema,
   ModelConfigSchema,
   PanelAspectSchema,
   PanelCharacterSchema,
@@ -35,6 +40,7 @@ import type {
   PanelGapSchema,
   PanelGutterSchema,
   PanelItemSchema,
+  PanelLocationSchema,
   PanelPatchSchema,
   PanelSchema,
   PanelVersionSchema,
@@ -59,6 +65,8 @@ export type Character = z.infer<typeof CharacterSchema>
 export type Variation = z.infer<typeof VariationSchema>
 export type Item = z.infer<typeof ItemSchema>
 export type ItemUsage = z.infer<typeof ItemUsageSchema>
+export type Location = z.infer<typeof LocationSchema>
+export type LocationState = z.infer<typeof LocationStateSchema>
 export type Episode = z.infer<typeof EpisodeSchema>
 export type ExportPreset = z.infer<typeof ExportPresetSchema>
 /** A parsed export request: every defaulted field is filled. */
@@ -66,6 +74,7 @@ export type ExportRequest = z.infer<typeof ExportRequestSchema>
 export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
+export type PanelLocation = z.infer<typeof PanelLocationSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>
 export type BubbleShape = z.infer<typeof BubbleShapeSchema>
@@ -97,6 +106,9 @@ export type VariationInput = z.infer<typeof VariationInputSchema>
 export type ItemInput = z.infer<typeof ItemInputSchema>
 export type ItemPatch = z.infer<typeof ItemPatchSchema>
 export type ItemUsageInput = z.infer<typeof ItemUsageInputSchema>
+export type LocationInput = z.infer<typeof LocationInputSchema>
+export type LocationPatch = z.infer<typeof LocationPatchSchema>
+export type LocationStateInput = z.infer<typeof LocationStateInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
 export type DrawAspect = z.infer<typeof DrawAspectSchema>
@@ -212,6 +224,7 @@ export type AppEvent =
   | { type: 'session.changed'; projectId: string; sessionId: string }
   | { type: 'character.changed'; projectId: string; characterId: string }
   | { type: 'item.changed'; projectId: string; itemId: string }
+  | { type: 'location.changed'; projectId: string; locationId: string }
   | { type: 'episode.changed'; projectId: string; episodeId: string }
   | { type: 'panel.changed'; projectId: string; panelId: string }
   | { type: 'story.changed'; projectId: string }

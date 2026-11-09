@@ -1,6 +1,6 @@
-import type { Character, Item, ItemUsage, Panel, Variation } from '@shared/types'
+import type { Character, Item, ItemUsage, Location, LocationState, Panel, Variation } from '@shared/types'
 import { drawAspect, isTallAspect } from '@shared/draw-aspect'
-import { hasReadyReference, hasReadyUsage } from './panel-validation'
+import { hasReadyReference, hasReadyState, hasReadyUsage } from './panel-validation'
 
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
 // to it, and every sheet must say "no text" because dialogue is rendered as HTML (never in the image).
@@ -35,13 +35,29 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
   return withFix(`Item reference sheet. ${stylePreset}. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. ${item.appearanceLock} State: ${usage.name} — ${usage.delta}. Keep shape, size, materials, colors and markings identical to the reference image except for the state.`, fix)
 }
 
+/** The words every location picture shares: what it is and what it must leave out. */
+function locationPictureLead(l: Location, stylePreset: string): string {
+  return `Location reference picture. ${stylePreset}. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. ${l.name}. Layout from this angle: ${l.layout}`
+}
+
+export function locationReferencePrompt(l: Location, stylePreset: string, fix?: string): string {
+  return withFix(locationPictureLead(l, stylePreset), fix)
+}
+
+export function locationStatePrompt(l: Location, state: LocationState, stylePreset: string, fix?: string): string {
+  return withFix(
+    `${locationPictureLead(l, stylePreset)} State: ${state.name} — ${state.delta}. Keep the layout, landmarks, architecture and camera angle identical to the reference image except for the state.`,
+    fix
+  )
+}
+
 // ---------------------------------------------------------------------------------------------
 // Panel prompts. Dialogue never enters an image prompt: it is rendered as HTML over the
 // panel, so `composePanelPrompt` does not even accept it.
 // ---------------------------------------------------------------------------------------------
 
 /** Whose image a reference is. The checker matches references to cast and items by this, never by label. */
-type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
+type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' }
 
 export interface PanelPromptReference {
   relPath: string
@@ -51,10 +67,12 @@ export interface PanelPromptReference {
 
 export interface PanelPromptInput {
   stylePreset: string
-  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items' | 'continuityNotes'>
+  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items' | 'continuityNotes'> & { location?: Panel['location'] }
   /** Characters; resolves cast entries and the holders of items. */
   roster: Map<string, Character>
   itemRoster: Map<string, Item>
+  /** Resolves the panel's location. Left out (an edit), the panel is composed as if it had none. */
+  locations?: Map<string, Location>
   /** The image the panel continues from: the panel right before it, or with `earlier` an earlier panel in the same location. */
   previous: { panelId: string; imagePath: string; earlier?: boolean } | null
   /** The user's layout sketch, for a generation only (an edit keeps the image's own composition). */
@@ -65,7 +83,7 @@ export interface PanelPromptInput {
 
 export interface PanelPromptResult {
   prompt: string
-  /** In prompt order: ready cast variations (cast order), then ready item usages (panel order), then the sketch, then the previous panel. */
+  /** In the order claimed: ready cast variations (cast order), then the location's picture, then ready item usages (panel order), then the sketch, then the previous panel. */
   references: PanelPromptReference[]
 }
 
@@ -87,6 +105,18 @@ function shapeNote(panel: Pick<Panel, 'aspect' | 'frame'>): string {
 /** How the checker's image list names a continuity image that is not the panel right before. */
 const EARLIER_LABEL = 'earlier panel in the same place'
 
+/** How a location's picture is to be used: for the place's architecture and where its landmarks are, never its framing or its light (a live test copied a lit room into a dark night). */
+const LOCATION_PICTURE_NOTE =
+  "The reference shows the empty place from its main camera angle, only for its architecture and where its landmarks are, not its lighting: the light and the time of day come from the setting and the state. Draw it from this panel's camera and shot, with the cast in it."
+
+/** Where the camera is, as the [LOCATION] line says it. */
+function cameraSentence(camera: string): string {
+  const said = camera.trim()
+  if (said === '' || said.toLowerCase() === 'main') return 'Camera: its main angle, so every landmark stays on the side of the frame the layout gives.'
+  if (said.toLowerCase() === 'reverse') return 'Camera: reverse angle, facing the other way, so the landmarks the layout puts on frame-left are on frame-right and the other way round.'
+  return `Camera: ${said.replace(/\.$/, '')}.`
+}
+
 const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
 
@@ -104,7 +134,7 @@ const ITEMS_HEADER =
  * first. Archived characters and items still compose, so existing panels can be regenerated.
  */
 export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
-  const { stylePreset, panel, roster, itemRoster, previous, sketch, maxReferences } = input
+  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, maxReferences } = input
   const references: PanelPromptReference[] = []
 
   /** The "(reference image N)" marker if `file` fits under the cap (and is recorded as a reference), else "(no reference image)". */
@@ -132,6 +162,27 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     return `- ${character.name} ${marker}: ${details.filter(Boolean).join(' ')}`
   })
 
+  // The location's picture is claimed right after the cast, so over the cap it outlasts items, the sketch and the previous panel.
+  let locationLine: string | null = null
+  if (panel.location && locations) {
+    const location = locations.get(panel.location.locationId)
+    if (!location) throw new Error(`Unknown location: ${panel.location.locationId}`)
+    const state = location.states.find((s) => s.id === panel.location!.stateId)
+    if (!state) throw new Error(`State ${panel.location.stateId} does not belong to ${location.name}`)
+    // A state with no picture of its own is drawn from the base picture and its words.
+    const base = location.states.find((s) => s.kind === 'base')
+    const picture = hasReadyState(state) ? state.imagePath : base && hasReadyState(base) ? base.imagePath : null
+    const marker = refer(picture, `${location.name} (the empty place, main camera angle)`, { kind: 'location', id: location.id })
+    locationLine = [
+      `[LOCATION] ${location.name} ${marker}: ${location.layout.trim()}`,
+      state.kind === 'base' ? '' : `State: ${state.delta ? `${state.name} — ${state.delta}` : state.name}.`,
+      cameraSentence(panel.location.camera),
+      marker === NO_REFERENCE ? '' : LOCATION_PICTURE_NOTE
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
+
   const itemLines = panel.items.map((entry) => {
     const item = itemRoster.get(entry.itemId)
     if (!item) throw new Error(`Unknown item: ${entry.itemId}`)
@@ -148,6 +199,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   const lines = [
     `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${drawAspect(panel.aspect)} aspect ratio, ${panel.shot} shot. No text, no speech bubbles, no captions, no watermark.${shapeNote(panel)}`,
     `[SETTING] ${panel.setting}`,
+    ...(locationLine === null ? [] : [locationLine]),
     `[ACTION] ${panel.description}`,
     '[CHARACTERS]',
     ...castLines

@@ -31,7 +31,7 @@ export function panel(o: Partial<Panel> = {}): Panel {
     episodeId: EPISODE_ID,
     description: 'Mina stands on the rooftop.',
     setting: 'Rooftop at dusk',
-    location: '',
+    location: null,
     shot: 'medium',
     aspect: '2:3',
     frame: 'bordered',

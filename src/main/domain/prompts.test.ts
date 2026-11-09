@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Character, Item, Panel, PanelCharacter, PanelItem } from '@shared/types'
-import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
-import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, sheetFixInstruction, variationPrompt } from './prompts'
+import { makeCharacter, makeItem, makeItemUsage, makeLocation, makeLocationState, makePanel, makeVariation } from '../test/factories'
+import { baseReferencePrompt, composePanelPrompt, editPanelPrompt, itemReferencePrompt, itemUsagePrompt, locationReferencePrompt, locationStatePrompt, sheetFixInstruction, variationPrompt } from './prompts'
 
 describe('character prompts', () => {
   it('pins the base reference prompt', () =>
@@ -435,6 +435,82 @@ describe('composePanelPrompt with items', () => {
     const compose = (entry: PanelItem) => composePanelPrompt({ ...base, panel: panel({ items: [entry] }) })
     expect(() => compose(held({ itemId: 'itm_missing' }))).toThrow('Unknown item: itm_missing')
     expect(() => compose(held({ usageId: 'use_other' }))).toThrow('Usage use_other does not belong to Kestrel blaster')
+  })
+})
+
+describe('location prompts', () => {
+  const location = makeLocation({ name: 'Back stockroom', layout: 'LAYOUT' })
+  it('pins the base picture prompt', () =>
+    expect(locationReferencePrompt(location, 'STYLE')).toBe(
+      'Location reference picture. STYLE. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. Back stockroom. Layout from this angle: LAYOUT'
+    ))
+
+  it('pins the state picture prompt', () =>
+    expect(locationStatePrompt(location, makeLocationState({ kind: 'state', name: 'Night', delta: 'embers only' }), 'STYLE')).toBe(
+      'Location reference picture. STYLE. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. Back stockroom. Layout from this angle: LAYOUT State: Night — embers only. Keep the layout, landmarks, architecture and camera angle identical to the reference image except for the state.'
+    ))
+})
+
+describe('composePanelPrompt with a location', () => {
+  const ready = (o: Parameters<typeof makeLocationState>[0]) => makeLocationState({ status: 'ready', ...o })
+  const stockroom = makeLocation({
+    id: 'loc_stock',
+    name: 'Back stockroom',
+    layout: 'Back door at frame-left; shelves at frame-right.',
+    states: [
+      ready({ id: 'lst_base', locationId: 'loc_stock', imagePath: 'locations/loc_stock/base.png' }),
+      makeLocationState({ id: 'lst_night', locationId: 'loc_stock', name: 'Night', kind: 'state', delta: 'embers only', status: 'failed' }),
+      ready({ id: 'lst_fire', locationId: 'loc_stock', name: 'On fire', kind: 'state', delta: 'flames on the shelves', imagePath: 'locations/loc_stock/fire.png' })
+    ]
+  })
+  const locations = new Map([[stockroom.id, stockroom]])
+  const at = (stateId: string, camera = 'main'): Panel['location'] => ({ locationId: 'loc_stock', stateId, camera })
+  const lineOf = (prompt: string): string => prompt.split('\n').find((l) => l.startsWith('[LOCATION]'))!
+  const base = { stylePreset: 'STYLE', roster, itemRoster, locations, previous: PREVIOUS, maxReferences: 4 }
+
+  it('writes a [LOCATION] line after [SETTING], and claims the picture right after the cast', () => {
+    const { prompt, references } = composePanelPrompt({ ...base, panel: { ...panel({ characters: [cast(mina, 'var_m0')], items: [held()] }), location: at('lst_base') } })
+    expect(references.map((r) => r.subject)).toEqual([{ kind: 'character', id: mina.id }, { kind: 'location', id: 'loc_stock' }, { kind: 'item', id: blaster.id }, { kind: 'previous' }])
+    expect(references[1]).toMatchObject({ relPath: 'locations/loc_stock/base.png', label: 'Back stockroom (the empty place, main camera angle)' })
+    const lines = prompt.split('\n')
+    expect(lines[1].startsWith('[SETTING]')).toBe(true)
+    expect(lines[2]).toBe(
+      "[LOCATION] Back stockroom (reference image 2): Back door at frame-left; shelves at frame-right. Camera: its main angle, so every landmark stays on the side of the frame the layout gives. The reference shows the empty place from its main camera angle, only for its architecture and where its landmarks are, not its lighting: the light and the time of day come from the setting and the state. Draw it from this panel's camera and shot, with the cast in it."
+    )
+  })
+
+  it("uses a state's own picture, else the base picture with the state's words", () => {
+    const own = composePanelPrompt({ ...base, previous: null, panel: { ...panel({}), location: at('lst_fire') } })
+    expect(own.references.map((r) => r.relPath)).toEqual(['locations/loc_stock/fire.png'])
+    expect(lineOf(own.prompt)).toContain('State: On fire — flames on the shelves.')
+    const fallback = composePanelPrompt({ ...base, previous: null, panel: { ...panel({}), location: at('lst_night') } })
+    expect(fallback.references.map((r) => r.relPath)).toEqual(['locations/loc_stock/base.png'])
+    expect(lineOf(fallback.prompt)).toContain('State: Night — embers only.')
+  })
+
+  it('says reverse and free-text cameras in their own words', () => {
+    const line = (camera: string) => lineOf(composePanelPrompt({ ...base, previous: null, panel: { ...panel({}), location: at('lst_base', camera) } }).prompt)
+    expect(line('reverse')).toContain('Camera: reverse angle, facing the other way, so the landmarks the layout puts on frame-left are on frame-right and the other way round.')
+    expect(line('low, from the floor.')).toContain('Camera: low, from the floor. The reference shows')
+    expect(line('')).toContain('Camera: its main angle')
+  })
+
+  it('drops items before the location picture, and the location picture before the cast', () => {
+    const input = { ...base, panel: { ...panel({ characters: [cast(mina, 'var_m0'), cast(jin, 'var_j0')], items: [held()] }), location: at('lst_base') } }
+    expect(composePanelPrompt({ ...input, maxReferences: 3 }).references.map((r) => r.subject.kind)).toEqual(['character', 'character', 'location'])
+    const two = composePanelPrompt({ ...input, maxReferences: 2 })
+    expect(two.references.map((r) => r.subject.kind)).toEqual(['character', 'character'])
+    // Without its picture the line keeps the layout and leaves out the sentence about the reference.
+    expect(lineOf(two.prompt)).toBe(
+      '[LOCATION] Back stockroom (no reference image): Back door at frame-left; shelves at frame-right. Camera: its main angle, so every landmark stays on the side of the frame the layout gives.'
+    )
+  })
+
+  it('composes as if there were no location when no locations are given (an edit), and throws for one that is gone', () => {
+    const plain = composePanelPrompt({ ...base, locations: undefined, panel: { ...panel({}), location: at('lst_base') } })
+    expect(plain.prompt).not.toContain('[LOCATION]')
+    expect(() => composePanelPrompt({ ...base, panel: { ...panel({}), location: { locationId: 'loc_gone', stateId: 'lst_x', camera: 'main' } } })).toThrow('Unknown location: loc_gone')
+    expect(() => composePanelPrompt({ ...base, panel: { ...panel({}), location: at('lst_gone') } })).toThrow('State lst_gone does not belong to Back stockroom')
   })
 })
 

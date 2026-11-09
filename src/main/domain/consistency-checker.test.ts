@@ -9,7 +9,7 @@ import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/pr
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
-import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeItem, makeItemUsage, makeLocation, makeLocationState, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import {
   buildCheckMessage,
@@ -501,6 +501,20 @@ describe('buildCheckMessage with items', () => {
     expect(buildCheckMessage({ references: [], panel: makePanel(), roster: [], itemRoster: [novaItem] })).not.toContain('Items:')
     expect(() => buildCheckMessage({ references: [], panel, roster: [novaCharacter], itemRoster: [] })).toThrow('Unknown item entry: itm_nova/use_nova_fire')
   })
+
+  it("gives the panel's location its layout, state and camera, and marks a picture that was not sent", () => {
+    const stockroom = makeLocation({ states: [makeLocationState(), makeLocationState({ id: 'lst_0000000002', name: 'Night', kind: 'state', delta: 'embers only' })] })
+    const placed = makePanel({ location: { locationId: stockroom.id, stateId: 'lst_0000000002', camera: 'reverse' } })
+    const picture = { relPath: 'locations/a.png', label: 'Back stockroom (the empty place, main camera angle)', subject: { kind: 'location' as const, id: stockroom.id } }
+    const sent = buildCheckMessage({ references: [picture], panel: placed, roster: [], itemRoster: [], locations: [stockroom] }).split('\n')
+    expect(sent[1]).toBe('1. Reference: Back stockroom (the empty place, main camera angle)')
+    expect(sent).toContain(`Location: Back stockroom — Layout: ${stockroom.layout} — State: Night — embers only — Camera: reverse`)
+    const unsent = buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [], locations: [stockroom] })
+    expect(unsent).toContain('Camera: reverse (no reference image)')
+    // Without the locations (an older caller), the location is not described at all.
+    expect(buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [] })).not.toContain('Location:')
+    expect(() => buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [], locations: [] })).toThrow('Unknown location entry: loc_0000000001/lst_0000000002')
+  })
 })
 
 // ---------------------------------------------------------------------------------------------
@@ -510,6 +524,17 @@ describe('buildSheetCheckMessage', () => {
   const glaive = makeItem({ id: 'itm_vesper', name: 'Vesper glaive', appearanceLock: 'GLAIVE LOCK' })
   const rain = makeVariation({ id: 'var_rain', characterId: 'chr_ara', name: 'Outfit: Rain', kind: 'outfit', delta: 'yellow raincoat' })
   const usage = (o: Parameters<typeof makeItemUsage>[0]) => makeItemUsage({ itemId: 'itm_vesper', ...o })
+
+  it('writes a location picture with its layout as the lock, and a State line for a state', () => {
+    const stockroom = makeLocation({ name: 'Back stockroom', layout: 'LAYOUT' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'location', location: stockroom, state: stockroom.states[0] }, baseImageRelPath: null })).toBe(
+      ['Images, in the order attached:', '1. Generated sheet (the image to check)', '', 'Sheet: Location reference picture', 'Subject: Back stockroom', 'Lock: LAYOUT'].join('\n')
+    )
+    const night = makeLocationState({ id: 'lst_night', name: 'Night', kind: 'state', delta: 'embers only' })
+    const text = buildSheetCheckMessage({ subject: { kind: 'location', location: stockroom, state: night }, baseImageRelPath: 'locations/loc_0000000001/base.png' })
+    expect(text).toContain('1. Base reference: location Back stockroom\n')
+    expect(text.endsWith('Lock: LAYOUT\nState: Night — embers only')).toBe(true)
+  })
 
   it('writes the base character sheet with only the candidate', () => {
     expect(buildSheetCheckMessage({ subject: { kind: 'character', character: ara, variation: ara.variations[0] }, baseImageRelPath: null })).toBe(

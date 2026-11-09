@@ -62,8 +62,10 @@ export const layoutFields = {
 
 /** The location input with its describe text, shared by create_panel, update_panel and the panel chat's update_panel_fields. */
 export const locationField = PanelDraftSchema.shape.location.describe(
-  'A short name for the place, written the same in every panel set there, e.g. "stockroom". The image continues from the last panel in the same place, ' +
-    'preferring a wide or medium shot over a close-up or an odd angle; a name no earlier panel has gets no continuity image. Default empty: it continues from the panel before.'
+  'Where the panel is set: a locationId and one of its stateIds from the locations list, and camera: "main" (the angle the layout and picture of the location show), ' +
+    '"reverse" (facing the other way, so frame-left and frame-right swap) or your own words for any other angle. The app writes the place, its layout, state and camera into the prompt, ' +
+    'and the image continues from the last panel in the same location, preferring a wide or medium shot over a close-up or an odd angle; a location no earlier panel has gets no continuity image. ' +
+    'null clears it; without one, the image continues from the panel before.'
 )
 
 const episodeSummary = (e: Episode) => ({ id: e.id, number: e.number, title: e.title, synopsis: e.synopsis, panelCount: e.panelIds.length })

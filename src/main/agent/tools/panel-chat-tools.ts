@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
 import { PanelPatchSchema } from '@shared/schemas'
-import type { Character, Episode, Item, Panel, PanelVersion } from '@shared/types'
+import type { Character, Episode, Item, Location, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
@@ -85,6 +85,8 @@ export interface PanelBundle {
   roster: Character[]
   /** Every item, archived ones included. */
   itemRoster: Item[]
+  /** Every location, archived ones included. */
+  locations: Location[]
   previous: PanelNeighbor
   next: PanelNeighbor
 }
@@ -109,6 +111,7 @@ export async function loadPanelBundle(services: Services, project: ProjectContex
   const panel = await services.panels.get(project, panelId)
   const roster = await services.characters.list(project, { includeArchived: true })
   const itemRoster = await services.items.list(project, { includeArchived: true })
+  const locations = await services.locations.list(project, { includeArchived: true })
   let episode: Episode | null = null
   try {
     episode = await services.episodes.get(project, panel.episodeId)
@@ -130,7 +133,7 @@ export async function loadPanelBundle(services: Services, project: ProjectContex
     }
   }
   const [previous, next] = at === -1 ? [null, null] : await Promise.all([neighbor(episode?.panelIds[at - 1]), neighbor(episode?.panelIds[at + 1])])
-  return { panel, roster, itemRoster, previous, next }
+  return { panel, roster, itemRoster, locations, previous, next }
 }
 
 /** What the service rejected becomes a message for the model: validation issues one per line. */

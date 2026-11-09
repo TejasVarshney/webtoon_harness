@@ -2845,6 +2845,17 @@ kbd {
   object-fit: cover;
 }
 
+/* Location pictures are wide rooms: a landscape frame, and the whole picture, so a landmark at the frame's edge shows. */
+.character-thumb.is-landscape,
+.variation-media.is-landscape {
+  aspect-ratio: 4 / 3;
+}
+
+.character-thumb.is-landscape img,
+.variation-media.is-landscape img {
+  object-fit: contain;
+}
+
 .character-thumb-empty,
 .variation-placeholder {
   padding: 4px;

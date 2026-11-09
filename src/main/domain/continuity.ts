@@ -13,9 +13,9 @@ export interface ContinuityImage {
  */
 const OPEN_SHOTS: ReadonlySet<Panel['shot']> = new Set(['establishing', 'wide', 'medium'])
 
-/** A location as it is compared: letter case and spacing do not count. */
-function locationKey(location: string): string {
-  return location.trim().replace(/\s+/g, ' ').toLowerCase()
+/** The saved location a panel is set in, or '' when it has none. Its state and camera do not count: it is the same place. */
+function locationKey(location: Panel['location']): string {
+  return location?.locationId ?? ''
 }
 
 /** The panel's current image, if that version is ready. */
@@ -29,6 +29,7 @@ function readyImage(panel: Panel | null, earlier: boolean): ContinuityImage | nu
  * that could not be read).
  *
  * - When this panel or the one right before has no location, it is the one right before, as it always was.
+ * - Panels are in the same place when they name the same saved location, whatever its state or the camera.
  * - Otherwise it is the nearest earlier panel in the same location that has a ready image, an open shot first: a
  *   close-up or a low angle right before would show too little of the place, or show it wrong.
  * - None when no earlier panel is in this location: a new place never continues from the last one. A return to a

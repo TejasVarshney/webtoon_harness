@@ -21,7 +21,7 @@ Electron + React + TypeScript desktop app. `README.md` covers what it does for u
 
 - No lock is held across a model call: mark pending under `ctx.mutex`, call the model outside it, then re-read and record under it. A panel's lock is never held together with an episode's.
 - Write project files with `writeJsonAtomic` or `writeFileAtomic` (`src/main/storage/atomic.ts`). JSONL logs are the exception: they append.
-- Characters and items are twins. Their services, tools, handlers, UI and tests exist once per kind and are nearly identical, so a change to one usually belongs in the other.
+- Characters, items and locations are twins. Their services, tools, handlers, UI and tests exist once per kind and are nearly identical, so a change to one usually belongs in the others.
 - New IPC channel: add it to `IpcContract` and `channelSet` in `src/shared/ipc.ts`, put the handler in `src/main/ipc/handlers/`, and validate input with `parseInput` (`src/main/ipc/validate.ts`).
 - A prompt change in `src/main/domain/prompts.ts` needs the same change in `resources/agent-docs/reference/prompt-templates.md`. `src/main/agent/workflow-docs.lint.test.ts` compares them.
 - User-visible text is asserted verbatim in tests. Change the test with the text.

@@ -1,7 +1,8 @@
-import { BookOpen, GalleryVertical, Package, Users, type LucideIcon } from 'lucide-react'
+import { BookOpen, GalleryVertical, MapPin, Package, Users, type LucideIcon } from 'lucide-react'
 import { useAppStore, type RightTab } from '../../stores/app-store'
 import { CharacterStudio } from '../characters/CharacterStudio'
 import { ItemStudio } from '../items/ItemStudio'
+import { LocationStudio } from '../locations/LocationStudio'
 import { StoryTab } from '../story/StoryTab'
 import { WebtoonPane } from '../visualizer/WebtoonPane'
 
@@ -9,10 +10,11 @@ const TABS: { id: RightTab; label: string; testId: string; icon: LucideIcon }[] 
   { id: 'webtoon', label: 'Webtoon', testId: 'tab-webtoon', icon: GalleryVertical },
   { id: 'characters', label: 'Characters', testId: 'tab-characters', icon: Users },
   { id: 'items', label: 'Items', testId: 'tab-items', icon: Package },
+  { id: 'locations', label: 'Locations', testId: 'tab-locations', icon: MapPin },
   { id: 'story', label: 'Story', testId: 'tab-story', icon: BookOpen }
 ]
 
-/** The visualizer pane: the Webtoon strip, the Characters tab, the Items tab and the Story tab. */
+/** The visualizer pane: the Webtoon strip, the Characters, Items and Locations tabs, and the Story tab. */
 export function RightPane() {
   const tab = useAppStore((s) => s.rightTab)
   const setRightTab = useAppStore((s) => s.setRightTab)
@@ -39,6 +41,7 @@ export function RightPane() {
         {tab === 'webtoon' && <WebtoonPane />}
         {tab === 'characters' && <CharacterStudio />}
         {tab === 'items' && <ItemStudio />}
+        {tab === 'locations' && <LocationStudio />}
         {tab === 'story' && <StoryTab />}
       </div>
     </div>

@@ -4,8 +4,8 @@ This is the instruction sheet of the consistency checker: a vision model that re
 
 What you receive:
 
-- **Text** that lists the reference images in order, the cast (one line per character: name, appearance lock, and the look the character wears in this panel), the items when the panel has any (one line per item: name, item lock, the usage it is shown in and who holds it), the panel description, the setting, the shot and, when the panel has them, its continuity notes.
-- **Images:** the reference images in the listed order (one per cast member, then one per item, then the panel this one continues from if there is one: the previous panel, or an earlier panel in the same place), and the **generated panel as the last image**.
+- **Text** that lists the reference images in order, the cast (one line per character: name, appearance lock, and the look the character wears in this panel), the items when the panel has any (one line per item: name, item lock, the usage it is shown in and who holds it), the location when the panel has one (its name, its layout from the main camera angle, its state and where the camera is), the panel description, the setting, the shot and, when the panel has them, its continuity notes.
+- **Images:** the reference images in the listed order (one per cast member, then the location's picture when it has one: the empty place from its main camera angle, then one per item, then the panel this one continues from if there is one: the previous panel, or an earlier panel in the same place), and the **generated panel as the last image**.
 
 Your job: decide whether the generated panel (the last image) is consistent with the references and the text. Judge only what you can see. Do not judge art quality, taste or story.
 
@@ -31,7 +31,7 @@ Go through these items for the generated panel, in order.
 6. **Shot.** The framing must roughly match the shot named in the text (a close-up shows a face; a wide shot shows full bodies and surroundings).
 7. **Action.** The main action of the description happens, and the objects it names are present.
 8. **Continuity.** If a previous panel image is given, the place, the time of day, the light and the outfits match it, unless the description or the text says a new scene starts. If an earlier panel in the same place is given instead, only the place must match it: its layout and its landmarks (doors, windows, furniture).
-9. **Staging.** Where the description, the setting or the continuity notes put a landmark or a person on one side of the frame (the back door at the left edge, Jin on the right), it must be on that side in the generated panel. A reverse shot mirrors the scene's sides: when the text says this panel is one, judge only the sides its description states. Skip this item when the text names no sides.
+9. **Staging.** Where the location's layout, the description, the setting or the continuity notes put a landmark or a person on one side of the frame (the back door at the left edge, Jin on the right), it must be on that side in the generated panel. The layout is written for the location's main camera angle: with `Camera: main`, every landmark the panel shows must be on its stated side. With `Camera: reverse`, left and right swap. With any other camera, judge only the sides the description states. A reverse shot announced in the description mirrors the sides the same way. The location's picture shows the place's look and landmarks, not the panel's framing: never fail a panel for a different framing or crop. Skip this item when the text names no sides.
 10. **Style.** The drawing style matches the reference images (for example, not photo-realistic when the references are cel-shaded line art).
 
 If a character or an item has "(no reference image)" in the text, judge it from its lock (and, for an item, its usage text) alone.
@@ -57,7 +57,7 @@ Major (the panel fails):
 - a named character from another panel appears who is not in the cast;
 - any text, lettering, speech bubble, caption, signature or watermark is visible;
 - the setting or the time of day clearly contradicts the previous panel with no new-scene note;
-- a landmark or a person is on the opposite side of the frame from where the description, the setting or the continuity notes put them, and the text does not say it is a reverse shot;
+- a landmark or a person is on the opposite side of the frame from where the location's layout, the description, the setting or the continuity notes put them, and the text does not say it is a reverse shot;
 - the shot is far from the one named (a close-up was asked and a distant wide shot was drawn).
 
 Minor (the panel passes):

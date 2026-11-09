@@ -140,7 +140,8 @@ export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewSty
         {tab === 'scene' && (
           <div className="inspector-fields">
             <SaveStatus fields={Object.values(scene)} warnings={Object.values(scene).flatMap((f) => f.warnings)} />
-            <SceneTab fields={scene} />
+            {/* Keyed by panel: the location picker's "Other" camera box must not carry over to the next panel. */}
+            <SceneTab key={panel.id} fields={scene} />
           </div>
         )}
       </div>

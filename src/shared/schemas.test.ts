@@ -229,10 +229,18 @@ describe('PanelVersion and CheckResult', () => {
     expect(v.parentVersionId).toBeNull()
   })
 
+  it('reads a panel location written as a plain name (a build before locations were saved) as none', () => {
+    const stored = { id: 'pnl_0000000001', episodeId: 'epi_0000000001', description: 'd', setting: 's', shot: 'medium', aspect: '2:3', dialogue: [], createdBy: 'user', createdAt: 't', updatedAt: 't' }
+    expect(PanelSchema.parse({ ...stored, location: 'stockroom' }).location).toBeNull()
+    expect(PanelSchema.parse(stored).location).toBeNull()
+    expect(PanelSchema.parse({ ...stored, location: { locationId: 'loc_0000000001', stateId: 'lst_0000000001' } }).location).toEqual({ locationId: 'loc_0000000001', stateId: 'lst_0000000001', camera: 'main' })
+  })
+
   it('reads a version stored before drawnFrom existed as drawn from nothing known', () => {
     expect(PanelVersionSchema.parse(minimalVersion).drawnFrom).toBeNull()
     const drawnFrom = { description: 'd', setting: 's', shot: 'medium', aspect: '2:3', characters: [], items: [] }
-    expect(PanelVersionSchema.parse({ ...minimalVersion, drawnFrom }).drawnFrom).toEqual(drawnFrom)
+    // One recorded before panels had locations was drawn in none.
+    expect(PanelVersionSchema.parse({ ...minimalVersion, drawnFrom }).drawnFrom).toEqual({ ...drawnFrom, location: null })
   })
 
   it('requires the fields the spec gives no default', () => {

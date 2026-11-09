@@ -141,8 +141,11 @@ function normalizeField<K extends AutosaveField>(field: K, value: Panel[K]): Pan
   switch (field) {
     case 'description':
     case 'setting':
-    case 'location':
       return (value as string).trim() as Panel[K]
+    case 'location': {
+      const place = value as Panel['location']
+      return (place === null ? null : { locationId: place.locationId, stateId: place.stateId, camera: place.camera.trim() || 'main' }) as Panel[K]
+    }
     case 'characters':
       return (value as PanelCharacter[]).map((c) => ({ characterId: c.characterId, variationId: c.variationId, action: c.action.trim(), expression: c.expression.trim(), position: c.position.trim() })) as Panel[K]
     case 'items':

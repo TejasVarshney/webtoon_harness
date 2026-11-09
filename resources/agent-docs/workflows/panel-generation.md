@@ -24,7 +24,7 @@ Follow these 10 steps for every new panel.
 4. **Choose variations.** Keep each character's variation from the previous panel, unless the story changes their look.
 5. **Choose shot and aspect.** What the reader must see decides the shot; the pace decides the aspect.
 6. **Write the description.** The camera first, then action and composition placed by landmarks (see Screen Direction); never appearance (R2), never text (R6).
-7. **Write the location and continuity notes.** The place's `location`, and in `continuityNotes` the scene's Layout line and what else must match.
+7. **Write the location and continuity notes.** The panel's `location` (a saved location, its state and the camera), and in `continuityNotes` what else must match.
 8. **Write the dialogue.** Speech, thought, narration and sound effects, in reading order.
 9. **Call `create_panel`.** One call; it waits for the image.
 10. **Read the result.** `status`, `warnings`, `check`. Fix or report (R11). Then `update_beat` the beat to `drawn`.
@@ -47,7 +47,7 @@ Rules:
 
 - **Visible means cast.** If a named character can be seen, even small or from behind, cast them (R2). If they cannot be seen, do not cast them.
 - **At most 3 in the foreground.** More faces means less likeness for each. Put a fourth person in `background`, or split the moment into two panels.
-- **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4). When there are too many, the previous panel's image is dropped first, then items from the end, then cast members from the end of the list. With 3 cast members plus the previous panel you are at that limit; each attached item takes one more slot (see Attaching Items).
+- **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4). The cast comes first, then the location's picture, then items, then the previous panel. When there are too many, the previous panel's image is dropped first, then items from the end, then the location's picture, then cast members from the end of the list. With 3 cast members plus a location picture you are at that limit; each attached item takes one more slot (see Attaching Items).
 - **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1; in user-led mode, ask first).
 - **A scene with nobody in it** (an establishing shot, an object close-up) has `"characters": []`.
 
@@ -61,23 +61,23 @@ Rules:
 
 ## Using the Previous Panel
 
-Each panel continues from one earlier image of its episode, which the app sends as the last reference image, with a [CONTINUITY] line. Which image depends on `location`: a short name for the place, written the same way in every panel set there ("stockroom", "night bus", "Mina's bedroom"; letter case and spacing do not matter).
+Each panel continues from one earlier image of its episode, which the app sends as the last reference image, with a [CONTINUITY] line. Which image depends on `location`: the saved location the panel is set in (`workflows/location-creation`). Panels in the same location are in the same place, whatever their state or camera.
 
 - **No location** on the new panel or on the panel right before it: the panel right before, when it has a ready image. The line reads "Continues directly from the previous panel (reference image N). Keep setting layout, lighting, time of day and outfits consistent." followed by your `continuityNotes`.
 - **The same location as the panel right before:** that panel, when it is an `establishing`, `wide` or `medium` shot. When it is a tight shot (`close-up`, `extreme-close-up`, `over-the-shoulder`) or an odd angle (`birds-eye`, `worms-eye`), the app goes back to the last open shot of this location instead: a close-up shows too little of the place, and a low angle shows it from a view the image model would copy. The line then reads "Same place as an earlier panel (reference image N). Keep the layout of the place and its landmarks consistent with it."
 - **A different location from the panel right before:** the last panel of this location, so a return after a cutaway or a flashback keeps the place's layout. A location no earlier panel has gets no image: a new place never continues from the last one.
 - **Nothing to continue from** (the first panel of an episode, no ready image): no image, and the [CONTINUITY] line holds only your `continuityNotes`, or is left out when they are empty.
 
-Give every panel a location. Keep the same name for as long as the story stays in one place, and use a new name for a new place. Name the place, not the time or the mood: "stockroom", not "stockroom at night"; the time and light go in `setting`. `list_panels` shows each panel's `location`, and `recent_panels` shows it after the shot as `at stockroom`.
+Give every panel in a place the story returns to its location, and create the location before the first panel there. A new state or camera is still the same location; a new place is a new location. The time and light of this moment go in `setting` or the state, never in a new location. `list_panels` shows each panel's `location`, and `recent_panels` shows it after the shot as `at Night bus stop (Default, camera main)`. A place seen only once can go without a location: the panel then continues from the panel right before.
 
 Writing `continuityNotes`:
 
-- Start with the scene's Layout line (see Screen Direction), copied word for word.
+- With a location, leave the layout out: the app writes the location's layout into the prompt. Without one, start with the scene's Layout line (see Screen Direction), copied word for word.
 - Then one or two sentences on what else must match: time of day, weather, light, props and where they are, held objects, injuries, outfit details.
 - Good: "Layout: the bus stop sign is at the left edge of the frame; the road runs along the bottom. Same rainy dusk. Mina still holds the red umbrella in her right hand."
 - Do not restate appearance (R2): the references and locks handle that.
 
-Starting a new scene: give it a new location, so the app sends nothing from the old place. Use an establishing or wide shot for the first panel of a scene, and write the scene's layout there. A panel without a location still continues from the panel right before: then say so in the notes, "New scene: a different place and time from the previous panel; keep only the characters' looks."
+Starting a new scene: set its location (create it first if it is new), so the app sends nothing from the old place. Use an establishing or wide shot for the first panel of a scene. A panel without a location still continues from the panel right before: then say so in the notes, "New scene: a different place and time from the previous panel; keep only the characters' looks."
 
 Inserting between panels: `afterPanelId` puts the new panel after that panel (null puts it first). Continuity is then picked from the panels before the new one, as above, and the panels after it may continue from the new one the next time they are redrawn.
 
@@ -85,11 +85,11 @@ Inserting between panels: `afterPanelId` puts the new panel after that panel (nu
 
 The image model sees only the frame, not the room. If the door is at the left of the frame in one panel and at the right in the next, the reader sees a different room, or people who jumped across it. So keep one screen direction for a whole scene (the 180° rule of film and comics):
 
-1. **Write the scene's layout once, in frame terms.** On the first panel of a scene, usually the establishing or wide shot, say where the main landmarks are in the frame: "The back door is at the left edge of the frame, the metal shelves on the right, the barrel fire in the middle." Put it in the description, and as a sentence starting "Layout:" at the start of `continuityNotes`.
-2. **Copy the Layout line into every later panel of the scene.** `list_panels` returns each panel's `continuityNotes`, and `recent_panels` shows them after `notes:`. Copy the line as it is, then add what else must match.
+1. **Keep the layout in one place.** A saved location's `layout` is the scene's layout: the app writes it into every panel set there, and the check judges the landmarks against it (`workflows/location-creation`). Without a location, write the layout once in frame terms on the first panel of the scene: "The back door is at the left edge of the frame, the metal shelves on the right, the barrel fire in the middle." Put it in the description, and as a sentence starting "Layout:" at the start of `continuityNotes`.
+2. **Without a location, copy the Layout line into every later panel of the scene.** `list_panels` returns each panel's `continuityNotes`, and `recent_panels` shows them after `notes:`. Copy the line as it is, then add what else must match.
 3. **Start the description with the camera:** where it is and what it faces. "Side view across the stockroom." "Low angle from the floor, facing the back door."
 4. **Place people by landmarks**, not only by side: "Jin stands on the left, between the door and Mina." The cast `position` still names the side ("left"), which also puts that character's bubbles on that side.
-5. **Announce a reverse shot.** When the camera turns around, the sides swap. Begin the description with it, and give the new sides: "Reverse shot from the doorway: the shelves are now on the left, the door behind the camera." An unannounced swap fails the consistency check.
+5. **Announce a reverse shot.** When the camera turns around, the sides swap. With a location, set its `camera` to `reverse`. Either way, begin the description with it, and give the new sides: "Reverse shot from the doorway: the shelves are now on the left, the door behind the camera." An unannounced swap fails the consistency check.
 6. **Look at the last wide shot.** If your model can see images, `view_panel_image` the scene's last wide or establishing panel before a tight one, not only the panel right before.
 
 The consistency check reads the sides your description, setting and continuity notes give, and fails a panel that puts a landmark or a person on the other side.
@@ -270,11 +270,11 @@ create_panel {
   "episodeId": "epi_5d0c3b9a12",
   "description": "An old city bus glides up to the empty stop, its doors already open, warm light spilling onto the wet pavement. Mina stands at the edge of the curb on the right, watching it.",
   "setting": "Roadside bus stop at night, wet pavement, one flickering streetlight",
-  "location": "bus stop",
+  "location": {"locationId": "loc_2b6e9d1a40", "stateId": "lst_7c3f0a5e21", "camera": "main"},
   "shot": "wide",
   "characters": [{"characterId": "chr_3e8a51c0d2", "variationId": "var_4c19d2e8a0", "action": "stands at the curb, holding her bag strap", "expression": "surprised", "position": "right"}],
   "dialogue": [{"speakerId": null, "kind": "sfx", "text": "hsss"}],
-  "continuityNotes": "Layout: the flickering streetlight is at the left edge of the frame; the road runs along the bottom. Same night as the previous panel."
+  "continuityNotes": "Same night as the previous panel."
 }
 ```
 
@@ -293,7 +293,7 @@ create_panel {
   "episodeId": "epi_5d0c3b9a12",
   "description": "Jin sits up in the back row, half awake, looking at Mina, who stands in the aisle a few steps away. Empty seats between them, city lights streaking past the windows.",
   "setting": "Inside the night bus, back section, midnight",
-  "location": "night bus",
+  "location": {"locationId": "loc_6f0e2c8b31", "stateId": "lst_3a9d7e1c05", "camera": "main"},
   "shot": "medium",
   "aspect": "3:4",
   "characters": [
@@ -304,25 +304,24 @@ create_panel {
     {"speakerId": "chr_9f61b2d47a", "kind": "speech", "text": "You can see this bus?"},
     {"speakerId": "chr_3e8a51c0d2", "kind": "speech", "text": "Seriously? It's a bus. Everyone can see it."}
   ],
-  "continuityNotes": "Layout: the back row is on the left of the frame, the aisle runs to the right toward the driver. Same cold blue night light as the previous panel."
+  "continuityNotes": "Same cold blue night light as the previous panel."
 }
 ```
 
 ### Example 3: an establishing shot with nobody in it
 
-First panel of a new scene, nobody visible. Its new location means nothing is sent from the last place, and its description sets the layout the scene keeps:
+First panel of a new scene, nobody visible. Its location was created first with `create_location`; being new, it means nothing is sent from the last place, and its layout is what the scene keeps:
 
 ```
 create_panel {
   "episodeId": "epi_5d0c3b9a12",
   "description": "A small hillside town at dawn, rows of tiled roofs, the pale moon still visible low over the river.",
   "setting": "Hillside town above a river, early dawn",
-  "location": "hillside town",
+  "location": {"locationId": "loc_9c4a1e7d22", "stateId": "lst_5e2b8f0a16", "camera": "main"},
   "shot": "establishing",
   "aspect": "16:9",
   "characters": [],
-  "dialogue": [{"speakerId": null, "kind": "narration", "text": "The next morning."}],
-  "continuityNotes": "Layout: the river runs along the bottom of the frame, the town climbs the hill to the right."
+  "dialogue": [{"speakerId": null, "kind": "narration", "text": "The next morning."}]
 }
 ```
 
@@ -335,7 +334,7 @@ create_panel {
   "episodeId": "epi_5d0c3b9a12",
   "description": "Mina sits on her bed in the dark, her face lit by her phone screen as she reads a message from Jin.",
   "setting": "Mina's small bedroom at night, curtains open, moonlight on the floor",
-  "location": "Mina's bedroom",
+  "location": {"locationId": "loc_0d7f3b9e58", "stateId": "lst_8b1c6a4d27", "camera": "main"},
   "shot": "medium",
   "characters": [{"characterId": "chr_3e8a51c0d2", "variationId": "var_7b20c4e9f1", "action": "sits cross-legged on the bed, holding her phone", "expression": "anxious", "position": "center"}],
   "dialogue": [{"speakerId": "chr_9f61b2d47a", "kind": "speech", "text": "Don't take that bus again."}],
@@ -387,29 +386,28 @@ create_panel {
   "afterPanelId": "pnl_1c7e5a20f4",
   "description": "Mina's eyes widen as warm headlights sweep across her face.",
   "setting": "Roadside bus stop at night",
-  "location": "bus stop",
+  "location": {"locationId": "loc_2b6e9d1a40", "stateId": "lst_7c3f0a5e21", "camera": "main"},
   "shot": "extreme-close-up",
   "aspect": "1:1",
   "characters": [{"characterId": "chr_3e8a51c0d2", "variationId": "var_4c19d2e8a0", "expression": "wide-eyed, lips parted", "position": "center"}],
   "dialogue": [],
-  "continuityNotes": "Layout: the flickering streetlight is at the left edge of the frame; the road runs along the bottom. Headlights now add warm light from the left."
+  "continuityNotes": "Headlights now add warm light from the left."
 }
 ```
 
 ### Example 8: a reverse shot in the same place
 
-The bus scene was set up with "Layout: the back row is on the left of the frame, the aisle runs to the right toward the driver." Now the reader must see the aisle from the back row, so the camera turns around:
+The night bus location's layout says the back row is on the left of the frame and the aisle runs to the right toward the driver. Now the reader must see the aisle from the back row, so the camera turns around:
 
 ```
 create_panel {
   "episodeId": "epi_5d0c3b9a12",
   "description": "Reverse shot from the back row, looking down the aisle toward the front: Mina stands in the aisle in the middle of the frame, the empty driver's seat far behind her, city lights streaking past the windows on both sides.",
   "setting": "Inside the night bus, midnight",
-  "location": "night bus",
+  "location": {"locationId": "loc_6f0e2c8b31", "stateId": "lst_3a9d7e1c05", "camera": "reverse"},
   "shot": "medium",
   "characters": [{"characterId": "chr_3e8a51c0d2", "variationId": "var_4c19d2e8a0", "action": "holds a pole, turning back toward the camera", "expression": "wary", "position": "center"}],
-  "dialogue": [],
-  "continuityNotes": "Layout: the back row is on the left of the frame, the aisle runs to the right toward the driver. This panel is the reverse shot, from the back row."
+  "dialogue": []
 }
 ```
 

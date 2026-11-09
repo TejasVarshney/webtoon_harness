@@ -6,10 +6,12 @@ import type { DialogueLine, Panel, PanelCharacter, PanelItem, PanelPatch } from 
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
 import { initialItemsState, useItemsStore } from '../../stores/items-store'
+import { initialLocationsState, useLocationsStore } from '../../stores/locations-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P, variation } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { item, usage } from '../../test/item-fixtures'
+import { location, locationState } from '../../test/location-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { toDrafts } from './dialogue-edits'
 import { PanelInspector } from './PanelInspector'
@@ -22,6 +24,10 @@ const LANTERN = 'itm_0000000003'
 const mina = character()
 const sora = character({ id: SORA, name: 'Sora', variations: [variation({ id: 'var_00000000s1', characterId: SORA })] })
 const lantern = item({ id: LANTERN, name: 'Lantern', ownerId: MINA, usages: [usage({ id: 'use_00000000l1', itemId: LANTERN, name: 'Lit' })] })
+const stockroom = location({
+  states: [locationState({ id: 'lst_base' }), locationState({ id: 'lst_night', name: 'Night', kind: 'state', delta: 'only embers glowing', status: 'failed', imagePath: null })]
+})
+const alley = location({ id: 'loc_0000000002', name: 'Back alley', archived: true })
 const cast: PanelCharacter[] = [{ characterId: MINA, variationId: 'var_0000000001', action: '', expression: '', position: 'left' }]
 const held: PanelItem = { itemId: LANTERN, usageId: 'use_00000000l1', heldBy: MINA, action: 'lit' }
 const hello: DialogueLine = { id: 'dlg_0000000001', speakerId: MINA, kind: 'speech', text: 'Hello.', placement: null, style: null, tail: null }
@@ -51,6 +57,7 @@ beforeEach(() => {
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [stored] } })
   useCharactersStore.setState({ ...initialCharactersState, projectId: P, characters: [mina, sora], loaded: true })
   useItemsStore.setState({ ...initialItemsState, projectId: P, items: [lantern], loaded: true })
+  useLocationsStore.setState({ ...initialLocationsState, projectId: P, locations: [stockroom, alley], loaded: true })
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -738,15 +745,40 @@ describe('PanelInspector', () => {
       expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
     })
 
-    it('saves the location, trimmed, when it is left', async () => {
+    it('sets a saved location at its base state and main angle, and offers no archived one', async () => {
       const { calls } = mount()
       open('Scene')
       expect(field('Location')).toHaveValue('')
+      expect(field('State')).toBeDisabled()
+      expect(field('Camera')).toBeDisabled()
+      expect(within(field('Location')).getAllByRole('option').map((o) => o.textContent)).toEqual(['None', 'Back stockroom'])
       act(() => field('Location').focus())
-      fireEvent.change(field('Location'), { target: { value: ' stockroom ' } })
+      fireEvent.change(field('Location'), { target: { value: stockroom.id } })
       act(() => field('Location').blur())
-      await waitFor(() => expect(updates(calls)).toEqual([{ location: 'stockroom' }]))
+      await waitFor(() => expect(updates(calls)).toEqual([{ location: { locationId: stockroom.id, stateId: 'lst_base', camera: 'main' } }]))
       expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+
+    it("changes a located panel's state and camera, takes the user's own words for another angle, and clears it with None", async () => {
+      replaceStored({ ...stored, location: { locationId: stockroom.id, stateId: 'lst_base', camera: 'main' } })
+      const { calls } = mount()
+      open('Scene')
+      expect(within(field('State')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Default', 'Night'])
+      act(() => field('State').focus())
+      fireEvent.change(field('State'), { target: { value: 'lst_night' } })
+      act(() => field('State').blur())
+      await waitFor(() => expect(updates(calls)).toEqual([{ location: { locationId: stockroom.id, stateId: 'lst_night', camera: 'main' } }]))
+      act(() => field('Camera').focus())
+      fireEvent.change(field('Camera'), { target: { value: 'other' } })
+      act(() => field('Camera').blur())
+      act(() => field('Camera angle').focus())
+      fireEvent.change(field('Camera angle'), { target: { value: ' low, from the doorway ' } })
+      act(() => field('Camera angle').blur())
+      await waitFor(() => expect(updates(calls).at(-1)).toEqual({ location: { locationId: stockroom.id, stateId: 'lst_night', camera: 'low, from the doorway' } }))
+      act(() => field('Location').focus())
+      fireEvent.change(field('Location'), { target: { value: '' } })
+      act(() => field('Location').blur())
+      await waitFor(() => expect(updates(calls).at(-1)).toEqual({ location: null }))
     })
 
     it('replaces the frame with a note for a tall aspect', async () => {

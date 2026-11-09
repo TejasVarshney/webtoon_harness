@@ -17,6 +17,11 @@ import type {
   ItemPatch,
   ItemUsage,
   ItemUsageInput,
+  Location,
+  LocationInput,
+  LocationPatch,
+  LocationState,
+  LocationStateInput,
   ModelConfig,
   ModelRegistryView,
   Panel,
@@ -114,6 +119,23 @@ export interface IpcContract {
   'items:deleteUsage': { req: { projectId: string; itemId: string; usageId: string }; res: void }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as the usage's image. `null` when the dialog is cancelled. */
   'items:uploadUsageImage': { req: { projectId: string; itemId: string; usageId: string }; res: ItemUsage | null }
+  'locations:list': { req: { projectId: string; includeArchived?: boolean }; res: Location[] }
+  'locations:get': { req: { projectId: string; locationId: string }; res: Location }
+  /** Returns the new location at once with a pending base state; its picture follows through `location.changed`. */
+  'locations:create': { req: { projectId: string; input: LocationInput; generateBase: boolean }; res: Location }
+  'locations:update': { req: { projectId: string; locationId: string; patch: LocationPatch }; res: Location }
+  'locations:archive': { req: { projectId: string; locationId: string }; res: void }
+  'locations:unarchive': { req: { projectId: string; locationId: string }; res: void }
+  /** Refused with an "archive it instead" error while any panel is set there. */
+  'locations:delete': { req: { projectId: string; locationId: string }; res: void }
+  /** Returns the new state at once; its picture follows through `location.changed` when `generate` is set. */
+  'locations:addState': { req: { projectId: string; locationId: string; input: LocationStateInput; generate: boolean }; res: LocationState }
+  /** Starts generation without waiting for it; the outcome follows through `location.changed`. */
+  'locations:generateState': { req: { projectId: string; locationId: string; stateId: string }; res: LocationState }
+  /** Refused for the base state and while any panel uses the state. */
+  'locations:deleteState': { req: { projectId: string; locationId: string; stateId: string }; res: void }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the state's picture. `null` when the dialog is cancelled. */
+  'locations:uploadStateImage': { req: { projectId: string; locationId: string; stateId: string }; res: LocationState | null }
   /** A project with no episode yet gets `Episode 1` on the first call. */
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
@@ -231,6 +253,17 @@ const channelSet: Record<IpcChannel, true> = {
   'items:generateUsage': true,
   'items:deleteUsage': true,
   'items:uploadUsageImage': true,
+  'locations:list': true,
+  'locations:get': true,
+  'locations:create': true,
+  'locations:update': true,
+  'locations:archive': true,
+  'locations:unarchive': true,
+  'locations:delete': true,
+  'locations:addState': true,
+  'locations:generateState': true,
+  'locations:deleteState': true,
+  'locations:uploadStateImage': true,
   'episodes:list': true,
   'episodes:create': true,
   'episodes:update': true,
