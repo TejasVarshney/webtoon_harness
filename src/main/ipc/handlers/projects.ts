@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { IpcChannel, IpcContract } from '@shared/ipc'
+import { normalizeStyleText } from '../../domain/style-text'
 import type { Services } from '../../services'
 import { parseInput } from '../validate'
 
@@ -11,11 +12,15 @@ const CreateSchema = z.object({ title: z.string().trim().min(1), logline: z.stri
 export function projectsHandlers(s: Services): HandlerMap {
   return {
     'projects:list': () => s.projects.list(),
-    'projects:create': async (req) => s.projects.getMeta(await s.projects.create(parseInput(CreateSchema, req))),
+    'projects:create': async (req) => {
+      const input = parseInput(CreateSchema, req)
+      return s.projects.getMeta(await s.projects.create({ ...input, stylePreset: input.stylePreset === undefined ? undefined : normalizeStyleText(input.stylePreset) }))
+    },
     'projects:open': async ({ projectId }) => {
       const ctx = await s.projects.open(projectId)
       return { meta: await s.projects.getMeta(ctx), problems: ctx.problems }
     },
-    'projects:update': async ({ projectId, patch }) => s.projects.updateMeta(await s.projects.open(projectId), patch)
+    'projects:update': async ({ projectId, patch }) =>
+      s.projects.updateMeta(await s.projects.open(projectId), patch.stylePreset === undefined ? patch : { ...patch, stylePreset: normalizeStyleText(patch.stylePreset) })
   }
 }
