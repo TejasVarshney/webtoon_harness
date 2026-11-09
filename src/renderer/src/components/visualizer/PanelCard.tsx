@@ -150,9 +150,9 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
         </div>
       </article>
 
-      {/* A sibling of the card, not a child: a click in the dialog must not bubble up and select the panel. */}
+      {/* A sibling of the card, not a child: a click in the dialog must not select the panel, nor (stopped at the backdrop) reach the strip, whose empty-space click clears the selection. */}
       {confirming && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={(e) => e.stopPropagation()}>
           <div className="modal" role="dialog" aria-label="Delete panel">
             <p>Delete this panel? It moves to the trash.</p>
             <div className="modal-actions">

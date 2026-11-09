@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { contentBottom, resolveStrip } from '@shared/strip-canvas'
@@ -68,6 +68,19 @@ describe('StripCanvas', () => {
     useAppStore.getState().selectPanel(a.id)
     await userEvent.click(container.querySelector('.strip-canvas') as HTMLElement)
     expect(useAppStore.getState().selectedPanelIds).toEqual([])
+  })
+
+  it('cancelling a delete keeps the shift selection', async () => {
+    installFakeApi({})
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    const [first, second] = screen.getAllByTestId('panel-card')
+    await userEvent.click(first)
+    fireEvent.click(second, { shiftKey: true })
+    await userEvent.click(within(first).getByRole('button', { name: 'Delete' }))
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete panel' })).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(useAppStore.getState().selectedPanelIds).toEqual([a.id, b.id])
+    expect(useAppStore.getState().shiftSelecting).toBe(true)
   })
 
   it('a click does not open the editor, a double-click does', async () => {

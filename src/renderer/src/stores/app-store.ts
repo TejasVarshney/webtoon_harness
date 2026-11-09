@@ -181,7 +181,7 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
       // A selection made by a plain click or by the agent's thumbnail may not be in the list yet.
       const base = s.selectedPanelIds.length === 0 && s.selectedPanelId !== null ? [s.selectedPanelId] : s.selectedPanelIds
       const ids = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
-      return { selectedPanelIds: ids, selectedPanelId: ids.at(-1) ?? null, shiftSelecting: true }
+      return { selectedPanelIds: ids, selectedPanelId: ids.at(-1) ?? null, shiftSelecting: ids.length > 0 }
     })
   },
 

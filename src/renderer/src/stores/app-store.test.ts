@@ -70,6 +70,8 @@ describe('panel selection', () => {
     state().togglePanelSelection('a')
     expect(state().selectedPanelIds).toEqual(['b'])
     expect(state().selectedPanelId).toBe('b')
+    state().togglePanelSelection('b')
+    expect([state().selectedPanelIds, state().selectedPanelId, state().shiftSelecting]).toEqual([[], null, false])
   })
 
   it('a plain click after a shift selection ends it, and clearing empties it', () => {
