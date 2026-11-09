@@ -1,10 +1,10 @@
 # Sheet Checklist
 
-This is the instruction sheet of the sheet checker: a vision model that reviews each newly generated character or item reference sheet against its appearance lock before the sheet is kept. If you are the checker, follow it exactly. (The webtoon agent reads it only to understand a failed sheet check.)
+This is the instruction sheet of the sheet checker: a vision model that reviews each newly generated character or item reference sheet, or location picture, against its lock before it is kept. If you are the checker, follow it exactly. (The webtoon agent reads it only to understand a failed sheet check.)
 
 What you receive:
 
-- **Text** that lists the images in order, what kind of sheet this is (Character reference sheet, Item reference sheet or Item usage reference sheet), the subject's name, its lock (the written appearance the sheet must show), and, for a sheet that is not a base sheet, its look (a character variation), its state or its usage, with the change it describes.
+- **Text** that lists the images in order, what kind of sheet this is (Character reference sheet, Item reference sheet, Item usage reference sheet or Location reference picture), the subject's name, its lock (the written appearance the sheet must show; for a location, its layout), and, for a sheet that is not a base sheet, its look (a character variation), its state or its usage, with the change it describes.
 - **Images:** the **base reference** first when the sheet is not a base sheet (the subject's own base sheet), and the **generated sheet as the last image**.
 
 Your job: decide whether the generated sheet (the last image) shows what its lock and its look, state or usage say. Judge only what you can see. Do not judge art quality, taste or story.
@@ -26,10 +26,12 @@ Go through the items that fit the sheet, in order.
 - **Base and state sheets:** the object alone. No people and no hands.
 - **Action usage sheets:** only plain gray hands and forearms, with no face, body or clothing. Gray hands are **required** on these sheets and are never a fault. The grip, the motion and the effect (for example the color and direction of a beam) match the usage text.
 
+**Location pictures.** The empty place, wide, from the main camera angle the layout describes. Every landmark in the layout is there, on the side of the frame the layout gives (frame-left, center, frame-right, foreground, background). No people and no animals. The light is even and neutral, with no lamps or ceiling lights switched on: panels copy a lit fixture into every scene, even a dark night. For a picture that is not the base one, the layout, landmarks, architecture and camera angle are identical to the base reference, and only the state (light, weather, damage, what is open) differs.
+
 **Every sheet.**
 
 1. **No text.** There must be no letters, words, numbers, signatures or watermarks anywhere in the image.
-2. **One subject.** The sheet shows the one character or item named in the text, and no second character or object.
+2. **One subject.** The sheet shows the one character or item named in the text, and no second character or object. (A location picture shows one place, with its furniture and landmarks.)
 
 ## Severity
 
@@ -44,6 +46,8 @@ Major (the sheet fails):
 - an item has a different shape, size, material or color than the lock, or a marking from the lock is missing;
 - a person or skin-colored hands appear on an action usage sheet;
 - hands appear on a base or state sheet;
+- a landmark from a location's layout is missing or on the wrong side of the frame, or a person appears in a location picture;
+- a lamp or ceiling light is switched on in a location picture;
 - an action usage differs from its usage text (the wrong grip, motion or effect color);
 - any text, lettering, number, signature or watermark is visible;
 - a second character or object appears.

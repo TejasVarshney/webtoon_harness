@@ -11,6 +11,7 @@ import { EpisodeService } from './domain/episode-service'
 import type { ImageOps } from './domain/image-ops'
 import { ImageService } from './domain/image-service'
 import { ItemService, type ItemUsageLookup } from './domain/item-service'
+import { LocationService, type LocationUsageLookup } from './domain/location-service'
 import { PanelService } from './domain/panel-service'
 import type { PackComposer } from './domain/reference-pack'
 import { StoryService } from './domain/story-service'
@@ -56,6 +57,7 @@ export interface Services {
   checker: ConsistencyChecker
   characters: CharacterService
   items: ItemService
+  locations: LocationService
   episodes: EpisodeService
   panels: PanelService
   story: StoryService
@@ -94,8 +96,14 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
     panelsUsingItemUsage: (ctx, usageId) => services.panels.panelsUsingItemUsage(ctx, usageId)
   }
   const items = new ItemService({ bus, images, projects, usage: itemUsage, trash: opts.trash, sheetChecker: checker })
+  // Lazy for the same reason again.
+  const locationUsage: LocationUsageLookup = {
+    panelsUsingLocation: (ctx, locationId) => services.panels.panelsUsingLocation(ctx, locationId),
+    panelsUsingLocationState: (ctx, stateId) => services.panels.panelsUsingLocationState(ctx, stateId)
+  }
+  const locations = new LocationService({ bus, images, projects, usage: locationUsage, trash: opts.trash, sheetChecker: checker })
   const episodes = new EpisodeService({ bus })
-  const panels = new PanelService({ bus, projects, episodes, characters, items, images, checker, trash: opts.trash, packComposer: opts.packComposer })
+  const panels = new PanelService({ bus, projects, episodes, characters, items, locations, images, checker, trash: opts.trash, packComposer: opts.packComposer })
   const story = new StoryService({ bus, projects })
   const unavailable = (): never => {
     throw new Error('Export is not available in this build')
@@ -114,8 +122,9 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   // A generation cannot survive the app closing, so a project's pending images are failed on open.
   projects.addHooks({ onOpen: (ctx) => characters.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => items.recoverInterrupted(ctx) })
+  projects.addHooks({ onOpen: (ctx) => locations.recoverInterrupted(ctx) })
   projects.addHooks({ onOpen: (ctx) => panels.recoverInterrupted(ctx) })
-  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, episodes, panels, story, exports } as Services
+  const services = { bus, projects, sessions, secrets, registry, docs, imageOps: opts.imageOps, images, checker, characters, items, locations, episodes, panels, story, exports } as Services
   services.agent = new AgentRunner({ services })
   services.panelChat = new PanelChatRunner({ services })
   services.activeContext = new ActiveContext()

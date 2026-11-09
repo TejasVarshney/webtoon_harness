@@ -1,6 +1,6 @@
 import type { z } from 'zod'
-import { CharacterSchema, EpisodeSchema, ItemSchema, ItemUsageSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
-import type { Character, Episode, Item, ItemUsage, Panel, ProjectMeta, Variation } from '@shared/types'
+import { CharacterSchema, EpisodeSchema, ItemSchema, ItemUsageSchema, LocationSchema, LocationStateSchema, PanelSchema, ProjectMetaSchema, VariationSchema } from '@shared/schemas'
+import type { Character, Episode, Item, ItemUsage, Location, LocationState, Panel, ProjectMeta, Variation } from '@shared/types'
 
 // Test factories. Each one returns a schema-valid object with fixed, deterministic ids and
 // timestamps; pass overrides for anything a test cares about. Overrides are typed as the schema's
@@ -61,6 +61,34 @@ export function makeItem(o: Overrides<typeof ItemSchema> = {}): Item {
     name: 'Kestrel blaster',
     appearanceLock: 'Matte grey pistol with a brass barrel ring and a cracked amber power cell',
     usages: [makeItemUsage({ itemId: id })],
+    createdBy: 'user',
+    createdAt: T,
+    updatedAt: T,
+    ...o
+  })
+}
+
+export function makeLocationState(o: Overrides<typeof LocationStateSchema> = {}): LocationState {
+  return LocationStateSchema.parse({
+    id: 'lst_0000000001',
+    locationId: 'loc_0000000001',
+    name: 'Default',
+    kind: 'base',
+    status: 'pending',
+    createdBy: 'user',
+    createdAt: T,
+    ...o
+  })
+}
+
+/** A location with exactly one base state (`Default`) that points back at it. */
+export function makeLocation(o: Overrides<typeof LocationSchema> = {}): Location {
+  const id = o.id ?? 'loc_0000000001'
+  return LocationSchema.parse({
+    id,
+    name: 'Back stockroom',
+    layout: 'Camera faces the back wall. Back door at frame-left; shelves at frame-right.',
+    states: [makeLocationState({ locationId: id })],
     createdBy: 'user',
     createdAt: T,
     updatedAt: T,

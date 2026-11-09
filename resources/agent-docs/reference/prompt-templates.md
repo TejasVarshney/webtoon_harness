@@ -1,6 +1,6 @@
 # Prompt Templates
 
-This is a reference for the exact prompts the app builds from your fields. You never write these prompts yourself: the app composes them when you call `create_panel`, `regenerate_panel`, `edit_panel_image`, `create_character`, `create_variation`, `regenerate_variation`, `create_item`, `create_item_usage` or `regenerate_item_usage`. Read this doc to understand why an image came out the way it did, and to write fields that read well inside the prompt.
+This is a reference for the exact prompts the app builds from your fields. You never write these prompts yourself: the app composes them when you call `create_panel`, `regenerate_panel`, `edit_panel_image`, `create_character`, `create_variation`, `regenerate_variation`, `create_item`, `create_item_usage`, `regenerate_item_usage`, `create_location`, `create_location_state` or `regenerate_location_state`. Read this doc to understand why an image came out the way it did, and to write fields that read well inside the prompt.
 
 Placeholders are in braces. Every other character, including punctuation, is exactly what the app sends.
 
@@ -31,7 +31,7 @@ Where each part comes from:
 | {appearanceLock} | The character's appearance lock, verbatim. |
 | {variation.name}, {variation.delta} | The name and delta of the variation the character wears in this panel. |
 | {action}, {expression}, {position} | The cast entry's fields. |
-| {m} | The number of the previous panel's reference image. |
+| {m} | The number of the reference image the panel continues from: the previous panel, or an earlier panel in the same place. |
 | {continuityNotes} | The panel's `continuityNotes`. |
 | {item.name}, {item.appearanceLock} | The name and item lock of an item attached to the panel (only in the panel prompt with items, below). |
 | {k} | The number of that item's reference image. |
@@ -48,7 +48,19 @@ How the template bends:
 - **[CHARACTERS]** has one line per cast entry, in cast order. With an empty cast, nothing follows the [CHARACTERS] line. When character sheets are packed onto one image, a sentence follows it on the same line (see Panel Prompt with packed character sheets).
 - **Empty parts are left out** of a cast line. A variation with no delta reads "Look: Base." (no dash). An empty `action` leaves out "Action: ...", An empty `expression` leaves out "Expression: ...", an empty `position` leaves out "Position: ..." (the default is center).
 - **No reference image:** when the variation has no ready image, or its image was dropped for the reference limit, "(reference image {n})" reads "(no reference image)".
-- **[CONTINUITY]** appears only when the previous panel in the episode has a ready image. Without it (first panel of an episode, or a previous panel with no ready image), your `continuityNotes` are not in the prompt at all. An empty `continuityNotes` leaves the line ending at "consistent."
+- **[CONTINUITY]** depends on the image the panel continues from (`workflows/panel-generation`, Using the Previous Panel, says how the app picks it):
+  - **The previous panel:** the line shown above, with your `continuityNotes` after it. An empty `continuityNotes` leaves the line ending at "consistent."
+  - **An earlier panel in the same place**, when the panel has a `location` and the panel right before is a tight shot of that place or another place:
+
+    ```
+    [CONTINUITY] Same place as an earlier panel (reference image {m}). Keep the layout of the place and its landmarks consistent with it. {continuityNotes}
+    ```
+
+  - **None** (the first panel of an episode, a previous panel with no ready image, or a `location` no earlier panel has): the line holds only your notes, and is left out when they are empty:
+
+    ```
+    [CONTINUITY] {continuityNotes}
+    ```
 - **[FIX]** is added as a last line only when the app redraws a panel after a failed consistency check: "[FIX] Fix these consistency issues: {issue 1}; {issue 2}".
 - **Dialogue is never in the prompt.** It is drawn over the image by the app.
 - **Periods are added for you.** The app writes a period after the variation look, the action, the expression and the position. End `delta`, `action` and `expression` without a period, or the prompt gets "..".
@@ -56,11 +68,12 @@ How the template bends:
 Reference images, in this order:
 
 1. each cast member's variation image, in cast order (packed sheets share one image, in the place of the first of them);
-2. the image of the usage each attached item uses, in panel order (only when the panel has items);
-3. the user's layout sketch (only when the panel has one);
-4. the previous panel's current image.
+2. the location's picture (only when the panel has a location with a ready picture; see Panel Prompt with a location);
+3. the image of the usage each attached item uses, in panel order (only when the panel has items);
+4. the user's layout sketch (only when the panel has one);
+5. the image the panel continues from: the previous panel's current image, or an earlier panel's in the same place.
 
-The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the app first packs character sheets: it draws the sheets of the last cast members side by side on one image, each under the character's name, and sends them as one reference image. It packs as few as it takes (at least 2, at most 4), so the first characters keep a sheet of their own (see Panel Prompt with packed character sheets). If there are still too many, or the packed image cannot be drawn, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. A packed sheet is drawn smaller than a sheet of its own, and small details can drift between neighbors. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
+The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the app first packs character sheets: it draws the sheets of the last cast members side by side on one image, each under the character's name, and sends them as one reference image. It packs as few as it takes (at least 2, at most 4), so the first characters keep a sheet of their own (see Panel Prompt with packed character sheets). If there are still too many, or the packed image cannot be drawn, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then the location's picture, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. A packed sheet is drawn smaller than a sheet of its own, and small details can drift between neighbors. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
 
 Worked example. The project style is the default, Jin wears his base variation (no delta) and Mina wears "Outfit: School uniform"; the previous panel has a ready image:
 
@@ -134,13 +147,35 @@ When the references are over the image model's limit and at least 2 cast members
 
 {p} is the number of the packed image and {count} the number of sheets on it.
 
-- **As few as it takes.** Each sheet packed with another frees one slot, so the app packs just enough of the last ready cast members to fit the limit, at least 2 and at most 4. With 4 references allowed, 3 cast members, an item and the previous panel pack the last two characters; 4 cast members, an item, a sketch and the previous panel pack all four. When even 4 on one image leave more cast than slots (a limit of 1 or 2 with a big cast), the first ones are packed instead, and the last ones are dropped.
+- **As few as it takes.** Each sheet packed with another frees one slot, so the app packs just enough of the last ready cast members to fit the limit, at least 2 and at most 4. A location's ready picture counts toward the limit like an item. With 4 references allowed, 3 cast members, an item and the previous panel pack the last two characters; 4 cast members, an item, a sketch and the previous panel pack all four. When even 4 on one image leave more cast than slots (a limit of 1 or 2 with a big cast), the first ones are packed instead, and the last ones are dropped.
 - **Layout.** Two sheets sit side by side; three or four fill a 2 × 2 grid, left to right, then top to bottom, in cast order (three leave the last corner blank). A white band above each sheet holds the character's name in large bold type. The name is only on the reference image: the panel itself is still drawn with no text.
-- **Only character sheets are packed,** and only for a generation. Item images are never packed, and an edit drops references over its limit as before.
+- **Only character sheets are packed,** and only for a generation. Item images and a location's picture are never packed, and an edit drops references over its limit as before.
 - **The packed image is stored in the panel's folder** and reused by every redraw with the same sheets and names. A version's reference images list it like any other.
 - If the packed image cannot be drawn, the panel is drawn without it, dropping references as described above.
 
 Worked example. With 4 references allowed, Jin, Mina and Dohyun are cast, Jin holds the Kestrel blaster, and the previous panel has a ready image. That is 5 references, so Mina's and Dohyun's sheets are packed: 1 = Jin's image, 2 = one image with Mina's sheet on the left and Dohyun's on the right, 3 = the blaster's image, 4 = the previous panel. The [CHARACTERS] line reads "[CHARACTERS] Reference image 2 holds 2 character sheets, ...", Jin's line reads "- Jin (reference image 1): ...", and Mina's reads "- Mina (reference image 2, the sheet labeled Mina): ...".
+
+### Panel Prompt with a location
+
+When the panel has a `location`, a [LOCATION] line follows the [SETTING] line:
+
+```
+[SETTING] {setting}
+[LOCATION] {location.name} (reference image {l}): {location.layout} State: {state.name} — {state.delta}. Camera: its main angle, so every landmark stays on the side of the frame the layout gives. The reference shows the empty place from its main camera angle, only for its architecture and where its landmarks are, not its lighting: the light and the time of day come from the setting and the state. Draw it from this panel's camera and shot, with the cast in it.
+[ACTION] {description}
+```
+
+- **{location.name}, {location.layout}** are the saved location's name and layout. **{l}** is the number of its picture: it is claimed right after the cast, so its number follows the cast's even though the line comes first.
+- **The picture** is the state's own picture when it has a ready one, else the base picture: the state's words then carry the change. With no ready picture (or one dropped for the reference limit), the marker reads "(no reference image)" and the last two sentences, about the reference, are left out.
+- **State:** a panel in the base state ("Default") has no "State: ..." sentence. A state with no delta reads "State: {state.name}."
+- **Camera:** `main` (or empty) gives the sentence above. `reverse` gives:
+
+  ```
+  Camera: reverse angle, facing the other way, so the landmarks the layout puts on frame-left are on frame-right and the other way round.
+  ```
+
+  Any other words give "Camera: {camera}." (a final period of yours is not doubled).
+- `edit_panel_image` sends no location picture and no [LOCATION] line: an edit keeps the image's own place.
 
 ### Panel Prompt with a layout sketch
 
@@ -210,6 +245,24 @@ Item usage reference sheet. {stylePreset}. Plain light-gray background, no text.
 
 After a failed sheet check, the redraw appends ` Important details: {issues joined by "; "}.` to the sheet prompt (any of the four above).
 
+## Location Reference Prompt
+
+Used for a location's base picture (`create_location`, and `regenerate_location_state` on the base state). Drawn at 4:3, with no reference image:
+
+```
+Location reference picture. {stylePreset}. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. {location.name}. Layout from this angle: {location.layout}
+```
+
+After a failed picture check, the redraw adds a space and "Important details: {issue 1}; {issue 2}." at the end, as for character sheets.
+
+## Location State Prompt
+
+Used for a state's own picture (`create_location_state` with `generateImage`, and `regenerate_location_state` on a state). The base picture is sent as the one reference image:
+
+```
+Location reference picture. {stylePreset}. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. {location.name}. Layout from this angle: {location.layout} State: {state.name} — {state.delta}. Keep the layout, landmarks, architecture and camera angle identical to the reference image except for the state.
+```
+
 ## Panel Edit Prompt
 
 Used for `edit_panel_image` and the panel chat's `edit_image`. The panel's current image is sent first ("the first image"), followed by the cast members' variation images in cast order and the usage images of the panel's items in panel order (no previous panel). It uses the model assigned to the image-edit role.
@@ -235,7 +288,7 @@ Edit the first image: {instruction}. Keep everything else unchanged — composit
 When a model is assigned to the vision role (Settings → Models), the app checks every newly generated panel image (not edits, not uploads) with that model:
 
 - **System prompt:** the project's `reference/consistency-checklist` doc, word for word. Editing that doc changes how the checker judges.
-- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, or a packed image of several of them, then the usage images of the panel's items, then the previous panel, then the generated image last), the cast, the items (only when the panel has any), the panel description and the shot:
+- **User message:** these parts in this order: the images in the order they are attached (the cast members' variation images, or a packed image of several of them, then the usage images of the panel's items, then the image the panel continues from, then the generated image last), the cast, the items (only when the panel has any), the panel description, the setting, the shot and the continuity notes (only when the panel has any):
 
 ```
 Images, in the order attached:
@@ -247,10 +300,12 @@ Cast:
 - {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
 
 Panel description: {description}
+Setting: {setting}
 Shot: {shot}
+Continuity notes: {continuityNotes}
 ```
 
-  The cast has one line per character, in cast order. A variation with no delta reads "Look: {variation.name}". A character whose reference image was not sent (the variation has no ready image, or it was dropped for the reference limit) ends the line with "(no reference image)" and has no entry in the image list. With an empty cast, "Cast:" is followed by "(none)". The Panel Prompt's dialogue, setting and continuity notes are not in this message.
+  The cast has one line per character, in cast order. A variation with no delta reads "Look: {variation.name}". A character whose reference image was not sent (the variation has no ready image, or it was dropped for the reference limit) ends the line with "(no reference image)" and has no entry in the image list. With an empty cast, "Cast:" is followed by "(none)". The "Continuity notes:" line is left out when the panel has none. The image the panel continues from is listed as "Reference: previous panel", or as "Reference: earlier panel in the same place" when it is an earlier one. The Panel Prompt's dialogue is not in this message.
 
   With items, the image list gains one entry per item that has a reference image, after the cast and before the previous panel, and an "Items:" block follows the cast:
 
@@ -268,10 +323,34 @@ Items:
 - {item.name} — {item.appearanceLock} — Use: {usage.name} — {usage.delta} — Held by: {name}
 
 Panel description: {description}
+Setting: {setting}
 Shot: {shot}
+Continuity notes: {continuityNotes}
 ```
 
   The items block has one line per item, in panel order, and is left out when the panel has no items. A usage with no delta reads "Use: {usage.name}". "Held by:" is the holder's name or "nobody". An item whose reference image was not sent ends the line with "(no reference image)" and has no entry in the image list. References are matched to cast members and items by who they belong to, never by label, so an item may share a name with a character.
+
+  With a location, its picture is listed right after the cast, and a "Location:" line follows the cast (and the items, when there are any):
+
+```
+Images, in the order attached:
+1. Reference: {name}
+2. Reference: {location.name} (the empty place, main camera angle)
+3. Reference: previous panel
+4. Generated panel (the image to check)
+
+Cast:
+- {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
+
+Location: {location.name} — Layout: {location.layout} — State: {state.name} — {state.delta} — Camera: {camera}
+
+Panel description: {description}
+Setting: {setting}
+Shot: {shot}
+Continuity notes: {continuityNotes}
+```
+
+  A state with no delta reads "State: {state.name}". An empty camera reads "Camera: main". A location whose picture was not sent ends the line with "(no reference image)" and has no entry in the image list.
 
   When character sheets were packed onto one image (see Panel Prompt with packed character sheets), that image is one entry in the list, naming whose sheet is where. Its members count as sent, so their cast lines have no "(no reference image)":
 
@@ -288,7 +367,9 @@ Cast:
 - {name} — {appearanceLock} — Look: {variation.name} — {variation.delta}
 
 Panel description: {description}
+Setting: {setting}
 Shot: {shot}
+Continuity notes: {continuityNotes}
 ```
 
   With three or four sheets on the image, the places read "top left", "top right", "bottom left" and "bottom right".

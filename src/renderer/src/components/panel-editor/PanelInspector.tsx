@@ -77,6 +77,7 @@ export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewSty
   const scene: SceneFields = {
     description: useFieldAutosave(panel, 'description'),
     setting: useFieldAutosave(panel, 'setting'),
+    location: useFieldAutosave(panel, 'location'),
     shot: useFieldAutosave(panel, 'shot'),
     aspect: useFieldAutosave(panel, 'aspect'),
     frame: useFieldAutosave(panel, 'frame'),
@@ -139,7 +140,8 @@ export function PanelInspector({ panel, selectedLine, onSelectLine, onPreviewSty
         {tab === 'scene' && (
           <div className="inspector-fields">
             <SaveStatus fields={Object.values(scene)} warnings={Object.values(scene).flatMap((f) => f.warnings)} />
-            <SceneTab fields={scene} />
+            {/* Keyed by panel: the location picker's "Other" camera box must not carry over to the next panel. */}
+            <SceneTab key={panel.id} fields={scene} />
           </div>
         )}
       </div>

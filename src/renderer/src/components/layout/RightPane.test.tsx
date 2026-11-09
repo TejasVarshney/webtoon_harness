@@ -64,6 +64,6 @@ describe('RightPane', () => {
     installFakeApi({ 'characters:list': () => [], 'episodes:list': () => [episode()], 'panels:list': () => [] })
     render(<RightPane />)
     expect(screen.getByRole('tablist')).toBeInTheDocument()
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Webtoon', 'Characters', 'Items', 'Story'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Webtoon', 'Characters', 'Items', 'Locations', 'Story'])
   })
 })

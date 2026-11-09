@@ -14,10 +14,11 @@ async function gatherProjectState(services: Services, ctx: ProjectContext, activ
   const characters = await services.characters.list(ctx, { includeArchived: true })
   // Archived items too, for the same reason: they still name the items of existing panels.
   const items = await services.items.list(ctx, { includeArchived: true })
+  const locations = await services.locations.list(ctx, { includeArchived: true })
   const episodes = await services.episodes.list(ctx)
   const episode = episodes.find((e) => e.id === activeEpisodeId) ?? episodes[0] ?? null
   const recentPanels = episode ? (await services.panels.list(ctx, episode.id)).slice(-RECENT_PANELS) : []
-  return { meta: await services.projects.getMeta(ctx), characters, items, episode, recentPanels }
+  return { meta: await services.projects.getMeta(ctx), characters, items, locations, episode, recentPanels }
 }
 
 /** The `<project_state>` text the agent starts each turn from. */

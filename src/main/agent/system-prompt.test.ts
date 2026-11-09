@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveMockRefs } from '../models/providers/mock'
-import { makeCharacter, makeEpisode, makeItem, makeItemUsage, makeMeta, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeEpisode, makeItem, makeItemUsage, makeLocation, makeLocationState, makeMeta, makePanel, makeVariation } from '../test/factories'
 import type { PanelVersion } from '@shared/types'
 import { buildAgentSystemPrompt, buildPanelChatSystemPrompt, buildPanelContext, buildStateSnapshot, extractSection, layoutTag } from './system-prompt'
 
@@ -103,6 +103,15 @@ describe('system prompt', () => {
     const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [blaster], episode: null, recentPanels: [plain, armed] })
     expect(s).toContain('- pnl_0000000002 [medium, 2:3] cast: none | Mina opens the apartment door. | dialogue: none\n')
     expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast: none | Mina opens the apartment door. | dialogue: none | items: Kestrel blaster (Firing)\n')
+  })
+
+  it("adds a panel's location and continuity notes to its recent_panels line only when it has them", () => {
+    const stockroom = makeLocation({ states: [makeLocationState({ status: 'ready', imagePath: 'locations/loc_0000000001/a.png' }), makeLocationState({ id: 'lst_0000000002', name: 'Night', kind: 'state', status: 'failed' })] })
+    const placed = makePanel({ location: { locationId: stockroom.id, stateId: 'lst_0000000002', camera: 'reverse' }, continuityNotes: 'Snow blows in.' })
+    const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], locations: [stockroom], episode: null, recentPanels: [placed] })
+    expect(s).toContain('locations:\n- loc_0000000001 Back stockroom states: lst_0000000001 Default (ready), lst_0000000002 Night (failed)\n')
+    expect(s).toContain('- pnl_0000000001 [medium, 2:3] at Back stockroom (Night, camera reverse) cast: none | Mina opens the apartment door. | dialogue: none | notes: Snow blows in.\n')
+    expect(buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], episode: null, recentPanels: [] })).toContain('items: none\nlocations: none\n')
   })
 
   it('extracts a section body', () => {

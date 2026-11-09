@@ -4,6 +4,7 @@ import type { VisualField } from '@shared/types'
 const LABELS: Record<VisualField, string> = {
   description: 'Description',
   setting: 'Setting',
+  location: 'Location',
   shot: 'Shot',
   aspect: 'Aspect',
   characters: 'Cast',

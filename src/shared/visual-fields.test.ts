@@ -7,6 +7,7 @@ const T = '2026-01-01T00:00:00.000Z'
 
 const CAST = { characterId: 'chr_0000000001', variationId: 'var_0000000001', action: '', expression: '', position: 'center' as const }
 const ITEM = { itemId: 'itm_0000000001', usageId: 'use_0000000001', heldBy: null, action: '' }
+const PLACE = { locationId: 'loc_0000000001', stateId: 'lst_0000000001', camera: 'main' }
 
 const version: PanelVersion = {
   id: 'ver_0000000001',
@@ -49,13 +50,13 @@ function drawn(over: Partial<Panel> = {}): Panel {
 }
 
 describe('visualFields', () => {
-  it('lists the six fields the picture shows, in order', () => {
-    expect(VISUAL_FIELDS).toEqual(['description', 'setting', 'shot', 'aspect', 'characters', 'items'])
+  it('lists the seven fields the picture shows, in order', () => {
+    expect(VISUAL_FIELDS).toEqual(['description', 'setting', 'location', 'shot', 'aspect', 'characters', 'items'])
   })
 
   it('copies exactly those fields from a panel', () => {
-    const p = makePanel({ characters: [CAST], items: [ITEM] })
-    expect(visualFields(p)).toEqual({ description: p.description, setting: p.setting, shot: p.shot, aspect: p.aspect, characters: [CAST], items: [ITEM] })
+    const p = makePanel({ characters: [CAST], items: [ITEM], location: PLACE })
+    expect(visualFields(p)).toEqual({ description: p.description, setting: p.setting, location: PLACE, shot: p.shot, aspect: p.aspect, characters: [CAST], items: [ITEM] })
   })
 })
 
@@ -78,6 +79,8 @@ describe('staleVisualFields', () => {
     const p = drawn()
     expect(staleVisualFields({ ...p, items: [ITEM], characters: [CAST] })).toEqual(['characters', 'items'])
     expect(staleVisualFields({ ...p, description: 'new', setting: 'new', shot: 'wide' })).toEqual(['description', 'setting', 'shot'])
+    // A new camera or state is a new picture too.
+    expect(staleVisualFields({ ...drawn({ location: PLACE }), location: { ...PLACE, camera: 'reverse' } })).toEqual(['location'])
   })
 
   it('compares the cast by value, not by identity', () => {

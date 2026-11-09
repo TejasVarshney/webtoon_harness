@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
 import { api } from '../api'
 
-export type RightTab = 'webtoon' | 'characters' | 'items' | 'story'
+export type RightTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
 
 const LAST_PROJECT_KEY = 'webtoon.lastProjectId'
 

@@ -1,5 +1,5 @@
 import { newId } from '@shared/ids'
-import type { Character, ChatMessage, CheckResult, Item, ItemUsage, Panel, Variation } from '@shared/types'
+import type { Character, ChatMessage, CheckResult, Item, ItemUsage, Location, LocationState, Panel, Variation } from '@shared/types'
 import type { WorkflowDocs } from '../agent/workflow-docs'
 import { createTextProvider as defaultCreateTextProvider } from '../models/providers/factory'
 import { ImageUnavailableError, type TextProvider } from '../models/providers/types'
@@ -34,6 +34,8 @@ export interface ConsistencyCheckInput {
   roster: Character[]
   /** Every item, archived ones included. */
   itemRoster: Item[]
+  /** Every location, archived ones included. Left out, the panel's location (if any) is not described. */
+  locations?: Location[]
   /** The run's signal: aborting it ends the vision call. */
   signal?: AbortSignal
 }
@@ -48,8 +50,11 @@ export interface ConsistencyCheckerOptions {
   timeoutMs?: number
 }
 
-/** What a sheet check judges: a character variation or an item usage, with its owner (which holds the lock). */
-type SheetSubject = { kind: 'character'; character: Character; variation: Variation } | { kind: 'item'; item: Item; usage: ItemUsage }
+/** What a sheet check judges: a character variation, an item usage or a location state, with its owner (which holds the lock). */
+type SheetSubject =
+  | { kind: 'character'; character: Character; variation: Variation }
+  | { kind: 'item'; item: Item; usage: ItemUsage }
+  | { kind: 'location'; location: Location; state: LocationState }
 
 export interface SheetCheckInput {
   /** The candidate sheet, not yet on disk. */
@@ -61,7 +66,30 @@ export interface SheetCheckInput {
   signal?: AbortSignal
 }
 
+/** How the one issue of a check that did not run begins, written once here: `skippedCheckWarning` tells them apart. */
+const FAILED_TO_RUN = 'Consistency check failed to run: '
+const TIMED_OUT = 'Consistency check timed out after '
+const CANCELLED = 'Cancelled'
+
 const UNPARSEABLE: CheckResult = { passed: true, issues: ['Checker response could not be parsed'], skipped: true }
+
+/**
+ * What the agent is told about a check that did not run, or null: for a check that ran, for no check (no vision model,
+ * an edit, an upload) and for a cancelled one (the user stopped the run). A vision model that failed (out of credit,
+ * signed out, unreachable) will fail for the next panels too, so that warning says to stop; a timeout or an answer that
+ * could not be read may be a one-off. The text says what to do because a project keeps its own copy of the agent docs,
+ * which only a reset brings up to date.
+ */
+export function skippedCheckWarning(check: CheckResult | null): string | null {
+  if (check === null || !check.skipped) return null
+  const issue = check.issues[0] ?? ''
+  if (issue === FAILED_TO_RUN + CANCELLED) return null
+  if (issue.startsWith(FAILED_TO_RUN)) {
+    return `This image was not checked: the vision model failed (${issue.slice(FAILED_TO_RUN.length)}). The next panels will not be checked either until it works. Stop after this panel and tell the user, who can fix the vision model or pick another one in Settings → Models.`
+  }
+  const reason = issue === '' ? 'the check was skipped' : issue.charAt(0).toLowerCase() + issue.slice(1)
+  return `This image was not checked: ${reason}. Tell the user.`
+}
 
 /**
  * The end index (exclusive) of the JSON object that starts at `start`, found by matching braces while
@@ -114,16 +142,17 @@ export function parseCheckResponse(text: string): CheckResult {
  * The text half of the checker's user message: the images in the order they are attached, the cast
  * (`Name — appearanceLock — Look: variation`, plus "(no reference image)" for a cast member whose
  * reference was not sent), the items when the panel has any (`Name — appearanceLock — Use: usage —
- * Held by: holder`, with the same marker), the panel description and the shot.
+ * Held by: holder`, with the same marker), the panel description, the setting, the shot and, when it has any, the
+ * continuity notes.
  * `reference/prompt-templates` documents it. A reference belongs to a cast member or item by its
  * `subject`, never by label (a character and an item may share a name). A packed reference lists
  * whose sheet is where on it, by the name drawn above each sheet.
  */
-export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster'>): string {
-  const { references, panel, roster, itemRoster } = input
+export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references' | 'panel' | 'roster' | 'itemRoster' | 'locations'>): string {
+  const { references, panel, roster, itemRoster, locations } = input
   const images = [...references.map((r, i) => `${i + 1}. Reference: ${referenceLabel(r)}`), `${references.length + 1}. Generated panel (the image to check)`]
 
-  const sent = (kind: 'character' | 'item', id: string): boolean =>
+  const sent = (kind: 'character' | 'item' | 'location', id: string): boolean =>
     references.some(({ subject: s }) => (s.kind === 'pack' ? s.members.some((m) => m.subject.kind === kind && m.subject.id === id) : s.kind === kind && s.id === id))
 
   const cast = panel.characters.map((entry) => {
@@ -144,6 +173,17 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     return `- ${item.name} — ${item.appearanceLock} — Use: ${look} — Held by: ${holder}${sent('item', item.id) ? '' : ' (no reference image)'}`
   })
 
+  // The location's layout is what the checklist's staging item judges the landmarks against.
+  let place: string | null = null
+  if (panel.location && locations) {
+    const location = locations.find((l) => l.id === panel.location!.locationId)
+    const state = location?.states.find((s) => s.id === panel.location!.stateId)
+    if (!location || !state) throw new Error(`Unknown location entry: ${panel.location.locationId}/${panel.location.stateId}`)
+    const look = state.delta ? `${state.name} — ${state.delta}` : state.name
+    const camera = panel.location.camera.trim() || 'main'
+    place = `${location.name} — Layout: ${location.layout.trim()} — State: ${look} — Camera: ${camera}${sent('location', location.id) ? '' : ' (no reference image)'}`
+  }
+
   return [
     'Images, in the order attached:',
     ...images,
@@ -151,9 +191,13 @@ export function buildCheckMessage(input: Pick<ConsistencyCheckInput, 'references
     'Cast:',
     ...(cast.length > 0 ? cast : ['(none)']),
     ...(items.length > 0 ? ['', 'Items:', ...items] : []),
+    ...(place === null ? [] : ['', `Location: ${place}`]),
     '',
     `Panel description: ${panel.description}`,
-    `Shot: ${panel.shot}`
+    `Setting: ${panel.setting}`,
+    `Shot: ${panel.shot}`,
+    // The notes carry the scene's layout in frame terms ("the back door is at the left edge"), which the checklist's staging item judges.
+    ...(panel.continuityNotes.trim() === '' ? [] : [`Continuity notes: ${panel.continuityNotes.trim()}`])
   ].join('\n')
 }
 
@@ -182,13 +226,19 @@ export function buildSheetCheckMessage(input: Pick<SheetCheckInput, 'subject' | 
     name = character.name
     lock = character.appearanceLock
     if (variation.kind !== 'base') detail = `Look: ${named(variation.name, variation.delta)}`
-  } else {
+  } else if (subject.kind === 'item') {
     const { item, usage } = subject
     sheet = usage.kind === 'action' ? 'Item usage reference sheet' : 'Item reference sheet'
     name = item.name
     lock = item.appearanceLock
     if (usage.kind === 'state') detail = `State: ${named(usage.name, usage.delta)}`
     else if (usage.kind === 'action') detail = `Usage: ${named(usage.name, usage.delta)}`
+  } else {
+    const { location, state } = subject
+    sheet = 'Location reference picture'
+    name = location.name
+    lock = location.layout
+    if (state.kind !== 'base') detail = `State: ${named(state.name, state.delta)}`
   }
   const images = [...(baseImageRelPath === null ? [] : [`Base reference: ${subject.kind} ${name}`]), 'Generated sheet (the image to check)']
   return [
@@ -219,11 +269,11 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 function skipped(message: string): CheckResult {
-  return { passed: true, issues: [`Consistency check failed to run: ${message}`], skipped: true }
+  return { passed: true, issues: [FAILED_TO_RUN + message], skipped: true }
 }
 
 function failureMessage(error: unknown, signal: AbortSignal | undefined): string {
-  if (signal?.aborted || (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError'))) return 'Cancelled'
+  if (signal?.aborted || (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError'))) return CANCELLED
   return error instanceof Error && error.message ? error.message : String(error)
 }
 
@@ -321,7 +371,7 @@ export class ConsistencyChecker {
       const turn = await abortable(provider.runTurn({ system, messages: [message], tools: [], loadImage: run.loadImage, signal }), signal)
       return parseCheckResponse(turn.text)
     } catch (error) {
-      if (timeout.aborted && !run.signal?.aborted) return { passed: true, issues: [`Consistency check timed out after ${timeoutMs / 1000}s`], skipped: true }
+      if (timeout.aborted && !run.signal?.aborted) return { passed: true, issues: [`${TIMED_OUT}${timeoutMs / 1000}s`], skipped: true }
       return skipped(failureMessage(error, run.signal))
     }
   }

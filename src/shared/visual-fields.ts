@@ -5,7 +5,7 @@ import { drawAspect } from './draw-aspect'
 import type { Panel, VisualField, VisualFields } from './types'
 
 /** The fields that decide what the image looks like, in the order the editor names them. */
-export const VISUAL_FIELDS: readonly VisualField[] = ['description', 'setting', 'shot', 'aspect', 'characters', 'items']
+export const VISUAL_FIELDS: readonly VisualField[] = ['description', 'setting', 'location', 'shot', 'aspect', 'characters', 'items']
 
 /** The picture-deciding fields of a panel, as an image version records them. */
 export function visualFields(panel: Pick<Panel, VisualField>): VisualFields {
@@ -15,7 +15,8 @@ export function visualFields(panel: Pick<Panel, VisualField>): VisualFields {
     shot: panel.shot,
     aspect: panel.aspect,
     characters: panel.characters,
-    items: panel.items
+    items: panel.items,
+    location: panel.location
   }
 }
 

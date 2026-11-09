@@ -1,6 +1,6 @@
-import type { Character, Item, ItemUsage, Panel, Variation } from '@shared/types'
+import type { Character, Item, ItemUsage, Location, LocationState, Panel, Variation } from '@shared/types'
 import { drawAspect, isTallAspect } from '@shared/draw-aspect'
-import { hasReadyReference, hasReadyUsage } from './panel-validation'
+import { hasReadyReference, hasReadyState, hasReadyUsage } from './panel-validation'
 import { chooseCastToPack, type PackMember } from './reference-pack'
 
 // Prompt builders for generated images. Wording is pinned by tests: the image models are sensitive
@@ -36,6 +36,22 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
   return withFix(`Item reference sheet. ${stylePreset}. The object alone, three-quarter view, plain light-gray background, no people, no hands, no text. ${item.appearanceLock} State: ${usage.name} — ${usage.delta}. Keep shape, size, materials, colors and markings identical to the reference image except for the state.`, fix)
 }
 
+/** The words every location picture shares: what it is and what it must leave out. */
+function locationPictureLead(l: Location, stylePreset: string): string {
+  return `Location reference picture. ${stylePreset}. The empty place, wide shot from its main camera angle at eye level, in even neutral light with no lamps or ceiling lights switched on, no people, no animals, no text. ${l.name}. Layout from this angle: ${l.layout}`
+}
+
+export function locationReferencePrompt(l: Location, stylePreset: string, fix?: string): string {
+  return withFix(locationPictureLead(l, stylePreset), fix)
+}
+
+export function locationStatePrompt(l: Location, state: LocationState, stylePreset: string, fix?: string): string {
+  return withFix(
+    `${locationPictureLead(l, stylePreset)} State: ${state.name} — ${state.delta}. Keep the layout, landmarks, architecture and camera angle identical to the reference image except for the state.`,
+    fix
+  )
+}
+
 // ---------------------------------------------------------------------------------------------
 // Panel prompts. Dialogue never enters an image prompt: it is rendered as HTML over the
 // panel, so `composePanelPrompt` does not even accept it.
@@ -45,7 +61,7 @@ export function itemUsagePrompt(item: Item, usage: ItemUsage, stylePreset: strin
  * Whose image a reference is. The checker matches references to cast and items by this, never by label. A pack is one
  * image holding several members' sheets, in grid order (see `reference-pack.ts`).
  */
-type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' } | { kind: 'pack'; members: PackMember[] }
+type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' } | { kind: 'pack'; members: PackMember[] }
 
 export interface PanelPromptReference {
   relPath: string
@@ -55,11 +71,14 @@ export interface PanelPromptReference {
 
 export interface PanelPromptInput {
   stylePreset: string
-  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items' | 'continuityNotes'>
+  panel: Pick<Panel, 'description' | 'setting' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items' | 'continuityNotes'> & { location?: Panel['location'] }
   /** Characters; resolves cast entries and the holders of items. */
   roster: Map<string, Character>
   itemRoster: Map<string, Item>
-  previous: { panelId: string; imagePath: string } | null
+  /** Resolves the panel's location. Left out (an edit), the panel is composed as if it had none. */
+  locations?: Map<string, Location>
+  /** The image the panel continues from: the panel right before it, or with `earlier` an earlier panel in the same location. */
+  previous: { panelId: string; imagePath: string; earlier?: boolean } | null
   /** The user's layout sketch, for a generation only (an edit keeps the image's own composition). */
   sketch?: string | null
   /** The image model's reference-image cap. */
@@ -73,7 +92,7 @@ export interface PanelPromptInput {
 
 export interface PanelPromptResult {
   prompt: string
-  /** In prompt order: ready cast variations (cast order, a pack in the place of its first member), then ready item usages (panel order), then the sketch, then the previous panel. */
+  /** In the order claimed: ready cast variations (cast order, a pack in the place of its first member), then the location's picture, then ready item usages (panel order), then the sketch, then the previous panel. */
   references: PanelPromptReference[]
 }
 
@@ -97,25 +116,50 @@ function shapeNote(panel: Pick<Panel, 'aspect' | 'frame'>): string {
   return panel.frame === 'borderless' ? ` ${BORDERLESS_NOTE}` : ''
 }
 
+/** How the checker's image list names a continuity image that is not the panel right before. */
+const EARLIER_LABEL = 'earlier panel in the same place'
+
+/** How a location's picture is to be used: for the place's architecture and where its landmarks are, never its framing or its light (a live test copied a lit room into a dark night). */
+const LOCATION_PICTURE_NOTE =
+  "The reference shows the empty place from its main camera angle, only for its architecture and where its landmarks are, not its lighting: the light and the time of day come from the setting and the state. Draw it from this panel's camera and shot, with the cast in it."
+
+/** Where the camera is, as the [LOCATION] line says it. */
+function cameraSentence(camera: string): string {
+  const said = camera.trim()
+  if (said === '' || said.toLowerCase() === 'main') return 'Camera: its main angle, so every landmark stays on the side of the frame the layout gives.'
+  if (said.toLowerCase() === 'reverse') return 'Camera: reverse angle, facing the other way, so the landmarks the layout puts on frame-left are on frame-right and the other way round.'
+  return `Camera: ${said.replace(/\.$/, '')}.`
+}
+
+/** The panel's place. A state with no picture of its own is drawn from the base picture and its words. */
+function placeOf(at: NonNullable<Panel['location']>, locations: Map<string, Location>) {
+  const location = locations.get(at.locationId)
+  if (!location) throw new Error(`Unknown location: ${at.locationId}`)
+  const state = location.states.find((s) => s.id === at.stateId)
+  if (!state) throw new Error(`State ${at.stateId} does not belong to ${location.name}`)
+  const base = location.states.find((s) => s.kind === 'base')
+  return { location, state, camera: at.camera, picture: hasReadyState(state) ? state.imagePath : base && hasReadyState(base) ? base.imagePath : null }
+}
+
 const ITEMS_HEADER =
   "[ITEMS] Draw each item exactly as its reference image shows it, and use it exactly as its reference shows. Gray hands in an item reference only show the grip: draw the holder's own hands, never gray hands."
 
 /**
  * Builds the panel prompt and its ordered reference list. References are the cast members'
- * variation images in cast order, then the panel items' usage images in panel order, then the user's
- * layout sketch (a [LAYOUT] line, left out with its image), then the previous panel's image. With
- * `packing`, over `maxReferences` some cast sheets share one image first (`chooseCastToPack`): the
- * pack takes its first member's place, [CHARACTERS] says what it is, and each member reads
- * "(reference image N, the sheet labeled Name)". Still over `maxReferences`, the previous panel is
- * dropped first, then the sketch, then items from the end, then cast members from the end, and a
- * dropped entry reads "(no reference image)" (an item's lock still applies). A cast member or item
- * whose image is not ready reads the same way (validation reports that separately). Throws if a cast
- * entry names a character or variation that is not in `roster`, or an item entry names an item or
- * usage that is not in `itemRoster`: callers validate first. Archived characters and items still
- * compose, so existing panels can be regenerated.
+ * variation images in cast order, then the location's picture, then the panel items' usage images in panel order, then the user's
+ * layout sketch (a [LAYOUT] line, left out with its image), then the image the panel continues from (the previous
+ * panel, or an earlier one in the same place, each with its own [CONTINUITY] wording; with neither, the line holds only
+ * the continuity notes, and is left out when there are none). With `packing`, over `maxReferences` some cast sheets
+ * share one image first (`chooseCastToPack`): the pack takes its first member's place, [CHARACTERS] says what it is,
+ * and each member reads "(reference image N, the sheet labeled Name)". Still over `maxReferences`, the previous panel
+ * is dropped first, then the sketch, then items from the end, then the location's picture, then cast members from the
+ * end, and a dropped entry reads "(no reference image)" (an item's lock still applies). A cast member or item whose
+ * image is not ready reads the same way (validation reports that separately). Throws if a cast entry names a character
+ * or variation that is not in `roster`, or an item entry names an item or usage that is not in `itemRoster`: callers
+ * validate first. Archived characters and items still compose, so existing panels can be regenerated.
  */
 export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
-  const { stylePreset, panel, roster, itemRoster, previous, sketch, maxReferences, packing } = input
+  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, maxReferences, packing } = input
   const references: PanelPromptReference[] = []
 
   /** Records `file` as the next reference and gives its number, or null when there is no file or the cap is reached. */
@@ -141,7 +185,10 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     return { entry, item, usage, sheet: hasReadyUsage(usage) ? usage.imagePath : null }
   })
 
-  const others = gear.filter((g) => g.sheet !== null).length + (sketch ? 1 : 0) + (previous ? 1 : 0)
+  // Resolved before packing is chosen: the picture takes a slot like any other reference.
+  const place = panel.location && locations ? placeOf(panel.location, locations) : null
+
+  const others = gear.filter((g) => g.sheet !== null).length + (place?.picture ? 1 : 0) + (sketch ? 1 : 0) + (previous ? 1 : 0)
   const packed = packing ? chooseCastToPack(cast.map((c) => c.sheet !== null), others, maxReferences) : []
   const members: PackMember[] = packed.map((i) => ({ subject: { kind: 'character', id: cast[i].character.id }, name: cast[i].character.name, relPath: cast[i].sheet ?? '' }))
   /** The pack's reference number once its first member has sent it (null if the cap left no room). */
@@ -166,6 +213,21 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     return `- ${character.name} ${marker}: ${details.filter(Boolean).join(' ')}`
   })
 
+  // The location's picture is claimed right after the cast, so over the cap it outlasts items, the sketch and the previous panel.
+  let locationLine: string | null = null
+  if (place) {
+    const { location, state, camera, picture } = place
+    const marker = markerOf(refer(picture, `${location.name} (the empty place, main camera angle)`, { kind: 'location', id: location.id }))
+    locationLine = [
+      `[LOCATION] ${location.name} ${marker}: ${location.layout.trim()}`,
+      state.kind === 'base' ? '' : `State: ${state.delta ? `${state.name} — ${state.delta}` : state.name}.`,
+      cameraSentence(camera),
+      marker === NO_REFERENCE ? '' : LOCATION_PICTURE_NOTE
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
+
   const itemLines = gear.map(({ entry, item, usage, sheet }) => {
     const marker = markerOf(refer(sheet, item.name, { kind: 'item', id: item.id }))
     const look = usage.delta ? `${usage.name} — ${usage.delta}` : usage.name
@@ -177,6 +239,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   const lines = [
     `[STYLE] ${stylePreset}. Vertical-scroll webtoon panel, ${drawAspect(panel.aspect)} aspect ratio, ${panel.shot} shot. No text, no speech bubbles, no captions, no watermark.${shapeNote(panel)}`,
     `[SETTING] ${panel.setting}`,
+    ...(locationLine === null ? [] : [locationLine]),
     `[ACTION] ${panel.description}`,
     pack?.n ? `[CHARACTERS] ${packNote(pack.n, members.length)}` : '[CHARACTERS]',
     ...castLines
@@ -189,10 +252,17 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     if (n !== null) lines.push(`${LAYOUT_PREFIX} ${markerOf(n)}${LAYOUT_NOTE}`)
   }
 
-  if (previous) {
+  const notes = panel.continuityNotes.trim()
+  if (previous?.earlier) {
+    const marker = markerOf(refer(previous.imagePath, EARLIER_LABEL, { kind: 'previous' }))
+    lines.push([`[CONTINUITY] Same place as an earlier panel ${marker}. Keep the layout of the place and its landmarks consistent with it.`, notes].filter(Boolean).join(' '))
+  } else if (previous) {
     const marker = markerOf(refer(previous.imagePath, 'previous panel', { kind: 'previous' }))
     const continuity = `[CONTINUITY] Continues directly from the previous panel ${marker}. Keep setting layout, lighting, time of day and outfits consistent.`
-    lines.push([continuity, panel.continuityNotes.trim()].filter(Boolean).join(' '))
+    lines.push([continuity, notes].filter(Boolean).join(' '))
+  } else if (notes) {
+    // Nothing to continue from (a first panel, a new place), but the notes may still carry the scene's layout.
+    lines.push(`[CONTINUITY] ${notes}`)
   }
 
   return { prompt: lines.join('\n'), references }

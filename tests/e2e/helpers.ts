@@ -107,7 +107,7 @@ async function projectFilePath(projectsRoot: string, relPath: string): Promise<s
 }
 
 /** Opens one tab of the visualizer pane and waits until it is the selected one. */
-export async function openTab(page: Page, tab: 'webtoon' | 'characters' | 'items' | 'story'): Promise<void> {
+export async function openTab(page: Page, tab: 'webtoon' | 'characters' | 'items' | 'locations' | 'story'): Promise<void> {
   const button = page.getByTestId(`tab-${tab}`)
   await button.click()
   await expect(button).toHaveAttribute('aria-selected', 'true')

@@ -80,7 +80,7 @@ Pick the smallest change that does the job:
 What each image call does:
 
 - **`edit_image`** keeps the current image and changes what you ask. Composition, framing and light stay. The app adds the cast's appearance locks so faces stay on-model. Edits are not consistency-checked.
-- **`regenerate_image`** draws the whole panel again from its fields, with the cast's reference images and the previous panel's image. Composition will change. If a vision model is assigned, the new image is consistency-checked and redrawn automatically (once by default) when the check fails. The result describes the image that is current after that, and its `check` is the verdict on it: `null` when no check ran, `"passed": true` when it matches the references, `"skipped": true` when the checker could not run (treat the image as unchecked), and `"passed": false` when it still does not match after the automatic redraw.
+- **`regenerate_image`** draws the whole panel again from its fields, with the cast's reference images and the previous panel's image. Composition will change. If a vision model is assigned, the new image is consistency-checked and redrawn automatically (once by default) when the check fails. The result describes the image that is current after that, and its `check` is the verdict on it: `null` when no check ran, `"passed": true` when it matches the references, `"skipped": true` when the checker could not run (treat the image as unchecked, and read `warnings`: when the vision model itself failed, stop and tell the user), and `"passed": false` when it still does not match after the automatic redraw.
 
 How to write an edit instruction:
 

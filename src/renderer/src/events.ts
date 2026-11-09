@@ -4,6 +4,7 @@ import { useAppStore } from './stores/app-store'
 import { useCharactersStore } from './stores/characters-store'
 import { useChatStore } from './stores/chat-store'
 import { useItemsStore } from './stores/items-store'
+import { useLocationsStore } from './stores/locations-store'
 import { useModelsStore } from './stores/models-store'
 import { usePanelsStore } from './stores/panels-store'
 import { usePluginsStore } from './stores/plugins-store'
@@ -22,6 +23,9 @@ function handleEvent(event: AppEvent): void {
     case 'item.changed':
       // `load` records its own failures, so there is nothing to catch here.
       if (event.projectId === state.projectId) void useItemsStore.getState().load()
+      break
+    case 'location.changed':
+      if (event.projectId === state.projectId) void useLocationsStore.getState().load()
       break
     // The panel list changes under several events (a generation emits a few), so these overlap; `load` keeps the latest.
     // `panel.changed` names no episode, so the open one is reloaded. `loadEpisodes` records its own failures, too.
@@ -88,6 +92,9 @@ function watchProblems(): () => void {
     }),
     useItemsStore.subscribe((s, prev) => {
       if (s.items !== prev.items || s.error !== prev.error) refresh()
+    }),
+    useLocationsStore.subscribe((s, prev) => {
+      if (s.locations !== prev.locations || s.error !== prev.error) refresh()
     }),
     usePanelsStore.subscribe((s, prev) => {
       if (s.episodes !== prev.episodes || s.panelsByEpisode !== prev.panelsByEpisode || s.error !== prev.error) refresh()

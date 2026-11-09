@@ -6,6 +6,7 @@ import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { PanelArt } from './PanelArt'
+import { PanelCheckBadge } from './PanelCheckBadge'
 import { aspectRatio } from '@shared/strip-layout'
 
 export interface PanelCardProps {
@@ -25,8 +26,8 @@ export interface PanelCardProps {
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
- * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a
- * toolbar on hover.
+ * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), a badge when
+ * that image failed its consistency check or was not checked, and a toolbar on hover.
  * Clicking the card selects the panel, which opens it in the editing mode; the toolbar's buttons and the delete
  * confirmation it opens do not.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
@@ -114,6 +115,8 @@ export function PanelCard({ panel, selected, slant, share = 1, mode = 'edit', le
         onKeyDown={onKeyDown}
       >
         <PanelArt panel={panel} />
+        {/* Outside PanelArt, whose export drawing must never show it. */}
+        <PanelCheckBadge panel={panel} problemsOnly />
         {error !== null && (
           <p role="alert" className="error panel-error">
             {error}

@@ -40,6 +40,18 @@ export class ProjectPaths {
     return this.join('characters', checkedId(id))
   }
 
+  locationsDir(): string {
+    return this.join('locations')
+  }
+
+  locationFile(id: string): string {
+    return this.join('locations', `${checkedId(id)}.json`)
+  }
+
+  locationDir(id: string): string {
+    return this.join('locations', checkedId(id))
+  }
+
   itemsDir(): string {
     return this.join('items')
   }

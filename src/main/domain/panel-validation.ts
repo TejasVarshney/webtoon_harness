@@ -1,4 +1,4 @@
-import type { Character, CheckResult, Item, ItemUsage, PanelCharacter, PanelDraft, PanelItem, Variation } from '@shared/types'
+import type { Character, CheckResult, Item, ItemUsage, Location, LocationState, PanelCharacter, PanelDraft, PanelItem, PanelLocation, Variation } from '@shared/types'
 
 // Pure panel-draft validation. No I/O: the caller passes the whole roster
 // (archived characters included, so an archived cast member is named as such rather than reported
@@ -23,6 +23,11 @@ export function hasReadyReference(variation: Variation): variation is Variation 
 /** The same rule as `hasReadyReference`, for an item usage. */
 export function hasReadyUsage(usage: ItemUsage): usage is ItemUsage & { imagePath: string } {
   return usage.status === 'ready' && typeof usage.imagePath === 'string' && usage.imagePath.length > 0
+}
+
+/** The same rule as `hasReadyReference`, for a location state's picture. */
+export function hasReadyState(state: LocationState): state is LocationState & { imagePath: string } {
+  return state.status === 'ready' && typeof state.imagePath === 'string' && state.imagePath.length > 0
 }
 
 /**
@@ -136,6 +141,26 @@ export function validatePanelDraft(draft: PanelDraftFields, roster: Character[],
     report(opts.strictMentions ? errors : warnings, message)
   }
 
+  return { errors, warnings }
+}
+
+/**
+ * The checks on a panel's location. Unknown locations and states are errors on every save; an archived location only
+ * when it is new or `changed`, so a panel set there before it was archived stays editable. A location with no ready
+ * picture is a warning, not an error: the [LOCATION] line still carries its layout in words.
+ */
+export function validatePanelLocation(entry: PanelLocation | null, locations: Location[], opts: { changed: boolean }): PanelDraftCheck {
+  const errors: string[] = []
+  const warnings: string[] = []
+  if (entry === null) return { errors, warnings }
+  const location = locations.find((l) => l.id === entry.locationId)
+  if (!location) return { errors: [`Unknown location: ${entry.locationId}`], warnings }
+  if (location.archived && opts.changed) errors.push(`Location ${location.name} is archived`)
+  const state = location.states.find((s) => s.id === entry.stateId)
+  if (!state) errors.push(`State ${entry.stateId} does not belong to ${location.name}`)
+  else if (opts.changed && !hasReadyState(state) && !location.states.some((s) => s.kind === 'base' && hasReadyState(s))) {
+    warnings.push(`${location.name} has no ready picture yet: the panel is drawn from its layout in words only`)
+  }
   return { errors, warnings }
 }
 

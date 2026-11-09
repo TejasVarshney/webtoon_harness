@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { PanelCharacterSchema, PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import type { Episode, Panel, PanelVersion } from '@shared/types'
+import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
@@ -32,10 +33,11 @@ function asToolError(error: unknown): unknown {
   return error
 }
 
-/** The outcome of an image attempt. A `failed` status is a result for the model to read, not a thrown error. */
+/** The outcome of an image attempt. A `failed` status is a result for the model to read, not a thrown error. A check that did not run adds a warning. */
 function versionOutcome(panelId: string, v: PanelVersion, warnings: string[] = []): ToolOutput {
+  const unchecked = skippedCheckWarning(v.check)
   return {
-    content: { panelId, versionId: v.id, status: v.status, error: v.error, imagePath: v.imagePath, warnings, check: v.check },
+    content: { panelId, versionId: v.id, status: v.status, error: v.error, imagePath: v.imagePath, warnings: unchecked === null ? warnings : [...warnings, unchecked], check: v.check },
     images: v.status === 'ready' && v.imagePath !== null ? [v.imagePath] : []
   }
 }
@@ -57,6 +59,14 @@ export const layoutFields = {
   gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.'),
   gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band. No redraw needed.')
 }
+
+/** The location input with its describe text, shared by create_panel, update_panel and the panel chat's update_panel_fields. */
+export const locationField = PanelDraftSchema.shape.location.describe(
+  'Where the panel is set: a locationId and one of its stateIds from the locations list, and camera: "main" (the angle the layout and picture of the location show), ' +
+    '"reverse" (facing the other way, so frame-left and frame-right swap) or your own words for any other angle. The app writes the place, its layout, state and camera into the prompt, ' +
+    'and the image continues from the last panel in the same location, preferring a wide or medium shot over a close-up or an odd angle; a location no earlier panel has gets no continuity image. ' +
+    'null clears it; without one, the image continues from the panel before.'
+)
 
 const episodeSummary = (e: Episode) => ({ id: e.id, number: e.number, title: e.title, synopsis: e.synopsis, panelCount: e.panelIds.length })
 
@@ -80,7 +90,7 @@ const createEpisode = defineTool({
 const listPanels = defineTool({
   name: 'list_panels',
   description:
-    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), shot, aspect, frame, beside, gapAfter, gutter, cast, description, dialogue and ' +
+    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), location, shot, aspect, frame, beside, gapAfter, gutter, cast, description, continuityNotes, dialogue and ' +
     'the current version (id, status, imagePath), which is null while the panel has no ready image. Read recent panels before drawing the next one.',
   input: z.object({
     episodeId,
@@ -96,6 +106,7 @@ const listPanels = defineTool({
         panels: panels.slice(-(last ?? DEFAULT_LAST)).map((p) => ({
           id: p.id,
           index: episode.panelIds.indexOf(p.id),
+          location: p.location,
           shot: p.shot,
           aspect: p.aspect,
           frame: p.frame,
@@ -104,6 +115,7 @@ const listPanels = defineTool({
           gutter: p.gutter,
           cast: p.characters.map((c) => ({ name: names.get(c.characterId) ?? c.characterId, characterId: c.characterId, variationId: c.variationId })),
           description: p.description,
+          continuityNotes: p.continuityNotes,
           dialogue: p.dialogue,
           currentVersion: versionBrief(p)
         }))
@@ -145,6 +157,7 @@ const createPanel = defineTool({
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),
     description: z.string().describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
     setting: z.string().describe('Where and when, e.g. "Apartment hallway, evening"'),
+    location: locationField,
     aspect: PanelDraftSchema.shape.aspect.describe('Default: the project default aspect. 1:2 and 1:3 are very tall panels for descents, falls and reveals.'),
     ...layoutFields,
     characters: z.array(PanelCharacterSchema).describe('Who is in the panel, at most three in the foreground. Empty for a scene without characters.'),
@@ -152,7 +165,7 @@ const createPanel = defineTool({
       "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
     ),
     dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
-    continuityNotes: z.string().optional().describe('What must match the previous panel: lighting, time of day, props, outfits. Default empty.'),
+    continuityNotes: z.string().optional().describe("What must match: the scene's layout in frame terms, lighting, time of day, props, outfits. Default empty."),
     offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
   handler: async (draft, ctx) => {
@@ -179,7 +192,7 @@ const updatePanel = defineTool({
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    patch: PanelPatchSchema.extend({ location: locationField }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

@@ -41,8 +41,8 @@ export type PackLayout = typeof PACK_LAYOUT
 
 /**
  * Which cast entries to pack, as indexes in cast order; none when every reference fits under `cap`. `ready` says which
- * entries have a sheet to send, and `others` counts the other references that would go (ready items, the sketch, the
- * previous panel). Packing k sheets frees k - 1 slots, so the fewest that bring the total down to the cap are packed,
+ * entries have a sheet to send, and `others` counts the other references that would go (the location's picture, ready items,
+ * the sketch, the previous panel). Packing k sheets frees k - 1 slots, so the fewest that bring the total down to the cap are packed,
  * at least 2 and at most `maxCells`: the last ready ones, so the lead characters keep a full-size image. When a full
  * pack still leaves more cast than slots, the first ready ones are packed instead, so that what is dropped from the
  * end of the cast is not the pack. Whatever still does not fit is dropped as without packing.

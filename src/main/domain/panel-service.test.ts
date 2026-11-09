@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Panel, PanelDraft, PanelVersion } from '@shared/types'
+import type { Panel, PanelDraft, PanelLocation, PanelVersion } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
 import { NoModelForRoleError, type ModelRegistry, type ResolvedModel } from '../models/registry'
 import type { WorkflowDocs } from '../agent/workflow-docs'
@@ -20,6 +20,7 @@ import { EpisodeService } from './episode-service'
 import { createIdentityImageOps } from './image-ops'
 import { ImageService } from './image-service'
 import { ItemInUseError, ItemService } from './item-service'
+import { LocationService } from './location-service'
 import { PanelService, PanelValidationError } from './panel-service'
 import { createFakePackComposer } from '../test/fake-pack-composer'
 import type { PackComposer } from './reference-pack'
@@ -152,10 +153,17 @@ async function setup(opts: { vision?: boolean; visionTimeoutMs?: number; packCom
     trash,
     usage: { panelsUsingItem: (c, id) => svc.panelsUsingItem(c, id), panelsUsingItemUsage: (c, id) => svc.panelsUsingItemUsage(c, id) }
   })
-  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, items, images, trash, checker: opts.vision ? vision.checker : undefined, packComposer: opts.packComposer })
+  const locations = new LocationService({
+    bus: t.bus,
+    images,
+    projects: t.store,
+    trash,
+    usage: { panelsUsingLocation: (c, id) => svc.panelsUsingLocation(c, id), panelsUsingLocationState: (c, id) => svc.panelsUsingLocationState(c, id) }
+  })
+  svc = new PanelService({ bus: t.bus, projects: t.store, episodes, characters, items, locations, images, trash, checker: opts.vision ? vision.checker : undefined, packComposer: opts.packComposer })
   const [epi] = await episodes.list(t.ctx)
   t.events.length = 0
-  return { svc, characters, items, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
+  return { svc, characters, items, locations, episodes, epi, ctx: t.ctx, events: t.events, store: t.store, trashed, calls, roles, noModel, maxRefs, behavior, vision }
 }
 
 interface Cast {
@@ -719,6 +727,76 @@ describe('PanelService generate', () => {
     const v3 = await svc.generate(ctx, p3.id)
     expect(v3.prompt).not.toContain('[CONTINUITY]')
     expect(v3.referenceImagePaths).not.toContain(v1.imagePath)
+  })
+
+  /** A saved location with no picture, and a panel location in its base state. */
+  async function placeWithoutPicture(locations: LocationService, ctx: ProjectContext, name: string, layout = 'Back door at frame-left; shelves at frame-right.') {
+    const location = await locations.create(ctx, { name, layout }, 'user', { generate: false })
+    return { location, at: (camera = 'main'): PanelLocation => ({ locationId: location.id, stateId: location.states[0].id, camera }) }
+  }
+
+  it('with a location, continues from the last open shot of that place, and from nothing in a new place', async () => {
+    const { svc, locations, epi, ctx, calls } = await setup()
+    const stockroom = await placeWithoutPicture(locations, ctx, 'Stockroom')
+    const street = await placeWithoutPicture(locations, ctx, 'Street', 'Mart door at frame-right.')
+    const wide = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: stockroom.at() }), USER)).panel
+    const low = (await svc.create(ctx, draft(epi.id, { shot: 'worms-eye', location: stockroom.at('low, from the floor') }), USER)).panel
+    const next = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: stockroom.at() }), USER)).panel
+    const outside = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: street.at(), continuityNotes: 'Snow on the sign.' }), USER)).panel
+    expect(low.location).toEqual(stockroom.at('low, from the floor'))
+    const v1 = await svc.generate(ctx, wide.id)
+    await svc.generate(ctx, low.id)
+    const v3 = await svc.generate(ctx, next.id)
+    expect(v3.referenceImagePaths).toEqual([v1.imagePath])
+    expect(calls[2].req.references.map((r) => r.label)).toEqual(['earlier panel in the same place'])
+    expect(v3.prompt).toContain('[CONTINUITY] Same place as an earlier panel (reference image 1).')
+    const v4 = await svc.generate(ctx, outside.id)
+    expect(v4.referenceImagePaths).toEqual([])
+    expect(v4.prompt.split('\n').at(-1)).toBe('[CONTINUITY] Snow on the sign.')
+    expect(v4.prompt).toContain('[LOCATION] Street (no reference image): Mart door at frame-right. Camera: its main angle')
+  })
+
+  it('keeps a location through an update that does not name it, and clears it with null', async () => {
+    const { svc, locations, epi, ctx } = await setup()
+    const stockroom = await placeWithoutPicture(locations, ctx, 'Stockroom')
+    const p = (await svc.create(ctx, draft(epi.id, { location: stockroom.at() }), USER)).panel
+    expect((await svc.update(ctx, p.id, { description: 'Snow blows in.' }, USER)).panel.location).toEqual(stockroom.at())
+    expect((await svc.update(ctx, p.id, { location: stockroom.at('reverse') }, USER)).panel.location).toEqual(stockroom.at('reverse'))
+    expect((await svc.update(ctx, p.id, { location: null }, USER)).panel.location).toBeNull()
+    expect((await svc.create(ctx, draft(epi.id), USER)).panel.location).toBeNull()
+  })
+
+  it('refuses an unknown location or state, and an archived one only when it is new to the panel', async () => {
+    const { svc, locations, epi, ctx } = await setup()
+    const stockroom = await placeWithoutPicture(locations, ctx, 'Stockroom')
+    await expect(svc.create(ctx, draft(epi.id, { location: { locationId: 'loc_0000000000', stateId: 'lst_0000000000', camera: 'main' } }), USER)).rejects.toThrow('Unknown location: loc_0000000000')
+    await expect(svc.create(ctx, draft(epi.id, { location: { ...stockroom.at(), stateId: 'lst_0000000000' } }), USER)).rejects.toThrow('State lst_0000000000 does not belong to Stockroom')
+    const { panel, warnings } = await svc.create(ctx, draft(epi.id, { location: stockroom.at() }), USER)
+    expect(warnings).toContain('Stockroom has no ready picture yet: the panel is drawn from its layout in words only')
+    await locations.archive(ctx, stockroom.location.id)
+    expect((await svc.update(ctx, panel.id, { description: 'Still here.' }, USER)).panel.location).toEqual(stockroom.at())
+    await expect(svc.create(ctx, draft(epi.id, { location: stockroom.at() }), USER)).rejects.toThrow('Location Stockroom is archived')
+    expect(await svc.panelsUsingLocation(ctx, stockroom.location.id)).toEqual([panel.id])
+    expect(await svc.panelsUsingLocationState(ctx, stockroom.location.states[0].id)).toEqual([panel.id])
+  })
+
+  it("sends the location's picture right after the cast, and an edit leaves it out", async () => {
+    const { svc, locations, epi, ctx, calls } = await setup()
+    const created = await locations.create(ctx, { name: 'Stockroom', layout: 'Back door at frame-left.' }, 'user')
+    const base = await locations.generateStateImage(ctx, created.id, created.states[0].id)
+    expect(base.status).toBe('ready')
+    const night = await locations.addState(ctx, created.id, { name: 'Night', delta: 'only embers glowing' }, 'user', { generate: false })
+    const p = (await svc.create(ctx, draft(epi.id, { location: { locationId: created.id, stateId: night.id, camera: 'reverse' } }), USER)).panel
+    const v = await svc.generate(ctx, p.id)
+    // A state with no picture of its own is drawn from the base picture.
+    expect(v.referenceImagePaths).toEqual([base.imagePath])
+    expect(calls.at(-1)!.req.references.map((r) => r.label)).toEqual(['Stockroom (the empty place, main camera angle)'])
+    expect(v.prompt).toContain(
+      '[LOCATION] Stockroom (reference image 1): Back door at frame-left. State: Night — only embers glowing. Camera: reverse angle, facing the other way, so the landmarks the layout puts on frame-left are on frame-right and the other way round.'
+    )
+    expect(v.drawnFrom?.location).toEqual(p.location)
+    const edited = await svc.editImage(ctx, p.id, 'Add snow')
+    expect(edited.referenceImagePaths).toEqual([])
   })
 
   it('references the previous panel’s current ready version, not its latest failed attempt', async () => {

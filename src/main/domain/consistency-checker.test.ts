@@ -9,7 +9,7 @@ import type { TextProvider, TextTurnRequest, TextTurnResult } from '../models/pr
 import type { ModelRegistry, ResolvedModel } from '../models/registry'
 import { writeFileAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
-import { makeCharacter, makeItem, makeItemUsage, makePanel, makeVariation } from '../test/factories'
+import { makeCharacter, makeItem, makeItemUsage, makeLocation, makeLocationState, makePanel, makeVariation } from '../test/factories'
 import { tempProject, type TempProject } from '../test/temp-project'
 import {
   buildCheckMessage,
@@ -18,6 +18,7 @@ import {
   CHECK_TIMEOUT_MS,
   ConsistencyChecker,
   parseCheckResponse,
+  skippedCheckWarning,
   type ConsistencyCheckInput,
   type SheetCheckInput
 } from './consistency-checker'
@@ -73,6 +74,28 @@ describe('parseCheckResponse', () => {
 
   it('judges only the first JSON object: a later valid one does not rescue a malformed first', () => {
     expect(parseCheckResponse('{"passed": "maybe", "issues": []} {"passed": true, "issues": []}')).toEqual(UNPARSEABLE)
+  })
+})
+
+describe('skippedCheckWarning', () => {
+  const skippedWith = (issue: string) => ({ passed: true, issues: [issue], skipped: true })
+
+  it('says nothing for no check, a check that ran and a cancelled one', () => {
+    expect(skippedCheckWarning(null)).toBeNull()
+    expect(skippedCheckWarning({ passed: true, issues: [], skipped: false })).toBeNull()
+    expect(skippedCheckWarning({ passed: false, issues: ['Mina hair is black'], skipped: false })).toBeNull()
+    expect(skippedCheckWarning(skippedWith('Consistency check failed to run: Cancelled'))).toBeNull()
+  })
+
+  it('says to stop when the vision model failed, since the next checks will fail too', () => {
+    expect(skippedCheckWarning(skippedWith('Consistency check failed to run: 402 Insufficient Balance'))).toBe(
+      'This image was not checked: the vision model failed (402 Insufficient Balance). The next panels will not be checked either until it works. Stop after this panel and tell the user, who can fix the vision model or pick another one in Settings → Models.'
+    )
+  })
+
+  it('only says to tell the user about a timeout or an answer that could not be read', () => {
+    expect(skippedCheckWarning(skippedWith('Consistency check timed out after 180s'))).toBe('This image was not checked: consistency check timed out after 180s. Tell the user.')
+    expect(skippedCheckWarning(UNPARSEABLE)).toBe('This image was not checked: checker response could not be parsed. Tell the user.')
   })
 })
 
@@ -236,7 +259,7 @@ describe('ConsistencyChecker', () => {
     expect(message.imagePaths).toEqual([MINA_REF, JIN_REF, PREVIOUS, GENERATED])
   })
 
-  it('lists the references, the cast with its looks, the description and the shot', async () => {
+  it('lists the references, the cast with its looks, the description, the setting and the shot', async () => {
     const { checker, ctx, turns } = await setup()
     await checker.check(ctx, await input(ctx))
     const text = (turns[0].req.messages[0] as Extract<ChatMessage, { role: 'user' }>).text
@@ -253,6 +276,7 @@ describe('ConsistencyChecker', () => {
         '- Jin — JIN LOCK — Look: Base',
         '',
         'Panel description: Mina and Jin wait at the bus stop.',
+        'Setting: Apartment hallway, evening',
         'Shot: close-up'
       ].join('\n')
     )
@@ -440,8 +464,17 @@ describe('buildCheckMessage with items', () => {
       '- Nova — NOVA ITEM LOCK — Use: Firing — cyan beam — Held by: Nova',
       '',
       'Panel description: Nova draws.',
+      'Setting: Apartment hallway, evening',
       'Shot: medium'
     ])
+  })
+
+  it('ends with the continuity notes when the panel has any, so the layout they state can be judged', () => {
+    const noted = { ...panel, continuityNotes: ' Layout: the back door is at the left edge of the frame. ' }
+    const earlier = { relPath: 'panels/pnl_4/v.png', label: 'earlier panel in the same place', subject: { kind: 'previous' as const } }
+    const lines = buildCheckMessage({ references: [characterRef, itemRef, earlier], panel: noted, roster: [novaCharacter], itemRoster: [novaItem] }).split('\n')
+    expect(lines).toContain('3. Reference: earlier panel in the same place')
+    expect(lines.slice(-3)).toEqual(['Setting: Apartment hallway, evening', 'Shot: medium', 'Continuity notes: Layout: the back door is at the left edge of the frame.'])
   })
 
   it('matches references by subject, not label, when a character and an item share a name', () => {
@@ -467,6 +500,20 @@ describe('buildCheckMessage with items', () => {
   it('has no Items block for a panel without items, and throws for an item that is gone', () => {
     expect(buildCheckMessage({ references: [], panel: makePanel(), roster: [], itemRoster: [novaItem] })).not.toContain('Items:')
     expect(() => buildCheckMessage({ references: [], panel, roster: [novaCharacter], itemRoster: [] })).toThrow('Unknown item entry: itm_nova/use_nova_fire')
+  })
+
+  it("gives the panel's location its layout, state and camera, and marks a picture that was not sent", () => {
+    const stockroom = makeLocation({ states: [makeLocationState(), makeLocationState({ id: 'lst_0000000002', name: 'Night', kind: 'state', delta: 'embers only' })] })
+    const placed = makePanel({ location: { locationId: stockroom.id, stateId: 'lst_0000000002', camera: 'reverse' } })
+    const picture = { relPath: 'locations/a.png', label: 'Back stockroom (the empty place, main camera angle)', subject: { kind: 'location' as const, id: stockroom.id } }
+    const sent = buildCheckMessage({ references: [picture], panel: placed, roster: [], itemRoster: [], locations: [stockroom] }).split('\n')
+    expect(sent[1]).toBe('1. Reference: Back stockroom (the empty place, main camera angle)')
+    expect(sent).toContain(`Location: Back stockroom — Layout: ${stockroom.layout} — State: Night — embers only — Camera: reverse`)
+    const unsent = buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [], locations: [stockroom] })
+    expect(unsent).toContain('Camera: reverse (no reference image)')
+    // Without the locations (an older caller), the location is not described at all.
+    expect(buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [] })).not.toContain('Location:')
+    expect(() => buildCheckMessage({ references: [], panel: placed, roster: [], itemRoster: [], locations: [] })).toThrow('Unknown location entry: loc_0000000001/lst_0000000002')
   })
 })
 
@@ -498,6 +545,7 @@ describe('buildCheckMessage with packed sheets', () => {
       '- Yuna — YUNA_LOCK — Look: Base',
       '',
       'Panel description: They meet.',
+      'Setting: Apartment hallway, evening',
       'Shot: medium'
     ])
   })
@@ -517,6 +565,17 @@ describe('buildSheetCheckMessage', () => {
   const glaive = makeItem({ id: 'itm_vesper', name: 'Vesper glaive', appearanceLock: 'GLAIVE LOCK' })
   const rain = makeVariation({ id: 'var_rain', characterId: 'chr_ara', name: 'Outfit: Rain', kind: 'outfit', delta: 'yellow raincoat' })
   const usage = (o: Parameters<typeof makeItemUsage>[0]) => makeItemUsage({ itemId: 'itm_vesper', ...o })
+
+  it('writes a location picture with its layout as the lock, and a State line for a state', () => {
+    const stockroom = makeLocation({ name: 'Back stockroom', layout: 'LAYOUT' })
+    expect(buildSheetCheckMessage({ subject: { kind: 'location', location: stockroom, state: stockroom.states[0] }, baseImageRelPath: null })).toBe(
+      ['Images, in the order attached:', '1. Generated sheet (the image to check)', '', 'Sheet: Location reference picture', 'Subject: Back stockroom', 'Lock: LAYOUT'].join('\n')
+    )
+    const night = makeLocationState({ id: 'lst_night', name: 'Night', kind: 'state', delta: 'embers only' })
+    const text = buildSheetCheckMessage({ subject: { kind: 'location', location: stockroom, state: night }, baseImageRelPath: 'locations/loc_0000000001/base.png' })
+    expect(text).toContain('1. Base reference: location Back stockroom\n')
+    expect(text.endsWith('Lock: LAYOUT\nState: Night — embers only')).toBe(true)
+  })
 
   it('writes the base character sheet with only the candidate', () => {
     expect(buildSheetCheckMessage({ subject: { kind: 'character', character: ara, variation: ara.variations[0] }, baseImageRelPath: null })).toBe(

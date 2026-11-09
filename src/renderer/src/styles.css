@@ -2845,6 +2845,17 @@ kbd {
   object-fit: cover;
 }
 
+/* Location pictures are wide rooms: a landscape frame, and the whole picture, so a landmark at the frame's edge shows. */
+.character-thumb.is-landscape,
+.variation-media.is-landscape {
+  aspect-ratio: 4 / 3;
+}
+
+.character-thumb.is-landscape img,
+.variation-media.is-landscape img {
+  object-fit: contain;
+}
+
 .character-thumb-empty,
 .variation-placeholder {
   padding: 4px;
@@ -2883,6 +2894,25 @@ kbd {
 .badge-failed {
   color: var(--pill-negative-ink);
   background: var(--pill-negative-bg);
+}
+
+.badge-warning {
+  color: var(--pill-warning-ink);
+  background: var(--pill-warning-bg);
+  box-shadow: inset 0 0 0 1px var(--pill-warning-edge);
+}
+
+/* A panel's consistency check: over the art's corner on a strip card, inline in the editor's header. */
+.panel-card > .panel-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+}
+
+.panel-check-passed {
+  font-size: var(--fs-small);
+  color: var(--muted);
 }
 
 .character-form,
