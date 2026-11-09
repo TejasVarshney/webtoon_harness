@@ -63,7 +63,7 @@ export const RoleSchema = z.enum(['agent', 'panelChat', 'vision', 'image', 'imag
 // Project
 // ---------------------------------------------------------------------------------------------
 
-const DEFAULT_STYLE_PRESET = 'Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces'
+export const DEFAULT_STYLE_PRESET ='Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces'
 
 export const ProjectMetaSchema = z.object({
   id: Id,

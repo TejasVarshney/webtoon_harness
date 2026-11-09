@@ -58,6 +58,11 @@ export type ModelPatch = Partial<Pick<ModelConfig, 'modelId' | 'label' | 'capabi
 /** One workflow doc of a project: `name` is its path in the project's `agent/` folder without `.md` (`AGENTS`, `workflows/panel-editing`). */
 export type WorkflowDocEntry = { name: string; title: string }
 
+/** One style of the library. `edited`: a built-in the user changed, which Reset to default restores. */
+export type StyleEntry = { id: string; name: string; text: string; builtin: boolean; edited: boolean }
+/** What a project has drawn or is drawing: the art a new style would no longer match. */
+export type StyleUsage = { sheets: number; panels: number }
+
 /** Every request/response pair that crosses the preload bridge. Later tasks add channels here. */
 export interface IpcContract {
   'projects:list': { req: Record<string, never>; res: { projects: ProjectMeta[]; problems: ProjectProblem[] } }
