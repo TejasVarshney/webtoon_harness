@@ -212,6 +212,13 @@ describe('WebtoonPane', () => {
       expect(screen.getByLabelText('Episode')).toHaveValue(second.id)
     })
 
+    it('offers no way to rename an episode', async () => {
+      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [] })
+      await screen.findByLabelText('Episode')
+      expect(screen.queryByRole('button', { name: /rename/i })).toBeNull()
+      expect(screen.queryByRole('textbox', { name: /rename/i })).toBeNull()
+    })
+
     it('can cancel creating an episode, and shows a failure', async () => {
       mount({
         'episodes:list': () => [episode()],

@@ -174,13 +174,13 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().episodes.map((e) => e.id)).toEqual([EPISODE_ID, 'epi_0000000002'])
     })
 
-    it('updateEpisode renames and reloads the list', async () => {
-      const renamed = episode({ title: 'Pilot' })
-      const { calls } = installFakeApi({ 'episodes:update': () => renamed, 'episodes:list': () => [renamed], 'panels:list': () => [] })
+    it('updateEpisode saves the synopsis and reloads the list', async () => {
+      const edited = episode({ synopsis: 'Mina finds a letter.' })
+      const { calls } = installFakeApi({ 'episodes:update': () => edited, 'episodes:list': () => [edited], 'panels:list': () => [] })
       useAppStore.setState({ activeEpisodeId: EPISODE_ID })
-      await usePanelsStore.getState().updateEpisode(EPISODE_ID, { title: 'Pilot' })
-      expect(calls[0]).toEqual({ channel: 'episodes:update', req: { projectId, episodeId: EPISODE_ID, patch: { title: 'Pilot' } } })
-      expect(usePanelsStore.getState().episodes[0].title).toBe('Pilot')
+      await usePanelsStore.getState().updateEpisode(EPISODE_ID, { synopsis: 'Mina finds a letter.' })
+      expect(calls[0]).toEqual({ channel: 'episodes:update', req: { projectId, episodeId: EPISODE_ID, patch: { synopsis: 'Mina finds a letter.' } } })
+      expect(usePanelsStore.getState().episodes[0].synopsis).toBe('Mina finds a letter.')
     })
 
     it("saveSketch sends the PNG and reloads the panel's episode; readSketch asks for it", async () => {

@@ -33,7 +33,7 @@ async function showIssues<T>(task: Promise<T>): Promise<T> {
 
 const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
-const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ title: Title.optional(), synopsis: z.string().optional() }) })
+const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
 const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */

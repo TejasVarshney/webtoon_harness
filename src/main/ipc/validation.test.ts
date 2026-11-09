@@ -82,10 +82,10 @@ describe('IPC input validation', () => {
     expect(await invoke('projects:create', { title: ' Sun Diary ' })).toMatchObject({ title: 'Sun Diary' })
   })
 
-  it('episodes:create and episodes:update need a title of at least one character', async () => {
+  it('episodes:create needs a title of at least one character, and episodes:update takes no title', async () => {
     const { invoke, projectId, episodeId } = await setup()
     expect((await rejection(invoke('episodes:create', { projectId, title: '' }))).message).toMatch(/^Invalid input: title: /)
-    expect((await rejection(invoke('episodes:update', { projectId, episodeId, patch: { title: '' } }))).message).toMatch(/^Invalid input: patch\.title: /)
+    expect((await rejection(invoke('episodes:update', { projectId, episodeId, patch: { title: 'New' } }))).message).toMatch(/^Invalid input: patch: /)
     expect(await invoke('episodes:update', { projectId, episodeId, patch: { synopsis: 'Night' } })).toMatchObject({ synopsis: 'Night' })
   })
 

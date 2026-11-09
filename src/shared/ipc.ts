@@ -144,7 +144,7 @@ export interface IpcContract {
   /** A project with no episode yet gets `Episode 1` on the first call. */
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
-  'episodes:update': { req: { projectId: string; episodeId: string; patch: { title?: string; synopsis?: string } }; res: Episode }
+  'episodes:update': { req: { projectId: string; episodeId: string; patch: { synopsis?: string } }; res: Episode }
   /** The episode's panels in episode order. */
   'panels:list': { req: { projectId: string; episodeId: string }; res: Panel[] }
   'panels:get': { req: { projectId: string; panelId: string }; res: Panel }

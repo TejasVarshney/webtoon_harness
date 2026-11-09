@@ -34,7 +34,7 @@ export interface PanelsActions {
   showPanel(id: string): Promise<void>
   /** Creates the episode and opens it. */
   createEpisode(title: string): Promise<Episode>
-  updateEpisode(id: string, patch: { title?: string; synopsis?: string }): Promise<Episode>
+  updateEpisode(id: string, patch: { synopsis?: string }): Promise<Episode>
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
   createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>

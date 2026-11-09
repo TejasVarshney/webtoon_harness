@@ -82,9 +82,16 @@ describe('episodes IPC handlers', () => {
     expect(second).toMatchObject({ number: 2, title: 'The Letter', synopsis: 'Mina finds a letter.' })
     expect((await h['episodes:list']({ projectId })).map((e) => e.number)).toEqual([1, 2])
 
-    const renamed = await h['episodes:update']({ projectId, episodeId: second.id, patch: { title: 'The Letter, Again' } })
-    expect(renamed).toMatchObject({ id: second.id, title: 'The Letter, Again', synopsis: 'Mina finds a letter.', number: 2 })
-    await expect(h['episodes:update']({ projectId, episodeId: 'epi_ffffffffff', patch: { title: 'x' } })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+    const edited = await h['episodes:update']({ projectId, episodeId: second.id, patch: { synopsis: 'Mina burns it.' } })
+    expect(edited).toMatchObject({ id: second.id, title: 'The Letter', synopsis: 'Mina burns it.', number: 2 })
+    await expect(h['episodes:update']({ projectId, episodeId: 'epi_ffffffffff', patch: { synopsis: 'x' } })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+  })
+
+  it('refuses a new title', async () => {
+    const { h, projectId, episode } = await setup()
+    // @ts-expect-error a title is not part of the patch type; the runtime check must refuse it too
+    await expect(h['episodes:update']({ projectId, episodeId: episode.id, patch: { title: 'New' } })).rejects.toThrow()
+    expect((await h['episodes:list']({ projectId }))[0].title).toBe('Episode 1')
   })
 })
 
