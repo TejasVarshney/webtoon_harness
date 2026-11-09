@@ -5,7 +5,7 @@ import type { Beat, BeatPatch } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, stripBom, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import { isNotFound } from '../storage/fs-errors'
-import type { ProjectContext, ProjectStore } from '../storage/project-store'
+import type { ProjectContext } from '../storage/project-store'
 import { CorruptFileError, EntityNotFoundError } from './errors'
 import { checkedHeading, listSections, upsertMarkdownSection } from './markdown-sections'
 import { now } from './records'
@@ -17,7 +17,6 @@ const BIBLE_TEMPLATE = `# Story Bible\n\n${BIBLE_SECTIONS.map((name) => `## ${na
 
 export interface StoryServiceOptions {
   bus: EventBus
-  projects: ProjectStore
 }
 
 export type StoryView = {

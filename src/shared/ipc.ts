@@ -173,9 +173,8 @@ export interface IpcContract {
   /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
   'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
   'panelChat:cancel': { req: { runId: string }; res: void }
-  /** The mode, the bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
+  /** The bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
   'story:get': { req: { projectId: string; episodeId?: string }; res: { bible: string; beats: Beat[] } }
-  /** Returns the updated project meta, so the toggle can follow without waiting for `project.changed`. */
   /** The style library. `loadError`: `styles.json` is unreadable, so the list holds only the built-ins and saves fail. */
   'styles:list': { req: Record<string, never>; res: { styles: StyleEntry[]; loadError: string | null } }
   'styles:create': { req: { name: string; text: string }; res: StyleEntry }

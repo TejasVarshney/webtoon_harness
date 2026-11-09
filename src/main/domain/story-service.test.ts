@@ -18,7 +18,7 @@ const OTHER_EPISODE = 'epi_0000000002'
 async function setup() {
   const t = await tempProject()
   tp = t
-  const svc = new StoryService({ bus: t.bus, projects: t.store })
+  const svc = new StoryService({ bus: t.bus })
   t.events.length = 0
   const bibleFile = t.ctx.paths.storyBible()
   const outlineFile = t.ctx.paths.storyOutline()
