@@ -167,10 +167,12 @@ describe('story mode toggle and continue button', () => {
     expect(screen.getByTestId('story-mode-toggle')).toHaveValue('user')
     act(() => emit({ type: 'project.changed', projectId: P }))
     await waitFor(() => expect(screen.getByTestId('story-mode-toggle')).toHaveValue('ai'))
-    expect(calls.map((c) => c.channel)).toEqual(['projects:open'])
+    // The header also reads the style library when it opens; that is not a reaction to the change.
+    const reactions = () => calls.filter((c) => c.channel !== 'styles:list').map((c) => c.channel)
+    expect(reactions()).toEqual(['projects:open'])
     expect(useAppStore.getState().projects[0].title).toBe('Renamed')
     // Another project's change is none of this project's business.
     act(() => emit({ type: 'project.changed', projectId: 'prj_bbbbbbbbbb' }))
-    expect(calls).toHaveLength(1)
+    expect(reactions()).toHaveLength(1)
   })
 })
