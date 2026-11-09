@@ -133,6 +133,37 @@ describe('StyleLibrary', () => {
     expect(await fs.promises.readFile(file, 'utf8')).toBe('{"custom": oops')
   })
 
+  it('refuses a reset that would clash with a style now using the built-in name', async () => {
+    const { library } = await setup()
+    await library.update('watercolor', { name: 'Aqua' })
+    await library.create({ name: 'Watercolor', text: 'Ink wash' })
+    await expect(library.reset('watercolor')).rejects.toThrow('There is already a style named Watercolor.')
+    expect(library.get('watercolor')?.name).toBe('Aqua')
+  })
+
+  it('recovers on the next save once a corrupt file is removed', async () => {
+    const { file } = await setup()
+    await fs.promises.mkdir(path.dirname(file), { recursive: true })
+    await fs.promises.writeFile(file, '{"custom": oops')
+    const library = new StyleLibrary(file)
+    await library.load()
+    await fs.promises.rm(file)
+    await library.create({ name: 'Mine', text: 'Ink wash' })
+    expect(library.loadError()).toBeNull()
+    expect(library.list()).toHaveLength(11)
+  })
+
+  it('keeps what a repaired file holds on the next save', async () => {
+    const { file } = await setup()
+    await fs.promises.mkdir(path.dirname(file), { recursive: true })
+    await fs.promises.writeFile(file, '{"custom": oops')
+    const library = new StyleLibrary(file)
+    await library.load()
+    await fs.promises.writeFile(file, JSON.stringify({ custom: [{ id: 'sty_0000000001', name: 'Kept', text: 'Old wash' }] }))
+    await library.create({ name: 'Mine', text: 'Ink wash' })
+    expect(library.list().map((s) => s.name)).toEqual(expect.arrayContaining(['Kept', 'Mine']))
+  })
+
   it('runs simultaneous creates without losing one', async () => {
     const { file, library } = await setup()
     await Promise.all([1, 2, 3, 4, 5].map((n) => library.create({ name: `Style ${n}`, text: 'Ink wash' })))

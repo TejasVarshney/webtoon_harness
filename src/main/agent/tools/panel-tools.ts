@@ -5,6 +5,7 @@ import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { PanelValidationError } from '../../domain/panel-service'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
+import { FIRST_ART_NOTE } from './style-tools'
 
 const DEFAULT_LAST = 5
 
@@ -151,7 +152,8 @@ const createPanel = defineTool({
     'An item that is shown goes in items with a usageId that has a ready image; an item named in the description must be attached or listed in offPanelMentions. ' +
     "Describe the action and composition, not the characters' looks: each cast member's appearanceLock is added to the image prompt for you. " +
     'Dialogue is stored as data and drawn over the image, so the picture contains no text. ' +
-    'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran.',
+    'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran. ' +
+    FIRST_ART_NOTE,
   input: PanelDraftSchema.extend({
     episodeId,
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),

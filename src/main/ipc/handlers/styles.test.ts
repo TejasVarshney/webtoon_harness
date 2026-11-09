@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BUILTIN_STYLES } from '../../domain/style-presets'
 import { testServices, type TestServices } from '../../test/test-services'
@@ -78,6 +80,17 @@ describe('styles IPC handlers', () => {
     const { h, services, projectId } = await setup()
     vi.spyOn(services.styles, 'usage').mockResolvedValue({ sheets: 1, panels: 0 })
     expect((await h['styles:apply']({ projectId, styleId: 'watercolor' })).stylePreset).toBe(WATERCOLOR)
+  })
+
+  it('stops reporting a corrupt file once it is removed', async () => {
+    const { h, services } = await setup()
+    const file = path.join(services.userDataDir, 'styles.json')
+    await fs.promises.mkdir(services.userDataDir, { recursive: true })
+    await fs.promises.writeFile(file, '{"custom": oops')
+    await services.styleLibrary.load()
+    expect((await h['styles:list']({})).loadError).not.toBeNull()
+    await fs.promises.rm(file)
+    expect((await h['styles:list']({})).loadError).toBeNull()
   })
 
   it('reports usage', async () => {

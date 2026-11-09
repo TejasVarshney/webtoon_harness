@@ -3,6 +3,9 @@ import type { StyleUsage } from '@shared/ipc'
 import { StyleRejectedError } from '../../domain/style-text'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition } from './registry'
 
+/** Ends the description of every tool that can draw a project's first art: after that art exists the agent can no longer set the style, and these are the tools it reaches for first. */
+export const FIRST_ART_NOTE = 'If this is the first art in a project still on the default style, settle the style first: read workflows/style-setup.'
+
 const OLDER_DOCS = 'This works even if older project docs say the style cannot be changed.'
 const LIBRARY_ONLY = 'This changes the library only; use set_style to apply a style.'
 

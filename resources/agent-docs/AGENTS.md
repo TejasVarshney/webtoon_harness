@@ -226,7 +226,7 @@ read_workflow_doc {"name": "workflows/panel-generation"}
 | create or change a character or a variation | `workflows/character-creation` |
 | create or change an item or a usage, or draw a panel that shows an item | `workflows/item-creation` |
 | create or change a location or a state, or draw the first panel in a place the story returns to | `workflows/location-creation` |
-| choose, write or change the art style | `workflows/style-setup` |
+| choose, write or change the art style, or draw the first sheet or panel of a project still on the default style | `workflows/style-setup` |
 | draw a new panel | `workflows/panel-generation`, then `reference/webtoon-style-guide` |
 | change an existing panel (fields, redraw, image edit) | `workflows/panel-editing` |
 | need the exact image prompt the app builds, or to explain a bad image | `reference/prompt-templates` |

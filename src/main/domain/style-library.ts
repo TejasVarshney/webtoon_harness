@@ -32,16 +32,24 @@ export class StyleLibrary {
   constructor(private readonly file: string) {}
 
   async load(): Promise<void> {
-    await this.mutex.run(this.file, async () => {
-      try {
-        this.state = await readJson(this.file, StylesFileSchema)
+    await this.mutex.run(this.file, () => this.read())
+  }
+
+  /** Call only while holding the file's lock. */
+  private async read(): Promise<void> {
+    try {
+      this.state = await readJson(this.file, StylesFileSchema)
+      this.corrupt = null
+    } catch (error) {
+      this.state = emptyFile()
+      if (error instanceof CorruptFileError) {
+        this.corrupt = error.message
+      } else if (isNotFound(error)) {
         this.corrupt = null
-      } catch (error) {
-        this.state = emptyFile()
-        if (error instanceof CorruptFileError) this.corrupt = error.message
-        else if (!isNotFound(error)) throw error
+      } else {
+        throw error
       }
-    })
+    }
   }
 
   /** The message about a corrupt `styles.json`, or null. */
@@ -88,6 +96,8 @@ export class StyleLibrary {
     return this.save((draft) => {
       if (!requireStyle(draft, id).builtin) throw new StyleRejectedError('Only a built-in style can be reset.')
       delete draft.overrides[id]
+      // Another style may have taken the shipped name while this one was renamed.
+      requireFreeName(draft, requireStyle(draft, id).name, id)
       return id
     })
   }
@@ -105,6 +115,8 @@ export class StyleLibrary {
   private save(change: (draft: StylesFile) => null): Promise<null>
   private save(change: (draft: StylesFile) => string | null): Promise<StyleEntry | null> {
     return this.mutex.run(this.file, async () => {
+      // The user may have repaired or removed the file since it was read.
+      if (this.corrupt !== null) await this.read()
       if (this.corrupt !== null) throw new StyleRejectedError('styles.json is unreadable and was left untouched, so nothing was saved. Repair or remove it.')
       const draft: StylesFile = structuredClone(this.state)
       const id = change(draft)

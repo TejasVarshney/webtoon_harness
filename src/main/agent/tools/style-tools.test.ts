@@ -155,6 +155,11 @@ describe('update_style', () => {
 })
 
 describe('the tool set', () => {
+  it.each(['create_character', 'create_item', 'create_location', 'create_panel'])('%s sends the agent to style setup before the first art', (tool) => {
+    const spec = buildAgentTools({ vision: true }).specs().find((t) => t.name === tool)
+    expect(spec?.description).toContain('If this is the first art in a project still on the default style, settle the style first: read workflows/style-setup.')
+  })
+
   it('offers no delete tool for styles', () => {
     expect(buildAgentTools({ vision: true }).names().filter((t) => /delete.*style/.test(t))).toEqual([])
   })

@@ -5,6 +5,7 @@ import { DuplicateItemError, DuplicateUsageError } from '../../domain/item-servi
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { joinIssues, sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
+import { FIRST_ART_NOTE } from './style-tools'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and every usage so new panels stay consistent.'
 
@@ -114,7 +115,8 @@ const createItem = defineTool({
     'Create a recurring item (a weapon, gadget, artifact or vehicle) and, unless generateBaseImage is false, generate its base reference image and wait for it. ' +
     'The appearanceLock is one paragraph of concrete visual description (about 25-70 words: shape and size compared with a hand, materials, colors, markings, lights, distinctive parts) ' +
     'that is injected verbatim into every image prompt showing the item. Give it a distinctive name ("Kestrel blaster", not "blaster"). ' +
-    'If the image fails the item is still created: read baseStatus and baseError, and call regenerate_item_usage with baseUsageId to retry.',
+    'If the image fails the item is still created: read baseStatus and baseError, and call regenerate_item_usage with baseUsageId to retry. ' +
+    FIRST_ART_NOTE,
   input: ItemInputSchema.extend({
     name: z.string().min(1).describe('Unique item name, distinctive, e.g. "Kestrel blaster"'),
     appearanceLock: z.string().min(1).describe('Canonical visual description injected into every image prompt for this item'),

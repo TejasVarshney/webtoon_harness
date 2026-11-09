@@ -14,7 +14,11 @@ const ApplySchema = z.object({ projectId: z.string(), styleId: z.string() })
 export function stylesHandlers(s: Services): HandlerMap {
   const library = s.styleLibrary
   return {
-    'styles:list': async () => ({ styles: library.list(), loadError: library.loadError() }),
+    'styles:list': async () => {
+      // A file reported as unreadable may have been repaired since.
+      if (library.loadError() !== null) await library.load()
+      return { styles: library.list(), loadError: library.loadError() }
+    },
     'styles:create': async (req) => library.create(parseInput(CreateSchema, req)),
     'styles:update': async (req) => {
       const { id, patch } = parseInput(UpdateSchema, req)

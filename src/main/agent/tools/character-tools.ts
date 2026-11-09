@@ -5,6 +5,7 @@ import { DuplicateCharacterError } from '../../domain/character-service'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
 import { joinIssues, sheetCheckFailure, sheetCheckState } from '../../domain/panel-validation'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
+import { FIRST_ART_NOTE } from './style-tools'
 
 const APPEARANCE_LOCK_CHANGED = 'appearanceLock changed: regenerate the base and variations so new panels stay consistent.'
 
@@ -103,7 +104,8 @@ const createCharacter = defineTool({
     'Create a character and, unless generateBaseImage is false, generate its base reference image and wait for it. ' +
     'The appearanceLock is one paragraph of concrete visual description (about 40-90 words: age and build, face, hair, eyes, skin, marks, default outfit, palette) ' +
     'that is injected verbatim into every image prompt showing the character. If the image fails the character is still created: read baseStatus and baseError, ' +
-    'and call regenerate_variation to retry.',
+    'and call regenerate_variation to retry. ' +
+    FIRST_ART_NOTE,
   input: CharacterInputSchema.extend({
     name: z.string().min(1).describe('Unique character name'),
     appearanceLock: z.string().min(1).describe('Canonical visual description injected into every image prompt for this character'),
