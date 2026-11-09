@@ -198,4 +198,89 @@ describe('dragging panels on the strip', () => {
     expect(card(0).style.left).toBe('40px')
     expect(card(0).style.top).toBe('30px')
   })
+
+  it('a cancelled drag does not swallow the next click', async () => {
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    fireEvent.pointerDown(card(0), { clientX: 100, clientY: 100, button: 0, buttons: 1 })
+    fireEvent.pointerMove(card(0), { clientX: 130, clientY: 100, buttons: 1 })
+    fireEvent.pointerCancel(card(0), {})
+    expect(card(0).style.left).toBe('40px')
+    fireEvent.click(card(1))
+    expect(useAppStore.getState().selectedPanelIds).toEqual([b.id])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
+    expect(screen.getByRole('dialog', { name: 'Delete panel' })).toBeInTheDocument()
+  })
+
+  it('a click long after a drag is not swallowed', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    drag(card(0), 20, 0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    fireEvent.click(card(1))
+    expect(useAppStore.getState().selectedPanelIds).toEqual([b.id])
+  })
+
+  it('takes the pointer at the press, so a move off the card still reaches it', () => {
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    const capture = vi.fn()
+    card(0).setPointerCapture = capture
+    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Regenerate' })[0], { pointerId: 7, button: 0, buttons: 1 })
+    expect(capture).not.toHaveBeenCalled()
+    fireEvent.pointerDown(card(0), { pointerId: 7, clientX: 100, clientY: 100, button: 0, buttons: 1 })
+    expect(capture).toHaveBeenCalledWith(7)
+  })
+
+  it('a press and release without travel still selects and a double-click still opens', () => {
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    drag(card(0), 0, 0)
+    fireEvent.click(card(0))
+    expect(useAppStore.getState().selectedPanelIds).toEqual([a.id])
+    fireEvent.doubleClick(card(0))
+    expect(useAppStore.getState().focusedPanelId).toBe(a.id)
+  })
+
+  it('a second drag while the first save is pending starts from the preview, and the first save landing keeps it', async () => {
+    const resolves: (() => void)[] = []
+    const { calls } = installFakeApi({
+      'panels:place': () => new Promise<void>((resolve) => resolves.push(resolve)),
+      'panels:list': () => [a, b]
+    })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    drag(card(0), 20, 50)
+    expect(card(0).style.left).toBe('60px')
+    drag(card(0), 10, 0)
+    expect(card(0).style.left).toBe('70px')
+    expect(placeCalls(calls)[1]).toEqual({ projectId, episodeId: EPISODE_ID, moves: [{ panelId: a.id, placement: { x: 70, y: 80, width: 200 } }] })
+    await act(async () => {
+      resolves[0]()
+    })
+    expect(card(0).style.left).toBe('70px')
+    expect(card(0).style.top).toBe('80px')
+  })
+
+  it('a card that leaves the strip mid-drag ends the gesture', () => {
+    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [b] })
+    const view = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    fireEvent.click(card(0))
+    fireEvent.click(card(1), { shiftKey: true })
+    fireEvent.pointerDown(card(1), { clientX: 100, clientY: 100, button: 0, buttons: 1 })
+    fireEvent.pointerMove(card(1), { clientX: 120, clientY: 100, buttons: 1 })
+    view.rerender(<StripCanvas episodeId={EPISODE_ID} panels={[b]} />)
+    fireEvent.pointerUp(card(0), { clientX: 120, clientY: 100, button: 0, buttons: 0 })
+    expect(placeCalls(calls)).toEqual([])
+    expect(card(0).style.left).toBe('220px')
+  })
+
+  it('an arrow with Ctrl, Alt or Meta is not a nudge', () => {
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) fireEvent.keyDown(card(0), { key: 'ArrowRight', ...mod })
+    expect(card(0).style.left).toBe('40px')
+  })
 })

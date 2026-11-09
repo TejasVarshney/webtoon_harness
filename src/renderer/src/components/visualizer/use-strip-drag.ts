@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { clampGroupDelta, clampPlacement, type PlacedPanel } from '@shared/strip-canvas'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { PanelPlacement } from '@shared/types'
@@ -53,45 +53,85 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
   const [previews, setPreviewsState] = useState<Previews>({})
   const [error, setError] = useState<string | null>(null)
   const placedRef = useRef(placed)
-  const previewsRef = useRef<Previews>({})
+  // What the gesture in hand shows, and what saves still in flight show. A save's landing only drops what it still owns,
+  // so a gesture or a later save on the same panel keeps its preview.
+  const drafts = useRef<Previews>({})
+  const held = useRef<Previews>({})
+  const holder = useRef<Record<string, number>>({})
+  const saveCount = useRef(0)
   const gesture = useRef<Gesture | null>(null)
   const nudge = useRef<{ ids: string[]; dx: number; dy: number } | null>(null)
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Set by a drag that just ended, so the click that follows it is not taken as a selection.
+  // Set by a drag that just ended, so the click that follows it is not taken as a selection. It only lives until that
+  // click would have been sent.
   const justDragged = useRef(false)
 
-  useEffect(() => {
-    placedRef.current = placed
-  }, [placed])
+  const publish = useCallback(() => setPreviewsState({ ...held.current, ...drafts.current }), [])
+  const setDrafts = useCallback(
+    (next: Previews) => {
+      drafts.current = next
+      publish()
+    },
+    [publish]
+  )
 
-  const setPreviews = useCallback((next: Previews) => {
-    previewsRef.current = next
-    setPreviewsState(next)
-  }, [])
+  useLayoutEffect(() => {
+    placedRef.current = placed
+    // A card that is gone cannot be dragged on, and what was shown for it is no longer wanted.
+    const here = new Set(placed.map((p) => p.panel.id))
+    const g = gesture.current
+    if (g !== null && (!here.has(g.id) || (g.kind === 'move' && g.ids.some((id) => !here.has(id))))) {
+      gesture.current = null
+      drafts.current = {}
+    }
+    for (const id of Object.keys(held.current)) {
+      if (!here.has(id)) {
+        delete held.current[id]
+        delete holder.current[id]
+      }
+    }
+    for (const id of Object.keys(drafts.current)) if (!here.has(id)) delete drafts.current[id]
+    publish()
+  }, [placed, publish])
 
   const save = useCallback(
     (moves: Previews) => {
       const episodeId = placedRef.current[0]?.panel.episodeId
-      if (episodeId === undefined || Object.keys(moves).length === 0) return
-      setPreviews(moves)
-      const list = Object.entries(moves).map(([panelId, placement]) => ({ panelId, placement }))
+      if (episodeId === undefined || Object.keys(moves).length === 0) {
+        setDrafts({})
+        return
+      }
+      const mine = ++saveCount.current
+      const ids = Object.keys(moves)
+      for (const id of ids) {
+        held.current[id] = moves[id]
+        holder.current[id] = mine
+      }
+      setDrafts({})
+      const done = (): void => {
+        for (const id of ids) {
+          if (holder.current[id] !== mine) continue
+          delete held.current[id]
+          delete holder.current[id]
+        }
+        publish()
+      }
+      const list = ids.map((panelId) => ({ panelId, placement: moves[panelId] }))
       usePanelsStore
         .getState()
         .placePanels(episodeId, list)
-        .then(
-          () => setPreviews({}),
-          (e: unknown) => {
-            setPreviews({})
-            setError(errorText(e))
-          }
-        )
+        .then(done, (e: unknown) => {
+          done()
+          setError(errorText(e))
+        })
     },
-    [setPreviews]
+    [publish, setDrafts]
   )
 
   /** The placements of `ids` after moving them by (dx, dy), the group held inside the strip. */
   const shifted = useCallback((ids: string[], dx: number, dy: number): { moves: Previews; dx: number; dy: number } => {
-    const group = placedRef.current.filter((p) => ids.includes(p.panel.id))
+    // From where a panel is shown: a save still in flight has moved it already.
+    const group = placedRef.current.filter((p) => ids.includes(p.panel.id)).map((p) => ({ ...p, ...held.current[p.panel.id] }))
     const delta = clampGroupDelta(group, dx, dy)
     const moves: Previews = {}
     for (const p of group) moves[p.panel.id] = clampPlacement({ x: Math.round(p.x + delta.dx), y: Math.round(p.y + delta.dy), width: Math.round(p.width) }, p.panel.aspect)
@@ -116,11 +156,16 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
       gesture.current = null
       const dragged = g.kind === 'resize' || g.dragging
       if (!dragged) return
-      if (g.kind === 'move') justDragged.current = true
-      if (commit && Object.keys(g.moved).length > 0) save(g.moved)
-      else setPreviews({})
+      // Only a drag that ends in a release is followed by a click.
+      if (g.kind === 'move' && commit) {
+        justDragged.current = true
+        setTimeout(() => (justDragged.current = false), 0)
+      }
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+      if (commit) save(g.moved)
+      else setDrafts({})
     },
-    [save, setPreviews]
+    [save, setDrafts]
   )
 
   const onMove = useCallback(
@@ -141,19 +186,18 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         if (aspect === undefined) return
         const next = clampPlacement({ ...g.from, width: Math.round(width) }, aspect)
         g.moved = next.width === g.from.width ? {} : { [g.id]: next }
-        setPreviews(g.moved)
+        setDrafts(g.moved)
         return
       }
       if (!g.dragging) {
         if (Math.hypot(e.clientX - g.start.x, e.clientY - g.start.y) < DRAG_THRESHOLD_PX) return
         g.dragging = true
-        e.currentTarget.setPointerCapture?.(e.pointerId)
         if (!useAppStore.getState().selectedPanelIds.includes(g.id)) useAppStore.getState().selectPanel(g.id)
       }
       g.moved = shifted(g.ids, dx, dy).moves
-      setPreviews(g.moved)
+      setDrafts(g.moved)
     },
-    [endGesture, setPreviews, shifted]
+    [endGesture, setDrafts, shifted]
   )
 
   const bindCard = useCallback(
@@ -164,6 +208,8 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         flushNudge()
         justDragged.current = false
         setError(null)
+        // Taken now, so a move that leaves the card (a press at its edge, a fast move) still reaches it.
+        e.currentTarget.setPointerCapture?.(e.pointerId)
         const selected = useAppStore.getState().selectedPanelIds
         gesture.current = {
           kind: 'move',
@@ -188,7 +234,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
         // Only the card itself: an arrow in a toolbar button is that button's.
         const step = ARROW_STEP[e.key]
-        if (e.target !== e.currentTarget || step === undefined) return
+        if (e.target !== e.currentTarget || step === undefined || e.ctrlKey || e.altKey || e.metaKey) return
         e.preventDefault()
         const selected = useAppStore.getState().selectedPanelIds
         const ids = selected.includes(id) ? selected : [id]
@@ -197,12 +243,12 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         const held = nudge.current ?? { ids, dx: 0, dy: 0 }
         const next = shifted(ids, held.dx + step.x * by, held.dy + step.y * by)
         nudge.current = { ids, dx: next.dx, dy: next.dy }
-        setPreviews(next.moves)
+        setDrafts(next.moves)
         if (nudgeTimer.current !== null) clearTimeout(nudgeTimer.current)
         nudgeTimer.current = setTimeout(flushNudge, NUDGE_COMMIT_MS)
       }
     }),
-    [endGesture, flushNudge, onMove, setPreviews, shifted]
+    [endGesture, flushNudge, onMove, setDrafts, shifted]
   )
 
   const bindResize = useCallback(
@@ -211,8 +257,9 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         // The handle is not a press on the card: it neither selects nor drags it.
         e.stopPropagation()
         if (e.button !== 0) return
-        const p = placedRef.current.find((q) => q.panel.id === id)
-        if (p === undefined) return
+        const found = placedRef.current.find((q) => q.panel.id === id)
+        if (found === undefined) return
+        const p = { ...found, ...held.current[id] }
         flushNudge()
         setError(null)
         e.currentTarget.setPointerCapture?.(e.pointerId)
