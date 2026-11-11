@@ -752,6 +752,24 @@ describe('PanelInspector', () => {
       expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
     })
 
+    it('says the panel uses a custom prompt and clears it', async () => {
+      replaceStored({ ...stored, promptOverride: 'A cat on a roof.' })
+      const { calls } = mount()
+      open('Scene')
+      expect(within(tabPanel()).getByText('This panel uses a custom prompt')).toBeInTheDocument()
+      fireEvent.click(within(tabPanel()).getByRole('button', { name: 'Use automatic prompt' }))
+      await waitFor(() => expect(updates(calls)).toEqual([{ promptOverride: null }]))
+      await waitFor(() => expect(within(tabPanel()).queryByText('This panel uses a custom prompt')).toBeNull())
+      expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+
+    it('says nothing about a custom prompt when the panel has none', () => {
+      mount()
+      open('Scene')
+      expect(within(tabPanel()).queryByText('This panel uses a custom prompt')).toBeNull()
+      expect(within(tabPanel()).queryByRole('button', { name: 'Use automatic prompt' })).toBeNull()
+    })
+
     it('sets a saved location at its base state and main angle, and offers no archived one', async () => {
       const { calls } = mount()
       open('Scene')

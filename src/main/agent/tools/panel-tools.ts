@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AgentDialogueSchema } from '@shared/agent-dialogue'
+import { PanelDrawChoiceKeys } from '@shared/panel-draw-choices'
 import { PanelCharacterSchema, PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import type { Episode, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
@@ -153,7 +154,7 @@ const createPanel = defineTool({
     'Dialogue is stored as data and drawn over the image, so the picture contains no text. ' +
     'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran. ' +
     FIRST_ART_NOTE,
-  input: PanelDraftSchema.extend({
+  input: PanelDraftSchema.omit(PanelDrawChoiceKeys).extend({
     episodeId,
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),
     description: z.string().describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
@@ -193,7 +194,7 @@ const updatePanel = defineTool({
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.extend({ location: locationField, dialogue: AgentDialogueSchema.optional() }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    patch: PanelPatchSchema.omit(PanelDrawChoiceKeys).extend({ location: locationField, dialogue: AgentDialogueSchema.optional() }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

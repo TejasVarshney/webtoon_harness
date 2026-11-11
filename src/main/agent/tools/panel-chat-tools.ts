@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
 import { AgentDialogueSchema } from '@shared/agent-dialogue'
+import { PanelDrawChoiceKeys } from '@shared/panel-draw-choices'
 import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Episode, Item, Location, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
@@ -201,7 +202,7 @@ const viewCurrentImage = (panelId: string): ToolDefinition =>
     }
   })
 
-const patchInput = PanelPatchSchema.extend({
+const patchInput = PanelPatchSchema.omit(PanelDrawChoiceKeys).extend({
   description: PanelPatchSchema.shape.description.describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
   setting: PanelPatchSchema.shape.setting.describe('Where and when, e.g. "Apartment hallway, evening"'),
   location: locationField,

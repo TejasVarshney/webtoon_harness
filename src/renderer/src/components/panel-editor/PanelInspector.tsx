@@ -83,7 +83,8 @@ export function PanelInspector({ panel, initialTab = 'lines', selectedLine, onSe
     location: useFieldAutosave(panel, 'location'),
     shot: useFieldAutosave(panel, 'shot'),
     aspect: useFieldAutosave(panel, 'aspect'),
-    frame: useFieldAutosave(panel, 'frame')
+    frame: useFieldAutosave(panel, 'frame'),
+    promptOverride: useFieldAutosave(panel, 'promptOverride')
   }
 
   useEffect(() => {

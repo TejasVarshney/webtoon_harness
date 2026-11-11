@@ -13,6 +13,7 @@
 
 import { z } from 'zod'
 import { PanelLocationSchema } from './location-schemas'
+import { PanelDrawChoices, PanelDrawChoicesInput } from './panel-draw-choices'
 import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
 import { BackgroundImagePath, checkBackgroundOwner, StripBackgroundSchema } from './strip-background'
 
@@ -32,16 +33,7 @@ function withoutDefaults<S extends z.ZodRawShape>(shape: S): WithoutDefaults<S> 
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
 const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
-export const ShotTypeSchema = z.enum([
-  'establishing',
-  'wide',
-  'medium',
-  'close-up',
-  'extreme-close-up',
-  'over-the-shoulder',
-  'birds-eye',
-  'worms-eye'
-])
+export const ShotTypeSchema = z.enum(['establishing', 'wide', 'medium', 'close-up', 'extreme-close-up', 'over-the-shoulder', 'birds-eye', 'worms-eye'])
 /** What an image model can be asked to draw. */
 export const DrawAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
 /** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and faded at the top and bottom. */
@@ -334,6 +326,7 @@ export const PanelSchema = z.object({
   currentVersionId: Id.nullable().default(null),
   /** The user's rough layout sketch (`panels/<pnlId>/sketch-<n>.png`), a reference for generation only. Absent or null: none. */
   sketchPath: z.string().nullable().optional(),
+  ...PanelDrawChoices,
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
@@ -366,7 +359,8 @@ export const PanelDraftSchema = z.object({
   items: z.array(PanelItemSchema).optional(),
   dialogue: z.array(DialogueDraftSchema),
   continuityNotes: z.string().optional(),
-  offPanelMentions: z.array(z.string()).optional()
+  offPanelMentions: z.array(z.string()).optional(),
+  ...PanelDrawChoicesInput
 })
 
 export const PanelPatchSchema = PanelDraftSchema.omit({ episodeId: true, afterPanelId: true }).partial()

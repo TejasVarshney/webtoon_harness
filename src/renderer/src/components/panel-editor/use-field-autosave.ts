@@ -7,7 +7,7 @@ import { queuePanelSave, useLastWarnings } from './panel-save-queue'
 const AUTOSAVE_MS = 600
 
 /** The panel's fields focus mode's tabs save one by one. Dialogue saves through `useDialogueSaver`. */
-export type AutosaveField = 'description' | 'setting' | 'location' | 'shot' | 'aspect' | 'frame' | 'characters' | 'items'
+export type AutosaveField = 'description' | 'setting' | 'location' | 'shot' | 'aspect' | 'frame' | 'promptOverride' | 'characters' | 'items'
 
 /** What became of a sent value: stored, refused by the service, or not sent after all (the line changed, the panel is gone). */
 type AutosaveOutcome = 'saved' | 'refused' | 'dropped'

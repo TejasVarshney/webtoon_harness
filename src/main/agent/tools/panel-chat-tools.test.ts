@@ -86,6 +86,7 @@ describe('panel chat tools: the tool set', () => {
       expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
     )
     expect(Object.keys(schema('update_panel_fields').properties)).not.toContain('gutter')
+    for (const key of ['referencePanelIds', 'styleOverride', 'promptOverride']) expect(Object.keys(schema('update_panel_fields').properties)).not.toContain(key)
     expect(schema('update_panel_fields').properties.shot.enum).toContain('close-up')
     for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))

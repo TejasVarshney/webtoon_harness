@@ -71,9 +71,10 @@ Reference images, in this order:
 2. the location's picture (only when the panel has a location with a ready picture; see Panel Prompt with a location);
 3. the image of the usage each attached item uses, in panel order (only when the panel has items);
 4. the user's layout sketch (only when the panel has one);
-5. the image the panel continues from: the previous panel's current image, or an earlier panel's in the same place.
+5. the panels the user chose as references (only when the panel has some with a picture; see Panel Prompt with chosen panels);
+6. the image the panel continues from: the previous panel's current image, or an earlier panel's in the same place.
 
-The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the app first packs character sheets: it draws the sheets of the last cast members side by side on one image, each under the character's name, and sends them as one reference image. It packs as few as it takes (at least 2, at most 4), so the first characters keep a sheet of their own (see Panel Prompt with packed character sheets). If there are still too many, or the packed image cannot be drawn, the previous panel's image is dropped first, then the sketch, then items from the end of the list, then the location's picture, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it. A packed sheet is drawn smaller than a sheet of its own, and small details can drift between neighbors. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
+The image model accepts a limited number of reference images (set per model in Settings → Models, 4 by default). When there are more, the app first packs character sheets: it draws the sheets of the last cast members side by side on one image, each under the character's name, and sends them as one reference image. It packs as few as it takes (at least 2, at most 4), so the first characters keep a sheet of their own (see Panel Prompt with packed character sheets). If there are still too many, or the packed image cannot be drawn, the previous panel's image is dropped first, then the chosen panels from the end, then the sketch, then items from the end of the list, then the location's picture, then cast members from the end of the list; a dropped entry's line reads "(no reference image)", and a dropped sketch takes its [LAYOUT] line with it, and chosen panels that were dropped are left out of the [REFERENCE PANELS] line. A packed sheet is drawn smaller than a sheet of its own, and small details can drift between neighbors. This is why the most important character goes first, why 3 foreground characters is the maximum, and why a panel where an item matters keeps its cast to 2.
 
 Worked example. The project style is the default, Jin wears his base variation (no delta) and Mina wears "Outfit: School uniform"; the previous panel has a ready image:
 
@@ -179,7 +180,7 @@ When the panel has a `location`, a [LOCATION] line follows the [SETTING] line:
 
 ### Panel Prompt with a layout sketch
 
-The user can scribble a rough layout of the panel in editing mode (Sketch). When the panel has a sketch, a [LAYOUT] line follows the [CHARACTERS] lines (and [ITEMS], when there are items) and comes before [CONTINUITY]:
+The user can scribble a rough layout of the panel in focus mode (Sketch). When the panel has a sketch, a [LAYOUT] line follows the [CHARACTERS] lines (and [ITEMS], when there are items) and comes before [CONTINUITY]:
 
 ```
 [LAYOUT] Follow the rough composition of the sketch (reference image {s}): where the figures and objects sit, their poses, the camera angle and the framing. It is a rough guide only: never copy its scribbled lines, flat colours or blank background, and draw everything in the style above.
@@ -188,6 +189,22 @@ The user can scribble a rough layout of the panel in editing mode (Sketch). When
 - **Only a generation sends it.** `edit_panel_image` keeps the image's own composition, so an edit gets no sketch and no [LAYOUT] line.
 - **The consistency check never sees it.** The checker compares the picture with the cast, the items and the previous panel; the sketch is a guide, not something to match.
 - **Write the description to agree with it.** The sketch says where things are; the description says what happens. When they disagree, the image model has to guess.
+
+### Panel Prompt with chosen panels
+
+The user can shift-select panels on the strip and draw a panel with them as reference, and can give one panel a style or a prompt of its own. When the panel has chosen panels with a picture, one [REFERENCE PANELS] line follows [LAYOUT] (or the [CHARACTERS] and [ITEMS] lines, without a sketch) and comes before [CONTINUITY]:
+
+```
+[REFERENCE PANELS] Reference image {r} is a panel the user chose: match its characters, art style, palette and setting. Never copy its composition.
+```
+
+With several, it reads "Reference images {r1} and {r2} are panels the user chose: match their characters, art style, palette and setting. Never copy their composition." and, with three or more, "{r1}, {r2} and {r3}". Only the panels that were sent are numbered.
+
+- **Only a generation sends them.** `edit_panel_image` keeps the image's own composition, so an edit gets no chosen panels and no [REFERENCE PANELS] line.
+- **A chosen panel that is gone, or has no picture, is skipped.** The draw goes on without it.
+- **The consistency check never sees them.** They are guides for the look, not something to match.
+- **A style of the panel's own replaces {stylePreset} in the [STYLE] line.** The project's style is untouched.
+- **A prompt of the panel's own is sent instead of the whole composed prompt**, with the same reference images and the [FIX] line after a failed check. The Scene tab says when a panel has one. The tools do not set any of these three: they are the user's choices.
 
 ## Base Reference Prompt
 

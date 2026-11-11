@@ -61,7 +61,7 @@ export function locationStatePrompt(l: Location, state: LocationState, stylePres
  * Whose image a reference is. The checker matches references to cast and items by this, never by label. A pack is one
  * image holding several members' sheets, in grid order (see `reference-pack.ts`).
  */
-type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'previous' } | { kind: 'pack'; members: PackMember[] }
+type ReferenceSubject = { kind: 'character'; id: string } | { kind: 'location'; id: string } | { kind: 'item'; id: string } | { kind: 'sketch' } | { kind: 'panel'; id: string } | { kind: 'previous' } | { kind: 'pack'; members: PackMember[] }
 
 export interface PanelPromptReference {
   relPath: string
@@ -81,6 +81,8 @@ export interface PanelPromptInput {
   previous: { panelId: string; imagePath: string; earlier?: boolean } | null
   /** The user's layout sketch, for a generation only (an edit keeps the image's own composition). */
   sketch?: string | null
+  /** The panels the user chose as references, in their order, each with its current picture (a generation only). */
+  referencePanels?: { panelId: string; imagePath: string }[]
   /** The image model's reference-image cap. */
   maxReferences: number
   /**
@@ -92,7 +94,7 @@ export interface PanelPromptInput {
 
 export interface PanelPromptResult {
   prompt: string
-  /** In the order claimed: ready cast variations (cast order, a pack in the place of its first member), then the location's picture, then ready item usages (panel order), then the sketch, then the previous panel. */
+  /** In the order claimed: ready cast variations (cast order, a pack in the place of its first member), then the location's picture, then ready item usages (panel order), then the sketch, then the user's chosen panels, then the previous panel. */
   references: PanelPromptReference[]
 }
 
@@ -104,6 +106,14 @@ const NO_REFERENCE = '(no reference image)'
 /** Follows [CHARACTERS] when `sheets` cast sheets are packed onto reference image `n`. */
 function packNote(n: number, sheets: number): string {
   return `Reference image ${n} holds ${sheets} character sheets, each labeled with the person's name, only to show what each person looks like: never copy its layout, background, poses or labels.`
+}
+
+/** Follows [REFERENCE PANELS]: `numbers` are the reference images the chosen panels went out as. */
+function referencePanelsLine(numbers: number[]): string {
+  const [first, ...rest] = numbers
+  if (rest.length === 0) return `[REFERENCE PANELS] Reference image ${first} is a panel the user chose: match its characters, art style, palette and setting. Never copy its composition.`
+  const list = `${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`
+  return `[REFERENCE PANELS] Reference images ${list} are panels the user chose: match their characters, art style, palette and setting. Never copy their composition.`
 }
 
 const LAYOUT_PREFIX = '[LAYOUT] Follow the rough composition of the sketch'
@@ -147,19 +157,19 @@ const ITEMS_HEADER =
 /**
  * Builds the panel prompt and its ordered reference list. References are the cast members'
  * variation images in cast order, then the location's picture, then the panel items' usage images in panel order, then the user's
- * layout sketch (a [LAYOUT] line, left out with its image), then the image the panel continues from (the previous
+ * layout sketch (a [LAYOUT] line, left out with its image), then the panels the user chose (one [REFERENCE PANELS] line for those sent), then the image the panel continues from (the previous
  * panel, or an earlier one in the same place, each with its own [CONTINUITY] wording; with neither, the line holds only
  * the continuity notes, and is left out when there are none). With `packing`, over `maxReferences` some cast sheets
  * share one image first (`chooseCastToPack`): the pack takes its first member's place, [CHARACTERS] says what it is,
  * and each member reads "(reference image N, the sheet labeled Name)". Still over `maxReferences`, the previous panel
- * is dropped first, then the sketch, then items from the end, then the location's picture, then cast members from the
+ * is dropped first, then the chosen panels from the end, then the sketch, then items from the end, then the location's picture, then cast members from the
  * end, and a dropped entry reads "(no reference image)" (an item's lock still applies). A cast member or item whose
  * image is not ready reads the same way (validation reports that separately). Throws if a cast entry names a character
  * or variation that is not in `roster`, or an item entry names an item or usage that is not in `itemRoster`: callers
  * validate first. Archived characters and items still compose, so existing panels can be regenerated.
  */
 export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
-  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, maxReferences, packing } = input
+  const { stylePreset, panel, roster, itemRoster, locations, previous, sketch, referencePanels = [], maxReferences, packing } = input
   const references: PanelPromptReference[] = []
 
   /** Records `file` as the next reference and gives its number, or null when there is no file or the cap is reached. */
@@ -188,7 +198,7 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
   // Resolved before packing is chosen: the picture takes a slot like any other reference.
   const place = panel.location && locations ? placeOf(panel.location, locations) : null
 
-  const others = gear.filter((g) => g.sheet !== null).length + (place?.picture ? 1 : 0) + (sketch ? 1 : 0) + (previous ? 1 : 0)
+  const others = gear.filter((g) => g.sheet !== null).length + (place?.picture ? 1 : 0) + (sketch ? 1 : 0) + referencePanels.length + (previous ? 1 : 0)
   const packed = packing ? chooseCastToPack(cast.map((c) => c.sheet !== null), others, maxReferences) : []
   const members: PackMember[] = packed.map((i) => ({ subject: { kind: 'character', id: cast[i].character.id }, name: cast[i].character.name, relPath: cast[i].sheet ?? '' }))
   /** The pack's reference number once its first member has sent it (null if the cap left no room). */
@@ -251,6 +261,10 @@ export function composePanelPrompt(input: PanelPromptInput): PanelPromptResult {
     const n = refer(sketch, 'layout sketch', { kind: 'sketch' })
     if (n !== null) lines.push(`${LAYOUT_PREFIX} ${markerOf(n)}${LAYOUT_NOTE}`)
   }
+
+  // Claimed before the previous panel, so over the cap that goes first, then these from the end.
+  const chosen = referencePanels.flatMap((r) => refer(r.imagePath, 'panel the user chose', { kind: 'panel', id: r.panelId }) ?? [])
+  if (chosen.length > 0) lines.push(referencePanelsLine(chosen))
 
   const notes = panel.continuityNotes.trim()
   if (previous?.earlier) {

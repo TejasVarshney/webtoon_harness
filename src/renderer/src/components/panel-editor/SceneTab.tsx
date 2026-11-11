@@ -18,6 +18,8 @@ export interface SceneFields {
   shot: FieldAutosave<Panel['shot']>
   aspect: FieldAutosave<Panel['aspect']>
   frame: FieldAutosave<Panel['frame']>
+  /** A prompt of the panel's own, sent in place of the composed one; null: the app composes it. */
+  promptOverride: FieldAutosave<Panel['promptOverride']>
 }
 
 /** A select over a field's options, saved after the last change and when it is left. */
@@ -136,12 +138,26 @@ export function SceneTab({ fields }: { fields: SceneFields }) {
   const tallNoteId = useId()
   // A tall panel fades at its edges instead of having a frame, whatever its frame says.
   const tall = isTallAspect(fields.aspect.value)
-  const { description, setting, location, shot, aspect, frame } = fields
+  const { description, setting, location, shot, aspect, frame, promptOverride } = fields
   return (
     <div className="scene-tab">
       <Field label="Description">
         {(id) => <textarea id={id} rows={3} value={description.value} placeholder="What happens in this panel" onChange={(e) => description.set(e.target.value)} onBlur={description.flush} />}
       </Field>
+      {promptOverride.value !== null && (
+        <p className="hint custom-prompt-note">
+          This panel uses a custom prompt{' '}
+          <button
+            type="button"
+            onClick={() => {
+              promptOverride.set(null)
+              promptOverride.flush()
+            }}
+          >
+            Use automatic prompt
+          </button>
+        </p>
+      )}
       <Field label="Setting">{(id) => <input id={id} value={setting.value} placeholder="Where and when" onChange={(e) => setting.set(e.target.value)} onBlur={setting.flush} />}</Field>
       <LocationPicker field={location} />
       <div className="field-row">

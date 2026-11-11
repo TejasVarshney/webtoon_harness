@@ -498,6 +498,16 @@ describe('update_panel', () => {
     expect(JSON.stringify(tail)).toContain('"enum":["none"]')
   })
 
+  it("leaves the user's chosen panels, style and prompt out of the agent's tools", async () => {
+    const { tools } = await setup()
+    for (const name of ['create_panel', 'update_panel', 'update_panel_fields']) {
+      const spec = tools.specs().find((t) => t.name === name)
+      if (!spec) continue
+      const schema = JSON.stringify(spec.inputSchema)
+      for (const key of ['referencePanelIds', 'styleOverride', 'promptOverride']) expect(schema, `${name} ${key}`).not.toContain(key)
+    }
+  })
+
   it('says a look is kept by position, and must be sent on the lines kept when lines are removed or reordered', async () => {
     const { tools } = await setup()
     for (const name of ['create_panel', 'update_panel']) {

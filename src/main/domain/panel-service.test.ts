@@ -1853,6 +1853,94 @@ describe('PanelService layout sketch', () => {
   })
 })
 
+describe('PanelService chosen panels, style and prompt', () => {
+  /** A panel to draw, and two panels with a ready image to choose from (created after it, so it has no previous panel). */
+  async function withChoices(over: (ids: { a: string; b: string }) => Partial<PanelDraft> = () => ({}), opts: { vision?: boolean } = {}) {
+    const rig = await setup(opts)
+    const { svc, epi, ctx } = rig
+    const chosen: Panel[] = []
+    const target = (await svc.create(ctx, draft(epi.id), USER)).panel
+    for (let i = 0; i < 2; i++) {
+      const source = (await svc.create(ctx, draft(epi.id), USER)).panel
+      await svc.uploadImage(ctx, source.id, nextPng(), 'png')
+      chosen.push(await svc.get(ctx, source.id))
+    }
+    const [a, b] = chosen
+    const panel = await svc.update(ctx, target.id, over({ a: a.id, b: b.id }), USER)
+    const image = (x: Panel): string => x.versions[0].imagePath as string
+    return { ...rig, a, b, panel: panel.panel, image }
+  }
+
+  it('sends the chosen panels as references, with a [REFERENCE PANELS] line', async () => {
+    const { svc, ctx, calls, a, b, panel, image } = await withChoices(({ a, b }) => ({ referencePanelIds: [a, b] }))
+    const v = await svc.generate(ctx, panel.id)
+    expect(v.referenceImagePaths).toEqual([image(a), image(b)])
+    expect(calls[0].req.references.map((r) => r.label)).toEqual(['panel the user chose', 'panel the user chose'])
+    expect(v.prompt).toContain('[REFERENCE PANELS] Reference images 1 and 2 are panels the user chose')
+  })
+
+  it('skips a chosen panel that was deleted before drawing, or has no image', async () => {
+    const { svc, epi, ctx, a, b, panel, image } = await withChoices(({ a, b }) => ({ referencePanelIds: [a, b] }))
+    const bare = (await svc.create(ctx, draft(epi.id), USER)).panel
+    await svc.update(ctx, panel.id, { referencePanelIds: [a.id, b.id, bare.id] }, USER)
+    await svc.delete(ctx, a.id)
+    const v = await svc.generate(ctx, panel.id)
+    expect(v.status).toBe('ready')
+    expect(v.referenceImagePaths).toEqual([image(b)])
+    expect(v.prompt).toContain('[REFERENCE PANELS] Reference image 1 is a panel the user chose')
+  })
+
+  it('does not show the chosen panels to the checker', async () => {
+    const { svc, ctx, vision, panel, image, a, b } = await withChoices(({ a, b }) => ({ referencePanelIds: [a, b] }), { vision: true })
+    const v = await svc.generate(ctx, panel.id)
+    expect(v.referenceImagePaths).toEqual([image(a), image(b)])
+    expect((vision.requests[0].messages[0] as { imagePaths: string[] }).imagePaths).toEqual([v.imagePath])
+  })
+
+  it("replaces the project's style in [STYLE] with the panel's own, and clears it with null", async () => {
+    const { svc, ctx, panel, store } = await withChoices(() => ({ styleOverride: 'ink wash, grey' }))
+    const meta = await store.getMeta(ctx)
+    expect((await svc.generate(ctx, panel.id)).prompt).toContain('[STYLE] ink wash, grey. ')
+    await svc.update(ctx, panel.id, { styleOverride: null }, USER)
+    expect((await svc.generate(ctx, panel.id)).prompt).toContain(`[STYLE] ${meta.stylePreset}. `)
+  })
+
+  it('sends a custom prompt instead of the composed one and keeps a [FIX] line', async () => {
+    const { svc, ctx, panel, vision, store } = await withChoices(() => ({ promptOverride: 'A cat on a roof, at night.' }), { vision: true })
+    await store.updateMeta(ctx, { consistencyRetries: 1 })
+    vision.replies.push(fail('the cat is blue'), PASS)
+    await svc.generate(ctx, panel.id)
+    const { versions } = await svc.get(ctx, panel.id)
+    expect(versions.map((v) => v.prompt)).toEqual(['A cat on a roof, at night.', 'A cat on a roof, at night.\n[FIX] Fix these consistency issues: the cat is blue'])
+  })
+
+  it('still sends the references with a custom prompt', async () => {
+    const { svc, ctx, calls, a, b, panel, image } = await withChoices(({ a, b }) => ({ referencePanelIds: [a, b], promptOverride: 'A cat.' }))
+    const v = await svc.generate(ctx, panel.id)
+    expect(v.prompt).toBe('A cat.')
+    expect(v.referenceImagePaths).toEqual([image(a), image(b)])
+    expect(calls[0].req.references).toHaveLength(2)
+  })
+
+  it('treats a blank custom prompt as none, and a null one clears it', async () => {
+    const { svc, ctx, panel } = await withChoices(() => ({ promptOverride: '   ' }))
+    expect((await svc.generate(ctx, panel.id)).prompt).toContain('[ACTION] A door opens.')
+    await svc.update(ctx, panel.id, { promptOverride: 'Mine.' }, USER)
+    expect((await svc.generate(ctx, panel.id)).prompt).toBe('Mine.')
+    expect((await svc.update(ctx, panel.id, { promptOverride: null }, USER)).panel.promptOverride).toBeNull()
+  })
+
+  it('keeps these fields when another field is patched, and defaults them on an old file', async () => {
+    const { svc, ctx, a, panel } = await withChoices(({ a }) => ({ referencePanelIds: [a], styleOverride: 'S', promptOverride: 'P' }))
+    const next = (await svc.update(ctx, panel.id, { setting: 'Roof' }, USER)).panel
+    expect(next).toMatchObject({ referencePanelIds: [a.id], styleOverride: 'S', promptOverride: 'P' })
+    const { referencePanelIds, styleOverride, promptOverride, ...old } = next
+    void [referencePanelIds, styleOverride, promptOverride]
+    await writeJsonAtomic(ctx.paths.panelFile(panel.id), old)
+    expect(await svc.get(ctx, panel.id)).toMatchObject({ referencePanelIds: [], styleOverride: null, promptOverride: null })
+  })
+})
+
 describe('PanelService delete, move and usage', () => {
   it('delete trashes the JSON, image folder and side chat, and removes the panel from its episode', async () => {
     const { svc, episodes, epi, ctx, trashed, events } = await setup()

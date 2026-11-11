@@ -221,6 +221,19 @@ describe('workflow docs lint', () => {
     expect(section).toContain(lastLine(null))
   })
 
+  it('prompt templates reproduce the [REFERENCE PANELS] line verbatim', () => {
+    const line = (n: number): string => {
+      const base = { stylePreset: 'S', panel: { description: 'd', setting: 's', shot: 'medium' as const, aspect: '2:3' as const, frame: 'bordered' as const, characters: [], items: [], continuityNotes: '' }, roster: new Map(), itemRoster: new Map(), previous: null, maxReferences: 8 }
+      const chosen = Array.from({ length: n }, (_, i) => ({ panelId: `pnl_000000000${i}`, imagePath: `panels/${i}.png` }))
+      return composePanelPrompt({ ...base, referencePanels: chosen }).prompt.split('\n').find((l) => l.startsWith('[REFERENCE PANELS]'))!
+    }
+    const section = extractSection(read('reference/prompt-templates'), 'Panel Prompt')
+    expect(section).toContain(line(1).replace('image 1', 'image {r}'))
+    expect(section).toContain(line(2).replace('1 and 2', '{r1} and {r2}').slice('[REFERENCE PANELS] '.length))
+    expect(line(3)).toContain('Reference images 1, 2 and 3 are panels the user chose')
+    expect(section).toContain('{r1}, {r2} and {r3}')
+  })
+
   /** A location written in placeholders, in a state with a ready picture of its own. */
   function placeholderLocation() {
     const state = makeLocationState({ id: 'lst_0000000002', name: '{state.name}', kind: 'state', delta: '{state.delta}', status: 'ready', imagePath: 'locations/b.png' })

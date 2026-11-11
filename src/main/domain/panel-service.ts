@@ -17,6 +17,7 @@ import type { ImageGenRequest, ImageService } from './image-service'
 import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
+import { drawChoicesOf, drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
 import { planPlacement } from './panel-placement'
 import { PanelUsageScanner } from './panel-usage'
 import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
@@ -128,6 +129,7 @@ export class PanelService extends PanelUsageScanner {
       gapAfter: draft.gapAfter,
       // Panels are placed on the strip now: the colour between rows has no input, and only old files carry one.
       gutter: 'white',
+      ...drawChoicesOf(draft),
       characters: draft.characters,
       items: draft.items ?? [],
       dialogue: draft.dialogue.map((line) => withId(line, undefined)),
@@ -181,6 +183,7 @@ export class PanelService extends PanelUsageScanner {
         beside: patch.beside ?? current.beside,
         gapAfter: patch.gapAfter ?? current.gapAfter,
         gutter: current.gutter,
+        ...mergeDrawChoices(patch, current),
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
         // A line sent without a placement, style or tail keeps the one stored at its index: agents send the whole array when they reword one line.
@@ -262,21 +265,21 @@ export class PanelService extends PanelUsageScanner {
       const previous = await this.continuityOf(ctx, panel)
       const maxReferences = this.opts.images.maxReferences('image')
       const composed = await composeWithPacks(ctx, this.opts.packComposer, panel.id, {
-        stylePreset: meta.stylePreset,
+        stylePreset: styleOf(panel, meta.stylePreset),
         panel,
         roster,
         itemRoster: new Map(itemRoster.map((i) => [i.id, i])),
         locations: new Map(locations.map((l) => [l.id, l])),
         previous,
         sketch: panel.sketchPath ?? null,
+        referencePanels: await readReferencePanels(ctx, panel),
         maxReferences
       })
-      const fix = opts.extraInstruction
-      attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
+      attempt.prompt = drawPrompt(composed.prompt, panel, opts.extraInstruction)
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
-      // The checker compares the picture with the cast, items and previous panel; the sketch is only a layout guide.
-      context = { panel, roster: [...roster.values()], itemRoster, locations, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
+      // The checker compares the picture with the cast, items and previous panel; the sketch and the chosen panels are only guides.
+      context = { panel, roster: [...roster.values()], itemRoster, locations, references: composed.references.filter((r) => r.subject.kind !== 'sketch' && r.subject.kind !== 'panel'), retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await recordAttempt(this.emit, ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -298,7 +301,7 @@ export class PanelService extends PanelUsageScanner {
       // The cast and item references (and the unknown-cast and unknown-item errors) come from composePanelPrompt so an edit
       // sees exactly the images a generation would; the edit has no previous panel, no location picture (it keeps the
       // image's own place) and its own prompt.
-      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster, previous: null, maxReferences })
+      const { references } = composePanelPrompt({ stylePreset: styleOf(panel, meta.stylePreset), panel, roster, itemRoster, previous: null, maxReferences })
       const cast = panel.characters.flatMap((entry) => {
         const character = roster.get(entry.characterId)
         return character ? [{ name: character.name, appearanceLock: character.appearanceLock }] : []
