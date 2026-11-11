@@ -4284,6 +4284,20 @@ kbd {
   overflow: visible;
 }
 
+.sketch-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  color: var(--faint);
+  cursor: help;
+}
+
+.sketch-tools[data-orientation='horizontal'] .sketch-keys {
+  margin-left: auto;
+}
+
 .sketch-tools[data-orientation='horizontal'] .sketch-tools-gap {
   width: 1px;
   height: 18px;
@@ -4314,12 +4328,36 @@ kbd {
   gap: 6px;
 }
 
-/* The paper is as wide as the column allows, but never taller than about half the window, at the draft's aspect. */
+/* A window onto the paper: about half the window high, scrolling once the paper is zoomed past it. The zoom bar sits at
+   its bottom right, as on a panel's stage. */
+.generate-sketch-stage {
+  position: relative;
+}
+
+.generate-sketch-viewport {
+  display: flex;
+  max-height: calc(50vh + 2px);
+  overflow: auto;
+  border-radius: var(--radius-card);
+}
+
+.generate-sketch-viewport[data-pan='ready'],
+.generate-sketch-viewport[data-pan='ready'] * {
+  cursor: grab !important;
+}
+
+.generate-sketch-viewport[data-pan='panning'],
+.generate-sketch-viewport[data-pan='panning'] * {
+  cursor: grabbing !important;
+}
+
+/* At the fit the paper is as wide as the column allows, but never taller than about half the window, at the draft's
+   aspect; the zoom scales that. The auto margins centre it while it is smaller than the viewport. */
 .generate-sketch-paper {
   position: relative;
-  width: 100%;
-  max-width: calc(var(--paper-ratio) * 50vh);
-  margin: 0 auto;
+  flex: none;
+  width: calc(min(100%, var(--paper-ratio) * 50vh) * var(--zoom, 1));
+  margin: auto;
   background: #fff;
   border: 1px solid var(--border);
   box-sizing: border-box;

@@ -8,6 +8,7 @@ import { STAGE_ROW_PX } from './bubble-placement'
 import { useStageFit } from './PanelStage'
 import { SketchToolbar } from './SketchToolbar'
 import { useSketchPad } from './use-sketch-pad'
+import { useSketchShortcuts } from './use-sketch-shortcuts'
 import { useStagePan } from './use-stage-pan'
 import { useStageZoom, ZoomBar } from './use-stage-zoom'
 
@@ -26,7 +27,7 @@ export interface SketchStageProps {
  * scribbles the scene on. Under the canvas is white paper, or the panel's picture, faint, to trace over (Picture hides
  * it). A rail of tools sits at the stage's left edge (pen, eraser, line, rectangle, ellipse, three widths, undo), New
  * sketch at its top right wipes the canvas, and the zoom bar is at its bottom right; Ctrl and the wheel (or a pinch)
- * zoom at the pointer, and a zoomed sketch scrolls, or moves with a middle-button drag or a drag with Space held
+ * zoom at the pointer, and a zoomed sketch scrolls, or moves with a right- or middle-button drag or a drag with Space held
  * (`useStagePan`), which draws nothing. The sketch is stored as the user draws, always as ink on white
  * paper, never with the picture, and sent with the next generation as a layout reference.
  */
@@ -41,6 +42,7 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
   const zoom = heldZoom ?? ownZoom
   const zoomControl = useStageZoom(viewportRef, shapeRef, zoom, onZoom ?? setOwnZoom)
   const pan = useStagePan(viewportRef)
+  useSketchShortcuts({ pad, zoom: { zoom, control: zoomControl } })
   const [showPicture, setShowPicture] = useState(true)
   const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
   const scale = fit === null ? null : fit.scale * zoom

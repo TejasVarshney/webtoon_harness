@@ -95,13 +95,13 @@ export function ZoomBar({ zoom, control, children }: ZoomBarProps) {
     <div className="stage-zoom" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {children}
       <div className="stage-zoom-controls" role="group" aria-label="Zoom">
-        <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out (Ctrl + wheel)" disabled={zoom <= MIN_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, -1))}>
+        <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out (- or Ctrl + wheel)" disabled={zoom <= MIN_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, -1))}>
           <ZoomOut size={16} aria-hidden="true" />
         </button>
-        <button type="button" className="stage-zoom-level" aria-label={`Zoom ${percent}, fit to the stage`} title={zoom === 1 ? 'Fit to the stage' : 'Fit to the stage. Move around with a middle-button drag, or hold Space and drag'} disabled={zoom === 1} onClick={() => control.zoomTo(1)}>
+        <button type="button" className="stage-zoom-level" aria-label={`Zoom ${percent}, fit to the stage`} title={zoom === 1 ? 'Fit to the stage (0)' : 'Fit to the stage (0). Move around with a right-button drag, or hold Space and drag'} disabled={zoom === 1} onClick={() => control.zoomTo(1)}>
           {percent}
         </button>
-        <button type="button" className="icon-button" aria-label="Zoom in" title="Zoom in (Ctrl + wheel). Once zoomed, drag with the middle button, or hold Space and drag, to move around" disabled={zoom >= MAX_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, 1))}>
+        <button type="button" className="icon-button" aria-label="Zoom in" title="Zoom in (+ or Ctrl + wheel). Once zoomed, drag with the right button, or hold Space and drag, to move around" disabled={zoom >= MAX_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, 1))}>
           <ZoomIn size={16} aria-hidden="true" />
         </button>
       </div>

@@ -13,8 +13,9 @@ function canPan(v: HTMLElement): boolean {
 }
 
 /**
- * Moving a zoomed stage with the mouse, as in drawing and layout apps: a middle-button drag, or a left drag while Space
- * is held over the stage, scrolls `viewport` so the panel follows the pointer. The viewport's own scrolling keeps an
+ * Moving a zoomed stage with the mouse, as in drawing and layout apps: a right- or middle-button drag, or a left drag
+ * while Space is held over the stage, scrolls `viewport` so the panel follows the pointer. The stage has no context
+ * menu, so a right press is always free to pan. The viewport's own scrolling keeps an
  * edge of the panel from being dragged past its side, and does nothing while the whole panel fits. The wheel scrolls
  * it (Shift and the wheel sideways) and Ctrl and the wheel zoom (`useStageZoom`), as before.
  * A pan's press, and the click or double-click it makes, are the pan's alone: they are stopped at the viewport on the
@@ -67,7 +68,7 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     }
 
     function onPointerDown(e: PointerEvent): void {
-      pressPanned = drag === null && (e.button === 1 || (e.button === 0 && space)) && !inText(e.target) && canPan(el)
+      pressPanned = drag === null && (e.button === 1 || e.button === 2 || (e.button === 0 && space)) && !inText(e.target) && canPan(el)
       if (!pressPanned) return
       e.stopPropagation()
       drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
@@ -99,7 +100,13 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
       e.stopPropagation()
     }
 
+    /** A right press pans, so the right button's menu never opens on the stage (a text box keeps its own). */
+    function noMenu(e: MouseEvent): void {
+      if (!inText(e.target)) e.preventDefault()
+    }
+
     el.addEventListener('pointerenter', onEnter)
+    el.addEventListener('contextmenu', noMenu)
     el.addEventListener('pointerleave', onLeave)
     el.addEventListener('pointerdown', onPointerDown, true)
     el.addEventListener('pointermove', onPointerMove, true)
@@ -112,6 +119,7 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     window.addEventListener('blur', onBlur)
     return () => {
       el.removeEventListener('pointerenter', onEnter)
+      el.removeEventListener('contextmenu', noMenu)
       el.removeEventListener('pointerleave', onLeave)
       el.removeEventListener('pointerdown', onPointerDown, true)
       el.removeEventListener('pointermove', onPointerMove, true)

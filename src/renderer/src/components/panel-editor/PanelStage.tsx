@@ -87,7 +87,7 @@ export function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObjec
 
 /**
  * The open panel on the neutral surface, zoomable (the bar at its bottom right, or Ctrl and the wheel) and,
- * once zoomed, moved with a middle-button drag or a drag with Space held (`useStagePan`), drawn by the card's own `PanelArt` and lettered as on the strip:
+ * once zoomed, moved with a right- or middle-button drag or a drag with Space held (`useStagePan`), drawn by the card's own `PanelArt` and lettered as on the strip:
  * it is laid out at its share of the strip's reference row (`STAGE_ROW_PX`, the lettering's container) and scaled up
  * or down with a transform to fit, so the bubbles' placement fractions are exact at every size. Its bubbles can be
  * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone,

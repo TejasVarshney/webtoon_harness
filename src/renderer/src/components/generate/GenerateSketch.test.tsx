@@ -106,6 +106,52 @@ describe('GenerateSketch', () => {
     expect(useGenerateStore.getState().isDirty()).toBe(false)
   })
 
+  it('zooms with the bar, the keys and Ctrl and the wheel, and goes back to the fit', async () => {
+    render(<GenerateSketch />)
+    const paper = (): string => (screen.getByTestId('generate-sketch-canvas').parentElement as HTMLElement).style.getPropertyValue('--zoom')
+    expect(paper()).toBe('1')
+    expect(screen.getByRole('button', { name: 'Zoom 100%, fit to the stage' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(paper()).toBe('1.25')
+    fireEvent.keyDown(window, { key: '+' })
+    expect(paper()).toBe('1.5625')
+    fireEvent.wheel(screen.getByTestId('generate-sketch-viewport'), { ctrlKey: true, deltaY: 200 })
+    expect(Number(paper())).toBeLessThan(1.5625)
+    fireEvent.keyDown(window, { key: '0' })
+    expect(paper()).toBe('1')
+  })
+
+  it('moves the zoomed sketch with a right-button drag, and draws nothing', () => {
+    render(<GenerateSketch />)
+    const v = screen.getByTestId('generate-sketch-viewport')
+    for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
+    const canvas = screen.getByTestId('generate-sketch-canvas')
+    fireEvent.pointerDown(canvas, { button: 2, buttons: 2, clientX: 50, clientY: 50 })
+    expect(v).toHaveAttribute('data-pan', 'panning')
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 20, clientY: 10 })
+    fireEvent.pointerUp(v, { button: 2 })
+    expect(v.scrollLeft).toBe(30)
+    expect(v.scrollTop).toBe(40)
+    expect(useGenerateStore.getState().draft.sketchPng).toBeNull()
+  })
+
+  it('picks tools and undoes from the keyboard, but not while typing elsewhere', () => {
+    render(
+      <>
+        <GenerateSketch />
+        <textarea aria-label="Description" />
+      </>
+    )
+    fireEvent.keyDown(window, { key: 'r' })
+    expect(screen.getByRole('button', { name: 'Rectangle' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(screen.getByLabelText('Description'), { key: 'e' })
+    expect(screen.getByRole('button', { name: 'Rectangle' })).toHaveAttribute('aria-pressed', 'true')
+    stroke()
+    expect(useGenerateStore.getState().draft.sketchPng).toBe(PNG_URL)
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(useGenerateStore.getState().draft.sketchPng).toBeNull()
+  })
+
   it('offers pen, eraser, line, rectangle, ellipse, sizes and undo', async () => {
     render(<GenerateSketch />)
     const tools = screen.getByRole('toolbar', { name: 'Sketch tools' })
