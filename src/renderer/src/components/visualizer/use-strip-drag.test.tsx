@@ -302,3 +302,92 @@ describe('dragging panels on the strip', () => {
     expect(card(0).style.left).toBe('40px')
   })
 })
+
+describe('dragging while the pane scrolls', () => {
+  /** The strip in a pane that scrolls, 600 px tall at the top of the window. jsdom has no layout, so the pane's box and scroll offset are set by hand. */
+  function renderInPane(): { pane: HTMLElement; scrollTo: (top: number) => void } {
+    render(
+      <div data-testid="pane" style={{ overflowY: 'auto' }}>
+        <StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />
+      </div>
+    )
+    const pane = screen.getByTestId('pane')
+    let top = 0
+    Object.defineProperty(pane, 'scrollTop', { get: () => top, set: (v: number) => (top = v), configurable: true })
+    pane.getBoundingClientRect = () => ({ top: 0, bottom: 600, left: 0, right: 500, width: 500, height: 600, x: 0, y: 0, toJSON: () => ({}) })
+    return {
+      pane,
+      scrollTo: (next) => {
+        top = next
+        fireEvent.scroll(pane)
+      }
+    }
+  }
+
+  it('a scroll during a drag moves the panel by the scrolled amount', async () => {
+    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { scrollTo } = renderInPane()
+    fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
+    fireEvent.pointerMove(card(0), { clientX: 100, clientY: 320, buttons: 1 })
+    scrollTo(200)
+    expect(card(0).style.top).toBe('250px')
+    // The pointer then moves on, and the scroll still counts.
+    fireEvent.pointerMove(card(0), { clientX: 100, clientY: 330, buttons: 1 })
+    fireEvent.pointerUp(card(0), { clientX: 100, clientY: 330, button: 0, buttons: 0 })
+    await waitFor(() => expect(placeCalls(calls)).toHaveLength(1))
+    expect(placeCalls(calls)[0]).toEqual({ projectId, episodeId: EPISODE_ID, moves: [{ panelId: a.id, placement: { x: 40, y: 260, width: 200 } }] })
+  })
+
+  it('a scroll alone does not start a drag', () => {
+    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { scrollTo } = renderInPane()
+    fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
+    scrollTo(200)
+    fireEvent.pointerUp(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 0 })
+    expect(placeCalls(calls)).toEqual([])
+    expect(card(0).style.top).toBe('30px')
+  })
+
+  it('a drag near the pane edge scrolls the pane, and a panel dragged that way goes with it', async () => {
+    vi.useFakeTimers()
+    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { pane } = renderInPane()
+    fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
+    fireEvent.pointerMove(card(0), { clientX: 100, clientY: 590, buttons: 1 })
+    await act(async () => {
+      vi.advanceTimersByTime(160)
+    })
+    const scrolled = pane.scrollTop
+    expect(scrolled).toBeGreaterThan(0)
+    // The pointer has not moved, and the panel has followed the scroll.
+    expect(parseInt(card(0).style.top, 10)).toBe(30 + 290 + scrolled)
+    // Away from the edge the pane stays where it is.
+    fireEvent.pointerMove(card(0), { clientX: 100, clientY: 300, buttons: 1 })
+    await act(async () => {
+      vi.advanceTimersByTime(160)
+    })
+    expect(pane.scrollTop).toBe(scrolled)
+    fireEvent.pointerUp(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 0 })
+    expect(placeCalls(calls)).toHaveLength(1)
+    expect((placeCalls(calls)[0] as { moves: { placement: { y: number } }[] }).moves[0].placement.y).toBe(30 + scrolled)
+  })
+
+  it('scrolls up near the top edge, and stops when the drag ends', async () => {
+    vi.useFakeTimers()
+    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { pane, scrollTo } = renderInPane()
+    scrollTo(500)
+    fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
+    fireEvent.pointerMove(card(0), { clientX: 100, clientY: 10, buttons: 1 })
+    await act(async () => {
+      vi.advanceTimersByTime(160)
+    })
+    expect(pane.scrollTop).toBeLessThan(500)
+    fireEvent.pointerUp(card(0), { clientX: 100, clientY: 10, button: 0, buttons: 0 })
+    const stopped = pane.scrollTop
+    await act(async () => {
+      vi.advanceTimersByTime(160)
+    })
+    expect(pane.scrollTop).toBe(stopped)
+  })
+})

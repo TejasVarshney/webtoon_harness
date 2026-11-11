@@ -23,9 +23,45 @@ const CONTROL_SELECTOR = 'button, a, input, textarea, select, [role="dialog"], .
 
 type Previews = Record<string, PanelPlacement>
 
-type Gesture =
-  | { kind: 'move'; id: string; pointerId: number; start: { x: number; y: number }; scale: number; ids: string[]; dragging: boolean; moved: Previews }
-  | { kind: 'resize'; id: string; pointerId: number; start: { x: number; y: number }; scale: number; from: PanelPlacement; moved: Previews }
+/** What every gesture knows: where the pointer went down and is now, and how far the pane had scrolled at the press. */
+interface Pointing {
+  id: string
+  pointerId: number
+  start: { x: number; y: number }
+  /** The pointer's last position on the window, which a scroll without a move is applied at. */
+  at: { x: number; y: number }
+  scale: number
+  /** The pane the strip scrolls in, and its `scrollTop` at the press: travel is the pointer's plus what the pane has scrolled since. */
+  pane: HTMLElement | null
+  scrollFrom: number
+  moved: Previews
+}
+
+type Gesture = (Pointing & { kind: 'move'; ids: string[]; dragging: boolean }) | (Pointing & { kind: 'resize'; from: PanelPlacement })
+
+/** Within this many px of the pane's top or bottom edge, a drag scrolls the pane. */
+const EDGE_PX = 40
+/** The fastest the pane scrolls while dragging, in px per tick of `SCROLL_TICK_MS`. */
+const EDGE_MAX_STEP = 24
+const SCROLL_TICK_MS = 16
+
+/** How far the pane scrolls this tick for a pointer at `y`: negative up, positive down, 0 away from both edges. Faster the nearer the edge, and past it. */
+function edgeStep(y: number, top: number, bottom: number): number {
+  const up = EDGE_PX - (y - top)
+  const down = EDGE_PX - (bottom - y)
+  if (up > 0) return -Math.max(2, Math.round((Math.min(up, EDGE_PX) / EDGE_PX) * EDGE_MAX_STEP))
+  if (down > 0) return Math.max(2, Math.round((Math.min(down, EDGE_PX) / EDGE_PX) * EDGE_MAX_STEP))
+  return 0
+}
+
+/** The nearest ancestor that scrolls vertically: what the strip moves under while a panel is dragged. */
+function scrollPaneOf(el: Element): HTMLElement | null {
+  for (let node = el.parentElement; node !== null; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return node
+  }
+  return null
+}
 
 export interface StripDrag {
   /** Where the panels being moved or resized are drawn until their save lands, by panel id. */
@@ -60,6 +96,9 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
   const holder = useRef<Record<string, number>>({})
   const saveCount = useRef(0)
   const gesture = useRef<Gesture | null>(null)
+  // The pane scrolling under a drag near its edge, and the listener that follows a scroll the user makes with the wheel.
+  const autoScroll = useRef<{ timer: ReturnType<typeof setInterval> | null; step: number }>({ timer: null, step: 0 })
+  const unwatchScroll = useRef<(() => void) | null>(null)
   const nudge = useRef<{ ids: string[]; dx: number; dy: number } | null>(null)
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Set by a drag that just ended, so the click that follows it is not taken as a selection. It only lives until that
@@ -149,11 +188,22 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
   // A run of nudges still waiting must not be lost when the strip goes away.
   useEffect(() => flushNudge, [flushNudge])
 
+  const stopScrolling = useCallback(() => {
+    if (autoScroll.current.timer !== null) clearInterval(autoScroll.current.timer)
+    autoScroll.current = { timer: null, step: 0 }
+    unwatchScroll.current?.()
+    unwatchScroll.current = null
+  }, [])
+
+  // The pane must not keep scrolling, or listening, once the strip is gone.
+  useEffect(() => stopScrolling, [stopScrolling])
+
   const endGesture = useCallback(
     (e: PointerEvent<HTMLElement>, commit: boolean) => {
       const g = gesture.current
       if (g === null || e.pointerId !== g.pointerId) return
       gesture.current = null
+      stopScrolling()
       const dragged = g.kind === 'resize' || g.dragging
       if (!dragged) return
       // Only a drag that ends in a release is followed by a click.
@@ -165,20 +215,16 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
       if (commit) save(g.moved)
       else setDrafts({})
     },
-    [save, setDrafts]
+    [save, setDrafts, stopScrolling]
   )
 
-  const onMove = useCallback(
-    (e: PointerEvent<HTMLElement>) => {
-      const g = gesture.current
-      if (g === null || e.pointerId !== g.pointerId) return
-      // No button is down: the release happened where the card could not see it, so the gesture is over.
-      if ((e.buttons & 1) === 0) {
-        endGesture(e, false)
-        return
-      }
-      const dx = (e.clientX - g.start.x) / g.scale
-      const dy = (e.clientY - g.start.y) / g.scale
+  /** Shows the gesture with the pointer at (x, y) on the window and the pane as scrolled now. */
+  const follow = useCallback(
+    (g: Gesture, x: number, y: number) => {
+      g.at = { x, y }
+      const dx = (x - g.start.x) / g.scale
+      // The strip moves under a pointer that holds still while the pane scrolls, so the panel goes with it.
+      const dy = (y - g.start.y + (g.pane === null ? 0 : g.pane.scrollTop - g.scrollFrom)) / g.scale
       if (g.kind === 'resize') {
         // The height follows the aspect, so only the width is set; the panel keeps its corner and stays inside the strip.
         const width = Math.min(g.from.width + dx, STRIP_CSS_WIDTH - g.from.x)
@@ -190,14 +236,71 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         return
       }
       if (!g.dragging) {
-        if (Math.hypot(e.clientX - g.start.x, e.clientY - g.start.y) < DRAG_THRESHOLD_PX) return
+        // Only the pointer's own travel starts a drag, so a scroll alone never moves a panel.
+        if (Math.hypot(x - g.start.x, y - g.start.y) < DRAG_THRESHOLD_PX) return
         g.dragging = true
         if (!useAppStore.getState().selectedPanelIds.includes(g.id)) useAppStore.getState().selectPanel(g.id)
       }
       g.moved = shifted(g.ids, dx, dy).moves
       setDrafts(g.moved)
     },
-    [endGesture, setDrafts, shifted]
+    [setDrafts, shifted]
+  )
+
+  /** While a panel is dragged near the top or bottom of its pane, the pane scrolls so it can go further than one screen. */
+  const edgeScroll = useCallback(
+    (g: Gesture) => {
+      const pane = g.pane
+      const rect = pane?.getBoundingClientRect()
+      const step = g.kind === 'move' && g.dragging && pane !== null && rect !== undefined ? edgeStep(g.at.y, rect.top, rect.bottom) : 0
+      autoScroll.current.step = step
+      if (step === 0) {
+        if (autoScroll.current.timer !== null) clearInterval(autoScroll.current.timer)
+        autoScroll.current.timer = null
+        return
+      }
+      if (autoScroll.current.timer !== null) return
+      autoScroll.current.timer = setInterval(() => {
+        const now = gesture.current
+        if (now === null || now.pane === null) return stopScrolling()
+        now.pane.scrollTop += autoScroll.current.step
+        follow(now, now.at.x, now.at.y)
+      }, SCROLL_TICK_MS)
+    },
+    [follow, stopScrolling]
+  )
+
+  const onMove = useCallback(
+    (e: PointerEvent<HTMLElement>) => {
+      const g = gesture.current
+      if (g === null || e.pointerId !== g.pointerId) return
+      // No button is down: the release happened where the card could not see it, so the gesture is over.
+      if ((e.buttons & 1) === 0) {
+        endGesture(e, false)
+        return
+      }
+      follow(g, e.clientX, e.clientY)
+      edgeScroll(g)
+    },
+    [edgeScroll, endGesture, follow]
+  )
+
+  /** Starts a gesture's bookkeeping: the pane it scrolls in, listened to so a wheel scroll during it moves the panel too. */
+  const point = useCallback(
+    (el: HTMLElement, e: PointerEvent<HTMLElement>, id: string): Pointing => {
+      stopScrolling()
+      const pane = scrollPaneOf(el)
+      if (pane !== null) {
+        const onScroll = (): void => {
+          const g = gesture.current
+          if (g !== null) follow(g, g.at.x, g.at.y)
+        }
+        pane.addEventListener('scroll', onScroll)
+        unwatchScroll.current = () => pane.removeEventListener('scroll', onScroll)
+      }
+      return { id, pointerId: e.pointerId, start: { x: e.clientX, y: e.clientY }, at: { x: e.clientX, y: e.clientY }, scale: scaleOf(el), pane, scrollFrom: pane?.scrollTop ?? 0, moved: {} }
+    },
+    [follow, stopScrolling]
   )
 
   const bindCard = useCallback(
@@ -211,16 +314,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         // Taken now, so a move that leaves the card (a press at its edge, a fast move) still reaches it.
         e.currentTarget.setPointerCapture?.(e.pointerId)
         const selected = useAppStore.getState().selectedPanelIds
-        gesture.current = {
-          kind: 'move',
-          id,
-          pointerId: e.pointerId,
-          start: { x: e.clientX, y: e.clientY },
-          scale: scaleOf(e.currentTarget),
-          ids: selected.includes(id) ? selected : [id],
-          dragging: false,
-          moved: {}
-        }
+        gesture.current = { ...point(e.currentTarget, e, id), kind: 'move', ids: selected.includes(id) ? selected : [id], dragging: false }
       },
       onPointerMove: onMove,
       onPointerUp: (e: PointerEvent<HTMLElement>) => endGesture(e, true),
@@ -248,7 +342,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         nudgeTimer.current = setTimeout(flushNudge, NUDGE_COMMIT_MS)
       }
     }),
-    [endGesture, flushNudge, onMove, setDrafts, shifted]
+    [endGesture, flushNudge, onMove, point, setDrafts, shifted]
   )
 
   const bindResize = useCallback(
@@ -263,15 +357,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         flushNudge()
         setError(null)
         e.currentTarget.setPointerCapture?.(e.pointerId)
-        gesture.current = {
-          kind: 'resize',
-          id,
-          pointerId: e.pointerId,
-          start: { x: e.clientX, y: e.clientY },
-          scale: scaleOf(e.currentTarget),
-          from: { x: Math.round(p.x), y: Math.round(p.y), width: Math.round(p.width) },
-          moved: {}
-        }
+        gesture.current = { ...point(e.currentTarget, e, id), kind: 'resize', from: { x: Math.round(p.x), y: Math.round(p.y), width: Math.round(p.width) } }
       },
       onPointerMove: onMove,
       onPointerUp: (e: PointerEvent<HTMLElement>) => endGesture(e, true),
@@ -280,7 +366,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
       onClick: (e: MouseEvent<HTMLElement>) => e.stopPropagation(),
       onDoubleClick: (e: MouseEvent<HTMLElement>) => e.stopPropagation()
     }),
-    [endGesture, flushNudge, onMove]
+    [endGesture, flushNudge, onMove, point]
   )
 
   return { previews, error, bindCard, bindResize }
