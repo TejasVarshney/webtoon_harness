@@ -54,5 +54,5 @@ export function panel(o: Partial<Panel> = {}): Panel {
 }
 
 export function episode(o: Partial<Episode> = {}): Episode {
-  return { id: EPISODE_ID, number: 1, title: 'Episode 1', synopsis: '', panelIds: [], createdAt: T, updatedAt: T, ...o }
+  return { id: EPISODE_ID, number: 1, title: 'Episode 1', synopsis: '', panelIds: [], background: null, createdAt: T, updatedAt: T, ...o }
 }

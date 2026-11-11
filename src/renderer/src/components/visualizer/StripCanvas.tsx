@@ -1,8 +1,11 @@
 import { useMemo, useRef } from 'react'
+import { assetUrl } from '@shared/asset-url'
 import { contentBottom, panelHeight, resolveStrip } from '@shared/strip-canvas'
+import { effectiveBackground, stripBackgroundStyle } from '@shared/strip-background'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
+import { usePanelsStore } from '../../stores/panels-store'
 import { AddPanelButton } from './AddPanelButton'
 import { PanelCard } from './PanelCard'
 import { StripBubbles } from './StripBubbles'
@@ -19,7 +22,7 @@ export interface StripCanvasProps {
   mode?: 'edit' | 'export'
   /** Whether the dialogue is drawn over the art. Default true. */
   lettering?: boolean
-  /** A CSS background for the canvas. Default none, so the pane shows. */
+  /** A CSS background for the canvas, instead of the episode's own. */
   background?: string
 }
 
@@ -31,6 +34,8 @@ export interface StripCanvasProps {
  */
 export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true, background }: StripCanvasProps) {
   const selectedIds = useAppStore((s) => s.selectedPanelIds)
+  const projectId = useAppStore((s) => s.projectId)
+  const stored = usePanelsStore((s) => s.episodes.find((e) => e.id === episodeId)?.background ?? null)
   const exporting = mode === 'export'
   const placed = useMemo(() => resolveStrip(panels), [panels])
   const drag = useStripDrag(placed)
@@ -41,9 +46,15 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
     return preview === undefined ? p : { ...p, ...preview, height: panelHeight(preview.width, p.panel.aspect), share: preview.width / STRIP_CSS_WIDTH }
   })
   const bottom = contentBottom(drawn)
+  // The background is sized to the content as laid out, not to a panel mid-drag.
+  const backgroundStyle = useMemo(() => {
+    const bg = effectiveBackground(stored, placed)
+    const imageUrl = bg.kind === 'image' && projectId !== null ? assetUrl(projectId, bg.path) : null
+    return stripBackgroundStyle(bg, { imageUrl, bottom: contentBottom(placed) })
+  }, [stored, placed, projectId])
 
   const canvas = (
-    <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? {} : { background }) }}>
+    <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? backgroundStyle : { background }) }}>
       {drawn.map((p, i) => (
         <PanelCard
           key={p.panel.id}

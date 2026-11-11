@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 import { PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
+import { StripBackgroundSchema } from '@shared/strip-background'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import { parseInput } from '../validate'
@@ -34,6 +35,7 @@ async function showIssues<T>(task: Promise<T>): Promise<T> {
 const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
 const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
+const SetBackgroundSchema = z.object({ projectId: z.string(), episodeId: z.string(), background: StripBackgroundSchema.nullable() })
 const PlaceSchema = z.object({
   projectId: z.string(),
   episodeId: z.string(),
@@ -67,6 +69,19 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     'episodes:update': async (req) => {
       const { projectId, episodeId, patch } = parseInput(UpdateEpisodeSchema, req)
       return episodes.update(await s.projects.open(projectId), episodeId, patch)
+    },
+    'episodes:setBackground': async (req) => {
+      const { projectId, episodeId, background } = parseInput(SetBackgroundSchema, req)
+      return episodes.setBackground(await s.projects.open(projectId), episodeId, background)
+    },
+    'episodes:pickBackgroundImage': async ({ projectId, episodeId }, event) => {
+      const ctx = await s.projects.open(projectId)
+      await episodes.get(ctx, episodeId)
+      const [file] = await pickFiles(event, { multiple: false, title: 'Choose a background image' })
+      if (file === undefined) return null
+      const ext = STORED_EXT[path.extname(file).toLowerCase()]
+      if (!ext) throw new Error('Unsupported image type: use png, jpg or webp')
+      return episodes.storeBackgroundImage(ctx, episodeId, await fs.promises.readFile(file), ext)
     },
 
     'panels:list': async ({ projectId, episodeId }) => panels.list(await s.projects.open(projectId), episodeId),

@@ -13,7 +13,8 @@
 
 import { z } from 'zod'
 import { PanelLocationSchema } from './location-schemas'
-import { CheckResultSchema, CreatedBySchema, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
+import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
+import { StripBackgroundSchema } from './strip-background'
 
 export { CheckResultSchema } from './schema-primitives'
 export * from './location-schemas'
@@ -210,6 +211,8 @@ export const EpisodeSchema = z.object({
   title: z.string(),
   synopsis: z.string().default(''),
   panelIds: z.array(Id).default([]),
+  /** The strip's colour, gradient or image. `null` is the old look: white, with black where a gutter was black. */
+  background: StripBackgroundSchema.nullable().default(null),
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
 })
@@ -234,8 +237,6 @@ export const BubblePlacementSchema = z.object({ x: z.number().finite(), y: z.num
 
 export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx', 'fringe', 'burst', 'curly'])
 export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
-// A refine and not a regex: a regex reaches the tool schemas as `pattern`, sent as it is to every provider.
-const HexColor = z.string().refine((v) => /^#[0-9a-f]{6}$/i.test(v), 'A colour is written as #rrggbb')
 
 /** How one bubble looks. Every key is optional: only what differs from the shape's default is stored. */
 export const BubbleStyleSchema = z.object({

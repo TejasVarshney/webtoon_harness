@@ -95,6 +95,36 @@ describe('episodes IPC handlers', () => {
   })
 })
 
+describe('episodes:setBackground and episodes:pickBackgroundImage', () => {
+  it('stores the picked image as the background, keeps what is stored on a cancel, and refuses a path it did not store', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'episode background '))
+    tmp = dir
+    const file = path.join(dir, 'sky.JPG')
+    await fs.promises.writeFile(file, Buffer.from([1, 2, 3]))
+    const picker = vi.fn<PickFiles>(async () => [file])
+    const { h, projectId, episode, ctx } = await setup(picker)
+    const stored = await h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id }, { sender: 'window' })
+    expect(picker).toHaveBeenCalledWith({ sender: 'window' }, expect.objectContaining({ multiple: false }))
+    const image = stored!.background as { kind: 'image'; path: string }
+    expect(image.path).toMatch(/\.jpg$/)
+    expect([...fs.readFileSync(ctx.paths.resolveAsset(image.path))]).toEqual([1, 2, 3])
+
+    const gradient = { kind: 'linear' as const, angle: 90, repeatEvery: null, stops: [{ color: '#000000', at: 0 }, { color: '#ffffff', at: 1 }] }
+    expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: gradient })).background).toEqual(gradient)
+    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { ...image, path: 'panels/x.png', fit: 'width', opacity: 1, color: '#ffffff' } })).rejects.toThrow(/did not store/)
+    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { kind: 'solid', color: 'red' } })).rejects.toThrow(/^Invalid input/)
+    expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: null })).background).toBeNull()
+  })
+
+  it('returns null when the dialog is cancelled and refuses a file that is not an image', async () => {
+    let chosen: string[] = []
+    const { h, projectId, episode } = await setup(async () => chosen)
+    expect(await h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id })).toBeNull()
+    chosen = ['notes.txt']
+    await expect(h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id })).rejects.toThrow(/png, jpg or webp/)
+  })
+})
+
 describe('panels:create', () => {
   it('returns at once with no image yet and generates in the background', async () => {
     const { s, h, projectId, draft, cast, get, settled } = await setup()

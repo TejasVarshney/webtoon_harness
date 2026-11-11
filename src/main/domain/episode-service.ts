@@ -2,12 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { newId } from '@shared/ids'
 import { EpisodeSchema } from '@shared/schemas'
-import type { Episode } from '@shared/types'
+import type { Episode, StripBackground } from '@shared/types'
 import type { EventBus } from '../events/bus'
-import { readJson, writeJsonAtomic } from '../storage/atomic'
+import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
 import { EntityNotFoundError } from './errors'
-import { now } from './records'
+import { now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 const EPISODE_FILE = /^epi_[A-Za-z0-9]+\.json$/
@@ -101,6 +101,49 @@ export class EpisodeService {
     })
   }
 
+  /**
+   * Sets the strip's background, or clears it with null. An image background must name the file this episode stored
+   * (`storeBackgroundImage`): a path from anywhere else is refused. A stored image the new background no longer uses
+   * is deleted.
+   */
+  async setBackground(ctx: ProjectContext, id: string, background: StripBackground | null): Promise<Episode> {
+    let replaced: string | null = null
+    const episode = await this.mutate(ctx, id, (e) => {
+      const held = e.background?.kind === 'image' ? e.background.path : null
+      if (background?.kind === 'image' && background.path !== held) throw new Error('This episode did not store that background image; choose the image again')
+      replaced = held !== null && !(background?.kind === 'image') ? held : null
+      return { ...e, background, updatedAt: now() }
+    })
+    await removeImage(ctx, replaced)
+    return episode
+  }
+
+  /**
+   * Stores `data` as the strip's background image and makes it the background, keeping the fit, opacity and colour of
+   * an image background already there. The file is written first, outside the lock; the image it replaces is deleted
+   * once the new one is recorded.
+   */
+  async storeBackgroundImage(ctx: ProjectContext, id: string, data: Buffer, ext: UploadExt): Promise<Episode> {
+    if (!UPLOAD_EXTS.includes(ext)) throw new Error(`Unsupported image extension: ${String(ext)} (use png, jpg or webp)`)
+    await this.get(ctx, id)
+    // Time first, so names sort by age; the random tail keeps two saves in one millisecond apart.
+    const rel = `episode-backgrounds/${id}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`
+    await writeFileAtomic(ctx.paths.resolveAsset(rel), data)
+    let replaced: string | null = null
+    try {
+      const episode = await this.mutate(ctx, id, (e) => {
+        const old = e.background?.kind === 'image' ? e.background : null
+        replaced = old?.path ?? null
+        return { ...e, background: { kind: 'image', path: rel, fit: old?.fit ?? 'width', opacity: old?.opacity ?? 1, color: old?.color ?? '#ffffff' }, updatedAt: now() }
+      })
+      await removeImage(ctx, replaced)
+      return episode
+    } catch (error) {
+      await removeImage(ctx, rel)
+      throw error
+    }
+  }
+
   /** Read-modify-write of one episode under its file lock. `fn` returning null means "no change". */
   private async mutate(ctx: ProjectContext, id: string, fn: (e: Episode) => Episode | null): Promise<Episode> {
     const file = ctx.paths.episodeFile(id)
@@ -152,4 +195,9 @@ export class EpisodeService {
   private emit(ctx: ProjectContext, episodeId: string): void {
     this.opts.bus.emit({ type: 'episode.changed', projectId: ctx.id, episodeId })
   }
+}
+
+/** Deletes a stored background image; a file that is already gone is fine. */
+async function removeImage(ctx: ProjectContext, rel: string | null): Promise<void> {
+  if (rel !== null) await fs.promises.rm(ctx.paths.resolveAsset(rel), { force: true }).catch(() => undefined)
 }

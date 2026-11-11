@@ -7,7 +7,7 @@ import { initialCharactersState, useCharactersStore } from '../../stores/charact
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
-import { EPISODE_ID, panel } from '../../test/panel-fixtures'
+import { EPISODE_ID, episode, panel } from '../../test/panel-fixtures'
 import { StripCanvas } from './StripCanvas'
 
 const a = panel({ id: 'pnl_00000000aa', placement: { x: 40, y: 30, width: 200 } })
@@ -37,6 +37,30 @@ describe('StripCanvas', () => {
     const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const canvas = container.querySelector<HTMLElement>('.strip-canvas')
     expect(canvas?.style.height).toBe(`${contentBottom(resolveStrip([a, b])) + 1600}px`)
+  })
+
+  it('paints the episode background over the content, and an old episode as it always looked', () => {
+    installFakeApi({})
+    const bottom = contentBottom(resolveStrip([a, b]))
+    const { container, unmount } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    expect(container.querySelector<HTMLElement>('.strip-canvas')?.style.backgroundColor).toBe('rgb(255, 255, 255)')
+    expect(container.querySelector<HTMLElement>('.strip-canvas')?.style.backgroundImage).toBe('')
+    unmount()
+    const stops = [
+      { color: '#000000', at: 0 },
+      { color: '#ffffff', at: 1 }
+    ]
+    usePanelsStore.setState({ episodes: [episode({ background: { kind: 'linear', angle: 180, repeatEvery: null, stops } })] })
+    const painted = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />).container.querySelector<HTMLElement>('.strip-canvas')
+    expect(painted?.style.backgroundImage).toContain('linear-gradient')
+    expect(painted?.style.backgroundSize).toBe(`100% ${bottom}px`)
+  })
+
+  it('draws an image background from the project asset', () => {
+    installFakeApi({})
+    usePanelsStore.setState({ episodes: [episode({ background: { kind: 'image', path: `episode-backgrounds/${EPISODE_ID}/x.png`, fit: 'width', opacity: 1, color: '#ffffff' } })] })
+    const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    expect(container.querySelector<HTMLElement>('.strip-canvas')?.style.backgroundImage).toContain(`webtoon-asset://${projectId}/episode-backgrounds/${EPISODE_ID}/x.png`)
   })
 
   it('the export drawing ends at the lowest panel and has no chrome', () => {

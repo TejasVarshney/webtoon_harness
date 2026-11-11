@@ -183,6 +183,18 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().episodes[0].synopsis).toBe('Mina finds a letter.')
     })
 
+    it('setBackground and pickBackgroundImage send the episode and reload the list', async () => {
+      const background = { kind: 'solid' as const, color: '#112233' }
+      const painted = episode({ background })
+      const { calls } = installFakeApi({ 'episodes:setBackground': () => painted, 'episodes:pickBackgroundImage': () => painted, 'episodes:list': () => [painted], 'panels:list': () => [] })
+      useAppStore.setState({ activeEpisodeId: EPISODE_ID })
+      await usePanelsStore.getState().setBackground(EPISODE_ID, background)
+      expect(calls[0]).toEqual({ channel: 'episodes:setBackground', req: { projectId, episodeId: EPISODE_ID, background } })
+      expect(usePanelsStore.getState().episodes[0].background).toEqual(background)
+      expect(await usePanelsStore.getState().pickBackgroundImage(EPISODE_ID)).toEqual(painted)
+      expect(calls.some((c) => c.channel === 'episodes:pickBackgroundImage')).toBe(true)
+    })
+
     it("saveSketch sends the PNG and reloads the panel's episode; readSketch asks for it", async () => {
       const sketched = panel({ id: 'pnl_0000000009', sketchPath: 'panels/pnl_0000000009/sketch-1.png' })
       const { calls } = installFakeApi({ 'panels:saveSketch': () => sketched, 'panels:list': () => [sketched], 'panels:readSketch': () => 'data:image/png;base64,AA' })

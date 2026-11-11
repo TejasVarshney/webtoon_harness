@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion } from '@shared/types'
+import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, StripBackground } from '@shared/types'
 import { api } from '../api'
 import { NO_PANEL_SELECTION, useAppStore } from './app-store'
 
@@ -35,6 +35,10 @@ export interface PanelsActions {
   /** Creates the episode and opens it. */
   createEpisode(title: string): Promise<Episode>
   updateEpisode(id: string, patch: { synopsis?: string }): Promise<Episode>
+  /** Sets the strip's background, or clears it with `null`, and reloads the episodes. */
+  setBackground(episodeId: string, background: StripBackground | null): Promise<Episode>
+  /** Opens the file dialog in main and makes the chosen image the background; resolves to `null` when it is cancelled. */
+  pickBackgroundImage(episodeId: string): Promise<Episode | null>
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
   createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>
@@ -164,6 +168,18 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async updateEpisode(id, patch) {
       const updated = await api.invoke('episodes:update', { projectId: requireProject(), episodeId: id, patch })
       await get().loadEpisodes()
+      return updated
+    },
+
+    async setBackground(episodeId, background) {
+      const updated = await api.invoke('episodes:setBackground', { projectId: requireProject(), episodeId, background })
+      await get().loadEpisodes()
+      return updated
+    },
+
+    async pickBackgroundImage(episodeId) {
+      const updated = await api.invoke('episodes:pickBackgroundImage', { projectId: requireProject(), episodeId })
+      if (updated !== null) await get().loadEpisodes()
       return updated
     },
 

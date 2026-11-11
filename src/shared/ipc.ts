@@ -34,6 +34,7 @@ import type {
   ProjectProblem,
   Role,
   SessionSummary,
+  StripBackground,
   Variation,
   VariationInput
 } from './types'
@@ -146,6 +147,10 @@ export interface IpcContract {
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
   'episodes:update': { req: { projectId: string; episodeId: string; patch: { synopsis?: string } }; res: Episode }
+  /** An image background must name the image the episode stored (`episodes:pickBackgroundImage`). `null` clears it. */
+  'episodes:setBackground': { req: { projectId: string; episodeId: string; background: StripBackground | null }; res: Episode }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the strip's background image. `null` when the dialog is cancelled. */
+  'episodes:pickBackgroundImage': { req: { projectId: string; episodeId: string }; res: Episode | null }
   /** The episode's panels in episode order. */
   'panels:list': { req: { projectId: string; episodeId: string }; res: Panel[] }
   'panels:get': { req: { projectId: string; panelId: string }; res: Panel }
@@ -282,6 +287,8 @@ const channelSet: Record<IpcChannel, true> = {
   'episodes:list': true,
   'episodes:create': true,
   'episodes:update': true,
+  'episodes:setBackground': true,
+  'episodes:pickBackgroundImage': true,
   'panels:list': true,
   'panels:get': true,
   'panels:create': true,

@@ -57,6 +57,7 @@ import type {
   VariationSchema,
   VisualFieldsSchema
 } from './schemas'
+export type { StripBackground } from './strip-background'
 
 // --- derived from the schemas -----------------------------------------------------------------
 
