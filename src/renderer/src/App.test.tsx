@@ -72,4 +72,30 @@ describe('App', () => {
     expect(screen.getByTestId('generate-page')).toBeInTheDocument()
     expect(screen.queryByTestId('pane-chat')).toBeNull()
   })
+
+  it('closes the Generate page and forgets its draft when the project changes or closes', () => {
+    const meta = { id: P, title: 'Moon', createdAt: NOW, updatedAt: NOW } as unknown as ProjectMeta
+    installFakeApi({
+      'projects:list': () => ({ projects: [meta], problems: [] }),
+      'models:get': () => emptyView,
+      'plugins:list': () => [],
+      'plugins:loadError': () => null,
+      'characters:list': () => [],
+      'items:list': () => [],
+      'locations:list': () => [],
+      'app:setActiveContext': () => undefined
+    })
+    useAppStore.setState({ projects: [meta], projectId: P })
+    render(<App />)
+    for (const next of ['prj_bbbbbbbbbb', null]) {
+      act(() => {
+        useGenerateStore.getState().open({ episodeId: 'epi_0000000001', referencePanelIds: [] })
+        useGenerateStore.getState().patch({ description: 'Mina waves' })
+      })
+      act(() => useAppStore.setState({ projectId: next }))
+      expect(useGenerateStore.getState().request).toBeNull()
+      expect(useGenerateStore.getState().draft.description).toBe('')
+      act(() => useAppStore.setState({ projectId: P }))
+    }
+  })
 })

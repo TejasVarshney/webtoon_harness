@@ -72,4 +72,45 @@ describe('useGenerateStore', () => {
     expect(calls).toEqual([])
     expect(useGenerateStore.getState().request).not.toBeNull()
   })
+
+  it('makes one panel when submit runs twice before the create returns', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const made = panel({ id: 'pnl_00000000dd' })
+    const { calls } = installFakeApi({
+      'panels:create': async () => {
+        await gate
+        return { panel: made, warnings: [] }
+      },
+      'panels:list': () => [made]
+    })
+    useGenerateStore.getState().open(request)
+    const first = useGenerateStore.getState().submit(false)
+    const second = useGenerateStore.getState().submit(false)
+    release()
+    await Promise.all([first, second])
+    expect(calls.filter((c) => c.channel === 'panels:create')).toHaveLength(1)
+  })
+
+  it('does not close or select when the page was left while the create was in flight', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const made = panel({ id: 'pnl_00000000dd' })
+    installFakeApi({
+      'panels:create': async () => {
+        await gate
+        return { panel: made, warnings: [] }
+      },
+      'panels:list': () => [made]
+    })
+    useGenerateStore.getState().open(request)
+    const pending = useGenerateStore.getState().submit(false)
+    useGenerateStore.getState().close()
+    useGenerateStore.getState().open({ episodeId: EPISODE_ID, referencePanelIds: [] })
+    release()
+    await pending
+    expect(useGenerateStore.getState().request).toEqual({ episodeId: EPISODE_ID, referencePanelIds: [] })
+    expect(useAppStore.getState().selectedPanelIds).toEqual([])
+    expect(useGenerateStore.getState().revealPanelId).toBeNull()
+  })
 })

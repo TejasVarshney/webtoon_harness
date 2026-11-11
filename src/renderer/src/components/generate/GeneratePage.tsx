@@ -7,7 +7,7 @@ import { useItemsStore } from '../../stores/items-store'
 import { useLocationsStore } from '../../stores/locations-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
-import { canDraw } from './generate-draft'
+import { canDraw, pruneDraft } from './generate-draft'
 import { LibraryColumn } from './LibraryColumn'
 import { ReferenceRow } from './ReferenceRow'
 
@@ -22,6 +22,9 @@ export function GeneratePage() {
   const characters = useCharactersStore((s) => s.characters)
   const items = useItemsStore((s) => s.items)
   const locations = useLocationsStore((s) => s.locations)
+  const charactersLoaded = useCharactersStore((s) => s.loaded)
+  const itemsLoaded = useItemsStore((s) => s.loaded)
+  const locationsLoaded = useLocationsStore((s) => s.loaded)
   const panels = usePanelsStore((s) => (request === null ? undefined : s.panelsByEpisode[request.episodeId]))
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -32,6 +35,13 @@ export function GeneratePage() {
     void useItemsStore.getState().load()
     void useLocationsStore.getState().load()
   }, [])
+
+  // An entry archived or deleted since it was chosen has no tile to deselect and main would refuse it: drop it.
+  useEffect(() => {
+    const { draft: current, patch } = useGenerateStore.getState()
+    const pruned = pruneDraft(current, { characters: charactersLoaded ? characters : null, items: itemsLoaded ? items : null, locations: locationsLoaded ? locations : null })
+    if (pruned !== current) patch({ characters: pruned.characters, items: pruned.items, location: pruned.location })
+  }, [characters, items, locations, charactersLoaded, itemsLoaded, locationsLoaded, draft.characters, draft.items, draft.location])
 
   if (request === null) return null
 

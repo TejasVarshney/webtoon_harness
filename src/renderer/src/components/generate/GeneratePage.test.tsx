@@ -166,4 +166,52 @@ describe('GeneratePage', () => {
     expect(screen.queryByText('Discard this panel?')).toBeNull()
     expect(useGenerateStore.getState().request).toBeNull()
   })
+
+  it('drops a chosen character that was archived, and one that is gone', async () => {
+    setup()
+    render(<GeneratePage />)
+    await screen.findByTestId('library-character')
+    useGenerateStore.getState().toggleCharacter(mina)
+    useGenerateStore.getState().toggleCharacter(sleepy)
+    useGenerateStore.getState().toggleCharacter(character({ id: 'chr_0000000003', name: 'Gone' }))
+    await waitFor(() => expect(useGenerateStore.getState().draft.characters.map((m) => m.characterId)).toEqual([mina.id]))
+  })
+
+  it('drops a chosen item that was archived or deleted, and a usage that is gone falls back', async () => {
+    setup({ 'items:list': () => [pistol, item({ id: 'itm_0000000002', name: 'Old', archived: true })] })
+    render(<GeneratePage />)
+    await screen.findByTestId('library-item')
+    useGenerateStore.getState().toggleItem(pistol)
+    useGenerateStore.getState().toggleItem(item({ id: 'itm_0000000002', name: 'Old', archived: true }))
+    useGenerateStore.getState().toggleItem(item({ id: 'itm_0000000003', name: 'Gone' }))
+    useGenerateStore.getState().patch({ items: useGenerateStore.getState().draft.items.map((u) => (u.itemId === pistol.id ? { ...u, usageId: 'use_0000009999' } : u)) })
+    await waitFor(() => expect(useGenerateStore.getState().draft.items).toEqual([{ itemId: pistol.id, usageId: pistol.usages[0]?.id, heldBy: null, action: '' }]))
+  })
+
+  it('drops a chosen location that was archived or deleted', async () => {
+    setup({ 'locations:list': () => [location({ archived: true })] })
+    render(<GeneratePage />)
+    await waitFor(() => expect(useLocationsStore.getState().loaded).toBe(true))
+    useGenerateStore.getState().patch({ location: { locationId: 'loc_0000000001', stateId: 'lst_0000000001', camera: 'main' } })
+    await waitFor(() => expect(useGenerateStore.getState().draft.location).toBeNull())
+    useGenerateStore.getState().patch({ location: { locationId: 'loc_0000000009', stateId: 'lst_0000000001', camera: 'main' } })
+    await waitFor(() => expect(useGenerateStore.getState().draft.location).toBeNull())
+  })
+
+  it('a double click on Generate makes one panel', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const { calls, made } = setup({
+      'panels:create': async () => {
+        await gate
+        return { panel: made, warnings: [] }
+      }
+    })
+    render(<GeneratePage />)
+    useGenerateStore.getState().patch({ description: 'Mina waves' })
+    await userEvent.dblClick(await screen.findByTestId('generate-submit'))
+    release()
+    await waitFor(() => expect(useGenerateStore.getState().request).toBeNull())
+    expect(calls.filter((c) => c.channel === 'panels:create')).toHaveLength(1)
+  })
 })

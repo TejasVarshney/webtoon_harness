@@ -91,3 +91,49 @@ export function toPanelDraft(request: GenerateRequest, d: GenerateDraft): PanelD
     promptOverride: d.promptOverride
   }
 }
+
+/** What a roster that has loaded says about the draft's choices. A kind whose roster is `null` has not loaded and is left alone. */
+export interface Rosters {
+  characters: Character[] | null
+  items: Item[] | null
+  locations: Location[] | null
+}
+
+/**
+ * Drops what the roster no longer offers: an entry that is archived or gone (main refuses both, and its tile is no longer
+ * there to deselect), and an entry left with no look. A look that is gone falls back to the entry's default.
+ * Returns `d` itself when nothing changed.
+ */
+export function pruneDraft(d: GenerateDraft, r: Rosters): GenerateDraft {
+  const characters =
+    r.characters === null
+      ? d.characters
+      : d.characters.flatMap((m) => {
+          const c = r.characters?.find((x) => x.id === m.characterId)
+          if (c === undefined || c.archived) return []
+          if (c.variations.some((v) => v.id === m.variationId)) return [m]
+          const variationId = defaultVariationId(c)
+          return variationId === '' ? [] : [{ ...m, variationId }]
+        })
+  const items =
+    r.items === null
+      ? d.items
+      : d.items.flatMap((u) => {
+          const i = r.items?.find((x) => x.id === u.itemId)
+          if (i === undefined || i.archived) return []
+          if (i.usages.some((x) => x.id === u.usageId)) return [u]
+          const usageId = defaultUsageId(i)
+          return usageId === '' ? [] : [{ ...u, usageId }]
+        })
+  let location = d.location
+  if (r.locations !== null && location !== null) {
+    const l = r.locations.find((x) => x.id === location?.locationId)
+    if (l === undefined || l.archived) location = null
+    else if (!l.states.some((st) => st.id === location?.stateId)) {
+      const fallback = defaultLocation(l)
+      location = fallback.stateId === '' ? null : { ...location, stateId: fallback.stateId }
+    }
+  }
+  const same = characters.length === d.characters.length && characters.every((m, k) => m === d.characters[k]) && items.length === d.items.length && items.every((u, k) => u === d.items[k]) && location === d.location
+  return same ? d : { ...d, characters, items, location }
+}

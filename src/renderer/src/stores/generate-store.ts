@@ -36,16 +36,21 @@ export interface GenerateActions {
 
 export const initialGenerateState: GenerateData = { request: null, draft: emptyDraft('2:3'), submitting: false, revealPanelId: null }
 
+/** Counts opens and closes, so a create that returns after the page was left (and maybe reopened) can tell. */
+let pageSeq = 0
+
 export const useGenerateStore = create<GenerateData & GenerateActions>()((set, get) => ({
   ...initialGenerateState,
 
   open(request) {
     const { projectId, projects } = useAppStore.getState()
     const aspect = projects.find((p) => p.id === projectId)?.defaultAspect ?? '2:3'
+    pageSeq++
     set({ request, draft: emptyDraft(aspect), submitting: false })
   },
 
   close() {
+    pageSeq++
     set({ request: null, draft: emptyDraft('2:3'), submitting: false })
   },
 
@@ -75,13 +80,17 @@ export const useGenerateStore = create<GenerateData & GenerateActions>()((set, g
     const { request, draft, submitting } = get()
     if (request === null || submitting) return
     if (draw && !canDraw(draft)) throw new Error('Describe the panel or write a prompt to generate it')
+    const seq = pageSeq
+    const projectId = useAppStore.getState().projectId
     set({ submitting: true })
     try {
       const { panel } = await usePanelsStore.getState().createPanel(toPanelDraft(request, draft), draw, draft.sketchPng ?? undefined)
+      // The user may have left the page, or the project, while main made the panel: then it just exists on the strip.
+      if (seq !== pageSeq || useAppStore.getState().projectId !== projectId) return
       set({ ...initialGenerateState, revealPanelId: panel.id })
       useAppStore.getState().selectPanel(panel.id)
     } catch (e) {
-      set({ submitting: false })
+      if (seq === pageSeq) set({ submitting: false })
       throw e
     }
   },
