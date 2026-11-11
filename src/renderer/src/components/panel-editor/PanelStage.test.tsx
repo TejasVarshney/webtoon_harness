@@ -405,6 +405,28 @@ describe('PanelStage', () => {
     expect(updates(calls)[1]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], placement: { x: 0.75, y: 0.25 } }] })
   })
 
+  it('drags a bubble whose first move past the threshold is off the bubble, and saves it where it is released', async () => {
+    const { calls } = mount()
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    // A quick flick: the first move event already lands off the bubble, outside the stage, which takes no pointer there.
+    fireEvent.pointerMove(document.body, { clientX: 300, clientY: 150, buttons: 1 })
+    expect(bubble(0)).toHaveAttribute('data-dragging', 'true')
+    expect(bubble(0)).toHaveStyle({ left: '75%', top: '25%' })
+    fireEvent.pointerUp(document.body, { clientX: 300, clientY: 150 })
+    await waitFor(() => expect(updates(calls)).toHaveLength(1))
+    expect(updates(calls)[0]).toEqual({ dialogue: [{ ...toDrafts([hello])[0], placement: { x: 0.75, y: 0.25 } }, toDrafts([night])[0]] })
+  })
+
+  it('stops following the pointer once the press has ended', async () => {
+    const { calls } = mount()
+    fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })
+    fireEvent.pointerUp(document.body, { clientX: 50, clientY: 25 })
+    fireEvent.pointerMove(document.body, { clientX: 300, clientY: 150, buttons: 1 })
+    expect(bubble(0)).not.toHaveAttribute('data-dragging')
+    await act(async () => undefined)
+    expect(updates(calls)).toEqual([])
+  })
+
   it('forgets a press released outside the stage, so a later hover and click move nothing', async () => {
     const { calls } = mount()
     fireEvent.pointerDown(bubble(0), { clientX: 50, clientY: 25, buttons: 1 })

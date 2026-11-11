@@ -18,7 +18,8 @@ import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
 import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, addSpot, boxOf, centreOf, limitOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
 import { appendLine, editLine, identityOf, newBubble, removeLine, type LineIdentity } from './dialogue-edits'
-import type { Nudge, Press } from './bubble-press'
+import type { Nudge, Press, PointerFacts } from './bubble-press'
+import { useWindowPress } from './use-window-press'
 import { useDialogueSaver } from './use-dialogue-saver'
 import { inTailHandle, useTailEditing } from './use-tail-editing'
 import { inWidthHandle, useWidthEditing } from './use-width-editing'
@@ -377,7 +378,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     return attrs
   }
 
-  function endPress(e: PointerEvent<HTMLElement>, commit: boolean): void {
+  function endPress(e: Pick<PointerFacts, 'pointerId'>, commit: boolean): void {
     const p = press.current
     if (p === null || e.pointerId !== p.pointerId) return
     press.current = null
@@ -399,6 +400,30 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     }
   }
 
+  function movePress(e: PointerFacts): void {
+    const p = press.current
+    if (p === null || e.pointerId !== p.pointerId) return
+    // No button is down: the press was released where the stage could not see it (outside it, before the drag
+    // took the capture), so it is over.
+    if ((e.buttons & 1) === 0) return dropPress()
+    if (!p.dragging) {
+      if (Math.hypot(e.clientX - p.start.x, e.clientY - p.start.y) < DRAG_THRESHOLD_PX) return
+      // Captured on the stage, not the bubble: an automatic bubble remounts as it moves into the placed layer.
+      p.dragging = true
+      stageRef.current?.setPointerCapture?.(e.pointerId)
+      // Dragging the dot moves the tip, and a width handle sets the width: neither moves the bubble.
+      if (!p.tail && !p.width) setDragging(p.index)
+    }
+    const panelB = panelBox()
+    if (panelB === null) return
+    if (p.width) return widths.dragWidth(p, e.clientX, panelB)
+    p.placement = placementFromPointer({ pointer: { x: e.clientX, y: e.clientY }, grab: p.grab, panel: panelB, bubble: p.bubble, bounds: boundsBox() })
+    if (p.tail) tail.setTailPreview({ index: p.index, tip: p.placement })
+    else setPreview({ index: p.index, placement: p.placement })
+  }
+
+  useWindowPress(press, stageRef, movePress, endPress)
+
   const stage: HTMLAttributes<HTMLElement> = {
     onPointerDown: (e) => {
       dragEnded.current = false
@@ -409,30 +434,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       flushNudge()
       select(null)
     },
-    onPointerMove: (e) => {
-      const p = press.current
-      if (p === null || e.pointerId !== p.pointerId) return
-      // No button is down: the press was released where the stage could not see it (outside it, before the drag
-      // took the capture), so it is over.
-      if ((e.buttons & 1) === 0) {
-        dropPress()
-        return
-      }
-      if (!p.dragging) {
-        if (Math.hypot(e.clientX - p.start.x, e.clientY - p.start.y) < DRAG_THRESHOLD_PX) return
-        // Captured on the stage, not the bubble: an automatic bubble remounts as it moves into the placed layer.
-        p.dragging = true
-        stageRef.current?.setPointerCapture?.(e.pointerId)
-        // Dragging the dot moves the tip, and a width handle sets the width: neither moves the bubble.
-        if (!p.tail && !p.width) setDragging(p.index)
-      }
-      const panelB = panelBox()
-      if (panelB === null) return
-      if (p.width) return widths.dragWidth(p, e.clientX, panelB)
-      p.placement = placementFromPointer({ pointer: { x: e.clientX, y: e.clientY }, grab: p.grab, panel: panelB, bubble: p.bubble, bounds: boundsBox() })
-      if (p.tail) tail.setTailPreview({ index: p.index, tip: p.placement })
-      else setPreview({ index: p.index, placement: p.placement })
-    },
+    onPointerMove: movePress,
     onPointerUp: (e) => endPress(e, true),
     onPointerCancel: (e) => endPress(e, false),
     onLostPointerCapture: (e) => endPress(e, false),

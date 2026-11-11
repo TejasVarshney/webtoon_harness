@@ -248,7 +248,7 @@ When `"passed"` is `false`, decide by the issues:
 | The setting or composition | `update_panel` with a clearer description or setting, and `"regenerate": true`. |
 | Anything you cannot fix | Report it to the user, quoting the issues briefly. |
 
-Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can open the panel (click its card) to choose a version with the ‹ vN / M › switcher in the editor's header, ask its panel chat for an edit, or accept it.
+Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can open the panel (double-click its card, or select it and press Focus) to choose a version with the ‹ vN / M › switcher in the editor's header, ask its panel chat for an edit, or accept it.
 
 ## Examples
 

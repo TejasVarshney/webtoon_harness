@@ -32,7 +32,7 @@ Add a style with `create_style` when the user will want it again, then apply it 
 
 Once the project has a sheet or a panel, drawn or being drawn, `set_style` is refused and `list_styles` shows `canChange` as false. Do not try again and do not work around it by adding style words to locks or descriptions.
 
-Tell the user they can switch it with the Style button in the chat header, and that the app will warn them first. The existing art is not redrawn, so offer to redraw the sheets after a switch.
+Tell the user they can switch it with the Style button in the top bar, and that the app will warn them first. The existing art is not redrawn, so offer to redraw the sheets after a switch.
 
 `create_style` and `update_style` still work while the style is locked.
 

@@ -40,14 +40,15 @@ const stripBox = (page: Page, index: number) =>
     return { x: Math.round((r.left - canvas.left) / scale), y: Math.round((r.top - canvas.top) / scale), width: Math.round(r.width / scale) }
   })
 
-/** Every card's bottom below the canvas top, in CSS px. */
+/** Every card's bottom below the canvas top, in CSS px of the strip (its drawn size over 440, which is 1 unless the pane scales it). */
 const cardBottoms = (page: Page): Promise<number[]> =>
   page.evaluate(`(() => {
-    const top = document.querySelector('.strip-canvas').getBoundingClientRect().top
-    return [...document.querySelectorAll('.strip-canvas > [data-testid="panel-card"]')].map((card) => card.getBoundingClientRect().bottom - top)
+    const canvas = document.querySelector('.strip-canvas').getBoundingClientRect()
+    const scale = canvas.width / 440
+    return [...document.querySelectorAll('.strip-canvas > [data-testid="panel-card"]')].map((card) => (card.getBoundingClientRect().bottom - canvas.top) / scale)
   })()`) as Promise<number[]>
 
-/** Presses at `from`, moves in `steps` and releases at `to`. A bubble is only grabbed if the pointer is still on it when the drag starts, so its drags use small steps. */
+/** Presses at `from`, moves in `steps` and releases at `to`. A bubble's drags use one or two large steps, as a quick flick does: the first move lands far off the bubble. */
 async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, steps = 12): Promise<void> {
   await page.mouse.move(from.x, from.y)
   await page.mouse.down()
@@ -96,13 +97,15 @@ test('a strip is arranged, drawn from on the Generate page, exported and found a
   // The panels are taller than the pane: the bubble goes down its own panel first, the strip scrolls, and a second drag
   // takes it past the panel's bottom.
   const x = from.x + from.width / 2
-  await drag(page, { x, y: from.y + from.height / 2 }, { x, y: from.y + from.height / 2 + 430 }, 80)
+  await drag(page, { x, y: from.y + from.height / 2 }, { x, y: from.y + from.height / 2 + 430 }, 2)
   await expect.poll(async () => (await readProjectJson(projectsRoot, `panels/${firstId}.json`)).dialogue[0].placement).not.toBeNull()
   await page.mouse.wheel(0, 250)
   await expect.poll(() => bubble.evaluate((el: any) => Math.round(el.getBoundingClientRect().top))).toBeLessThan(420)
   const lower = await boxOf(bubble)
-  await drag(page, { x, y: lower.y + lower.height / 2 }, { x, y: 700 }, 80)
+  await drag(page, { x, y: lower.y + lower.height / 2 }, { x, y: 700 }, 1)
   await expect.poll(async () => (await readProjectJson(projectsRoot, `panels/${firstId}.json`)).dialogue[0].placement?.y ?? 0).toBeGreaterThan(1)
+
+  const bubblePlacement = (await readProjectJson(projectsRoot, `panels/${firstId}.json`)).dialogue[0].placement
 
   // 3. A gradient from the preset list, saved on the episode.
   await page.getByTestId('background-open').click()
@@ -182,6 +185,7 @@ test('a strip is arranged, drawn from on the Generate page, exported and found a
   await expect(again.page.getByTestId('panel-card')).toHaveCount(3)
   expect([await stripBox(again.page, 0), await stripBox(again.page, 1), await stripBox(again.page, 2)]).toEqual(placed)
   expect((await readProjectJson(projectsRoot, 'episodes'))[0].background.kind).toBe('linear')
+  expect((await readProjectJson(projectsRoot, `panels/${firstId}.json`)).dialogue[0].placement).toEqual(bubblePlacement)
   expect(await again.page.locator('.strip-canvas').evaluate((el: any) => el.style.background || el.style.backgroundImage)).toContain('linear-gradient')
   await again.app.close()
 })

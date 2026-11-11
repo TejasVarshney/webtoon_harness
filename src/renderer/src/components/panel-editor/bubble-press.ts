@@ -45,3 +45,11 @@ export interface Nudge {
   width?: number
   placement: BubblePlacement
 }
+
+/** What a press follows of a pointer event: the React stage events and the window's native ones both have it. */
+export interface PointerFacts {
+  pointerId: number
+  clientX: number
+  clientY: number
+  buttons: number
+}
