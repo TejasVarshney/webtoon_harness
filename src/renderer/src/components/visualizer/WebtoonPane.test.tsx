@@ -6,6 +6,7 @@ import type { Panel } from '@shared/types'
 import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialGenerateState, useGenerateStore } from '../../stores/generate-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
@@ -18,6 +19,7 @@ let stopSync: (() => void) | undefined
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId })
+  useGenerateStore.setState({ ...initialGenerateState })
   usePanelsStore.setState({ ...initialPanelsState })
   useCharactersStore.setState({ ...initialCharactersState })
 })
@@ -77,23 +79,12 @@ describe('WebtoonPane', () => {
     expect(screen.getByText(/no panels yet/i)).toBeInTheDocument()
   })
 
-  it('opens the new blank panel in focus mode once the strip has it', async () => {
-    const blank = panel({ id: 'pnl_00000000f1', description: '', setting: '', characters: [], dialogue: [], versions: [], currentVersionId: null })
-    let panels: Panel[] = []
-    const { calls } = mount({
-      'episodes:list': () => [episode()],
-      'panels:list': () => panels,
-      'panels:create': () => {
-        panels = [blank]
-        return { panel: blank, warnings: [] }
-      }
-    })
+  it('opens the Generate page with no references from the add panel button', async () => {
+    mount({ 'episodes:list': () => [episode()], 'panels:list': () => [] })
     await screen.findByText(/no panels yet/i)
     await userEvent.click(screen.getByTestId('add-panel'))
-    await waitFor(() => expect(useAppStore.getState().focusedPanelId).toBe(blank.id))
-    // The strip already holds it, so the workspace finds it at once.
-    expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]?.map((p) => p.id)).toEqual([blank.id])
-    expect(calls.filter((c) => c.channel === 'panels:create').map((c) => (c.req as { generate: boolean }).generate)).toEqual([false])
+    expect(useGenerateStore.getState().request).toEqual({ episodeId: EPISODE_ID, referencePanelIds: [] })
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
   })
 
   it('shows a new panel when panel.changed arrives', async () => {

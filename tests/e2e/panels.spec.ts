@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createProjectAndSession, launchApp, openFirstProject, readProjectJson, sendChat } from './helpers'
+import { addBlankPanel, createProjectAndSession, launchApp, openFirstProject, readProjectJson, sendChat } from './helpers'
 
 // Milestone 3 checkpoint: the user draws the first panel by hand in the Webtoon tab (the "+" opens a blank panel in editing
 // mode), then asks the agent for the next one; the agent's panel is generated with the user's panel as its previous-panel
@@ -35,7 +35,7 @@ test('user creates a panel manually, agent continues from it', async () => {
   await createProjectAndSession(page, 'Moon Diary')
   await sendChat(page, 'Create Mina', 'Created Mina.')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('tab', { name: 'Scene' }).click()
   await workspace.getByLabel('Description').fill('Mina stands on the rooftop.')
@@ -58,7 +58,7 @@ test('user creates a panel manually, agent continues from it', async () => {
 /** Adds two blank panels from the strip's "+" and returns to the strip. */
 async function addTwoPanels(page: Page): Promise<void> {
   for (const description of ['Mina looks up.', 'Jun looks back.']) {
-    await page.getByTestId('add-panel').last().click()
+    await addBlankPanel(page)
     const editor = page.getByTestId('panel-workspace')
     await editor.getByRole('tab', { name: 'Scene' }).click()
     await editor.getByLabel('Description').fill(description)
@@ -163,7 +163,7 @@ test('a sketch drawn on a new panel is the layout reference of its generation', 
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   const canvas = workspace.getByTestId('sketch-canvas')
   await expect(canvas).toBeVisible()
@@ -215,7 +215,7 @@ test('sketch shapes and zoom draw where the pointer is', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   const canvas = workspace.getByTestId('sketch-canvas')
   await expect(canvas).toBeVisible()
@@ -269,7 +269,7 @@ test('a drawn panel zooms, and is sketched over its picture', async () => {
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   const stage = workspace.getByTestId('panel-stage')

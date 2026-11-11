@@ -127,6 +127,16 @@ export async function openTab(page: Page, tab: 'webtoon' | 'characters' | 'items
   await expect(button).toHaveAttribute('aria-selected', 'true')
 }
 
+/**
+ * Makes a blank panel through the Generate page ("+" on the strip, then Add blank panel), and opens it in focus mode,
+ * where the page leaves it selected on the strip.
+ */
+export async function addBlankPanel(page: Page): Promise<void> {
+  await page.getByTestId('add-panel').last().click()
+  await page.getByTestId('generate-blank').click()
+  await page.locator('[data-testid="panel-card"][data-selected="true"]').dblclick()
+}
+
 /** Switches to a project by its title, through the File menu. */
 export async function openProjectFromMenu(page: Page, title: string): Promise<void> {
   await page.getByTestId('file-menu').click()

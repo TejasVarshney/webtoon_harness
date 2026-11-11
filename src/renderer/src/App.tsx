@@ -1,18 +1,21 @@
 import { useEffect } from 'react'
 import { ChatHeader } from './components/chat/ChatHeader'
 import { ChatPane } from './components/chat/ChatPane'
+import { GeneratePage } from './components/generate/GeneratePage'
 import { HomePage } from './components/home/HomePage'
 import { StudioPane } from './components/layout/StudioPane'
 import { WorkspaceLayout } from './components/layout/WorkspaceLayout'
 import { PanelWorkspace } from './components/panel-editor/PanelWorkspace'
 import { startEventSync } from './events'
 import { startActiveContextSync, useAppStore } from './stores/app-store'
+import { useGenerateStore } from './stores/generate-store'
 import { useModelsStore } from './stores/models-store'
 import { usePluginsStore } from './stores/plugins-store'
 
 export function App() {
   const focusedPanelId = useAppStore((s) => s.focusedPanelId)
   const projectId = useAppStore((s) => s.projectId)
+  const generating = useGenerateStore((s) => s.request !== null)
 
   useEffect(() => {
     const stopEvents = startEventSync()
@@ -27,7 +30,14 @@ export function App() {
     }
   }, [])
 
+  // A page left open must not carry over to the next project.
+  useEffect(() => {
+    useGenerateStore.getState().close()
+  }, [projectId])
+
   if (projectId === null) return <HomePage />
+  // The page stands in for the workspace, so the chat is not mounted while it is open.
+  if (generating) return <GeneratePage />
 
   return (
     <WorkspaceLayout

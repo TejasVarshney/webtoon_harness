@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, openTab, readProjectJson } from './helpers'
+import { addBlankPanel, createProjectAndSession, launchApp, openTab, readProjectJson } from './helpers'
 
 // Sheet check checkpoint: a base sheet that fails its appearance-lock check twice (the first draw and the one redraw,
 // the default consistencyRetries being 1) is stored with a failed check. The studio flags it, and casting it into a
@@ -25,7 +25,7 @@ test('a sheet that fails its check is flagged and warns when cast', async () => 
   await expect(page.locator('.sheet-check-issues').first()).toContainText('Mina reads as a man')
 
   await openTab(page, 'webtoon')
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('tab', { name: 'Scene' }).click()
   await workspace.getByLabel('Description').fill('Mina stands on the rooftop.')

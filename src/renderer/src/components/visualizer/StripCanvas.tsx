@@ -1,10 +1,11 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { assetUrl } from '@shared/asset-url'
 import { contentBottom, exportStrip, panelHeight, resolveStrip } from '@shared/strip-canvas'
 import { effectiveBackground, stripBackgroundStyle, type StripBackground } from '@shared/strip-background'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
+import { useGenerateStore } from '../../stores/generate-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { AddPanelButton } from './AddPanelButton'
 import { PanelCard } from './PanelCard'
@@ -45,6 +46,13 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   const placed = useMemo(() => strip?.placed ?? resolveStrip(panels), [strip, panels])
   const drag = useStripDrag(placed)
   const canvasRef = useRef<HTMLDivElement>(null)
+  // A panel just made on the Generate page: bring it into view once, where it landed. (jsdom has no scrollIntoView.)
+  const revealId = useGenerateStore((s) => s.revealPanelId)
+  useEffect(() => {
+    if (exporting || revealId === null || !panels.some((p) => p.id === revealId)) return
+    canvasRef.current?.querySelector(`[data-panel-id="${revealId}"]`)?.scrollIntoView?.({ block: 'center' })
+    useGenerateStore.getState().clearReveal()
+  }, [exporting, revealId, panels])
   // A panel being moved is drawn where it is dragged to, and the strip grows to hold it.
   const drawn = placed.map((p) => {
     const preview = drag.previews[p.panel.id]

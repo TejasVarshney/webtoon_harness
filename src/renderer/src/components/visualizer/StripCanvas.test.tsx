@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { contentBottom, resolveStrip } from '@shared/strip-canvas'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialGenerateState, useGenerateStore } from '../../stores/generate-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
@@ -22,6 +23,7 @@ const b = panel({ id: 'pnl_00000000bb', placement: { x: 220, y: 500, width: 180 
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId, activeEpisodeId: EPISODE_ID })
+  useGenerateStore.setState({ ...initialGenerateState })
   usePanelsStore.setState({ ...initialPanelsState, projectId, panelsByEpisode: { [EPISODE_ID]: [a, b] } })
   useCharactersStore.setState({ ...initialCharactersState, projectId, characters: [character()], loaded: true })
 })
@@ -151,14 +153,11 @@ describe('StripCanvas', () => {
     expect(useAppStore.getState().focusedPanelId).toBe(a.id)
   })
 
-  it('Add panel button keeps testid add-panel, makes a blank panel and focuses it', async () => {
-    const made = panel({ id: 'pnl_00000000cc', versions: [], currentVersionId: null })
-    const { calls } = installFakeApi({ 'panels:create': () => ({ panel: made, warnings: [] }), 'panels:list': () => [a, b, made] })
+  it('Add panel button keeps testid add-panel and opens the Generate page with no references', async () => {
+    const { calls } = installFakeApi({})
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     await userEvent.click(screen.getByTestId('add-panel'))
-    await waitFor(() => expect(useAppStore.getState().focusedPanelId).toBe(made.id))
-    expect(calls.filter((c) => c.channel === 'panels:create').map((c) => c.req)).toEqual([
-      { projectId, draft: { episodeId: EPISODE_ID, description: '', setting: '', shot: 'medium', characters: [], dialogue: [] }, generate: false }
-    ])
+    expect(useGenerateStore.getState().request).toEqual({ episodeId: EPISODE_ID, referencePanelIds: [] })
+    expect(calls).toEqual([])
   })
 })

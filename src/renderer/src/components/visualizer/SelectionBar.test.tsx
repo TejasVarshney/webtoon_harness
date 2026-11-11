@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { initialAppState, useAppStore } from '../../stores/app-store'
+import { initialGenerateState, useGenerateStore } from '../../stores/generate-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId } from '../../test/character-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
@@ -12,12 +14,20 @@ const blank = panel({ id: 'pnl_00000000cc', versions: [], currentVersionId: null
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId, activeEpisodeId: EPISODE_ID })
+  useGenerateStore.setState({ ...initialGenerateState })
   usePanelsStore.setState({ ...initialPanelsState, projectId, panelsByEpisode: { [EPISODE_ID]: [a, b, blank] } })
 })
 
 const shiftSelect = (...ids: string[]): void => useAppStore.setState({ selectedPanelIds: ids, selectedPanelId: ids.at(-1) ?? null, shiftSelecting: true })
 
 describe('SelectionBar', () => {
+  it('Generate opens the page with the ready panels, in strip order', async () => {
+    shiftSelect(b.id, blank.id, a.id)
+    render(<SelectionBar />)
+    await userEvent.click(screen.getByRole('button', { name: 'Generate from 2 panels' }))
+    expect(useGenerateStore.getState().request).toEqual({ episodeId: EPISODE_ID, referencePanelIds: [a.id, b.id] })
+  })
+
   it('says Generate from 2 panels', () => {
     shiftSelect(a.id, b.id)
     render(<SelectionBar />)

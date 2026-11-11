@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ModelRegistryView, ProjectMeta, SessionSummary } from '@shared/types'
 import { App } from './App'
 import { initialAppState, useAppStore } from './stores/app-store'
+import { initialGenerateState, useGenerateStore } from './stores/generate-store'
 import { useChatStore } from './stores/chat-store'
 import { useModelsStore } from './stores/models-store'
 import { initialPluginsState, usePluginsStore } from './stores/plugins-store'
@@ -21,6 +22,7 @@ const emptyView: ModelRegistryView = { endpoints: [], models: [], roles: {}, eff
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState })
+  useGenerateStore.setState({ ...initialGenerateState })
   useChatStore.setState({ messages: {}, streaming: {}, notices: {} })
   useModelsStore.setState({ view: emptyView })
   usePluginsStore.setState({ ...initialPluginsState })
@@ -50,5 +52,24 @@ describe('App', () => {
     // The controls sit outside the main chat, so composer lookups there stay unambiguous.
     expect(within(chat).getByTestId('sessions-toggle').closest('.main-chat')).toBeNull()
     await waitFor(() => expect(screen.getByTestId('composer-input')).toBeInTheDocument())
+  })
+
+  it('shows the Generate page in place of the workspace, with no chat', () => {
+    const meta = { id: P, title: 'Moon', createdAt: NOW, updatedAt: NOW } as unknown as ProjectMeta
+    installFakeApi({
+      'projects:list': () => ({ projects: [meta], problems: [] }),
+      'models:get': () => emptyView,
+      'plugins:list': () => [],
+      'plugins:loadError': () => null,
+      'characters:list': () => [],
+      'items:list': () => [],
+      'locations:list': () => [],
+      'app:setActiveContext': () => undefined
+    })
+    useAppStore.setState({ projects: [meta], projectId: P })
+    render(<App />)
+    act(() => useGenerateStore.getState().open({ episodeId: 'epi_0000000001', referencePanelIds: [] }))
+    expect(screen.getByTestId('generate-page')).toBeInTheDocument()
+    expect(screen.queryByTestId('pane-chat')).toBeNull()
   })
 })

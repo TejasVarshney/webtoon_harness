@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFile, mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { extname, join } from 'node:path'
-import { launchApp, openTab, readProjectJson } from './helpers'
+import { addBlankPanel, launchApp, openTab, readProjectJson } from './helpers'
 
 test.skip(process.env.WEBTOON_LIVE_BRIDGE !== '1', 'set WEBTOON_LIVE_BRIDGE=1 with the ChatGPT bridge running (uses your ChatGPT account)')
 
@@ -132,7 +132,7 @@ test('the ChatGPT bridge draws a character, an item, its usage and a panel that 
 
     // The panel, through focus mode: Mina in her base look, the blaster in Firing, held by her.
     await openTab(page, 'webtoon')
-    await page.getByTestId('add-panel').last().click()
+    await addBlankPanel(page)
     const editor = page.getByTestId('panel-workspace')
     await editor.getByRole('tab', { name: 'Scene' }).click()
     await editor.getByLabel('Description').fill('Mina fires the Kestrel blaster at a drone across the rooftop.')

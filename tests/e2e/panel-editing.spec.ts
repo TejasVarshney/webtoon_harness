@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat } from './helpers'
+import { addBlankPanel, createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat } from './helpers'
 
 const shots = resolve(__dirname, '..', '..', 'test-results', 'panel-editing')
 
@@ -342,7 +342,7 @@ test('a zoomed panel moves with the middle button, or with Space and a drag', as
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   const stage = workspace.getByTestId('panel-stage')
@@ -420,7 +420,7 @@ test('add, style and point a bubble, and find it on the strip', async () => {
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   const stage = workspace.getByTestId('panel-stage')
@@ -460,7 +460,7 @@ test('a bubble dragged below its panel stays there after a relaunch', async () =
   const { page, projectsRoot, userDataDir } = first
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   await expect(workspace.getByTestId('panel-stage').locator('img')).toHaveCount(1)
@@ -509,7 +509,7 @@ test('the Add bubble menu shows all six choices in the smallest window', async (
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   const stage = workspace.getByTestId('panel-stage')

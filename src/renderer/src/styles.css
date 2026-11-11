@@ -3994,3 +3994,146 @@ kbd {
   flex-direction: column;
   gap: 2px;
 }
+
+/* --- The Generate page: library, chosen panels and the new panel's details, side by side ----------- */
+.generate-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface);
+}
+
+.generate-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.generate-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-body);
+}
+
+.generate-back,
+.generate-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.generate-error {
+  margin: 8px 16px 0;
+}
+
+.generate-columns {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(160px, 1fr) minmax(180px, 1fr);
+  gap: 1px;
+  min-height: 0;
+  background: var(--border);
+}
+
+.generate-column {
+  min-width: 0;
+  padding: 12px 16px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.generate-column h3,
+.library-section h3 {
+  margin: 0 0 8px;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.library-section {
+  margin-bottom: 16px;
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+}
+
+.library-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.library-tile-button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  height: auto;
+  padding: 4px;
+  text-align: center;
+  background: transparent;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+}
+
+.library-tile[data-selected='true'] .library-tile-button {
+  border-color: var(--accent, currentColor);
+}
+
+.library-tile-button img,
+.library-tile-blank,
+.reference-row img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.library-tile-name {
+  overflow: hidden;
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-tile select {
+  min-width: 0;
+  font-size: var(--fs-small);
+}
+
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reference-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.reference-row img,
+.reference-row .library-tile-blank {
+  width: 56px;
+  height: 56px;
+  min-height: 0;
+}
