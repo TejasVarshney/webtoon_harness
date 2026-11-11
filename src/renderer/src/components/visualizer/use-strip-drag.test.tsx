@@ -139,9 +139,9 @@ describe('dragging panels on the strip', () => {
     const handle = screen.getAllByTestId('panel-resize')[0]
     fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, button: 0, buttons: 1 })
     fireEvent.pointerMove(handle, { clientX: 140, clientY: 100, buttons: 1 })
-    // Only the width is set: the card's height follows its aspect, so the shape is kept.
+    // Only the width is set; the height follows the aspect (2:3), so the shape is kept.
     expect(card(0).style.width).toBe('240px')
-    expect(card(0).style.height).toBe('')
+    expect(card(0).style.height).toBe('360px')
     fireEvent.pointerUp(handle, { clientX: 140, clientY: 100, button: 0, buttons: 0 })
     await waitFor(() => expect(placeCalls(calls)).toHaveLength(1))
     expect(placeCalls(calls)[0]).toEqual({ projectId, episodeId: EPISODE_ID, moves: [{ panelId: a.id, placement: { x: 40, y: 30, width: 240 } }] })

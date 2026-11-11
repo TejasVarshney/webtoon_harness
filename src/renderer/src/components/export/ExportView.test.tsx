@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StripBackground } from '@shared/strip-background'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { DialogueLine, ExportSnapshot } from '@shared/types'
@@ -127,6 +127,12 @@ describe('ExportView', () => {
     expect(canvas?.style.backgroundColor).toBe('rgb(0, 0, 0)')
   })
 
+  it("paints the page with the canvas's colour, so a fractional bottom leaves no light line under a dark background", () => {
+    const background: StripBackground = { kind: 'solid', color: '#101820' }
+    render(<ExportView snapshot={snapshot({ episode: episode({ background }), panels: [low] })} />)
+    expect(document.body.style.background).toBe('rgb(16, 24, 32)')
+  })
+
   it('letters the bubbles over the cards where they are on screen, and a bubble below the last panel is cut off', () => {
     const below = { ...line, id: 'dlg_0000000002', text: 'Down here', placement: { x: 0.5, y: 3 } } as DialogueLine
     const lettered = { ...low, dialogue: [line, below] }
@@ -220,6 +226,7 @@ describe('waitForPaintAndMeasure', () => {
   }
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     Reflect.deleteProperty(document.documentElement, 'scrollHeight')
     Reflect.deleteProperty(window, 'scrollY')
   })
@@ -236,6 +243,99 @@ describe('waitForPaintAndMeasure', () => {
     })
     // Padded to the whole pixel it reports, so the page scrolls all the way to the last slice's top.
     expect(root.style.minHeight).toBe('152px')
+  })
+
+  it('cuts no bubble: one that bridges two bands joins them, and one hanging below a panel extends its band', async () => {
+    const root = strip()
+    for (const img of root.querySelectorAll('img')) img.decode = () => Promise.resolve()
+    // Cards: [0, 100.2], [60, 140] (one band) and [150.5, 151.5]. A bubble from 130 to 155 bridges them (and ends past
+    // the strip's 151.5, so it is clipped to it); one from 99 to 112 sits inside the first band.
+    const rect = (top: number, bottom: number): DOMRect => ({ top: top - 20, bottom: bottom - 20, height: bottom - top, left: 0, right: 10, width: 10, x: 0, y: top - 20 }) as DOMRect
+    const layer = document.createElement('div')
+    layer.className = 'strip-bubbles'
+    layer.innerHTML = '<div class="bubble"></div><div class="bubble"></div>'
+    const [bridge, inside] = layer.querySelectorAll<HTMLElement>('.bubble')
+    bridge.getBoundingClientRect = () => rect(130, 155)
+    inside.getBoundingClientRect = () => rect(99, 112)
+    root.append(layer)
+    expect((await waitForPaintAndMeasure(root)).rows).toEqual([{ top: 0, bottom: 152 }])
+  })
+
+  it('a bubble hanging below the last panel is clipped to the strip and extends nothing past it', async () => {
+    const root = strip()
+    for (const img of root.querySelectorAll('img')) img.decode = () => Promise.resolve()
+    const layer = document.createElement('div')
+    layer.className = 'strip-bubbles'
+    layer.innerHTML = '<div class="bubble"></div>'
+    layer.querySelector<HTMLElement>('.bubble')!.getBoundingClientRect = () => ({ top: 400 - 20, bottom: 500 - 20, height: 100, left: 0, right: 10, width: 10, x: 0, y: 380 }) as DOMRect
+    root.append(layer)
+    const layout = await waitForPaintAndMeasure(root)
+    expect(layout.totalHeight).toBe(152)
+    expect(layout.rows).toEqual([
+      { top: 0, bottom: 140 },
+      { top: 150, bottom: 152 }
+    ])
+  })
+
+  describe('a background image', () => {
+    const inCanvas = (root: HTMLElement): void => {
+      const canvas = root.querySelector<HTMLElement>('.strip-canvas')!
+      canvas.style.backgroundImage = 'linear-gradient(#ffffff00, #ffffff00), url("webtoon-asset://proj/episode-backgrounds/epi/x.png")'
+    }
+    const decodeAll = (root: HTMLElement): void => {
+      for (const img of root.querySelectorAll('img')) img.decode = () => Promise.resolve()
+    }
+
+    it('is decoded before the measure resolves', async () => {
+      const root = strip()
+      decodeAll(root)
+      inCanvas(root)
+      const decoded: string[] = []
+      let finish!: () => void
+      vi.stubGlobal(
+        'Image',
+        class {
+          src = ''
+          decode(): Promise<void> {
+            decoded.push(this.src)
+            return new Promise<void>((resolve) => (finish = resolve))
+          }
+        }
+      )
+      let settled = false
+      const pending = waitForPaintAndMeasure(root).then(() => (settled = true))
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(decoded).toEqual(['webtoon-asset://proj/episode-backgrounds/epi/x.png'])
+      expect(settled).toBe(false)
+      finish()
+      await pending
+      expect(settled).toBe(true)
+    })
+
+    it('rejects, naming the background, when it cannot be loaded', async () => {
+      const root = strip()
+      decodeAll(root)
+      inCanvas(root)
+      vi.stubGlobal(
+        'Image',
+        class {
+          src = ''
+          decode(): Promise<void> {
+            return Promise.reject(new Error('missing'))
+          }
+        }
+      )
+      await expect(waitForPaintAndMeasure(root)).rejects.toThrow('The background image could not be loaded')
+    })
+
+    it('is not asked for when the background has no image', async () => {
+      const root = strip()
+      decodeAll(root)
+      const image = vi.fn()
+      vi.stubGlobal('Image', image)
+      await waitForPaintAndMeasure(root)
+      expect(image).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects naming the panel whose image failed to decode', async () => {

@@ -67,7 +67,7 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
           selected={!exporting && selectedIds.includes(p.panel.id)}
           slant={p.slant}
           share={p.share}
-          place={{ x: p.x, y: p.y, width: p.width }}
+          place={{ x: p.x, y: p.y, width: p.width, height: p.height }}
           mode={mode}
           lettering={false}
           position={exporting ? panels.indexOf(p.panel) + 1 : undefined}

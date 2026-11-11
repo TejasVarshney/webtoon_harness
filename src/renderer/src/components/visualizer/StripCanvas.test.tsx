@@ -10,6 +10,13 @@ import { installFakeApi } from '../../test/fake-api'
 import { EPISODE_ID, episode, panel } from '../../test/panel-fixtures'
 import { StripCanvas } from './StripCanvas'
 
+/** A stylesheet's text, whitespace collapsed. The web tsconfig has no node types, and a ?raw import of CSS comes back empty under vitest. */
+async function cssOf(file: string): Promise<string> {
+  const specifier: string = 'node:fs'
+  const fs = (await import(/* @vite-ignore */ specifier)) as { readFileSync(file: string, encoding: 'utf8'): string }
+  return fs.readFileSync(file, 'utf8').replace(/\s+/g, ' ')
+}
+
 const a = panel({ id: 'pnl_00000000aa', placement: { x: 40, y: 30, width: 200 } })
 const b = panel({ id: 'pnl_00000000bb', placement: { x: 220, y: 500, width: 180 } })
 
@@ -30,6 +37,21 @@ describe('StripCanvas', () => {
       expect(card.style.width).toBe(`${placed[i].width}px`)
       expect(card.style.getPropertyValue('--share')).toBe(String(placed[i].share))
     })
+  })
+
+  it('gives each card and its bubble layer the placed height, so the frame is inside the layout box', () => {
+    installFakeApi({})
+    const wide = panel({ id: 'pnl_00000000ee', aspect: '16:9', placement: { x: 0, y: 0, width: 300 } })
+    const tall = panel({ id: 'pnl_00000000ff', aspect: '9:16', placement: { x: 0, y: 400, width: 200 } })
+    const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[wide, tall]} />)
+    const placed = resolveStrip([wide, tall])
+    screen.getAllByTestId('panel-card').forEach((card, i) => expect(card.style.height).toBe(`${placed[i].height}px`))
+    container.querySelectorAll<HTMLElement>('.strip-bubbles').forEach((layer, i) => expect(layer.style.height).toBe(`${placed[i].height}px`))
+  })
+
+  it('lets the art fill the card, whatever the frame takes', async () => {
+    const css = await cssOf('src/renderer/src/styles.css')
+    expect(css).toMatch(/\.strip-canvas > \.panel-card \.panel-media, \.strip-bubbles \.panel-media \{[^}]*height: 100%[^}]*aspect-ratio: auto !important/)
   })
 
   it('its height runs 1600 past the lowest panel', () => {

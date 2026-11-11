@@ -21,7 +21,7 @@ export interface StripBubblesProps {
 /** The box a panel's bubbles are laid out in: where its card is, with the same frame, so a fraction means the same thing on both. */
 function BubbleBox({ placed, children, ...rest }: { placed: PlacedPanel; ref?: RefObject<HTMLDivElement | null> } & HTMLAttributes<HTMLDivElement>) {
   const { panel } = placed
-  const style = { '--share': String(placed.share), left: `${placed.x}px`, top: `${placed.y}px`, width: `${placed.width}px` } as CSSProperties
+  const style = { '--share': String(placed.share), left: `${placed.x}px`, top: `${placed.y}px`, width: `${placed.width}px`, height: `${placed.height}px` } as CSSProperties
   return (
     <div
       className="strip-bubbles"

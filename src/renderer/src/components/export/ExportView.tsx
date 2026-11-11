@@ -1,4 +1,6 @@
 import type { ExportSnapshot } from '@shared/types'
+import { effectiveBackground, stripBackgroundStyle } from '@shared/strip-background'
+import { resolveStrip } from '@shared/strip-canvas'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import { StripCanvas } from '../visualizer/StripCanvas'
 
@@ -12,5 +14,9 @@ import { StripCanvas } from '../visualizer/StripCanvas'
  */
 export function ExportView({ snapshot }: { snapshot: ExportSnapshot }) {
   document.documentElement.style.setProperty('--export-strip-width', `${STRIP_CSS_WIDTH}px`)
+  // The page is padded up to a whole pixel (measure.ts), so a fractional bottom would show the page under the canvas:
+  // it is the canvas's own colour, so no light line shows under a dark background.
+  const background = effectiveBackground(snapshot.episode.background, resolveStrip(snapshot.panels))
+  document.body.style.background = stripBackgroundStyle(background, { imageUrl: null, bottom: 0 }).backgroundColor ?? '#fff'
   return <StripCanvas episodeId={snapshot.episode.id} panels={snapshot.panels} mode="export" lettering={snapshot.lettering} background={snapshot.episode.background} />
 }

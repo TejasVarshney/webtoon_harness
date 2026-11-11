@@ -14,7 +14,7 @@ export interface PanelCardProps {
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
   /** Where it sits on the strip canvas, in strip px (see `resolveStrip`). Without it the card flows in its row. */
-  place?: { x: number; y: number; width: number }
+  place?: { x: number; y: number; width: number; height: number }
   /** `export` draws only the picture and lettering: no toolbar, handlers, focus or selection. Default `edit`. */
   mode?: 'edit' | 'export'
   /** Export mode: whether the dialogue is drawn. Default true. */
@@ -45,11 +45,11 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
   }, [selected])
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height. On the canvas it has a
-  // box of its own, and the height follows its aspect.
+  // box of its own, as tall as the layout says (the frame is inside it, and the art fills what is left).
   const shape = {
     '--ar': String(aspectRatio(panel.aspect)),
     '--share': String(share),
-    ...(place === undefined ? {} : { position: 'absolute', left: `${place.x}px`, top: `${place.y}px`, width: `${place.width}px` })
+    ...(place === undefined ? {} : { position: 'absolute', left: `${place.x}px`, top: `${place.y}px`, width: `${place.width}px`, height: `${place.height}px` })
   } as CSSProperties
 
   function onClick(e: MouseEvent<HTMLElement>): void {

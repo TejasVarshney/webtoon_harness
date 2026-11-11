@@ -2380,6 +2380,15 @@ kbd {
   -webkit-user-drag: none;
 }
 
+/* A card on the canvas is as tall as the layout gives it, and its picture fills the box inside the frame (the image
+   covers it), so the frame never makes the drawn panel taller or shorter than the layout, which the export is cut by.
+   The bubble layer does the same, so a bubble's fraction of its panel is the same on both. */
+.strip-canvas > .panel-card .panel-media,
+.strip-bubbles .panel-media {
+  height: 100%;
+  aspect-ratio: auto !important;
+}
+
 /* The corner that sets a card's width. It shows with the toolbar, and stays inside the card so no neighbour covers it. */
 .panel-resize {
   position: absolute;
