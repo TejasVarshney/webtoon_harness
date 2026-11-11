@@ -1,0 +1,34 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { initialAppState, useAppStore } from '../../stores/app-store'
+import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
+import { PROJECT_ID as P } from '../../test/character-fixtures'
+import { installFakeApi } from '../../test/fake-api'
+import { EPISODE_ID, episode } from '../../test/panel-fixtures'
+import { EpisodeBar } from './EpisodeBar'
+
+beforeEach(() => {
+  installFakeApi({ 'episodes:setBackground': () => episode(), 'episodes:list': () => [episode()], 'panels:list': () => [] })
+  useAppStore.setState({ ...initialAppState, projectId: P, activeEpisodeId: EPISODE_ID })
+  usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodes: [episode()], episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [] } })
+})
+
+describe('EpisodeBar background button', () => {
+  it('opens the background editor and closes it on Escape, which saves the change and then clears the preview', async () => {
+    render(<EpisodeBar />)
+    fireEvent.click(screen.getByTestId('background-open'))
+    expect(screen.getByRole('dialog', { name: 'Background' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Linear' }))
+    expect(usePanelsStore.getState().backgroundPreview?.episodeId).toBe(EPISODE_ID)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Background' })).toBeNull()
+    await waitFor(() => expect(usePanelsStore.getState().backgroundPreview).toBeNull())
+  })
+
+  it('is disabled with no episode', () => {
+    usePanelsStore.setState({ episodes: [] })
+    useAppStore.setState({ activeEpisodeId: null })
+    render(<EpisodeBar />)
+    expect((screen.getByTestId('background-open') as HTMLButtonElement).disabled).toBe(true)
+  })
+})

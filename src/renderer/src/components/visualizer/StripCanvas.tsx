@@ -37,6 +37,8 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   const projectId = useAppStore((s) => s.projectId)
   const stored = usePanelsStore((s) => s.episodes.find((e) => e.id === episodeId)?.background ?? null)
   const exporting = mode === 'export'
+  // A background being edited shows before it is saved; the export draws what is stored.
+  const preview = usePanelsStore((s) => (s.backgroundPreview?.episodeId === episodeId && mode === 'edit' ? s.backgroundPreview.background : null))
   const placed = useMemo(() => resolveStrip(panels), [panels])
   const drag = useStripDrag(placed)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -48,10 +50,10 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   const bottom = contentBottom(drawn)
   // The background is sized to the content as laid out, not to a panel mid-drag.
   const backgroundStyle = useMemo(() => {
-    const bg = effectiveBackground(stored, placed)
+    const bg = preview ?? effectiveBackground(stored, placed)
     const imageUrl = bg.kind === 'image' && projectId !== null ? assetUrl(projectId, bg.path) : null
     return stripBackgroundStyle(bg, { imageUrl, bottom: contentBottom(placed) })
-  }, [stored, placed, projectId])
+  }, [preview, stored, placed, projectId])
 
   const canvas = (
     <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? backgroundStyle : { background }) }}>

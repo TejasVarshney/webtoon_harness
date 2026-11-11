@@ -13,6 +13,8 @@ export interface PanelsData {
   panelsByEpisode: Record<string, Panel[]>
   /** The last load failure; cleared by the next successful load. */
   error: string | null
+  /** A background being edited and not saved yet: the strip of that episode shows it in place of the stored one. */
+  backgroundPreview: { episodeId: string; background: StripBackground } | null
 }
 
 export interface PanelsActions {
@@ -39,6 +41,8 @@ export interface PanelsActions {
   setBackground(episodeId: string, background: StripBackground | null): Promise<Episode>
   /** Opens the file dialog in main and makes the chosen image the background; resolves to `null` when it is cancelled. */
   pickBackgroundImage(episodeId: string): Promise<Episode | null>
+  /** Shows a background on the episode's strip before it is saved; `null` goes back to the stored one. */
+  setBackgroundPreview(preview: PanelsData['backgroundPreview']): void
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
   createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>
@@ -56,7 +60,7 @@ export interface PanelsActions {
   readSketch(id: string): Promise<string | null>
 }
 
-export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null }
+export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null, backgroundPreview: null }
 
 /**
  * Only the response to the latest load is applied: one generation fires several events, so loads overlap.
@@ -181,6 +185,10 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       const updated = await api.invoke('episodes:pickBackgroundImage', { projectId: requireProject(), episodeId })
       if (updated !== null) await get().loadEpisodes()
       return updated
+    },
+
+    setBackgroundPreview(preview) {
+      set({ backgroundPreview: preview })
     },
 
     async createPanel(draft, generate) {

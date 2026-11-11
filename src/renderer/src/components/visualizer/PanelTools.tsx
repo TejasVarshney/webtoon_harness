@@ -51,7 +51,7 @@ function spotFor(button: Element, avoid: Rect | null, height: number): { left: n
     : { left, width, bottom: bottomEdge, maxHeight: Math.max(window.innerHeight - bottomEdge - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
 }
 
-interface ToolPopoverProps {
+export interface ToolPopoverProps {
   label: string
   anchor: Element
   /** Closes it, and `focusBack` says the focus should return to the button that opened it. */
@@ -64,7 +64,7 @@ interface ToolPopoverProps {
 }
 
 /** A panel of controls beside a tool's button, in the window's own layer. A press elsewhere or Escape closes it. */
-function ToolPopover({ label, anchor, onClose, quiet = false, avoid, children }: ToolPopoverProps) {
+export function ToolPopover({ label, anchor, onClose, quiet = false, avoid, children }: ToolPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const place = (): ReturnType<typeof spotFor> => {
     const height = ref.current?.getBoundingClientRect().height
@@ -112,7 +112,8 @@ function ToolPopover({ label, anchor, onClose, quiet = false, avoid, children }:
 
   const { left, top, bottom, maxHeight, width } = spot
   return createPortal(
-    <div ref={ref} className="tool-popover" role="dialog" aria-label={label} tabIndex={-1} style={{ left, top, bottom, width, maxHeight }}>
+    // Clicks stop here, in the React tree the portal shares with whatever opened it, so one never reaches a strip behind it.
+    <div ref={ref} className="tool-popover" role="dialog" aria-label={label} tabIndex={-1} style={{ left, top, bottom, width, maxHeight }} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {children}
     </div>,
     document.body
