@@ -193,7 +193,7 @@ export interface ExportInspection {
 export interface ExportSnapshot {
   projectId: string
   episode: Episode
-  /** The full panel list in strip order, unfinished panels included: the view lays it out with `exportRows`. */
+  /** The full panel list in strip order, unfinished panels included: the view positions all of them as on screen (`exportStrip`) and draws the finished ones. */
   panels: Panel[]
   characters: Character[]
   lettering: boolean

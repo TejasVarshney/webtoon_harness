@@ -44,11 +44,11 @@ async function slicesOf(app: ElectronApplication, dir: string): Promise<{ path: 
 const total = (slices: { height: number }[]): number => slices.reduce((sum, s) => sum + s.height, 0)
 
 /**
- * The strip's first row width, and its first bubble's height, font size and panel height, in CSS px; the first tail's
+ * The strip canvas's width, and its first bubble's height, font size and panel height, in CSS px; the first tail's
  * path, whether the Anton face the styled line asks for has loaded, and the width of the bubble that has one over its
  * panel's.
  */
-type Geometry = { rowWidth: number; bubbleHeight: number; panelHeight: number; fontSize: number; tail: string | null; anton: boolean; sized: number | null }
+type Geometry = { stripWidth: number; canvasHeight: number; bubbleHeight: number; panelHeight: number; fontSize: number; tail: string | null; anton: boolean; sized: number | null }
 
 /** Run in a page (the main window or the export window): measures the strip as it is drawn there. */
 const MEASURE_STRIP = `(() => {
@@ -58,7 +58,8 @@ const MEASURE_STRIP = `(() => {
   const sized = document.querySelector('.bubble-sized')
   const sizedPanel = sized && sized.closest('.panel-media')
   return {
-    rowWidth: document.querySelector('.strip-row').getBoundingClientRect().width,
+    stripWidth: document.querySelector('.strip-canvas').getBoundingClientRect().width,
+    canvasHeight: document.querySelector('.strip-canvas').getBoundingClientRect().height,
     bubbleHeight: bubble.getBoundingClientRect().height,
     panelHeight: media.getBoundingClientRect().height,
     fontSize: parseFloat(getComputedStyle(bubble.querySelector('.bubble-text')).fontSize),
@@ -89,6 +90,21 @@ async function recordExportGeometry(app: ElectronApplication, measure: string = 
     })
   }, measure)
 }
+
+/** Run on the main window's strip: each card's bottom below the canvas top, in CSS px, in strip order. */
+const CARD_BOTTOMS = `(() => {
+  const top = document.querySelector('.strip-canvas').getBoundingClientRect().top
+  return [...document.querySelectorAll('.strip-canvas > [data-testid="panel-card"]')].map((card) => card.getBoundingClientRect().bottom - top)
+})()`
+
+/** The output height that ends at `bottom` CSS px of the 440 px strip: it is captured at 800 / 440. */
+const outputHeight = (bottom: number): number => (bottom * 800) / 440
+
+/**
+ * How far a bordered card's drawn bottom is above the bottom the strip's layout gives it, in CSS px: the layout
+ * takes the picture's height at the card's full width, and the 2.5 px border on each side takes some of it back.
+ */
+const FRAME_SLACK = 3
 
 const exportGeometry = <T = Geometry>(app: ElectronApplication): Promise<T | null> =>
   app.evaluate(() => (globalThis as { __exportGeometry?: unknown }).__exportGeometry ?? null) as Promise<T | null>
@@ -139,7 +155,7 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   await expect(first.page.getByTestId('panel-card').locator('img')).toHaveCount(4)
   const [episode] = await readProjectJson(projectsRoot, 'episodes')
   expect(episode.panelIds).toHaveLength(4)
-  const thirdId: string = episode.panelIds[2]
+  const lastId: string = episode.panelIds[3]
 
   await recordExportGeometry(first.app)
   await exportActiveEpisode(first.page, 'webtoon', false)
@@ -150,16 +166,15 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   const inExport = await exportGeometry(first.app)
   expect(onScreen).not.toBeNull()
   expect(inExport).not.toBeNull()
-  expect(inExport!.rowWidth).toBe(440)
-  expect(onScreen!.rowWidth).toBe(440)
+  expect(inExport!.stripWidth).toBe(440)
+  expect(onScreen!.stripWidth).toBe(440)
   expect(inExport!.fontSize).toBe(onScreen!.fontSize)
   expect(inExport!.bubbleHeight / inExport!.panelHeight).toBeCloseTo(onScreen!.bubbleHeight / onScreen!.panelHeight, 2)
   // Both lay out at 440 px, so a tail measured before the fonts settled would differ from the one on screen.
   expect(inExport!.tail).not.toBeNull()
   expect(inExport!.tail).toBe(onScreen!.tail)
   expect(inExport!.anton).toBe(true)
-  // The line with a width is as wide against its panel in the export as on screen. It is automatic, so its half is of
-  // the flow column, a little narrower than the panel.
+  // The line with a width is as wide against its panel in the export as on screen: half of the panel's width.
   expect(onScreen!.sized).toBeGreaterThan(0.4)
   expect(onScreen!.sized).toBeLessThanOrEqual(0.5)
   expect(inExport!.sized).not.toBeNull()
@@ -177,22 +192,19 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   for (const s of slicesA.slice(0, -1)) expect(s.height).toBe(1280)
   const heightA = total(slicesA)
 
-  // The strip ends with panel 4's black gap: a normal gap, 48 CSS px, is 87 px of output. The last slice may be
-  // shorter than that, so sample 20 px above its bottom, or its top row.
-  const last = slicesA[slicesA.length - 1]
-  expect(last.height).toBeGreaterThan(0)
-  const y = Math.max(0, last.height - 20)
-  for (const x of [100, 400, 700]) {
-    const bgra = await first.app.evaluate(({ nativeImage }, [p, x, y]) => nativeImage.createFromPath(p as string).crop({ x: x as number, y: y as number, width: 1, height: 1 }).toBitmap(), [last.path, x, y])
-    const [b, g, r] = Array.from(bgra as Uint8Array)
-    expect(Math.max(r, g, b), `pixel at x=${x} is black`).toBeLessThan(16)
-  }
+  // The image ends at the bottom of the last panel: no gap, background or bubble room below it.
+  const bottoms = (await first.page.evaluate(CARD_BOTTOMS)) as number[]
+  expect(bottoms).toHaveLength(4)
+  // The export's page is as tall as the last panel (to the whole pixel it is padded to), and the image as that page.
+  expect(inExport!.canvasHeight - bottoms[3]).toBeGreaterThanOrEqual(0)
+  expect(inExport!.canvasHeight - bottoms[3]).toBeLessThanOrEqual(FRAME_SLACK)
+  expect(Math.abs(heightA - outputHeight(Math.ceil(inExport!.canvasHeight)))).toBeLessThanOrEqual(2)
 
-  // 2. Quit, fail panel 3 by hand, and relaunch on the same folders.
+  // 2. Quit, fail the last panel by hand, and relaunch on the same folders.
   await first.app.close()
-  const stored = await readProjectJson(projectsRoot, `panels/${thirdId}.json`)
+  const stored = await readProjectJson(projectsRoot, `panels/${lastId}.json`)
   const version = stored.versions.find((v: { id: string }) => v.id === stored.currentVersionId) ?? stored.versions[0]
-  await writeProjectJson(projectsRoot, `panels/${thirdId}.json`, {
+  await writeProjectJson(projectsRoot, `panels/${lastId}.json`, {
     ...stored,
     versions: [{ ...version, status: 'failed', imagePath: null }],
     currentVersionId: null
@@ -205,13 +217,14 @@ test('exports webtoon slices, a cbz and a reading pdf that match the strip', asy
   await openTab(page, 'webtoon')
   await expect(page.getByTestId('panel-card')).toHaveCount(4)
 
-  // 3. Panel 3's row is gone from the webtoon export.
+  // 3. The failed panel is left out, so the image now ends at panel 3's bottom.
   await exportActiveEpisode(page, 'webtoon', true)
   const folderB = (await readdir(targetB)).filter((n) => n.startsWith('Moon Diary - 01 - ') && !n.endsWith('.cbz') && !n.endsWith('.pdf'))
   expect(folderB).toHaveLength(1)
   const slicesB = await slicesOf(app, join(targetB, folderB[0]))
   expect(slicesB.length).toBeGreaterThan(0)
   expect(total(slicesB)).toBeLessThan(heightA)
+  expect(Math.abs(total(slicesB) - outputHeight(bottoms[2]))).toBeLessThanOrEqual(outputHeight(FRAME_SLACK + 1))
 
   // 4. The CBZ holds numbered JPEGs and a ComicInfo.xml.
   await exportActiveEpisode(page, 'cbz', true)
@@ -338,5 +351,32 @@ test('Without lettering draws no bubble and no tail', async () => {
   await exportActiveEpisode(page, 'webtoon', false, true)
   // Counting the panel keeps this from passing when nothing was drawn at all.
   expect(await exportGeometry<{ panels: number; bubbles: number; tails: number }>(app)).toEqual({ panels: 1, bubbles: 0, tails: 0 })
+  await app.close()
+})
+
+test("the image is as tall as the last panel's bottom at 800/440 scale", async () => {
+  const panel = (description: string) => ({
+    name: 'create_panel',
+    input: { episodeId: { $episode: 'current' }, description, setting: 'Street at night', shot: 'wide', characters: [], dialogue: [] }
+  })
+  const script = { turns: [{ toolCalls: [panel('An empty street.'), panel('A lamp.')] }, { text: 'Drew two panels.' }] }
+  const target = await mkdtemp(join(tmpdir(), 'webtoon-export-height-'))
+  const { app, page } = await launchApp({ script, exportTarget: target, deviceScaleFactor: 1 })
+  await createProjectAndSession(page, 'Moon Diary')
+  await sendChat(page, 'Draw two panels', 'Drew two panels.')
+  await openTab(page, 'webtoon')
+  await expect(page.getByTestId('panel-card').locator('img')).toHaveCount(2)
+  const bottoms = (await page.evaluate(CARD_BOTTOMS)) as number[]
+  await recordExportGeometry(app, `({ canvasHeight: document.querySelector('.strip-canvas').getBoundingClientRect().height })`)
+  await exportActiveEpisode(page, 'webtoon', false)
+  const inExport = await exportGeometry<{ canvasHeight: number }>(app)
+
+  const folder = (await readdir(target)).find((n) => n.startsWith('Moon Diary - 01 - '))!
+  const slices = await slicesOf(app, join(target, folder))
+  expect(inExport).not.toBeNull()
+  expect(inExport!.canvasHeight - bottoms[1]).toBeLessThanOrEqual(FRAME_SLACK)
+  expect(Math.abs(total(slices) - outputHeight(Math.ceil(inExport!.canvasHeight)))).toBeLessThanOrEqual(2)
+  // Nothing is left under the last panel: well short of what one more gap and panel would add.
+  expect(total(slices)).toBeLessThan(outputHeight(bottoms[1] + 40))
   await app.close()
 })

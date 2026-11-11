@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { makePanel } from '../main/test/factories'
 import { PanelSchema } from './schemas'
-import { clampGroupDelta, clampPlacement, contentBottom, panelHeight, readingOrder, resolveStrip } from './strip-canvas'
+import type { Panel } from './types'
+import { clampGroupDelta, clampPlacement, contentBottom, exportStrip, panelHeight, readingOrder, resolveStrip } from './strip-canvas'
 
 let next = 0
 /** A panel with an id of its own, so a strip of them can be told apart. */
@@ -175,5 +176,41 @@ describe('PanelSchema placement', () => {
   it('a panel saved before placements resolves as flow', () => {
     const { placement: _placement, ...legacyPanelJson } = makePanel()
     expect(PanelSchema.parse(legacyPanelJson).placement).toBeNull()
+  })
+})
+
+const version = { id: 'ver_0000000001', source: 'generate', status: 'ready', error: null, imagePath: 'panels/pnl_0000000001/ver_0000000001.png', prompt: 'p', referenceImagePaths: [], instruction: null, parentVersionId: null, drawnFrom: null, check: null, createdAt: '2026-10-21T10:00:00.000Z' }
+const finished = (o: Parameters<typeof makePanel>[0] = {}): Panel => panel({ versions: [version], currentVersionId: version.id, ...o } as Parameters<typeof makePanel>[0])
+const unfinished = (o: Parameters<typeof makePanel>[0] = {}): Panel => panel({ versions: [], currentVersionId: null, ...o })
+
+describe('exportStrip', () => {
+  it('ends at the lowest finished panel', () => {
+    const { placed, bottom } = exportStrip([
+      finished({ aspect: '1:1', placement: { x: 0, y: 500, width: 100 } }),
+      finished({ aspect: '1:1', placement: { x: 0, y: 0, width: 200 } }),
+      unfinished({ aspect: '1:1', placement: { x: 0, y: 900, width: 200 } })
+    ])
+    expect(bottom).toBe(600)
+    expect(placed).toHaveLength(2)
+  })
+
+  it('positions finished panels as if the unfinished ones were there, and keeps the on-screen content height', () => {
+    const panels = [finished({ aspect: '1:1' }), unfinished({ aspect: '1:1' }), finished({ aspect: '1:1' })]
+    const all = resolveStrip(panels)
+    const out = exportStrip(panels)
+    expect(out.placed.map((p) => p.y)).toEqual([all[0].y, all[2].y])
+    expect(out.bottom).toBe(all[2].y + all[2].height)
+    expect(out.contentBottom).toBe(contentBottom(all))
+  })
+
+  it('a trailing unfinished panel is not part of the output but is of the content', () => {
+    const out = exportStrip([finished({ aspect: '1:1', placement: { x: 0, y: 0, width: 100 } }), unfinished({ aspect: '1:1', placement: { x: 0, y: 900, width: 200 } })])
+    expect(out.bottom).toBe(100)
+    expect(out.contentBottom).toBe(1100)
+  })
+
+  it('has no height without a finished panel', () => {
+    expect(exportStrip([unfinished()]).bottom).toBe(0)
+    expect(exportStrip([]).placed).toEqual([])
   })
 })

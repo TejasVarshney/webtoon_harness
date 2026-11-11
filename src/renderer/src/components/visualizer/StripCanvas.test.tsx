@@ -75,10 +75,10 @@ describe('StripCanvas', () => {
 
   it('the export drawing ends at the lowest panel and has no chrome', () => {
     installFakeApi({})
-    const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} mode="export" background="#123456" />)
+    const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} mode="export" background={{ kind: 'solid', color: '#123456' }} />)
     const canvas = container.querySelector<HTMLElement>('.strip-canvas')
     expect(canvas?.style.height).toBe(`${contentBottom(resolveStrip([a, b]))}px`)
-    expect(canvas?.style.background).toContain('rgb(18, 52, 86)')
+    expect(canvas?.style.backgroundColor).toBe('rgb(18, 52, 86)')
     expect(screen.queryByTestId('add-panel')).toBeNull()
     expect(screen.queryByRole('group', { name: 'Panel actions' })).toBeNull()
   })

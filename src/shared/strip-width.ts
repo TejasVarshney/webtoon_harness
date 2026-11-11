@@ -1,9 +1,9 @@
 // The width the strip is laid out at, on screen and in an export. Pure.
 
 /**
- * The strip's row width on screen, in CSS px: styles.css gives `.strip-row` and `.strip-gap` `min(100%, 440px)`, and
- * that 440 is the source of truth. The export lays the strip out at this width too, so lettering sized in `cqw`
- * (the row is the size container) and every fixed px value keep the proportions to the art they have on screen.
+ * The strip's width on screen, in CSS px: styles.css gives `.strip-canvas` 440px, and that 440 is the source of
+ * truth. The export lays the strip out at this width too, so lettering sized in `cqw` (the canvas is the size container)
+ * and every fixed px value keep the proportions to the art they have on screen.
  */
 export const STRIP_CSS_WIDTH = 440
 

@@ -2,6 +2,7 @@
 // the export. A panel with no placement flows as the rows of `layoutStrip` always did; a placed panel holds its spot.
 
 import type { Panel, PanelAspect, PanelGap, PanelPlacement } from '@shared/types'
+import { isFinished } from '@shared/export-status'
 import { aspectRatio, layoutStrip, rowShares } from '@shared/strip-layout'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 
@@ -95,6 +96,17 @@ export function resolveStrip(panels: Panel[]): PlacedPanel[] {
 /** The lowest bottom edge of the placed panels; 0 when there are none. */
 export function contentBottom(placed: PlacedPanel[]): number {
   return placed.reduce((bottom, p) => Math.max(bottom, p.y + p.height), 0)
+}
+
+/**
+ * What an export draws: every panel is positioned as on screen (unfinished ones take their place, so nothing shifts),
+ * but only the finished ones are drawn, and the output ends at the lowest of them. `contentBottom` is the strip's
+ * height on screen, which a gradient background spans, so the crop does not stretch it.
+ */
+export function exportStrip(panels: Panel[]): { placed: PlacedPanel[]; bottom: number; contentBottom: number } {
+  const all = resolveStrip(panels)
+  const placed = all.filter((p) => isFinished(p.panel))
+  return { placed, bottom: contentBottom(placed), contentBottom: contentBottom(all) }
 }
 
 /** A placement kept inside the strip: at least the minimum width, at most the strip's, and never off an edge. */

@@ -113,7 +113,7 @@ export function StripBubbles({ placed, canvas, mode = 'edit' }: StripBubblesProp
         {placed.map((p) => (
           <BubbleBox key={p.panel.id} placed={p}>
             <div className="panel-media" style={{ aspectRatio: p.panel.aspect.replace(':', ' / ') }}>
-              <DialogueOverlay dialogue={p.panel.dialogue} cast={p.panel.characters} />
+              <DialogueOverlay dialogue={insideStrip(p.panel.dialogue, p)} cast={p.panel.characters} />
             </div>
           </BubbleBox>
         ))}

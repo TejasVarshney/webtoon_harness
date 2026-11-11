@@ -2086,61 +2086,6 @@ kbd {
   padding: 16px;
 }
 
-/* The strip: panels in rows, each row on its gutter band, the "+" waiting in each gap between rows. */
-.webtoon-strip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 28px 0 40px;
-}
-
-.webtoon-strip > .placeholder {
-  max-width: 300px;
-  margin: 0 20px 12px;
-  text-align: center;
-}
-
-/* A row and the gap after it, on the row's gutter colour from edge to edge: the page, or black. Bands sit flush, so
-   black rows in a run read as one dark band. */
-.strip-band {
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-  align-items: center;
-  padding: 0 20px;
-  background: var(--raised);
-}
-
-.strip-band[data-gutter='black'] {
-  background: #000;
-}
-
-/* The panels of a row share one height: each takes the row's width in proportion to its aspect (`--ar`, set by the
-   card). The row is also the size container the lettering is measured against. Its 440px (and the gap's) is
-   STRIP_CSS_WIDTH in src/shared/strip-width.ts, the width the export lays the strip out at: change them together. */
-.strip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: min(100%, 440px);
-  container-type: inline-size;
-}
-
-.strip-gap {
-  position: relative;
-  width: min(100%, 440px);
-  height: 48px;
-}
-
-.strip-gap[data-gap='tight'] {
-  height: 8px;
-}
-
-.strip-gap[data-gap='long'] {
-  height: 120px;
-}
-
-
 .panel-card {
   position: relative;
   /* Scaled up, since a lone portrait panel's ratio is under 1, and flex-grow under 1 leaves part of the row empty. */

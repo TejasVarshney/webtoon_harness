@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { assetUrl } from '@shared/asset-url'
-import { contentBottom, panelHeight, resolveStrip } from '@shared/strip-canvas'
-import { effectiveBackground, stripBackgroundStyle } from '@shared/strip-background'
+import { contentBottom, exportStrip, panelHeight, resolveStrip } from '@shared/strip-canvas'
+import { effectiveBackground, stripBackgroundStyle, type StripBackground } from '@shared/strip-background'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
@@ -18,12 +18,12 @@ export interface StripCanvasProps {
   episodeId: string
   /** The episode's panels in strip order. */
   panels: Panel[]
-  /** `export` draws the panels only, ending at the lowest one: no selection, tools or "+". Default `edit`. */
+  /** `export` draws the finished panels and their lettering only, ending at the lowest one: no selection, tools or "+". Default `edit`. */
   mode?: 'edit' | 'export'
   /** Whether the dialogue is drawn over the art. Default true. */
   lettering?: boolean
-  /** A CSS background for the canvas, instead of the episode's own. */
-  background?: string
+  /** Export: the episode's stored background, which the export window has no store to read. Edit mode reads the store. */
+  background?: StripBackground | null
 }
 
 /**
@@ -35,11 +35,14 @@ export interface StripCanvasProps {
 export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true, background }: StripCanvasProps) {
   const selectedIds = useAppStore((s) => s.selectedPanelIds)
   const projectId = useAppStore((s) => s.projectId)
-  const stored = usePanelsStore((s) => s.episodes.find((e) => e.id === episodeId)?.background ?? null)
   const exporting = mode === 'export'
+  const storedInStore = usePanelsStore((s) => s.episodes.find((e) => e.id === episodeId)?.background ?? null)
+  const stored = exporting ? (background ?? null) : storedInStore
   // A background being edited shows before it is saved; the export draws what is stored.
   const preview = usePanelsStore((s) => (s.backgroundPreview?.episodeId === episodeId && mode === 'edit' ? s.backgroundPreview.background : null))
-  const placed = useMemo(() => resolveStrip(panels), [panels])
+  // The export positions every panel as on screen, draws the finished ones, and stops at the lowest of them.
+  const strip = useMemo(() => (exporting ? exportStrip(panels) : null), [exporting, panels])
+  const placed = useMemo(() => strip?.placed ?? resolveStrip(panels), [strip, panels])
   const drag = useStripDrag(placed)
   const canvasRef = useRef<HTMLDivElement>(null)
   // A panel being moved is drawn where it is dragged to, and the strip grows to hold it.
@@ -48,16 +51,16 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
     return preview === undefined ? p : { ...p, ...preview, height: panelHeight(preview.width, p.panel.aspect), share: preview.width / STRIP_CSS_WIDTH }
   })
   const bottom = contentBottom(drawn)
-  // The background is sized to the content as laid out, not to a panel mid-drag.
+  // The background is sized to the content as laid out on screen, not to a panel mid-drag and not to the export's crop.
   const backgroundStyle = useMemo(() => {
-    const bg = preview ?? effectiveBackground(stored, placed)
+    const bg = preview ?? effectiveBackground(stored, strip === null ? placed : resolveStrip(panels))
     const imageUrl = bg.kind === 'image' && projectId !== null ? assetUrl(projectId, bg.path) : null
-    return stripBackgroundStyle(bg, { imageUrl, bottom: contentBottom(placed) })
-  }, [preview, stored, placed, projectId])
+    return stripBackgroundStyle(bg, { imageUrl, bottom: strip?.contentBottom ?? contentBottom(placed) })
+  }, [preview, stored, placed, projectId, strip, panels])
 
   const canvas = (
-    <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? backgroundStyle : { background }) }}>
-      {drawn.map((p, i) => (
+    <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(exporting ? { overflow: 'hidden' } : {}), ...backgroundStyle }}>
+      {drawn.map((p) => (
         <PanelCard
           key={p.panel.id}
           panel={p.panel}
@@ -66,14 +69,14 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
           share={p.share}
           place={{ x: p.x, y: p.y, width: p.width }}
           mode={mode}
-          lettering={lettering}
-          position={exporting ? i + 1 : undefined}
+          lettering={false}
+          position={exporting ? panels.indexOf(p.panel) + 1 : undefined}
           bind={exporting ? undefined : drag.bindCard(p.panel.id)}
           bindResize={exporting ? undefined : drag.bindResize(p.panel.id)}
         />
       ))}
       {/* After all the cards, so the lettering sits over them. */}
-      {!exporting && lettering && <StripBubbles placed={drawn} canvas={canvasRef} />}
+      {lettering && <StripBubbles placed={drawn} canvas={canvasRef} mode={mode} />}
       {!exporting && (
         <div className="strip-canvas-add" style={{ top: bottom + 24 }}>
           <AddPanelButton episodeId={episodeId} testId="add-panel" className="add-panel-button" />
