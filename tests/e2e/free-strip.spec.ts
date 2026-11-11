@@ -79,7 +79,10 @@ test('a strip is arranged, drawn from on the Generate page, exported and found a
   const card = await boxOf(cards.nth(1))
   await drag(page, { x: card.x + card.width / 2, y: card.y + card.height / 2 }, { x: card.x + card.width / 2, y: card.y + card.height / 2 + 40 * scale })
   await expect.poll(() => stored(secondId)).toBeTruthy()
-  expect(Math.abs((await stored(secondId)).y - (before.y + 40))).toBeLessThanOrEqual(2)
+  // The panel stays under the pointer: selecting it brings its tools into view, which can scroll the strip a little
+  // during the drag, and the panel goes with that scroll. So it is the card's place on the window that follows the pointer.
+  expect(Math.abs((await boxOf(cards.nth(1))).y - (card.y + 40 * scale))).toBeLessThanOrEqual(2)
+  expect((await stored(secondId)).y).toBeGreaterThanOrEqual(before.y + 40 - 2)
   await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
   const moved = await stripBox(page, 1)
 
