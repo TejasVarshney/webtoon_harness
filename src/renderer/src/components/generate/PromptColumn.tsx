@@ -26,8 +26,10 @@ export function PromptColumn() {
   const [customStyle, setCustomStyle] = useState(false)
   const [preview, setPreview] = useState<PromptPreview | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
-  // The automatic prompt the user's edit started from: a different one now means the references moved on.
-  const [editedFrom, setEditedFrom] = useState<string | null>(null)
+  // What the user typed as a custom style, kept while another choice is selected.
+  const [customText, setCustomText] = useState('')
+  // The selections the user's edit was made against: different ones now mean the references have moved on.
+  const [editedAt, setEditedAt] = useState<string | null>(null)
   const requestSeq = useRef(0)
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export function PromptColumn() {
   // The edit is left out: the preview is always the automatic text, and the page keeps the user's words itself.
   const previewKey = JSON.stringify([
     request?.referencePanelIds,
+    request?.afterPanelId,
     draft.description,
     draft.setting,
     draft.shot,
@@ -91,17 +94,17 @@ export function PromptColumn() {
   const chooseStyle = (value: string): void => {
     setCustomStyle(value === CUSTOM_STYLE)
     if (value === PROJECT_STYLE) patch({ styleOverride: null })
-    else if (value === CUSTOM_STYLE) patch({ styleOverride: draft.styleOverride ?? '' })
+    else if (value === CUSTOM_STYLE) patch({ styleOverride: customText })
     else patch({ styleOverride: styles.find((s) => s.id === value)?.text ?? null })
   }
 
   const dropped = preview?.droppedPanelIds.length ?? 0
   const edited = draft.promptOverride !== null
-  const editNote = edited && editedFrom !== null && preview !== null && preview.prompt !== editedFrom
+  const editNote = edited && editedAt !== null && editedAt !== previewKey
 
   return (
     <div className="prompt-column">
-      <h3>This panel</h3>
+      <h3>Panel details</h3>
       <Field label="Description">{(id) => <textarea id={id} rows={3} value={draft.description} placeholder="What happens in this panel" onChange={(e) => patch({ description: e.target.value })} />}</Field>
       <Field label="Setting">{(id) => <input id={id} value={draft.setting} placeholder="Where and when" onChange={(e) => patch({ setting: e.target.value })} />}</Field>
       <div className="field-row">
@@ -141,7 +144,18 @@ export function PromptColumn() {
           </select>
         )}
       </Field>
-      {styleValue === CUSTOM_STYLE && <textarea aria-label="Custom style" rows={2} value={draft.styleOverride ?? ''} placeholder="Describe the look of this panel" onChange={(e) => patch({ styleOverride: e.target.value })} />}
+      {styleValue === CUSTOM_STYLE && (
+        <textarea
+          aria-label="Custom style"
+          rows={2}
+          value={draft.styleOverride ?? ''}
+          placeholder="Describe the look of this panel"
+          onChange={(e) => {
+            setCustomText(e.target.value)
+            patch({ styleOverride: e.target.value })
+          }}
+        />
+      )}
       <Field label="Prompt">
         {(id) => (
           <textarea
@@ -151,7 +165,13 @@ export function PromptColumn() {
             value={draft.promptOverride ?? preview?.prompt ?? ''}
             placeholder={previewError === null ? 'The prompt appears here' : ''}
             onChange={(e) => {
-              if (!edited) setEditedFrom(preview?.prompt ?? null)
+              // An empty box is no prompt of the user's own: the automatic one shows again.
+              if (e.target.value === '') {
+                patch({ promptOverride: null })
+                setEditedAt(null)
+                return
+              }
+              if (!edited) setEditedAt(previewKey)
               patch({ promptOverride: e.target.value })
             }}
           />
@@ -164,7 +184,7 @@ export function PromptColumn() {
             type="button"
             onClick={() => {
               patch({ promptOverride: null })
-              setEditedFrom(null)
+              setEditedAt(null)
             }}
           >
             Reset to automatic

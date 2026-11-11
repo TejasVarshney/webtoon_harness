@@ -72,7 +72,8 @@ describe('PromptColumn', () => {
     await screen.findByText(NOTICE)
     await userEvent.click(screen.getByRole('button', { name: 'Reset to automatic' }))
     expect(useGenerateStore.getState().draft.promptOverride).toBeNull()
-    expect(screen.getByLabelText('Prompt')).toHaveValue('Second prompt')
+    // The notice comes with the change itself; the new automatic text follows the debounce.
+    await waitFor(() => expect(screen.getByLabelText('Prompt')).toHaveValue('Second prompt'))
     expect(screen.queryByText(NOTICE)).toBeNull()
   })
 
@@ -161,5 +162,71 @@ describe('PromptColumn', () => {
     expect(await screen.findByText(/Unknown episode/)).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Description'), 'Mina waves')
     expect(useGenerateStore.getState().draft.description).toBe('Mina waves')
+  })
+
+  it('custom style words come back after choosing another style', async () => {
+    setup()
+    render(<PromptColumn />)
+    await screen.findByRole('option', { name: 'Pastel' })
+    await userEvent.selectOptions(screen.getByLabelText('Style'), 'Custom')
+    await userEvent.type(screen.getByLabelText('Custom style'), 'Chalk')
+    await userEvent.selectOptions(screen.getByLabelText('Style'), 'Pastel')
+    await userEvent.selectOptions(screen.getByLabelText('Style'), 'Custom')
+    expect(screen.getByLabelText('Custom style')).toHaveValue('Chalk')
+    expect(useGenerateStore.getState().draft.styleOverride).toBe('Chalk')
+    await userEvent.selectOptions(screen.getByLabelText('Style'), 'Project style')
+    await userEvent.selectOptions(screen.getByLabelText('Style'), 'Custom')
+    expect(screen.getByLabelText('Custom style')).toHaveValue('Chalk')
+  })
+
+  it('the notice shows when selections change before the first preview arrived', async () => {
+    const releases: ((p: PromptPreview) => void)[] = []
+    setup({ 'panels:previewPrompt': () => new Promise<PromptPreview>((resolve) => releases.push(resolve)) })
+    render(<PromptColumn />)
+    await waitFor(() => expect(releases).toHaveLength(1))
+    await userEvent.type(screen.getByLabelText('Prompt'), 'mine')
+    expect(screen.queryByText(NOTICE)).toBeNull()
+    act(() => useGenerateStore.getState().patch({ setting: 'A roof' }))
+    expect(await screen.findByText(NOTICE)).toBeInTheDocument()
+  })
+
+  it('the notice stays when a later preview fails', async () => {
+    let fail = false
+    setup({
+      'panels:previewPrompt': () => {
+        if (fail) throw new Error('boom')
+        return preview('First prompt')
+      }
+    })
+    render(<PromptColumn />)
+    await waitFor(() => expect(screen.getByLabelText('Prompt')).toHaveValue('First prompt'))
+    await userEvent.type(screen.getByLabelText('Prompt'), '!')
+    fail = true
+    act(() => useGenerateStore.getState().patch({ setting: 'A roof' }))
+    expect(await screen.findByText(/boom/)).toBeInTheDocument()
+    expect(screen.getByText(NOTICE)).toBeInTheDocument()
+  })
+
+  it('a different insertion point refreshes the preview', async () => {
+    const { calls } = setup()
+    render(<PromptColumn />)
+    await waitFor(() => expect(previewCalls(calls)).toHaveLength(1))
+    act(() => useGenerateStore.setState({ request: { episodeId: EPISODE_ID, referencePanelIds: [], afterPanelId: 'pnl_00000000aa' } }))
+    await waitFor(() => expect(previewCalls(calls)).toHaveLength(2))
+  })
+
+  it('clearing the prompt box returns to the automatic prompt', async () => {
+    setup()
+    render(<PromptColumn />)
+    await waitFor(() => expect(screen.getByLabelText('Prompt')).toHaveValue('Automatic prompt'))
+    await userEvent.clear(screen.getByLabelText('Prompt'))
+    expect(useGenerateStore.getState().draft.promptOverride).toBeNull()
+    expect(screen.getByLabelText('Prompt')).toHaveValue('Automatic prompt')
+  })
+
+  it('names the column for what it holds', () => {
+    setup()
+    render(<PromptColumn />)
+    expect(screen.getByRole('heading', { name: 'Panel details' })).toBeInTheDocument()
   })
 })

@@ -105,7 +105,7 @@ export function GeneratePage() {
           )}
           <GenerateSketch />
         </section>
-        <section className="generate-column" aria-label="This panel">
+        <section className="generate-column" aria-label="Panel details">
           <PromptColumn />
         </section>
       </div>
