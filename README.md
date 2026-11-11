@@ -1,6 +1,6 @@
 # Webtoon AI Harness
 
-A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. You chat with the agent in the middle pane; it develops the story, builds characters with reference images, and draws panels one beat at a time. The right pane shows the result as a webtoon strip, the character studio, and the story bible. Click any panel to open it in an editor, with its own chat, that keeps every image version.
+A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. The webtoon strip is on the left and the chat with the agent is on the right; the agent develops the story, builds characters with reference images, and draws panels one beat at a time. The left pane also holds the character, item and location studios and the story bible. The strip is free: you place and resize panels and bubbles anywhere on it, and you can make a new panel yourself on the Generate page. Double-click a panel to open it in focus mode, with its own chat, which keeps every image version.
 
 Everything runs on your machine. Model calls are made by the app's main process, projects are plain folders of JSON, markdown and PNG files, and the app works offline on a built-in mock model until you add real endpoints.
 
@@ -23,8 +23,8 @@ npm run dev
 
 A fresh install is seeded with an offline **Mock (offline)** endpoint, so nothing needs configuring to try the app. A banner in the chat header says the mock model is in use.
 
-1. Click **New project** in the left pane and give it a title.
-2. Click **New session** and type a message. Without a script, the mock text model replies `(mock) <your text>`.
+1. The app opens on the home page, which lists your projects. Click **New project** and give it a title; a project's card opens it.
+2. Click **New session** at the top of the chat and type a message. Without a script, the mock text model replies `(mock) <your text>`.
 3. Image calls on the mock return small solid-color PNGs, so panels and characters appear with placeholder images.
 
 To see the whole agent flow offline, point `WEBTOON_MOCK_SCRIPT` at a JSON file of scripted replies before launching. Each turn is one model reply: text, tool calls, or both. A turn with tool calls runs the tools, and the agent's next turn is the next entry.
@@ -52,7 +52,7 @@ The script has one cursor for the whole app: every run, main chat or panel chat,
 
 ## Connect real models
 
-Open **Settings** (bottom of the left pane) and choose **Models**. Add an endpoint, give it an API key, add its models, then assign models to roles.
+Open **File → Settings** and choose **Models**. Add an endpoint, give it an API key, add its models, then assign models to roles.
 
 1. **Add endpoint.** Pick a preset (Anthropic, OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio) or fill in a custom name, kind and base URL. The Anthropic, OpenAI and Gemini presets offer suggested models, which you can untick.
 2. **Set key.** Paste the API key in the form, or use **Set key** later. **Test** next to a text model sends a tiny request to check the connection; for a model without the text capability it only checks that a key is set.
@@ -143,6 +143,40 @@ Any server that speaks the OpenAI API can be added as an endpoint of kind `opena
 
 For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL webtoon pipeline for images, in a sandboxed data folder), see [tools/local-models/README.md](tools/local-models/README.md) and run `npm run local:start`.
 
+## Home page and File menu
+
+The app always starts on the home page: **Your projects**, a card for each project (newest first), and **New project**. It does not reopen the last project. Opening or creating a project enters the harness. Problems found in a project's files show on the home page.
+
+The **File** button at the top left of the harness has **New project**, **Open project list** (the other projects), **Home** and **Settings**. `Ctrl+N` starts a new session and `Ctrl+Shift+N` a new project.
+
+## Chat sessions
+
+The right pane is the chat. **New session** starts one, and the session list at its top (the dropdown beside the session name) shows **Bookmarked** sessions first, then **Previous sessions**. The star bookmarks a whole session, and a session can be renamed or deleted from the list. **Style** and **Continue story** are in the top bar.
+
+## The strip
+
+The **Webtoon** tab shows the episode as one strip, 440 units wide and as long as it needs to be. Panels sit where you put them.
+
+- **Select and move.** Click a panel to select it and drag it anywhere. The corner handle resizes it and keeps its shape, because the picture was drawn at that shape. Arrow keys nudge it (Shift for 10). Dragging one panel of a selection moves them all.
+- **Tools.** A selected panel shows its tools: Add bubble, Lines, Cast, Items, Scene, Versions, Upload image, Redraw, Sketch, Focus and Delete. They work in place; Sketch opens focus mode for its larger canvas. **Double-click** a panel, or press **Focus**, to open focus mode: the panel in full, with its own chat and every image version.
+- **Bubbles.** A bubble belongs to its panel and moves with it, but you can drag it anywhere on the strip, on or off any panel. Select a bubble to change its text and style, or double-click it to retype it. **Add bubble** offers speech, shout, whisper, thought, caption and sound-effect bubbles. Under a line in **Lines** you can change its font, size, colors and outline, and **Reset style** puts it back. Drag the dot at a bubble's tip to point its tail, and the handles on its sides to set its width.
+- **Background.** **Background** in the episode bar sets the strip's background: a color, a linear, radial or conic gradient with any number of stops, or an image, with preset colors and gradients to start from. It is saved with the episode, and export draws the same background.
+- **New episodes.** **New episode** adds an episode. Its name is set when you create it and is not edited afterwards.
+
+Panels the agent draws are placed after the panel it was told to continue from, or at the end, and push later panels down, so your arrangement is never covered. Panels you have not moved keep flowing in episode order.
+
+## The Generate page
+
+The strip's **Add panel** button, and **Generate from N panels** (below), open the Generate page, where you make a new panel yourself. It replaces the workspace and has no chat.
+
+To use existing panels as references, click one panel, then Shift-click more. A **Generate from N panels** button appears and counts the selected panels that have a picture. The page opens with those panels as references.
+
+- **Library.** Every character (with a variation), item (with a usage) and location (with a state) that is not archived can be chosen for the panel.
+- **Centre.** The reference panels, each removable, and a sketch canvas to draw the layout. The page tells you how many chosen panels will not be sent when the image model takes fewer references.
+- **Details.** Description, setting, shot, aspect, **Style** (the project's by default, any library style, or words you type) and the full **Prompt**. The prompt shows the composed text and updates until you edit it; then your text is kept, with **Reset to automatic**. The references are still sent with a prompt of your own.
+
+**Generate** draws the panel. It lands right after the last panel you selected, or at the end, and pushes later panels down. The page closes and the new panel is selected on the strip while it draws. **Add blank panel** makes an empty panel to sketch or upload into. Going back with unsaved work asks first.
+
 ## Project folder layout
 
 Projects live under the projects folder, by default `Documents/Webtoon AI Harness/projects` (change it with `WEBTOON_PROJECTS_ROOT`). Each project is one folder named after its id. All paths stored inside the files are relative to the project folder. Exported episodes go to an `Exports` folder next to the projects folder (see [Export](#export)).
@@ -176,7 +210,7 @@ prj_0123456789/
 
 Dialogue is stored as data and drawn over the image by the app; generated images contain no text. Everything you delete in the app goes to the operating system's trash, and the agent has no delete tools: characters used by panels are archived instead of deleted, and every image attempt is kept as a version. A project file that was hand-edited into invalid JSON is reported as a problem and left untouched, and the project still opens.
 
-In the panel editor you can letter a panel yourself. **Add bubble** on the stage offers speech, shout, whisper, thought, caption and sound-effect bubbles. Under a line in the **Lines** tab you can change its font, size, colors and outline, and **Reset style** puts it back. To point a bubble's tail, drag the dot at its tip; moving the bubble leaves the tip where it is. Drag the handles on a bubble's sides to set its width, and its text wraps to it. Export draws the same look as the stage.
+You can letter a panel yourself, on the strip or in focus mode (see [The strip](#the-strip)). Moving a bubble leaves its tail tip where it is, and a bubble's text wraps to its width. Export draws the same look as the strip.
 
 ## Workflow docs
 
@@ -207,11 +241,11 @@ The link only acts on the project that is open in the app window; with no projec
 
 ## Story direction
 
-The agent decides what happens next, inside your story bible, and a direct instruction from you always wins. The **Continue story** button in the chat header asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
+The agent decides what happens next, inside your story bible, and a direct instruction from you always wins. The **Continue story** button in the top bar asks the agent to plan the next beats and draw the project's `autopilotPanels` panels (default `4`, set in `project.json`).
 
 ## Art styles
 
-Every generated image starts with the project's art style. Pick one when you create a project, or use the **Style** button in the chat header. The app ships ten styles, and you can add your own or edit any of them; **Reset to default** restores a built-in. Your styles and edits are saved in `styles.json` in the app's user data folder and are shared by all projects.
+Every generated image starts with the project's art style. Pick one when you create a project, or use the **Style** button in the top bar. The app ships ten styles, and you can add your own or edit any of them; **Reset to default** restores a built-in. Your styles and edits are saved in `styles.json` in the app's user data folder and are shared by all projects.
 
 A project keeps its own copy of a style's words, so editing or deleting a library style never changes a project already using it. That project shows **Custom** until you pick the style again. If the project already has art, the app warns you before switching and redraws nothing.
 
@@ -232,6 +266,8 @@ Press **Export** in the episode bar to open the **Export episodes** dialog. Tick
 Set **Resolution** to **High** to double the pixels, so slices are 1600 px wide. **Resolution** is shown for every format except **PDF for print**, which is always High.
 
 **Without lettering** exports the art alone, with no dialogue or captions drawn over it.
+
+The image ends exactly at the bottom of the lowest finished panel: the background and any bubble below it are cut. A gradient background spans from the top to that panel's bottom, so export never squashes it. Panels are drawn at the places you put them.
 
 A panel counts as finished when its current version is ready. If a ticked episode has unfinished panels, the dialog lists them, and **Export anyway** leaves them out. If no ticked episode has a finished panel, there is nothing to export.
 
@@ -270,4 +306,4 @@ npm run build
 npx playwright test tests/e2e/full-flow.spec.ts
 ```
 
-`tests/e2e/full-flow.spec.ts` is the full-product check: story bible, characters, variations, panels, a side-chat edit, a continuation, and a relaunch that finds everything again. For a single unit test file, use `npx vitest run <path>`.
+`tests/e2e/full-flow.spec.ts` is the full-product check: story bible, characters, variations, panels, a side-chat edit, a continuation, and a relaunch that finds everything again. `tests/e2e/free-strip.spec.ts` covers the free strip: dragging a panel and a bubble, a gradient background, Shift-selecting references, the Generate page, an export that ends at the last panel, and a relaunch. For a single unit test file, use `npx vitest run <path>`.

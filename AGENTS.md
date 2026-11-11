@@ -24,6 +24,7 @@ Electron + React + TypeScript desktop app. `README.md` covers what it does for u
 - Characters, items and locations are twins. Their services, tools, handlers, UI and tests exist once per kind and are nearly identical, so a change to one usually belongs in the others.
 - New IPC channel: add it to `IpcContract` and `channelSet` in `src/shared/ipc.ts`, put the handler in `src/main/ipc/handlers/`, and validate input with `parseInput` (`src/main/ipc/validate.ts`).
 - A prompt change in `src/main/domain/prompts.ts` needs the same change in `resources/agent-docs/reference/prompt-templates.md`. `src/main/agent/workflow-docs.lint.test.ts` compares them.
+- Panel positions come only from `resolveStrip` (`src/shared/strip-canvas.ts`): a stored `placement` wins, an unplaced panel flows after the ones before it and pushes later panels down. A user move first freezes every panel as drawn, so code that adds a panel must not write a position itself.
 - User-visible text is asserted verbatim in tests. Change the test with the text.
 - The in-app agent has no delete tools, and deleted files go to the OS trash. API keys never reach the renderer. Generated images hold no text: dialogue is data the app draws.
 
