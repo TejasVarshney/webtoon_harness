@@ -34,6 +34,20 @@ describe('EpisodeBar background button', () => {
     expect(usePanelsStore.getState().backgroundPreview).toBeNull()
   })
 
+  it('switching episode with the editor open leaves no held preview or alert behind', async () => {
+    const other = episode({ id: 'epi_0000000002', number: 2, title: 'Episode 2' })
+    installFakeApi({ 'episodes:setBackground': () => Promise.reject(new Error('Disk full')), 'episodes:list': () => [episode(), other], 'panels:list': () => [] })
+    usePanelsStore.setState({ episodes: [episode(), other], panelsByEpisode: { [EPISODE_ID]: [], [other.id]: [] } })
+    render(<EpisodeBar />)
+    fireEvent.click(screen.getByTestId('background-open'))
+    fireEvent.click(screen.getByRole('radio', { name: 'Linear' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Disk full'))
+    fireEvent.change(screen.getByLabelText('Episode'), { target: { value: other.id } })
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(usePanelsStore.getState().backgroundPreview).toBeNull()
+    expect(usePanelsStore.getState().backgroundError).toBeNull()
+  })
+
   it('is disabled with no episode', () => {
     usePanelsStore.setState({ episodes: [] })
     useAppStore.setState({ activeEpisodeId: null })

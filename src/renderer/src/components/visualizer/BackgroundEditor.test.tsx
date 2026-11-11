@@ -287,6 +287,43 @@ describe('BackgroundEditor', () => {
     expect(calls.some((c) => c.channel === 'episodes:pickBackgroundImage')).toBe(false)
   })
 
+  it('opening any editor clears a held failure and its preview, whichever episode they belong to', async () => {
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => Promise.reject(new Error('Disk full')) })
+    change('Angle', '30')
+    await settle()
+    view.unmount()
+    expect(usePanelsStore.getState().backgroundError).toBe('Disk full')
+    const strip = render(<StripCanvas episodeId={EPISODE_ID} panels={[panel({ id: 'pnl_00000000aa' })]} />)
+    const canvas = (): HTMLElement | null => strip.container.querySelector<HTMLElement>('.strip-canvas')
+    expect(canvas()?.style.backgroundImage).toContain('linear-gradient(30deg')
+    mount({ id: 'epi_0000000002', background: linear })
+    expect(canvas()?.style.backgroundImage).toBe('')
+    expect(usePanelsStore.getState().backgroundError).toBeNull()
+    expect(usePanelsStore.getState().backgroundPreview).toBeNull()
+  })
+
+  it('a successful pick after a failed save does not post the old failure when it closes', async () => {
+    const withImage = episode({ background: { kind: 'image', path: IMAGE, fit: 'width', opacity: 1, color: '#ffffff' }, backgroundImage: IMAGE })
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => Promise.reject(new Error('Disk full')), 'episodes:pickBackgroundImage': () => withImage })
+    change('Angle', '30')
+    await settle()
+    expect(screen.getByRole('alert').textContent).toContain('Disk full')
+    fireEvent.click(screen.getByRole('radio', { name: 'Image' }))
+    await settle(0)
+    view.unmount()
+    expect(usePanelsStore.getState().backgroundError).toBeNull()
+  })
+
+  it('a save that fails after the project was switched does not report into the next project', async () => {
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => new Promise((_, reject) => setTimeout(() => reject(new Error('Disk full')), 500)) })
+    change('Angle', '30')
+    await settle(300)
+    view.unmount()
+    useAppStore.setState({ projectId: 'prj_other' })
+    await settle(500)
+    expect(usePanelsStore.getState().backgroundError).toBeNull()
+  })
+
   it('a click inside does not reach what is under it', () => {
     const { above } = mount({ background: linear })
     fireEvent.click(screen.getByRole('dialog', { name: 'Background' }))

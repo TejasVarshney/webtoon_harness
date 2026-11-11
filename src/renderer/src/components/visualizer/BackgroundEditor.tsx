@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { stripBackgroundStyle, effectiveBackground } from '@shared/strip-background'
 import type { PlacedPanel } from '@shared/strip-canvas'
 import type { Episode, StripBackground } from '@shared/types'
+import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { COLOR_PRESETS, GRADIENT_PRESETS } from './background-presets'
@@ -157,31 +158,41 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
   const open = useRef(true)
   const inFlight = useRef(false)
   /** The failure the editor is showing, for the bar to take over if it is closed. */
-  const errorShown = useRef<string | null>(null)
+  const errorShown = useRef<{ message: string; background: StripBackground } | null>(null)
 
   /** Stops showing `background` on the strip, if it still is what the strip shows. */
   function release(background: StripBackground): void {
     usePanelsStore.setState((s) => (s.backgroundPreview?.background === background ? { backgroundPreview: null } : {}))
   }
 
-  /** Shows a failure in the editor, or, once it is closed, where the bar shows it. */
-  function fail(e: unknown): void {
+  /** Shows a failure in the editor, or, once it is closed, where the bar shows it, with the draft held on the strip. */
+  function fail(e: unknown, background: StripBackground, projectId: string | null): void {
     const message = errorText(e)
-    errorShown.current = message
+    errorShown.current = { message, background }
     if (open.current) setError(message)
-    else usePanelsStore.setState({ backgroundError: message })
+    // A project that was closed or switched in the meantime has no use for it.
+    else if (useAppStore.getState().projectId === projectId) hold(message, background)
+  }
+
+  /** The failure and the draft it belongs to are one pair: shown together, and cleared together. */
+  function hold(message: string, background: StripBackground): void {
+    usePanelsStore.setState({ backgroundError: message, backgroundPreview: { episodeId: episodeId.current, background } })
   }
 
   /** Saves `background`; resolves to whether it was saved. The preview is held until the save settles, and kept when it fails. */
   async function save(background: StripBackground): Promise<boolean> {
     const mine = ++latestSave.current
+    const projectId = useAppStore.getState().projectId
     inFlight.current = true
     try {
       await usePanelsStore.getState().setBackground(episodeId.current, background)
-      if (mine === latestSave.current) release(background)
+      if (mine === latestSave.current) {
+        release(background)
+        usePanelsStore.setState({ backgroundError: null })
+      }
       return true
     } catch (e) {
-      if (mine === latestSave.current) fail(e)
+      if (mine === latestSave.current) fail(e, background, projectId)
       return false
     } finally {
       if (mine === latestSave.current) inFlight.current = false
@@ -206,7 +217,7 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
   useEffect(() => {
     open.current = true
     // Nothing is left over from an editor that was closed on a failure.
-    usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null, backgroundError: null } : { backgroundError: null }))
+    usePanelsStore.setState({ backgroundPreview: null, backgroundError: null })
     return () => {
       open.current = false
       const waiting = timer.current
@@ -215,7 +226,7 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
         clearTimeout(waiting.id)
         void save(waiting.background)
       } else if (errorShown.current !== null) {
-        usePanelsStore.setState({ backgroundError: errorShown.current })
+        hold(errorShown.current.message, errorShown.current.background)
       } else if (!inFlight.current) {
         usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null } : {}))
       }
@@ -225,6 +236,7 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
   async function chooseImage(): Promise<void> {
     setPicking(true)
     setError(null)
+    errorShown.current = null
     try {
       // A change still waiting is saved first: the picked image would otherwise be overwritten by it, or the change lost if the dialog is cancelled.
       const waiting = timer.current
@@ -239,7 +251,7 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
         usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null } : {}))
       }
     } catch (e) {
-      fail(e)
+      fail(e, draft, useAppStore.getState().projectId)
     } finally {
       if (open.current) setPicking(false)
     }
