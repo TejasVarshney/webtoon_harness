@@ -374,7 +374,7 @@ The app already redrew it once. This is a local detail, so make one edit:
 edit_panel_image {"panelId": "pnl_0e9b3d61a7", "instruction": "Make Mina's hair black, matching her reference image"}
 ```
 
-An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can open the panel to pick another version, or ask its chat for an edit."
+An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can open the panel (double-click its card, or select it and press Focus) to pick another version, or ask its chat for an edit."
 
 ### Example 7: inserting a panel between two others
 

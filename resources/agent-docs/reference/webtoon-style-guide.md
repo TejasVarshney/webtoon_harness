@@ -33,7 +33,7 @@ Rules of thumb:
 
 ## Panel Layout
 
-Three optional fields on `create_panel` and `update_panel` (`frame`, `beside`, `gapAfter`) steer how a panel flows in the strip until the user places it. Leave them out for the defaults: a full-width, bordered panel with a normal gap. Changing them never needs a redraw.
+Three optional fields on `create_panel` and `update_panel` (`frame`, `beside`, `gapAfter`) steer how a panel flows in the strip until the user places it. Leave them out for the defaults: a full-width, bordered panel with a normal gap. Changing them never needs a redraw. `beside` and `gapAfter` only affect panels the user has not placed: once the user moves any panel in an episode, every panel in it is placed, and these two no longer change anything there.
 
 - **Quick exchanges:** shot, reverse shot and reaction go **beside each other by default** (`beside: true`), 2 to 3 to a row, as close-ups or medium shots at `2:3` or `9:16`. A row is one exchange, and a new speaker topic starts a new row.
 - **Clashes and wide establishing shots:** `frame: borderless`.
