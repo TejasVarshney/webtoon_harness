@@ -88,10 +88,8 @@ export function GeneratePage() {
           {error}
         </p>
       )}
+      {/* The drawing on the left; on the right the asset browser, which ends in the panel's details. */}
       <div className="generate-columns">
-        <aside className="generate-column" aria-label="Library">
-          <LibraryColumn characters={characters} items={items} locations={locations} />
-        </aside>
         <section className="generate-column" aria-label="Panels to draw from">
           <h3>Drawn from</h3>
           {chosen.length === 0 ? (
@@ -105,9 +103,9 @@ export function GeneratePage() {
           )}
           <GenerateSketch />
         </section>
-        <section className="generate-column" aria-label="Panel details">
-          <PromptColumn />
-        </section>
+        <aside className="generate-column" aria-label="Library">
+          <LibraryColumn characters={characters} items={items} locations={locations} details={<PromptColumn />} />
+        </aside>
       </div>
       {confirming &&
         createPortal(

@@ -33,7 +33,7 @@ test('Claude Code runs the main chat and creates a character through the link', 
   try {
     await createProjectAndSession(page, 'Claude Live')
 
-    await openSettings(page)
+    await openSettings(app, page)
     const dialog = page.getByRole('dialog', { name: 'Settings' })
     await dialog.getByRole('tab', { name: 'Plugins' }).click()
     await dialog.getByRole('switch', { name: 'Claude Code', exact: true }).click()

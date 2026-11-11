@@ -65,14 +65,25 @@ describe('GeneratePage', () => {
     expect(screen.queryByText('Old Kim')).toBeNull()
   })
 
+  it('puts the drawing on the left and the asset browser on the right, ending in the panel details', async () => {
+    setup()
+    const { container } = render(<GeneratePage />)
+    await screen.findAllByTestId('library-character')
+    const columns = [...container.querySelectorAll('.generate-columns > .generate-column')].map((c) => c.getAttribute('aria-label'))
+    expect(columns).toEqual(['Panels to draw from', 'Library'])
+    const library = screen.getByRole('complementary', { name: 'Library' })
+    expect(within(library).getByRole('region', { name: 'Panel details' })).toContainElement(screen.getByLabelText('Description'))
+    expect(within(screen.getByRole('region', { name: 'Panels to draw from' })).getByTestId('generate-sketch')).toBeInTheDocument()
+  })
+
   it('selecting a character uses a ready variation and shows the variation picker', async () => {
     setup()
     render(<GeneratePage />)
     const tile = await screen.findByTestId('library-character')
-    expect(within(tile).queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Variation of Mina' })).toBeNull()
     await userEvent.click(within(tile).getByRole('button', { name: /Mina/ }))
     expect(useGenerateStore.getState().draft.characters).toMatchObject([{ characterId: mina.id, variationId: mina.variations[0]?.id }])
-    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'Variation of Mina' }), 'Blazer')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Variation of Mina' }), 'Blazer')
     expect(useGenerateStore.getState().draft.characters[0]?.variationId).toBe(mina.variations[1]?.id)
   })
 
@@ -82,7 +93,7 @@ describe('GeneratePage', () => {
     const tile = await screen.findByTestId('library-item')
     await userEvent.click(within(tile).getByRole('button', { name: /Ray Pistol/ }))
     expect(useGenerateStore.getState().draft.items).toEqual([{ itemId: pistol.id, usageId: pistol.usages[0]?.id, heldBy: null, action: '' }])
-    expect(within(tile).getByRole('combobox', { name: 'Usage of Ray Pistol' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Usage of Ray Pistol' })).toBeInTheDocument()
   })
 
   it('selecting a location uses its base state and main camera', async () => {
@@ -101,14 +112,14 @@ describe('GeneratePage', () => {
     const { calls } = setup({ 'locations:list': () => [flooded] })
     render(<GeneratePage />)
     const tile = await screen.findByTestId('library-location')
-    expect(within(tile).queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'State of Back stockroom' })).toBeNull()
     await userEvent.click(within(tile).getByRole('button', { name: /Back stockroom/ }))
-    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'State of Back stockroom' }), 'Flooded')
-    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Reverse angle')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'State of Back stockroom' }), 'Flooded')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Reverse angle')
     expect(useGenerateStore.getState().draft.location).toEqual({ locationId: flooded.id, stateId: wet.id, camera: 'reverse' })
     // Other shows a box for the user's own words.
-    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Other')
-    await userEvent.type(within(tile).getByRole('textbox', { name: 'Camera angle of Back stockroom' }), 'low, from the door')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Other')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Camera angle of Back stockroom' }), 'low, from the door')
     expect(useGenerateStore.getState().draft.location).toEqual({ locationId: flooded.id, stateId: wet.id, camera: 'low, from the door' })
     useGenerateStore.getState().patch({ description: 'Mina waves' })
     await userEvent.click(await screen.findByTestId('generate-submit'))

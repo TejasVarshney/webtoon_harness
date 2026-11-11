@@ -1,6 +1,8 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from 'electron'
 import { EVENT_CHANNEL } from '@shared/ipc'
+import type { AppEvent, MenuState } from '@shared/types'
+import { appMenuTemplate } from './app-menu'
 import { electronImageOps } from './domain/electron-image-ops'
 import { electronPackComposer } from './domain/electron-pack-composer'
 import { electronCodec } from './export/electron-codec'
@@ -71,6 +73,17 @@ function createWindow(): void {
   }
 }
 
+/**
+ * Sets the window's menu bar. A File choice goes to the app's windows as a `menu.command` event: the project list and
+ * the dialogs live in the renderer, which reports the list back through `app:setMenu`.
+ */
+function applyMenu(state: MenuState): void {
+  const send = (event: AppEvent): void => {
+    for (const win of appWindows()) win.webContents.send(EVENT_CHANNEL, event)
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate(state, (command) => send({ type: 'menu.command', command }))))
+}
+
 /** The renderer dev server in development, or null to load the built pages. */
 function rendererUrl(): string | null {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
@@ -135,8 +148,11 @@ if (primary) void app.whenReady().then(async () => {
     },
     openPath: (absPath) => shell.openPath(absPath),
     chooseExportTarget,
-    showItemInFolder: (absPath) => shell.showItemInFolder(absPath)
+    showItemInFolder: (absPath) => shell.showItemInFolder(absPath),
+    setMenu: applyMenu
   })
+  // Until the renderer reports its projects, the File menu has New project and Settings but nothing to open.
+  applyMenu({ projects: [], projectId: null })
   void services.plugins.startEnabled()
   const { agent, panelChat, plugins } = services
   // Quitting mid-run: abort so every loop persists results for its pending tool calls, then stop the plugins.

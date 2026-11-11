@@ -228,6 +228,15 @@ export interface ExportProgress {
   outputs: string[]
 }
 
+/** What the window's File menu asked for. Main sends it as a `menu.command` event; the renderer carries it out. */
+export type MenuCommand = { kind: 'newProject' } | { kind: 'openProject'; projectId: string } | { kind: 'home' } | { kind: 'settings' }
+
+/** What the File menu shows: every project, and the one open (null on the home page). The renderer reports it. */
+export interface MenuState {
+  projects: { id: string; title: string }[]
+  projectId: string | null
+}
+
 export type AppEvent =
   | { type: 'project.changed'; projectId: string }
   | { type: 'session.changed'; projectId: string; sessionId: string }
@@ -242,3 +251,4 @@ export type AppEvent =
   /** `threadKey` is a session id for the main chat, or `panel:<panelId>` for a panel side chat. */
   | { type: 'agent.event'; projectId: string; threadKey: string; event: AgentEvent }
   | { type: 'export.progress'; projectId: string; progress: ExportProgress }
+  | { type: 'menu.command'; command: MenuCommand }

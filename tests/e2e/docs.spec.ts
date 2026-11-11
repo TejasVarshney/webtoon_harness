@@ -11,7 +11,7 @@ test('settings lists the workflow docs of the project and resets them after conf
   const shipped = await readFile(resolve(__dirname, '..', '..', 'resources', 'agent-docs', 'AGENTS.md'), 'utf8')
   expect(await readFile(agentsFile, 'utf8')).toBe(shipped)
 
-  await openSettings(page)
+  await openSettings(app, page)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await dialog.getByRole('tab', { name: 'Workflow docs' }).click()
   for (const path of ['agent/AGENTS.md', 'agent/workflows/panel-generation.md', 'agent/reference/consistency-checklist.md']) {

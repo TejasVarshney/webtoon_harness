@@ -147,7 +147,7 @@ For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL
 
 The app always starts on the home page: **Your projects**, a card for each project (newest first), and **New project**. It does not reopen the last project. Opening or creating a project enters the harness. Problems found in a project's files show on the home page.
 
-The **File** button at the top left of the harness has **New project**, **Open project list** (the other projects), **Home** and **Settings**. `Ctrl+N` starts a new session and `Ctrl+Shift+N` a new project.
+The **File** menu in the window's menu bar, beside Edit, View and Window, has **New project** (`Ctrl+Shift+N`), **Open project** (every project, newest first, with the open one ticked), **Home**, **Settings** (`Ctrl+,`) and **Exit**. It works on every screen, the home page included. `Ctrl+N` starts a new session.
 
 ## Chat sessions
 

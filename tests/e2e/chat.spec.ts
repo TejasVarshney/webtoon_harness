@@ -15,7 +15,7 @@ test('settings opens on the models tab and closes on Escape', async () => {
   const { app, page } = await launchApp()
   // Settings is in the File menu, which only a project's top bar has.
   await createProjectAndSession(page, 'Moon Diary')
-  await openSettings(page)
+  await openSettings(app, page)
   await expect(page.getByLabel('agent role')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)

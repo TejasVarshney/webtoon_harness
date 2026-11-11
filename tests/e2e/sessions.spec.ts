@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, openFirstProject, openProjectFromMenu, openSessions } from './helpers'
+import { clickMenuItem, createProjectAndSession, launchApp, menuProjects, openFirstProject, openProjectFromMenu, openSessions } from './helpers'
 
 test('sessions persist across relaunch', async () => {
   const first = await launchApp()
@@ -18,12 +18,12 @@ test('sessions persist across relaunch', async () => {
   await second.app.close()
 })
 
-test('the File menu switches projects and goes home', async () => {
+test('the File menu in the menu bar makes, switches and leaves projects', async () => {
   const { app, page } = await launchApp()
   try {
     await createProjectAndSession(page, 'Moon Diary')
-    await page.getByTestId('file-menu').click()
-    await page.getByTestId('new-project').click()
+    await expect(page.getByTestId('file-menu')).toHaveCount(0)
+    await clickMenuItem(app, 'menu-new-project')
     await page.getByLabel('Title').fill('Sun Diary')
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.locator('.project-title')).toHaveText('Sun Diary')
@@ -31,14 +31,14 @@ test('the File menu switches projects and goes home', async () => {
     await expect(page.getByTestId('session-item')).toHaveCount(0)
     await page.keyboard.press('Escape')
 
-    await openProjectFromMenu(page, 'Moon Diary')
+    await expect.poll(() => menuProjects(app)).toEqual(['Sun Diary', 'Moon Diary'])
+    await openProjectFromMenu(app, page, 'Moon Diary')
     await expect(page.locator('.project-title')).toHaveText('Moon Diary')
     await openSessions(page)
     await expect(page.getByTestId('session-item')).toHaveCount(1)
     await page.keyboard.press('Escape')
 
-    await page.getByTestId('file-menu').click()
-    await page.getByTestId('file-menu-home').click()
+    await clickMenuItem(app, 'menu-home')
     await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible()
     await expect(page.getByTestId('project-card')).toHaveCount(2)
   } finally {

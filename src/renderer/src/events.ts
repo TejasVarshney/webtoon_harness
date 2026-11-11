@@ -5,6 +5,7 @@ import { useCharactersStore } from './stores/characters-store'
 import { useChatStore } from './stores/chat-store'
 import { useItemsStore } from './stores/items-store'
 import { useLocationsStore } from './stores/locations-store'
+import { runMenuCommand } from './stores/menu-store'
 import { useModelsStore } from './stores/models-store'
 import { usePanelsStore } from './stores/panels-store'
 import { usePluginsStore } from './stores/plugins-store'
@@ -63,6 +64,9 @@ function handleEvent(event: AppEvent): void {
       }
       break
     }
+    case 'menu.command':
+      runMenuCommand(event.command)
+      break
     default:
       break
   }

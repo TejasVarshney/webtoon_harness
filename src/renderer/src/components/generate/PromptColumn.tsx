@@ -104,7 +104,7 @@ export function PromptColumn() {
 
   return (
     <div className="prompt-column">
-      <h3>Panel details</h3>
+      <h3 className="library-heading">Panel details</h3>
       <Field label="Description">{(id) => <textarea id={id} rows={3} value={draft.description} placeholder="What happens in this panel" onChange={(e) => patch({ description: e.target.value })} />}</Field>
       <Field label="Setting">{(id) => <input id={id} value={draft.setting} placeholder="Where and when" onChange={(e) => patch({ setting: e.target.value })} />}</Field>
       <div className="field-row">

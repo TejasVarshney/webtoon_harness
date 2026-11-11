@@ -119,7 +119,7 @@ test('a panel over the reference cap is drawn from a packed, labeled image, and 
   expect(side.ink[1]).toBeGreaterThan(10)
 
   // The user lowers the image model's cap to 2.
-  await openSettings(page)
+  await openSettings(app, page)
   const settings = page.getByRole('dialog', { name: 'Settings' })
   await settings.getByTestId('model-row-mdl_000000000b').getByRole('button', { name: 'Edit' }).click()
   const form = settings.getByRole('form', { name: 'Edit model' })

@@ -7,6 +7,7 @@ import type {
   CharacterInput,
   CharacterPatch,
   ChatMessage,
+  MenuState,
   EndpointConfig,
   EndpointKind,
   Episode,
@@ -219,6 +220,8 @@ export interface IpcContract {
   'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
+  /** The projects the window's File menu lists, and the open one; main rebuilds the menu from it. */
+  'app:setMenu': { req: MenuState; res: void }
   /** Per episode: its panel counts and the unfinished panels, for the export dialog. */
   'export:inspect': { req: { projectId: string; episodeIds: string[] }; res: ExportInspection }
   /** Asks where to save (a file or a folder, by preset), then starts the job. `{ cancelled: true }` when the dialog is dismissed. Rejects with a readable message when nothing can be exported or a job is running. */
@@ -329,6 +332,7 @@ const channelSet: Record<IpcChannel, true> = {
   'claudeCode:regenerateToken': true,
   'claudeCode:detect': true,
   'app:setActiveContext': true,
+  'app:setMenu': true,
   'export:inspect': true,
   'export:start': true,
   'export:cancel': true,

@@ -137,16 +137,37 @@ export async function addBlankPanel(page: Page): Promise<void> {
   await page.locator('[data-testid="panel-card"][data-selected="true"]').dblclick()
 }
 
-/** Switches to a project by its title, through the File menu. */
-export async function openProjectFromMenu(page: Page, title: string): Promise<void> {
-  await page.getByTestId('file-menu').click()
-  await page.getByRole('menuitem', { name: title, exact: true }).click()
+/**
+ * Clicks an item of the window's menu bar by its id (see `MENU_IDS` in src/main/app-menu.ts). Playwright cannot reach
+ * a native menu, so this runs the item's click in main, which is what a real click on it does.
+ */
+export async function clickMenuItem(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(({ Menu }, itemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(itemId)
+    if (!item) throw new Error(`No menu item ${itemId}`)
+    item.click()
+  }, id)
+}
+
+/** The titles under File > Open project, as the menu shows them now. */
+export async function menuProjects(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(({ Menu }) => (Menu.getApplicationMenu()?.getMenuItemById('menu-open-project')?.submenu?.items ?? []).filter((i) => i.enabled).map((i) => i.label))
+}
+
+/** Switches to a project by its title, through File > Open project in the window's menu bar. */
+export async function openProjectFromMenu(app: ElectronApplication, page: Page, title: string): Promise<void> {
+  // The renderer reports its projects to the menu, so a project made a moment ago may take a tick to be listed.
+  await expect.poll(() => menuProjects(app)).toContain(title)
+  await app.evaluate(({ Menu }, label) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById('menu-open-project')?.submenu?.items.find((i) => i.label === label)
+    if (!item) throw new Error(`No project ${label} in File > Open project`)
+    item.click()
+  }, title)
   await expect(page.getByTestId('pane-chat')).toBeVisible()
 }
 
-/** Opens the Settings dialog from the File menu. */
-export async function openSettings(page: Page): Promise<void> {
-  await page.getByTestId('file-menu').click()
-  await page.getByTestId('settings-open').click()
+/** Opens the Settings dialog from File > Settings in the window's menu bar. */
+export async function openSettings(app: ElectronApplication, page: Page): Promise<void> {
+  await clickMenuItem(app, 'menu-settings')
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
 }

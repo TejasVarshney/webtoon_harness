@@ -13,7 +13,7 @@ test('an MCP client creates a character through the Claude Code link and the app
   try {
     await createProjectAndSession(page, 'Moon Diary')
 
-    await openSettings(page)
+    await openSettings(app, page)
     const dialog = page.getByRole('dialog', { name: 'Settings' })
     await dialog.getByRole('tab', { name: 'Plugins' }).click()
     await dialog.getByRole('switch', { name: 'Claude Code' }).click()
