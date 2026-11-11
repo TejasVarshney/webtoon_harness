@@ -4,6 +4,7 @@ import { PanelAspectSchema, PanelFrameSchema, ShotTypeSchema } from '@shared/sch
 import type { Panel } from '@shared/types'
 import { Field } from '../characters/controls'
 import { useLocationRoster } from '../visualizer/use-location-roster'
+import { cameraKind } from './camera-kind'
 import type { FieldAutosave } from './use-field-autosave'
 
 const SHOTS = ShotTypeSchema.options
@@ -33,12 +34,6 @@ function Choice<T extends string>({ id, field, options, disabled, describedBy }:
       ))}
     </select>
   )
-}
-
-/** How the camera select reads a panel's camera: its main angle, the reverse, or the user's own words. */
-function cameraKind(camera: string): 'main' | 'reverse' | 'other' {
-  const said = camera.trim().toLowerCase()
-  return said === '' || said === 'main' ? 'main' : said === 'reverse' ? 'reverse' : 'other'
 }
 
 /**

@@ -11,7 +11,7 @@ import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as projectId, variation, withVariation } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
 import { item, withUsage } from '../../test/item-fixtures'
-import { location } from '../../test/location-fixtures'
+import { location, locationState } from '../../test/location-fixtures'
 import { EPISODE_ID, panel } from '../../test/panel-fixtures'
 import { GeneratePage } from './GeneratePage'
 
@@ -93,6 +93,27 @@ describe('GeneratePage', () => {
     expect(useGenerateStore.getState().draft.location).toEqual({ locationId: stockroom.id, stateId: stockroom.states[0]?.id, camera: 'main' })
     await userEvent.click(within(tile).getByRole('button', { name: /Back stockroom/ }))
     expect(useGenerateStore.getState().draft.location).toBeNull()
+  })
+
+  it('a chosen location offers its states and a camera, and the choice goes into the draft and the created panel', async () => {
+    const wet = locationState({ id: 'lst_0000000002', name: 'Flooded', kind: 'state' })
+    const flooded = location({ states: [locationState(), wet] })
+    const { calls } = setup({ 'locations:list': () => [flooded] })
+    render(<GeneratePage />)
+    const tile = await screen.findByTestId('library-location')
+    expect(within(tile).queryByRole('combobox')).toBeNull()
+    await userEvent.click(within(tile).getByRole('button', { name: /Back stockroom/ }))
+    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'State of Back stockroom' }), 'Flooded')
+    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Reverse angle')
+    expect(useGenerateStore.getState().draft.location).toEqual({ locationId: flooded.id, stateId: wet.id, camera: 'reverse' })
+    // Other shows a box for the user's own words.
+    await userEvent.selectOptions(within(tile).getByRole('combobox', { name: 'Camera of Back stockroom' }), 'Other')
+    await userEvent.type(within(tile).getByRole('textbox', { name: 'Camera angle of Back stockroom' }), 'low, from the door')
+    expect(useGenerateStore.getState().draft.location).toEqual({ locationId: flooded.id, stateId: wet.id, camera: 'low, from the door' })
+    useGenerateStore.getState().patch({ description: 'Mina waves' })
+    await userEvent.click(await screen.findByTestId('generate-submit'))
+    await waitFor(() => expect(useGenerateStore.getState().request).toBeNull())
+    expect(calls.filter((c) => c.channel === 'panels:create').map((c) => c.req)).toMatchObject([{ draft: { location: { locationId: flooded.id, stateId: wet.id, camera: 'low, from the door' } } }])
   })
 
   it('shows the chosen panels and lets one be removed', async () => {
