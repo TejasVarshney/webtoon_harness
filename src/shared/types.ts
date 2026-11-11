@@ -101,6 +101,12 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>
 export type RoleAssignments = z.infer<typeof RoleAssignmentsSchema>
 
 export type PanelDraft = z.infer<typeof PanelDraftSchema>
+/** What a new panel would be drawn with: the prompt, the references it would send (in order), and the chosen panels the model has no room for. */
+export interface PromptPreview {
+  prompt: string
+  references: { label: string }[]
+  droppedPanelIds: string[]
+}
 export type PanelPatch = z.infer<typeof PanelPatchSchema>
 export type CharacterInput = z.infer<typeof CharacterInputSchema>
 export type CharacterPatch = z.infer<typeof CharacterPatchSchema>

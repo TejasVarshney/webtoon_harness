@@ -44,7 +44,8 @@ const PlaceSchema = z.object({
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
 const MAX_SKETCH_BYTES = 8 * 1024 * 1024
-const SaveSketchSchema = z.object({ projectId: z.string(), panelId: z.string(), png: z.string().startsWith(PNG_DATA_URL).nullable() })
+const SketchUrl = z.string().startsWith(PNG_DATA_URL)
+const SaveSketchSchema = z.object({ projectId: z.string(), panelId: z.string(), png: SketchUrl.nullable() })
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** The PNG a sketch data URL holds. Throws for anything that is not a PNG of a sane size. */
@@ -87,13 +88,17 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     'panels:list': async ({ projectId, episodeId }) => panels.list(await s.projects.open(projectId), episodeId),
     'panels:get': async ({ projectId, panelId }) => panels.get(await s.projects.open(projectId), panelId),
 
-    'panels:create': async ({ projectId, draft, generate }) => {
+    'panels:create': async ({ projectId, draft, generate, sketchPng }) => {
+      // Checked before anything is made, so a bad sketch leaves no panel.
+      const sketch = sketchPng === undefined ? undefined : sketchBytes(parseInput(SketchUrl, sketchPng))
       const ctx = await s.projects.open(projectId)
       // The manual editor is lenient: a mention of a character who is not attached is a warning, not an error.
-      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false, strictSheets: false }))
+      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false, strictSheets: false, sketch }))
       if (generate) inBackground(panels.generate(ctx, created.panel.id), 'Panel image generation')
       return created
     },
+
+    'panels:previewPrompt': async ({ projectId, draft, hasSketch }) => panels.previewPrompt(await s.projects.open(projectId), PanelDraftSchema.parse(draft), hasSketch === true),
 
     'panels:update': async ({ projectId, panelId, patch }) =>
       showIssues(panels.update(await s.projects.open(projectId), panelId, PanelPatchSchema.parse(patch), { strictMentions: false, strictSheets: false })),

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, StripBackground } from '@shared/types'
+import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripBackground } from '@shared/types'
 import { api } from '../api'
 import { NO_PANEL_SELECTION, useAppStore } from './app-store'
 
@@ -48,7 +48,9 @@ export interface PanelsActions {
   /** Forgets a background save failure and puts the strip back on the stored background. */
   dismissBackgroundError(): void
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
-  createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
+  createPanel(draft: PanelDraft, generate: boolean, sketchPng?: string): Promise<{ panel: Panel; warnings: string[] }>
+  /** What a new panel from this draft would be drawn with. Writes nothing. */
+  previewPrompt(draft: PanelDraft, hasSketch: boolean): Promise<PromptPreview>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   generatePanel(id: string): Promise<void>
@@ -199,10 +201,14 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       set({ backgroundError: null, backgroundPreview: null })
     },
 
-    async createPanel(draft, generate) {
-      const created = await api.invoke('panels:create', { projectId: requireProject(), draft, generate })
+    async createPanel(draft, generate, sketchPng) {
+      const created = await api.invoke('panels:create', { projectId: requireProject(), draft, generate, ...(sketchPng === undefined ? {} : { sketchPng }) })
       await get().load(draft.episodeId)
       return created
+    },
+
+    previewPrompt(draft, hasSketch) {
+      return api.invoke('panels:previewPrompt', { projectId: requireProject(), draft, hasSketch })
     },
 
     async updatePanel(id, patch) {

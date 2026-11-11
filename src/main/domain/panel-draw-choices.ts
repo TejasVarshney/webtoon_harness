@@ -6,9 +6,9 @@ import { tryReadPanel } from './panel-files'
 // How the user's per-panel choices (panels as references, a style, a prompt) reach a draw. Their own file to keep
 // `panel-service.ts` under the size limit.
 
-/** The choices a new panel starts with; the schema fills what the draft leaves out. */
+/** The choices a new panel starts with, each referenced panel once; the schema fills what the draft leaves out. */
 export function drawChoicesOf(draft: PanelDraft): Pick<Panel, 'referencePanelIds' | 'styleOverride' | 'promptOverride'> {
-  return { referencePanelIds: draft.referencePanelIds ?? [], styleOverride: draft.styleOverride ?? null, promptOverride: draft.promptOverride ?? null }
+  return { referencePanelIds: [...new Set(draft.referencePanelIds ?? [])], styleOverride: draft.styleOverride ?? null, promptOverride: draft.promptOverride ?? null }
 }
 
 /**
@@ -25,12 +25,12 @@ export function mergeDrawChoices(patch: PanelPatch, current: Panel): Pick<Panel,
 }
 
 /**
- * The current pictures of the panels the user chose, in their order. A panel that is gone, has no ready picture, or
+ * The current pictures of the panels the user chose, in their order, each once. A panel that is gone, has no ready picture, or
  * whose file is missing is left out: the draw goes on without it.
  */
 export async function readReferencePanels(ctx: ProjectContext, panel: Pick<Panel, 'id' | 'referencePanelIds'>): Promise<{ panelId: string; imagePath: string }[]> {
   const found: { panelId: string; imagePath: string }[] = []
-  for (const id of panel.referencePanelIds) {
+  for (const id of new Set(panel.referencePanelIds)) {
     if (id === panel.id) continue
     const chosen = await tryReadPanel(ctx, id)
     const current = chosen?.versions.find((v) => v.id === chosen.currentVersionId)

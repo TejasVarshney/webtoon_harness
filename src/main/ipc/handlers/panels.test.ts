@@ -385,3 +385,43 @@ describe('panels:saveSketch and panels:readSketch', () => {
     expect((await get(panel.id)).sketchPath ?? null).toBeNull()
   })
 })
+
+describe('panels:previewPrompt', () => {
+  it('returns the prompt a new panel would be drawn with and writes nothing', async () => {
+    const { h, projectId, draft, cast, s, ctx, episode } = await setup()
+    const before = fs.readdirSync(ctx.paths.panelsDir())
+    const out = await h['panels:previewPrompt']({ projectId, draft: draft({ characters: cast }), hasSketch: true })
+    expect(out.prompt).toContain('[ACTION] Mina opens the door.')
+    expect(out.references.map((r) => r.label)).toEqual(['Mina', 'layout sketch'])
+    expect(out.droppedPanelIds).toEqual([])
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual(before)
+    expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
+  })
+
+  it('refuses a bad draft and rejects what the prompt cannot be built from', async () => {
+    const { h, projectId, draft } = await setup()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft({ shot: 'huge' as never }), hasSketch: false })).rejects.toThrow()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft({ episodeId: 'epi_ffffffffff' }), hasSketch: false })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+  })
+})
+
+describe('panels:create with a sketch', () => {
+  const dataUrl = (bytes: Buffer): string => `data:image/png;base64,${bytes.toString('base64')}`
+
+  it('stores the sketch before the background draw, so the first version sends it', async () => {
+    const { h, projectId, draft, settled, ctx } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: dataUrl(PNG) })
+    expect(panel.sketchPath).toMatch(/^panels\/pnl_[0-9a-f]{10}\/sketch-[a-z0-9]+\.png$/)
+    expect(fs.readFileSync(ctx.paths.resolveAsset(panel.sketchPath!))).toEqual(PNG)
+    const done = await settled(panel.id)
+    expect(done.versions[0].referenceImagePaths).toContain(panel.sketchPath)
+  })
+
+  it('refuses a sketch that is not a PNG and creates no panel', async () => {
+    const { s, h, projectId, draft, ctx, episode } = await setup()
+    await expect(h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: dataUrl(Buffer.from('not a png at all')) })).rejects.toThrow('Sketch is not a PNG image')
+    await expect(h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: 'data:image/jpeg;base64,AAAA' })).rejects.toThrow()
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual([])
+    expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
+  })
+})

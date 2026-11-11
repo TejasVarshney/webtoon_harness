@@ -3,22 +3,22 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion } from '@shared/types'
+import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import type { CharacterService } from './character-service'
 import type { ConsistencyChecker } from './consistency-checker'
-import { pickContinuity, type ContinuityImage } from './continuity'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageService } from './image-service'
 import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
-import { drawChoicesOf, drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
+import { drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
 import { planPlacement } from './panel-placement'
+import { continuityOf, panelFromDraft, previewPrompt } from './panel-preview'
 import { PanelUsageScanner } from './panel-usage'
 import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
@@ -102,7 +102,7 @@ export class PanelService extends PanelUsageScanner {
     return this.previousOf(ctx, await this.get(ctx, panelId))
   }
 
-  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean; strictSheets: boolean; sketch?: Buffer }): Promise<{ panel: Panel; warnings: string[] }> {
     const episode = await this.opts.episodes.get(ctx, draft.episodeId)
     if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
 
@@ -115,45 +115,30 @@ export class PanelService extends PanelUsageScanner {
 
     const meta = await this.opts.projects.getMeta(ctx)
     const id = newId('pnl')
-    const at = now()
-    const panel = PanelSchema.parse({
-      id,
-      episodeId: draft.episodeId,
-      description: draft.description,
-      setting: draft.setting,
-      location: draft.location ?? null,
-      shot: draft.shot,
-      aspect: draft.aspect ?? meta.defaultAspect,
-      frame: draft.frame,
-      beside: draft.beside,
-      gapAfter: draft.gapAfter,
-      // Panels are placed on the strip now: the colour between rows has no input, and only old files carry one.
-      gutter: 'white',
-      ...drawChoicesOf(draft),
-      characters: draft.characters,
-      items: draft.items ?? [],
-      dialogue: draft.dialogue.map((line) => withId(line, undefined)),
-      continuityNotes: draft.continuityNotes ?? '',
-      offPanelMentions: draft.offPanelMentions ?? [],
-      versions: [],
-      currentVersionId: null,
-      createdBy: opts.createdBy,
-      createdAt: at,
-      updatedAt: at
-    })
+    let panel = panelFromDraft(draft, { id, aspect: draft.aspect ?? meta.defaultAspect, createdBy: opts.createdBy, at: now(), dialogue: draft.dialogue.map((line) => withId(line, undefined)) })
 
     // The panel file first, then the episode, with no lock held across the two steps.
     const file = ctx.paths.panelFile(id)
     await ctx.mutex.run(file, () => writeJsonAtomic(file, panel))
     try {
+      // The sketch lands before the panel is in the episode, so a draw started after this call always sends it.
+      if (opts.sketch) panel = await storeSketch(ctx, id, opts.sketch)
       await this.opts.episodes.insertPanel(ctx, draft.episodeId, id, draft.afterPanelId)
     } catch (error) {
-      // Nothing else knows this id yet, so removing the file is not a user deletion (no trash).
-      await ctx.mutex.run(file, () => fs.promises.rm(file, { force: true })).catch(() => undefined)
+      // Nothing else knows this id yet, so removing its files is not a user deletion (no trash).
+      await ctx.mutex.run(file, async () => {
+        await fs.promises.rm(file, { force: true })
+        await fs.promises.rm(ctx.paths.panelDir(id), { recursive: true, force: true })
+      }).catch(() => undefined)
       throw error
     }
     this.emit(ctx, id)
     return { panel, warnings: check.warnings }
+  }
+
+  /** The prompt and references a new panel from this draft would be drawn with. Writes nothing; see `previewPrompt`. */
+  previewPrompt(ctx: ProjectContext, draft: PanelDraft, hasSketch: boolean): Promise<PromptPreview> {
+    return previewPrompt(ctx, this.opts, draft, hasSketch)
   }
 
   /**
@@ -262,7 +247,7 @@ export class PanelService extends PanelUsageScanner {
       const roster = await this.roster(ctx)
       const itemRoster = await this.itemRoster(ctx)
       const locations = await this.locationRoster(ctx)
-      const previous = await this.continuityOf(ctx, panel)
+      const previous = await continuityOf(ctx, this.opts.episodes, panel)
       const maxReferences = this.opts.images.maxReferences('image')
       const composed = await composeWithPacks(ctx, this.opts.packComposer, panel.id, {
         stylePreset: styleOf(panel, meta.stylePreset),
@@ -427,24 +412,6 @@ export class PanelService extends PanelUsageScanner {
     }
     const index = episode.panelIds.indexOf(panel.id)
     return index > 0 ? tryReadPanel(ctx, episode.panelIds[index - 1]) : null
-  }
-
-  /**
-   * The image a draw of the panel continues from (see `pickContinuity`). Without a location only the panel right before
-   * can be it, so only that one is read.
-   */
-  private async continuityOf(ctx: ProjectContext, panel: Panel): Promise<ContinuityImage | null> {
-    let episode: Episode
-    try {
-      episode = await this.opts.episodes.get(ctx, panel.episodeId)
-    } catch (error) {
-      if (error instanceof EntityNotFoundError) return null
-      throw error
-    }
-    const index = episode.panelIds.indexOf(panel.id)
-    if (index <= 0) return null
-    const ids = panel.location === null ? [episode.panelIds[index - 1]] : episode.panelIds.slice(0, index)
-    return pickContinuity(panel, await Promise.all(ids.map((id) => tryReadPanel(ctx, id))))
   }
 
   /** Every character, archived ones included: existing panels keep regenerating after a character is archived. */

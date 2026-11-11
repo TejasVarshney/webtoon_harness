@@ -214,6 +214,22 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([made])
     })
 
+    it('createPanel sends the sketch when it has one', async () => {
+      const made = panel({ id: 'pnl_0000000009', versions: [], currentVersionId: null })
+      const { calls } = installFakeApi({ 'panels:create': () => ({ panel: made, warnings: [] }), 'panels:list': () => [made] })
+      const draft = { episodeId: EPISODE_ID, description: 'd', setting: 's', shot: 'medium' as const, characters: [], dialogue: [] }
+      await usePanelsStore.getState().createPanel(draft, true, 'data:image/png;base64,AA')
+      expect(calls[0]).toEqual({ channel: 'panels:create', req: { projectId, draft, generate: true, sketchPng: 'data:image/png;base64,AA' } })
+    })
+
+    it('previewPrompt asks main for the prompt and changes nothing', async () => {
+      const preview = { prompt: 'P', references: [{ label: 'layout sketch' }], droppedPanelIds: [] }
+      const { calls } = installFakeApi({ 'panels:previewPrompt': () => preview })
+      const draft = { episodeId: EPISODE_ID, description: 'd', setting: 's', shot: 'medium' as const, characters: [], dialogue: [] }
+      expect(await usePanelsStore.getState().previewPrompt(draft, true)).toEqual(preview)
+      expect(calls).toEqual([{ channel: 'panels:previewPrompt', req: { projectId, draft, hasSketch: true } }])
+    })
+
     it('updatePanel sends the patch and reloads the panel`s episode', async () => {
       const edited = panel({ description: 'edited' })
       const { calls } = installFakeApi({ 'panels:update': () => ({ panel: edited, warnings: [] }), 'panels:list': () => [edited] })

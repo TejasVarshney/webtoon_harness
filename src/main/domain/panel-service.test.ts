@@ -278,6 +278,12 @@ const panelImages = (ctx: ProjectContext, id: string): string[] => {
   }
 }
 
+/** A saved location with no picture, and a panel location in its base state. */
+async function placeWithoutPicture(locations: LocationService, ctx: ProjectContext, name: string, layout = 'Back door at frame-left; shelves at frame-right.') {
+  const location = await locations.create(ctx, { name, layout }, 'user', { generate: false })
+  return { location, at: (camera = 'main'): PanelLocation => ({ locationId: location.id, stateId: location.states[0].id, camera }) }
+}
+
 describe('PanelService create and list', () => {
   it('auto-creates Episode 1 and inserts panels in order', async () => {
     const { svc, episodes, ctx } = await setup()
@@ -729,12 +735,6 @@ describe('PanelService generate', () => {
     expect(v3.prompt).not.toContain('[CONTINUITY]')
     expect(v3.referenceImagePaths).not.toContain(v1.imagePath)
   })
-
-  /** A saved location with no picture, and a panel location in its base state. */
-  async function placeWithoutPicture(locations: LocationService, ctx: ProjectContext, name: string, layout = 'Back door at frame-left; shelves at frame-right.') {
-    const location = await locations.create(ctx, { name, layout }, 'user', { generate: false })
-    return { location, at: (camera = 'main'): PanelLocation => ({ locationId: location.id, stateId: location.states[0].id, camera }) }
-  }
 
   it('with a location, continues from the last open shot of that place, and from nothing in a new place', async () => {
     const { svc, locations, epi, ctx, calls } = await setup()
@@ -2379,5 +2379,124 @@ describe('PanelService reference packing', () => {
     const none = await crowded({ packComposer: null })
     const plain = await none.svc.generate(none.ctx, none.p.id)
     expect(plain.prompt).toBe(v.prompt)
+  })
+})
+
+describe('PanelService previewPrompt and creation with a sketch', () => {
+  /** Panels with a ready picture, to choose from or to follow. */
+  async function withPictures(count: number) {
+    const rig = await setup()
+    const made: Panel[] = []
+    for (let i = 0; i < count; i++) {
+      const p = (await rig.svc.create(rig.ctx, draft(rig.epi.id), USER)).panel
+      await rig.svc.uploadImage(rig.ctx, p.id, nextPng(), 'png')
+      made.push(await rig.svc.get(rig.ctx, p.id))
+    }
+    rig.events.length = 0
+    return { ...rig, made, image: (x: Panel): string => x.versions[0].imagePath as string }
+  }
+
+  it('previews without writing anything', async () => {
+    const { svc, epi, ctx, events, episodes } = await withPictures(1)
+    const files = fs.readdirSync(ctx.paths.panelsDir()).sort()
+    const before = await episodes.get(ctx, epi.id)
+    const m = await mina(ctx)
+    const preview = await svc.previewPrompt(ctx, draft(epi.id, { characters: [castOf(m)], description: 'Mina waves.' }), true)
+    expect(preview.prompt).toContain('[ACTION] Mina waves.')
+    expect(preview.prompt).toContain('[LAYOUT]')
+    expect(preview.references.map((r) => r.label)).toEqual(['Mina', 'layout sketch', 'previous panel'])
+    expect(preview.droppedPanelIds).toEqual([])
+    expect(events).toEqual([])
+    expect(fs.readdirSync(ctx.paths.panelsDir()).sort()).toEqual(files)
+    expect(await episodes.get(ctx, epi.id)).toEqual(before)
+  })
+
+  it('leaves the layout line out when there is no sketch', async () => {
+    const { svc, epi, ctx } = await withPictures(0)
+    expect((await svc.previewPrompt(ctx, draft(epi.id), false)).prompt).not.toContain('[LAYOUT]')
+  })
+
+  it('lists the chosen panels the model has no room for', async () => {
+    const { svc, epi, ctx, made, maxRefs } = await withPictures(3)
+    maxRefs.image = 2
+    const preview = await svc.previewPrompt(ctx, draft(epi.id, { referencePanelIds: made.map((p) => p.id), afterPanelId: null }), false)
+    expect(preview.references).toEqual([{ label: 'panel the user chose' }, { label: 'panel the user chose' }])
+    expect(preview.droppedPanelIds).toEqual([made[2].id])
+  })
+
+  it('does not call a missing or pictureless chosen panel dropped', async () => {
+    const { svc, epi, ctx, made } = await withPictures(1)
+    const bare = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const preview = await svc.previewPrompt(ctx, draft(epi.id, { referencePanelIds: ['pnl_ffffffffff', bare.id, made[0].id], afterPanelId: null }), false)
+    expect(preview.references).toEqual([{ label: 'panel the user chose' }])
+    expect(preview.droppedPanelIds).toEqual([])
+  })
+
+  it('uses the panel it will follow for continuity', async () => {
+    const { svc, epi, ctx, made, image } = await withPictures(2)
+    const request = async (over: Partial<PanelDraft>) => {
+      const { prompt } = await svc.previewPrompt(ctx, draft(epi.id, over), false)
+      return prompt
+    }
+    // The strip's last panel by default, the anchor when there is one, nothing at the start.
+    expect(await request({})).toContain('Continues directly from the previous panel')
+    const after = await svc.previewPrompt(ctx, draft(epi.id, { afterPanelId: made[0].id }), false)
+    expect(after.references).toEqual([{ label: 'previous panel' }])
+    expect((await svc.previewPrompt(ctx, draft(epi.id, { afterPanelId: null }), false)).references).toEqual([])
+    // The same prompt a real draw of a panel placed there would send.
+    const placed = (await svc.create(ctx, draft(epi.id, { afterPanelId: made[0].id }), USER)).panel
+    const v = await svc.generate(ctx, placed.id)
+    expect(v.referenceImagePaths).toEqual([image(made[0])])
+    expect(v.prompt).toBe(after.prompt)
+  })
+
+  it('follows an earlier panel in the same location, as a draw would', async () => {
+    const { svc, epi, ctx, locations } = await withPictures(0)
+    const stockroom = await placeWithoutPicture(locations, ctx, 'Stockroom')
+    const street = await placeWithoutPicture(locations, ctx, 'Street')
+    const wide = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: stockroom.at() }), USER)).panel
+    await svc.uploadImage(ctx, wide.id, nextPng(), 'png')
+    const cutaway = (await svc.create(ctx, draft(epi.id, { shot: 'wide', location: street.at() }), USER)).panel
+    await svc.uploadImage(ctx, cutaway.id, nextPng(), 'png')
+    const { prompt, references } = await svc.previewPrompt(ctx, draft(epi.id, { location: stockroom.at() }), false)
+    expect(prompt).toContain('[CONTINUITY] Same place as an earlier panel (reference image 1).')
+    expect(references).toEqual([{ label: 'earlier panel in the same place' }])
+  })
+
+  it('reports a compose error as a rejection', async () => {
+    const { svc, epi, ctx } = await withPictures(0)
+    await expect(svc.previewPrompt(ctx, draft(epi.id, { characters: [{ ...castOf(await mina(ctx)), characterId: 'chr_ffffffffff' }] }), false)).rejects.toThrow('Unknown character')
+  })
+
+  it('stores the chosen panels once each, in the order first chosen', async () => {
+    const { svc, epi, ctx, made, calls } = await withPictures(2)
+    const [a, b] = made
+    const { panel } = await svc.create(ctx, draft(epi.id, { referencePanelIds: [a.id, b.id, a.id, b.id] }), USER)
+    expect(panel.referencePanelIds).toEqual([a.id, b.id])
+    // A file written with a repeat still sends each picture once.
+    await writeJsonAtomic(ctx.paths.panelFile(panel.id), { ...panel, referencePanelIds: [b.id, b.id, a.id] })
+    const v = await svc.generate(ctx, panel.id)
+    // The last picture is the previous panel (b again), which the draft's choices do not repeat.
+    expect(v.referenceImagePaths).toEqual([b.versions[0].imagePath, a.versions[0].imagePath, b.versions[0].imagePath])
+    expect(calls.at(-1)?.req.references.map((r) => r.label)).toEqual(['panel the user chose', 'panel the user chose', 'previous panel'])
+  })
+
+  it('create stores the sketch before drawing', async () => {
+    const { svc, epi, ctx } = await withPictures(0)
+    const { panel } = await svc.create(ctx, draft(epi.id), { ...USER, sketch: PNG })
+    expect(panel.sketchPath).toMatch(new RegExp(`^panels/${panel.id}/sketch-.*\.png$`))
+    expect(fs.existsSync(ctx.paths.resolveAsset(panel.sketchPath as string))).toBe(true)
+    const v = await svc.generate(ctx, panel.id)
+    expect(v.referenceImagePaths).toContain(panel.sketchPath)
+    expect(await svc.get(ctx, panel.id)).toMatchObject({ sketchPath: panel.sketchPath })
+  })
+
+  it('create leaves nothing behind when the sketch is refused', async () => {
+    const { svc, epi, ctx, episodes, trashed } = await withPictures(0)
+    disk.failFileWrites = 1
+    await expect(svc.create(ctx, draft(epi.id), { ...USER, sketch: PNG })).rejects.toThrow('no space left on device')
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual([])
+    expect((await episodes.get(ctx, epi.id)).panelIds).toEqual([])
+    expect(trashed).toEqual([])
   })
 })
