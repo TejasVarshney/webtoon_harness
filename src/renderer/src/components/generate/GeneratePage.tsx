@@ -8,6 +8,7 @@ import { useLocationsStore } from '../../stores/locations-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { canDraw, pruneDraft } from './generate-draft'
+import { GenerateSketch } from './GenerateSketch'
 import { LibraryColumn } from './LibraryColumn'
 import { ReferenceRow } from './ReferenceRow'
 
@@ -104,6 +105,7 @@ export function GeneratePage() {
               ))}
             </ul>
           )}
+          <GenerateSketch />
         </section>
         <section className="generate-column" aria-label="This panel">
           <h3>This panel</h3>

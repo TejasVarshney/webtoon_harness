@@ -114,7 +114,8 @@ function paperPng(canvas: HTMLCanvasElement): string {
   return paper.toDataURL('image/png')
 }
 
-export interface SketchPad {
+/** The drawing, with no say in where it is kept. */
+export interface SketchCanvas {
   canvasRef: RefObject<HTMLCanvasElement | null>
   /** Spread on the canvas. */
   handlers: {
@@ -133,43 +134,59 @@ export interface SketchPad {
   clear(): void
   /** The canvas holds no ink. */
   blank: boolean
+}
+
+export interface SketchPad extends SketchCanvas {
   /** A save of the sketch is on its way. */
   saving: boolean
   /** The last save's failure, or `null`. */
   error: string | null
 }
 
+export interface SketchCanvasOptions {
+  aspect: Panel['aspect']
+  /** A stored sketch (ink on white paper, as a data URL) to load onto the canvas, unless something was drawn first. */
+  initialPng: string | null
+  /** Called with the sketch (ink on white paper, as a PNG data URL, or `null` when it is blank) each time it changes. */
+  onChange(png: string | null): void
+  /** Also call `onChange` when a new aspect refits the ink, for a keeper whose copy would otherwise be the wrong shape. */
+  changeOnResize?: boolean
+}
+
 /**
- * The drawing behind the sketch stage: a transparent canvas at the panel's aspect (the stage puts white paper, or the
- * panel's picture, under it), loaded with the stored sketch, a pen, an eraser and shapes in three widths, undo and a
- * clear for a new sketch. Each finished stroke (and each undo or clear) is stored at once, in turn with
- * the panel's other saves, so Generate draws from the last stroke. A sketch left blank is forgotten, not stored.
+ * The drawing behind a sketch: a transparent canvas at the aspect (the page puts white paper, or a picture, under it),
+ * loaded with the stored sketch, a pen, an eraser and shapes in three widths, undo and a clear for a new sketch. Each
+ * finished stroke (and each undo or clear) is handed to `onChange` at once, and a sketch left blank is `null`. Where
+ * the sketch is kept is the caller's business.
  */
-export function useSketchPad(panel: Pick<Panel, 'id' | 'aspect'>): SketchPad {
+export function useSketchCanvas({ aspect, initialPng, onChange, changeOnResize = false }: SketchCanvasOptions): SketchCanvas {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [tool, setTool] = useState<SketchTool>('pen')
   const [size, setSize] = useState<SketchSize>('medium')
   const [canUndo, setCanUndo] = useState(false)
-  const [pending, setPending] = useState(0)
-  const [error, setError] = useState<string | null>(null)
   const [blank, setBlank] = useState(true)
   const history = useRef<ImageData[]>([])
   // The stroke under way. A shape keeps where it started and the canvas from before it, which each move redraws over.
   const stroke = useRef<{ pointerId: number; x: number; y: number; start: Point; before: ImageData | null } | null>(null)
   // The canvas holds something: a stroke, a clear or the stored sketch. Anything drawn first wins over the stored sketch.
   const touched = useRef(false)
-  const alive = useRef(true)
-  const { width, height } = sketchSize(panel.aspect)
-  const panelId = panel.id
+  const { width, height } = sketchSize(aspect)
+  // The latest callback, so a stroke that ends after a render still reaches the current keeper.
+  const changed = useRef(onChange)
+  useLayoutEffect(() => {
+    changed.current = onChange
+  })
 
   const context = useCallback((): CanvasRenderingContext2D | null => canvasRef.current?.getContext('2d') ?? null, [])
 
-  useEffect(() => {
-    alive.current = true
-    return () => {
-      alive.current = false
-    }
-  }, [])
+  const save = useCallback((): void => {
+    const canvas = canvasRef.current
+    const ctx = context()
+    if (canvas === null || ctx === null) return
+    const empty = isBlank(ctx, canvas.width, canvas.height)
+    setBlank(empty)
+    changed.current(empty ? null : paperPng(canvas))
+  }, [context])
 
   // The canvas is sized here, not by attributes: React would clear it on every render that set them. A new aspect keeps
   // what was drawn, fitted into the new shape.
@@ -189,55 +206,29 @@ export function useSketchPad(panel: Pick<Panel, 'id' | 'aspect'>): SketchPad {
     paint(ctx, width, height, copy)
     history.current = []
     setCanUndo(false)
-  }, [width, height, context])
+    if (copy !== undefined && changeOnResize) save()
+  }, [width, height, context, changeOnResize, save])
 
-  // The stored sketch, read through IPC as a data URL: an asset URL is another origin and would taint the canvas.
+  // The stored sketch arrives as a data URL: an asset URL is another origin and would taint the canvas.
   useEffect(() => {
+    if (initialPng === null) return
     let cancelled = false
-    usePanelsStore
-      .getState()
-      .readSketch(panelId)
-      .then((url) => {
-        if (cancelled || url === null) return
-        const image = new Image()
-        image.onload = () => {
-          const canvas = canvasRef.current
-          const ctx = context()
-          if (cancelled || touched.current || canvas === null || ctx === null) return
-          paint(ctx, canvas.width, canvas.height, image)
-          liftPaper(ctx, canvas.width, canvas.height)
-          setBlank(false)
-          // The canvas holds the sketch now: a new aspect must carry it over, not start on blank paper.
-          touched.current = true
-        }
-        image.src = url
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(errorText(e))
-      })
+    const image = new Image()
+    image.onload = () => {
+      const canvas = canvasRef.current
+      const ctx = context()
+      if (cancelled || touched.current || canvas === null || ctx === null) return
+      paint(ctx, canvas.width, canvas.height, image)
+      liftPaper(ctx, canvas.width, canvas.height)
+      setBlank(false)
+      // The canvas holds the sketch now: a new aspect must carry it over, not start on blank paper.
+      touched.current = true
+    }
+    image.src = initialPng
     return () => {
       cancelled = true
     }
-  }, [panelId, context])
-
-  const save = useCallback((): void => {
-    const canvas = canvasRef.current
-    const ctx = context()
-    if (canvas === null || ctx === null) return
-    const empty = isBlank(ctx, canvas.width, canvas.height)
-    setBlank(empty)
-    const png = empty ? null : paperPng(canvas)
-    setPending((n) => n + 1)
-    setError(null)
-    queueSketchSave(panelId, png).then(
-      () => alive.current && setPending((n) => n - 1),
-      (e: unknown) => {
-        if (!alive.current) return
-        setPending((n) => n - 1)
-        setError(errorText(e))
-      }
-    )
-  }, [panelId, context])
+  }, [initialPng, context])
 
   /** Keeps the canvas as it is now, for undo, and returns it. */
   const remember = useCallback((): ImageData | null => {
@@ -349,5 +340,60 @@ export function useSketchPad(panel: Pick<Panel, 'id' | 'aspect'>): SketchPad {
     save()
   }
 
-  return { canvasRef, handlers, tool, setTool, size, setSize, canUndo, undo, clear, blank, saving: pending > 0, error }
+  return { canvasRef, handlers, tool, setTool, size, setSize, canUndo, undo, clear, blank }
 }
+
+/**
+ * The sketch of a panel: the canvas above, loaded with the panel's stored sketch. Each change is stored as the panel's
+ * sketch, in turn with the panel's other saves, so Generate draws from the last stroke.
+ */
+export function useSketchPad(panel: Pick<Panel, 'id' | 'aspect'>): SketchPad {
+  const panelId = panel.id
+  const [stored, setStored] = useState<string | null>(null)
+  const [pending, setPending] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const alive = useRef(true)
+
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    usePanelsStore
+      .getState()
+      .readSketch(panelId)
+      .then((url) => {
+        if (!cancelled) setStored(url)
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(errorText(e))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [panelId])
+
+  const store = useCallback(
+    (png: string | null): void => {
+      setPending((n) => n + 1)
+      setError(null)
+      queueSketchSave(panelId, png).then(
+        () => alive.current && setPending((n) => n - 1),
+        (e: unknown) => {
+          if (!alive.current) return
+          setPending((n) => n - 1)
+          setError(errorText(e))
+        }
+      )
+    },
+    [panelId]
+  )
+
+  const canvas = useSketchCanvas({ aspect: panel.aspect, initialPng: stored, onChange: store })
+  return { ...canvas, saving: pending > 0, error }
+}
+

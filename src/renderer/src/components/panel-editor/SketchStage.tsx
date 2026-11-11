@@ -1,28 +1,15 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Circle, Eraser, FilePlus2, Image as ImageIcon, Pencil, Slash, Square, Undo2 } from 'lucide-react'
+import { useRef, useState, type CSSProperties } from 'react'
+import { FilePlus2, Image as ImageIcon } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { STAGE_ROW_PX } from './bubble-placement'
 import { useStageFit } from './PanelStage'
-import { useSketchPad, type SketchSize, type SketchTool } from './use-sketch-pad'
+import { SketchToolbar } from './SketchToolbar'
+import { useSketchPad } from './use-sketch-pad'
 import { useStagePan } from './use-stage-pan'
 import { useStageZoom, ZoomBar } from './use-stage-zoom'
-
-const TOOLS: { id: SketchTool; label: string; icon: ReactNode }[] = [
-  { id: 'pen', label: 'Pen', icon: <Pencil size={16} aria-hidden="true" /> },
-  { id: 'eraser', label: 'Eraser', icon: <Eraser size={16} aria-hidden="true" /> },
-  { id: 'line', label: 'Line', icon: <Slash size={16} aria-hidden="true" /> },
-  { id: 'rect', label: 'Rectangle', icon: <Square size={16} aria-hidden="true" /> },
-  { id: 'ellipse', label: 'Ellipse', icon: <Circle size={16} aria-hidden="true" /> }
-]
-
-const SIZES: { id: SketchSize; label: string }[] = [
-  { id: 'fine', label: 'Fine' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'bold', label: 'Bold' }
-]
 
 export interface SketchStageProps {
   panel: Panel
@@ -63,23 +50,7 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
 
   return (
     <div ref={stageRef} className="panel-stage sketch-stage" data-testid="sketch-stage">
-      <div className="sketch-tools" role="toolbar" aria-label="Sketch tools" aria-orientation="vertical">
-        {TOOLS.map((t) => (
-          <button key={t.id} type="button" className="icon-button" aria-label={t.label} title={t.id === 'pen' || t.id === 'eraser' ? t.label : `${t.label} (Shift keeps it straight or even)`} aria-pressed={pad.tool === t.id} onClick={() => pad.setTool(t.id)}>
-            {t.icon}
-          </button>
-        ))}
-        <span className="sketch-tools-gap" aria-hidden="true" />
-        {SIZES.map((s) => (
-          <button key={s.id} type="button" className="icon-button sketch-size" aria-label={`${s.label} brush`} title={`${s.label} brush`} aria-pressed={pad.size === s.id} onClick={() => pad.setSize(s.id)}>
-            <span className="sketch-dot" data-size={s.id} aria-hidden="true" />
-          </button>
-        ))}
-        <span className="sketch-tools-gap" aria-hidden="true" />
-        <button type="button" className="icon-button" aria-label="Undo stroke" title="Undo stroke" disabled={!pad.canUndo} onClick={pad.undo}>
-          <Undo2 size={16} aria-hidden="true" />
-        </button>
-      </div>
+      <SketchToolbar pad={pad} />
       <div className="sketch-actions">
         {picture !== null && (
           <button type="button" aria-pressed={showPicture} title="Show the panel's picture under the sketch, to trace over" onClick={() => setShowPicture((v) => !v)}>

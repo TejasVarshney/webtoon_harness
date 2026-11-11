@@ -4137,3 +4137,54 @@ kbd {
   height: 56px;
   min-height: 0;
 }
+
+/* The same tools as a row above the Generate page's sketch, not a rail on a stage. */
+.sketch-tools[data-orientation='horizontal'] {
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  max-height: none;
+  overflow: visible;
+}
+
+.sketch-tools[data-orientation='horizontal'] .sketch-tools-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+}
+
+.generate-sketch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.generate-sketch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.generate-sketch-head h3 {
+  margin: 0;
+}
+
+.generate-sketch-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The paper is as wide as the column allows, but never taller than about half the window, at the draft's aspect. */
+.generate-sketch-paper {
+  position: relative;
+  width: 100%;
+  max-width: calc(var(--paper-ratio) * 50vh);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}

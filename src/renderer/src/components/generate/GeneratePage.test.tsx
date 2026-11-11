@@ -159,6 +159,20 @@ describe('GeneratePage', () => {
     expect(useGenerateStore.getState().request).toBeNull()
   })
 
+  it('Back after only drawing asks first', async () => {
+    setup()
+    render(<GeneratePage />)
+    useGenerateStore.getState().patch({ sketchPng: 'data:image/png;base64,SKETCH' })
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByText('Discard this panel?')).toBeInTheDocument()
+  })
+
+  it('has a sketch canvas under the chosen panels', () => {
+    setup()
+    render(<GeneratePage />)
+    expect(screen.getByTestId('generate-sketch-canvas')).toBeInTheDocument()
+  })
+
   it('Back with nothing asks nothing', async () => {
     setup()
     render(<GeneratePage />)
