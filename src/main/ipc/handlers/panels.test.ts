@@ -111,7 +111,7 @@ describe('episodes:setBackground and episodes:pickBackgroundImage', () => {
 
     const gradient = { kind: 'linear' as const, angle: 90, repeatEvery: null, stops: [{ color: '#000000', at: 0 }, { color: '#ffffff', at: 1 }] }
     expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: gradient })).background).toEqual(gradient)
-    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { ...image, path: 'panels/x.png', fit: 'width', opacity: 1, color: '#ffffff' } })).rejects.toThrow(/did not store/)
+    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { ...image, path: `episode-backgrounds/${episode.id}/other.png`, fit: 'width', opacity: 1, color: '#ffffff' } })).rejects.toThrow(/did not store/)
     await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { kind: 'solid', color: 'red' } })).rejects.toThrow(/^Invalid input/)
     expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: null })).background).toBeNull()
   })

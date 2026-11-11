@@ -28,6 +28,16 @@ describe('stripBackgroundStyle', () => {
     })
   })
 
+  it('lets the last stop colour continue past the gradient', () => {
+    const black = [
+      { color: '#ffffff', at: 0 },
+      { color: '#000000', at: 1 }
+    ]
+    expect(stripBackgroundStyle({ kind: 'linear', angle: 180, repeatEvery: null, stops: black }, { imageUrl: null, bottom: 1000 }).backgroundColor).toBe('#000000')
+    expect(stripBackgroundStyle({ kind: 'radial', repeatEvery: null, stops: black }, { imageUrl: null, bottom: 1000 }).backgroundColor).toBe('#000000')
+    expect(stripBackgroundStyle({ kind: 'conic', angle: 0, repeatEvery: null, stops: black }, { imageUrl: null, bottom: 1000 }).backgroundColor).toBe('#000000')
+  })
+
   it('repeats a gradient when asked', () => {
     expect(stripBackgroundStyle({ kind: 'linear', angle: 90, repeatEvery: 400, stops }, { imageUrl: null, bottom: 1000 })).toMatchObject({
       backgroundSize: '100% 400px',
@@ -107,7 +117,10 @@ describe('effectiveBackground', () => {
 
 describe('StripBackgroundSchema', () => {
   it('fills the defaults and refuses a bad colour or a lone stop', () => {
-    expect(StripBackgroundSchema.parse({ kind: 'image', path: 'p' })).toEqual({ kind: 'image', path: 'p', fit: 'width', opacity: 1, color: '#ffffff' })
+    expect(StripBackgroundSchema.parse({ kind: 'image', path: 'episode-backgrounds/epi_1/p.png' })).toEqual({ kind: 'image', path: 'episode-backgrounds/epi_1/p.png', fit: 'width', opacity: 1, color: '#ffffff' })
+    for (const path of ['characters/x.png', 'episode-backgrounds/epi_1/../x.png', 'episode-backgrounds/x.png', '/episode-backgrounds/epi_1/x.png']) {
+      expect(StripBackgroundSchema.safeParse({ kind: 'image', path }).success).toBe(false)
+    }
     expect(StripBackgroundSchema.safeParse({ kind: 'solid', color: 'red' }).success).toBe(false)
     expect(StripBackgroundSchema.safeParse({ kind: 'linear', stops: [{ color: '#000000', at: 0 }] }).success).toBe(false)
     expect(StripBackgroundSchema.safeParse({ kind: 'linear', stops: [{ color: '#000000', at: 0 }, { color: '#ffffff', at: 2 }] }).success).toBe(false)

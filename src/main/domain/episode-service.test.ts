@@ -191,6 +191,7 @@ describe('EpisodeService backgrounds', () => {
     const stored = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
     expect(stored.background).toMatchObject({ kind: 'image', fit: 'width', opacity: 1, color: '#ffffff' })
     const first = (stored.background as { path: string }).path
+    expect(stored.backgroundImage).toBe(first)
     expect(first).toMatch(new RegExp(`^episode-backgrounds/${ep.id}/[a-z0-9]+\.png$`))
     expect(fs.readFileSync(ctx.paths.resolveAsset(first))).toEqual(PNG)
     await svc.setBackground(ctx, ep.id, { kind: 'image', path: first, fit: 'tile', opacity: 0.4, color: '#000000' })
@@ -202,10 +203,10 @@ describe('EpisodeService backgrounds', () => {
   it('refuses an image path it did not store', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)
-    const image = { kind: 'image', path: 'episode-backgrounds/elsewhere.png', fit: 'width', opacity: 1, color: '#ffffff' } as const
-    await expect(svc.setBackground(ctx, ep.id, image)).rejects.toThrow(/did not store/)
+    const image = (path: string) => ({ kind: 'image', path, fit: 'width', opacity: 1, color: '#ffffff' }) as const
+    await expect(svc.setBackground(ctx, ep.id, image(`episode-backgrounds/${ep.id}/elsewhere.png`))).rejects.toThrow(/did not store/)
     await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
-    await expect(svc.setBackground(ctx, ep.id, image)).rejects.toThrow(/did not store/)
+    await expect(svc.setBackground(ctx, ep.id, image(`episode-backgrounds/${ep.id}/elsewhere.png`))).rejects.toThrow(/did not store/)
   })
 
   it('a new image removes the old file', async () => {
@@ -217,14 +218,55 @@ describe('EpisodeService backgrounds', () => {
     expect(fs.existsSync(ctx.paths.resolveAsset(second))).toBe(true)
   })
 
-  it('leaving the image kind removes the file, and a bad extension or episode stores nothing', async () => {
+  it('switching to a gradient keeps the picked image, and switching back finds it', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)
-    const path = ((await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')).background as { path: string }).path
+    const picked = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    const path = (picked.background as { path: string }).path
     await svc.setBackground(ctx, ep.id, SOLID)
-    expect(fs.existsSync(ctx.paths.resolveAsset(path))).toBe(false)
+    await svc.setBackground(ctx, ep.id, null)
+    expect(fs.existsSync(ctx.paths.resolveAsset(path))).toBe(true)
+    const back = await svc.setBackground(ctx, ep.id, { kind: 'image', path, fit: 'stretch', opacity: 0.7, color: '#222222' })
+    expect(back).toMatchObject({ backgroundImage: path, background: { kind: 'image', path, fit: 'stretch' } })
+  })
+
+  it('a bad extension or episode stores nothing', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
     await expect(svc.storeBackgroundImage(ctx, ep.id, PNG, 'gif' as never)).rejects.toThrow(/png, jpg or webp/)
     await expect(svc.storeBackgroundImage(ctx, 'epi_ffffffffff', PNG, 'png')).rejects.toBeInstanceOf(EntityNotFoundError)
     expect(fs.existsSync(ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff'))).toBe(false)
+  })
+
+  it('a project file naming a path outside the episode background folder is refused on read', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: 'characters/x.png', background: { kind: 'image', path: 'characters/x.png' } }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow()
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: `episode-backgrounds/${ep.id}/../../x.png` }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow()
+  })
+
+  it('replacing an image never deletes a file outside the episode folder', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const picked = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    const other = ctx.paths.resolveAsset('characters/x.png')
+    fs.mkdirSync(ctx.paths.resolveAsset('characters'), { recursive: true })
+    fs.writeFileSync(other, 'keep')
+    // Another episode's file is outside this episode's folder too.
+    const foreign = ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff/y.png')
+    fs.mkdirSync(ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff'), { recursive: true })
+    fs.writeFileSync(foreign, 'keep')
+    const file = ctx.paths.episodeFile(ep.id)
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
+    // Written past the schema's reach: the old value is raw JSON in the lock's read, so a bad one fails the read, but a
+    // foreign episode's folder passes the schema and must still not be removed.
+    fs.writeFileSync(file, JSON.stringify({ ...raw, backgroundImage: 'episode-backgrounds/epi_ffffffffff/y.png', background: null }))
+    await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    expect(fs.readFileSync(foreign, 'utf8')).toBe('keep')
+    expect(fs.readFileSync(other, 'utf8')).toBe('keep')
+    expect(fs.existsSync(ctx.paths.resolveAsset((picked.background as { path: string }).path))).toBe(true)
   })
 })

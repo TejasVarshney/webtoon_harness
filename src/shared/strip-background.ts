@@ -5,6 +5,18 @@ import { z } from 'zod'
 import { HexColor } from './schema-primitives'
 import { contentBottom, type PlacedPanel } from './strip-canvas'
 
+/** The folder an episode keeps its background images in, from the project root. */
+export const BACKGROUND_DIR = 'episode-backgrounds'
+
+/**
+ * A stored background image: `episode-backgrounds/<episodeId>/<file>` and nothing else, so a hand-edited project file
+ * cannot point the app at (and later delete) some other file of the project. A refine and not a regex, like HexColor.
+ */
+export const BackgroundImagePath = z.string().refine((v) => {
+  const parts = v.split('/')
+  return parts.length === 3 && parts[0] === BACKGROUND_DIR && parts.every((part) => part !== '' && part !== '.' && part !== '..' && !part.includes('\\'))
+}, 'A background image lives at episode-backgrounds/<episode>/<file>')
+
 const GradientStopSchema = z.object({ color: HexColor, at: z.number().min(0).max(1) })
 const StopsSchema = z.array(GradientStopSchema).min(2).max(12)
 /** How often a gradient starts over down the strip, in strip px; `null` stretches it over the whole content. */
@@ -17,8 +29,8 @@ export const StripBackgroundSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('conic'), stops: StopsSchema, angle: z.number().min(0).max(360).default(0), repeatEvery: RepeatEverySchema }),
   z.object({
     kind: z.literal('image'),
-    /** A project-relative path the episode stored itself (`episode-backgrounds/<episodeId>/...`). */
-    path: z.string().min(1),
+    /** The image the episode stored itself (see `BackgroundImagePath`). */
+    path: BackgroundImagePath,
     fit: z.enum(['width', 'tile', 'stretch']).default('width'),
     /** 1 shows the image as it is; less lets the colour behind it through. */
     opacity: z.number().min(0).max(1).default(1),
@@ -65,8 +77,9 @@ export function stripBackgroundStyle(bg: StripBackground, at: { imageUrl: string
     radial: `radial-gradient(${stops})`,
     conic: `conic-gradient(from ${bg.kind === 'conic' ? bg.angle : 0}deg, ${stops})`
   }[bg.kind]
+  // Past the gradient's span the last stop's colour carries on, so a black last band stays black below the content.
   return {
-    backgroundColor: WHITE,
+    backgroundColor: bg.stops[bg.stops.length - 1].color,
     backgroundImage: image,
     backgroundSize: `100% ${bg.repeatEvery ?? at.bottom}px`,
     backgroundRepeat: bg.repeatEvery === null ? 'no-repeat' : 'repeat-y'

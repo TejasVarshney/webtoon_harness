@@ -14,7 +14,7 @@
 import { z } from 'zod'
 import { PanelLocationSchema } from './location-schemas'
 import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
-import { StripBackgroundSchema } from './strip-background'
+import { BackgroundImagePath, StripBackgroundSchema } from './strip-background'
 
 export { CheckResultSchema } from './schema-primitives'
 export * from './location-schemas'
@@ -211,8 +211,8 @@ export const EpisodeSchema = z.object({
   title: z.string(),
   synopsis: z.string().default(''),
   panelIds: z.array(Id).default([]),
-  /** The strip's colour, gradient or image. `null` is the old look: white, with black where a gutter was black. */
-  background: StripBackgroundSchema.nullable().default(null),
+  background: StripBackgroundSchema.nullable().default(null), // null: white, with black where a gutter was black
+  backgroundImage: BackgroundImagePath.nullable().default(null), // the last image picked; it outlives a switch to another kind
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
 })

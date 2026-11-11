@@ -56,6 +56,16 @@ describe('StripCanvas', () => {
     expect(painted?.style.backgroundSize).toBe(`100% ${bottom}px`)
   })
 
+  it('an old episode with a black gutter still shows black below its last panel', () => {
+    installFakeApi({})
+    const white = panel({ id: 'pnl_00000000cc', aspect: '1:1', gutter: 'white' })
+    const black = panel({ id: 'pnl_00000000dd', aspect: '1:1', gutter: 'black' })
+    const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[white, black]} />)
+    const canvas = container.querySelector<HTMLElement>('.strip-canvas')
+    expect(canvas?.style.backgroundImage).toContain('linear-gradient')
+    expect(canvas?.style.backgroundColor).toBe('rgb(0, 0, 0)')
+  })
+
   it('draws an image background from the project asset', () => {
     installFakeApi({})
     usePanelsStore.setState({ episodes: [episode({ background: { kind: 'image', path: `episode-backgrounds/${EPISODE_ID}/x.png`, fit: 'width', opacity: 1, color: '#ffffff' } })] })
