@@ -21,6 +21,7 @@ export function EpisodeBar() {
   const active = episodes.find((e) => e.id === activeEpisodeId)
   const activePanels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
   const placed = useMemo(() => resolveStrip(activePanels ?? []), [activePanels])
+  const backgroundError = usePanelsStore((s) => s.backgroundError)
   const closeBackground = useCallback((focusBack: boolean) => {
     setEditingBackground(false)
     if (focusBack) backgroundButton.current?.focus()
@@ -90,6 +91,14 @@ export function EpisodeBar() {
       {error !== null && (
         <p role="alert" className="error">
           {error}
+        </p>
+      )}
+      {backgroundError !== null && (
+        <p role="alert" className="error">
+          {backgroundError}{' '}
+          <button type="button" onClick={() => usePanelsStore.getState().dismissBackgroundError()}>
+            Dismiss
+          </button>
         </p>
       )}
       {editingBackground && active !== undefined && backgroundButton.current !== null && <BackgroundEditor key={active.id} episode={active} placed={placed} anchor={backgroundButton.current} onClose={closeBackground} />}

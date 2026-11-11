@@ -4034,3 +4034,9 @@ kbd {
   white-space: nowrap;
   color: var(--muted);
 }
+
+.bg-number-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

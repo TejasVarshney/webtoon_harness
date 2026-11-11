@@ -71,12 +71,26 @@ describe('BackgroundEditor', () => {
     expect((screen.getByLabelText('Colour') as HTMLInputElement).value).toBe('#12ab9f')
   })
 
-  it('refuses a malformed hex with a message', async () => {
+  it('refuses a malformed hex with a message once it is as long as a colour, not on every keystroke', async () => {
     const { saved } = mount({ background: { kind: 'solid', color: '#ffffff' } })
     change('Colour hex', '#12zz')
+    expect(screen.queryByText('Enter a colour as #rrggbb')).toBeNull()
+    change('Colour hex', '#12zz99')
     expect(screen.getByText('Enter a colour as #rrggbb')).toBeTruthy()
     await settle(1000)
     expect(saved).toEqual([])
+    fireEvent.blur(screen.getByLabelText('Colour hex'))
+    expect((screen.getByLabelText('Colour hex') as HTMLInputElement).value).toBe('#ffffff')
+    expect(screen.queryByText('Enter a colour as #rrggbb')).toBeNull()
+  })
+
+  it('puts back the last valid number when a field with a bad one is left', () => {
+    mount({ background: linear })
+    change('Angle', '999')
+    expect(screen.getByText('Enter an angle from 0 to 360')).toBeTruthy()
+    fireEvent.blur(screen.getByLabelText('Angle'))
+    expect((screen.getByLabelText('Angle') as HTMLInputElement).value).toBe('180')
+    expect(screen.queryByText('Enter an angle from 0 to 360')).toBeNull()
   })
 
   it('offers Color, Linear, Radial, Conic and Image', () => {
@@ -207,6 +221,70 @@ describe('BackgroundEditor', () => {
     await settle(0)
     expect(saved).toEqual([{ ...linear, angle: 30 }])
     expect(usePanelsStore.getState().backgroundPreview).toBeNull()
+  })
+
+  it('closing with a change waiting that then fails keeps the strip on it and reports the failure in the store', async () => {
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => Promise.reject(new Error('Disk full')) })
+    change('Angle', '30')
+    view.unmount()
+    await settle(0)
+    expect(usePanelsStore.getState().backgroundError).toBe('Disk full')
+    expect(usePanelsStore.getState().backgroundPreview?.background).toMatchObject({ angle: 30 })
+  })
+
+  it('closing while a save is in flight keeps the preview until it settles, and reports a failure', async () => {
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => new Promise((_, reject) => setTimeout(() => reject(new Error('Disk full')), 500)) })
+    change('Angle', '30')
+    await settle(300)
+    view.unmount()
+    expect(usePanelsStore.getState().backgroundPreview).not.toBeNull()
+    await settle(500)
+    expect(usePanelsStore.getState().backgroundError).toBe('Disk full')
+    expect(usePanelsStore.getState().backgroundPreview?.background).toMatchObject({ angle: 30 })
+  })
+
+  it('closing after a failure the editor showed keeps the strip on the draft and moves the message to the store', async () => {
+    const { view } = mount({ background: linear }, { 'episodes:setBackground': () => Promise.reject(new Error('Disk full')) })
+    change('Angle', '30')
+    await settle()
+    view.unmount()
+    expect(usePanelsStore.getState().backgroundError).toBe('Disk full')
+    expect(usePanelsStore.getState().backgroundPreview).not.toBeNull()
+  })
+
+  it('a cancelled image pick still saves the change that was waiting, before the dialog opens', async () => {
+    const order: string[] = []
+    const saved: StripBackground[] = []
+    const { calls } = mount(
+      { background: linear },
+      {
+        'episodes:setBackground': (req: { background: StripBackground }) => {
+          order.push('save')
+          saved.push(req.background)
+          return episode({ background: req.background })
+        },
+        'episodes:pickBackgroundImage': () => {
+          order.push('pick')
+          return null
+        }
+      }
+    )
+    change('Angle', '45')
+    fireEvent.click(screen.getByRole('radio', { name: 'Image' }))
+    await settle(0)
+    expect(calls.some((c) => c.channel === 'episodes:pickBackgroundImage')).toBe(true)
+    expect(order).toEqual(['save', 'pick'])
+    await settle()
+    expect(saved).toEqual([{ ...linear, angle: 45 }])
+  })
+
+  it('a change that cannot be saved stops the image dialog and shows why', async () => {
+    const { calls } = mount({ background: linear }, { 'episodes:setBackground': () => Promise.reject(new Error('Disk full')) })
+    change('Angle', '45')
+    fireEvent.click(screen.getByRole('radio', { name: 'Image' }))
+    await settle(0)
+    expect(screen.getByRole('alert').textContent).toContain('Disk full')
+    expect(calls.some((c) => c.channel === 'episodes:pickBackgroundImage')).toBe(false)
   })
 
   it('a click inside does not reach what is under it', () => {

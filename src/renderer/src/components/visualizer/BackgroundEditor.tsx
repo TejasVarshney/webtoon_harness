@@ -46,7 +46,8 @@ function ColourField({ colourLabel, hexLabel, value, onChange }: { colourLabel: 
   function type(next: string): void {
     setText(next)
     const ok = HEX.test(next)
-    setInvalid(!ok)
+    // Half a colour is not wrong yet: the message waits until the text is as long as a colour.
+    setInvalid(!ok && next.length >= 7)
     if (ok) onChange(next)
   }
 
@@ -108,11 +109,25 @@ function NumberField({ label, value, min, max, nullable = false, placeholder, me
   }
 
   return (
-    <label className="bg-number">
-      <span>{label}</span>
-      <input type="number" min={min} max={max} placeholder={placeholder} aria-invalid={invalid} value={text} onChange={(e) => type(e.target.value)} />
+    <span className="bg-number-field">
+      <label className="bg-number">
+        <span>{label}</span>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          placeholder={placeholder}
+          aria-invalid={invalid}
+          value={text}
+          onChange={(e) => type(e.target.value)}
+          onBlur={() => {
+            setText(show(value))
+            setInvalid(false)
+          }}
+        />
+      </label>
       {invalid && <span className="error bg-error">{message}</span>}
-    </label>
+    </span>
   )
 }
 
@@ -140,73 +155,91 @@ export function BackgroundEditor({ episode, placed, anchor, onClose }: Backgroun
   /** Only the newest save reports: an older one landing late says nothing about what the strip should show. */
   const latestSave = useRef(0)
   const open = useRef(true)
+  const inFlight = useRef(false)
+  /** The failure the editor is showing, for the bar to take over if it is closed. */
+  const errorShown = useRef<string | null>(null)
 
   /** Stops showing `background` on the strip, if it still is what the strip shows. */
   function release(background: StripBackground): void {
     usePanelsStore.setState((s) => (s.backgroundPreview?.background === background ? { backgroundPreview: null } : {}))
   }
 
-  function save(background: StripBackground): void {
+  /** Shows a failure in the editor, or, once it is closed, where the bar shows it. */
+  function fail(e: unknown): void {
+    const message = errorText(e)
+    errorShown.current = message
+    if (open.current) setError(message)
+    else usePanelsStore.setState({ backgroundError: message })
+  }
+
+  /** Saves `background`; resolves to whether it was saved. The preview is held until the save settles, and kept when it fails. */
+  async function save(background: StripBackground): Promise<boolean> {
     const mine = ++latestSave.current
-    usePanelsStore
-      .getState()
-      .setBackground(episodeId.current, background)
-      .then(
-        () => {
-          if (mine === latestSave.current) release(background)
-        },
-        (e: unknown) => {
-          if (mine === latestSave.current && open.current) setError(errorText(e))
-        }
-      )
+    inFlight.current = true
+    try {
+      await usePanelsStore.getState().setBackground(episodeId.current, background)
+      if (mine === latestSave.current) release(background)
+      return true
+    } catch (e) {
+      if (mine === latestSave.current) fail(e)
+      return false
+    } finally {
+      if (mine === latestSave.current) inFlight.current = false
+    }
   }
 
   function change(next: StripBackground): void {
     setDraft(next)
     setError(null)
+    errorShown.current = null
     usePanelsStore.getState().setBackgroundPreview({ episodeId: episodeId.current, background: next })
     if (timer.current !== null) clearTimeout(timer.current.id)
     const id = setTimeout(() => {
       timer.current = null
-      save(next)
+      void save(next)
     }, SAVE_DELAY_MS)
     timer.current = { id, background: next }
   }
 
-  // Closing keeps a change still waiting (it is saved now, and the strip shows it until it lands) and drops the preview.
+  // Closing never loses a change: one still waiting is saved now, and the strip keeps showing the draft until a save
+  // settles. A save that fails then (or had failed already) is reported by the episode bar, with the draft still on the strip.
   useEffect(() => {
     open.current = true
+    // Nothing is left over from an editor that was closed on a failure.
+    usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null, backgroundError: null } : { backgroundError: null }))
     return () => {
       open.current = false
       const waiting = timer.current
       timer.current = null
-      if (waiting === null) {
+      if (waiting !== null) {
+        clearTimeout(waiting.id)
+        void save(waiting.background)
+      } else if (errorShown.current !== null) {
+        usePanelsStore.setState({ backgroundError: errorShown.current })
+      } else if (!inFlight.current) {
         usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null } : {}))
-        return
       }
-      clearTimeout(waiting.id)
-      usePanelsStore
-        .getState()
-        .setBackground(episodeId.current, waiting.background)
-        .then(undefined, () => undefined)
-        .then(() => release(waiting.background))
     }
   }, [])
 
   async function chooseImage(): Promise<void> {
-    // A change still waiting would save over the image once it is picked.
-    if (timer.current !== null) clearTimeout(timer.current.id)
-    timer.current = null
     setPicking(true)
     setError(null)
     try {
+      // A change still waiting is saved first: the picked image would otherwise be overwritten by it, or the change lost if the dialog is cancelled.
+      const waiting = timer.current
+      if (waiting !== null) {
+        clearTimeout(waiting.id)
+        timer.current = null
+        if (!(await save(waiting.background))) return
+      }
       const updated = await usePanelsStore.getState().pickBackgroundImage(episodeId.current)
       if (updated?.background?.kind === 'image' && open.current) {
         setDraft(updated.background)
         usePanelsStore.setState((s) => (s.backgroundPreview?.episodeId === episodeId.current ? { backgroundPreview: null } : {}))
       }
     } catch (e) {
-      if (open.current) setError(errorText(e))
+      fail(e)
     } finally {
       if (open.current) setPicking(false)
     }

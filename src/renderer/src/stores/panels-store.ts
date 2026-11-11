@@ -15,6 +15,8 @@ export interface PanelsData {
   error: string | null
   /** A background being edited and not saved yet: the strip of that episode shows it in place of the stored one. */
   backgroundPreview: { episodeId: string; background: StripBackground } | null
+  /** Why a background could not be saved after its editor was closed; the preview stays until it is dismissed. */
+  backgroundError: string | null
 }
 
 export interface PanelsActions {
@@ -43,6 +45,8 @@ export interface PanelsActions {
   pickBackgroundImage(episodeId: string): Promise<Episode | null>
   /** Shows a background on the episode's strip before it is saved; `null` goes back to the stored one. */
   setBackgroundPreview(preview: PanelsData['backgroundPreview']): void
+  /** Forgets a background save failure and puts the strip back on the stored background. */
+  dismissBackgroundError(): void
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
   createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>
@@ -60,7 +64,7 @@ export interface PanelsActions {
   readSketch(id: string): Promise<string | null>
 }
 
-export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null, backgroundPreview: null }
+export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null, backgroundPreview: null, backgroundError: null }
 
 /**
  * Only the response to the latest load is applied: one generation fires several events, so loads overlap.
@@ -189,6 +193,10 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
 
     setBackgroundPreview(preview) {
       set({ backgroundPreview: preview })
+    },
+
+    dismissBackgroundError() {
+      set({ backgroundError: null, backgroundPreview: null })
     },
 
     async createPanel(draft, generate) {

@@ -25,6 +25,15 @@ describe('EpisodeBar background button', () => {
     await waitFor(() => expect(usePanelsStore.getState().backgroundPreview).toBeNull())
   })
 
+  it('shows a background save that failed after the editor closed, and Dismiss puts the strip back', () => {
+    usePanelsStore.setState({ backgroundError: 'Disk full', backgroundPreview: { episodeId: EPISODE_ID, background: { kind: 'solid', color: '#123456' } } })
+    render(<EpisodeBar />)
+    expect(screen.getByRole('alert').textContent).toContain('Disk full')
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(usePanelsStore.getState().backgroundPreview).toBeNull()
+  })
+
   it('is disabled with no episode', () => {
     usePanelsStore.setState({ episodes: [] })
     useAppStore.setState({ activeEpisodeId: null })
