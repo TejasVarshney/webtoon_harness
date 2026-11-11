@@ -345,6 +345,15 @@ describe('update_panel_fields', () => {
     expect((await panel(p2.id)).dialogue[0]).toMatchObject({ text: 'New text', ...look })
   })
 
+  it('refuses a pixel-sized placement and accepts one just off the panel', async () => {
+    const { run, mina, panel, p2 } = await setup()
+    const line = { speakerId: mina.id, kind: 'speech', text: 'A' }
+    expect((await run('update_panel_fields', { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] })).ok).toBe(false)
+    const off = await run('update_panel_fields', { dialogue: [{ ...line, placement: { x: 1.4, y: 0.5 } }] })
+    expect(off.ok, off.content).toBe(true)
+    expect((await panel(p2.id)).dialogue[0].placement).toEqual({ x: 1.4, y: 0.5 })
+  })
+
   it('clears a placement with an explicit null and sets one when given', async () => {
     const { run, s, ctx, mina, p2 } = await setup()
     await s.panels.update(ctx, p2.id, { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'A', placement: { x: 0.62, y: 0.18 } }] }, { strictMentions: true, strictSheets: false })

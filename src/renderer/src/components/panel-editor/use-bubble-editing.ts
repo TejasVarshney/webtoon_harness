@@ -16,7 +16,7 @@ import {
 import type { BubblePlacement, BubbleShape, DialogueLine, Panel } from '@shared/types'
 import type { DialogueDraftLine } from './dialogue-edits'
 import type { OverlayEditing } from '../visualizer/DialogueOverlay'
-import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, addSpot, boxOf, centreOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
+import { ARROWS, DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS, addSpot, boxOf, centreOf, limitOf, nudgePlacement, placementFromPointer, type Arrow, type Box } from './bubble-placement'
 import { appendLine, editLine, identityOf, newBubble, removeLine, type LineIdentity } from './dialogue-edits'
 import type { Nudge, Press } from './bubble-press'
 import { useDialogueSaver } from './use-dialogue-saver'
@@ -38,6 +38,8 @@ export interface BubbleEditing {
   /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
   add(shape: BubbleShape): void
   adding: boolean
+  /** The bubble last clicked (pressed and released without a drag), a new object for each click: the strip opens Lines on it. */
+  clicked: { index: number } | null
 }
 
 /** The text open for typing: a stored line's (by index), or the new line's (`index: null`). */
@@ -67,6 +69,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
   const [dragging, setDragging] = useState<number | null>(null)
   const [text, setText] = useState<TextEdit | null>(null)
   const [adding, setAdding] = useState<DialogueLine | null>(null)
+  const [clicked, setClicked] = useState<{ index: number } | null>(null)
   const [held, setHeld] = useState<{ token: object; lines: DialogueLine[] } | null>(null)
 
   const press = useRef<Press | null>(null)
@@ -289,7 +292,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
       nudge.current = { index: i, expect: identityOf(line), tail: false, placement: line.placement ?? centreOf(bubble, panelB) }
     }
     const run = nudge.current!
-    run.placement = nudgePlacement(run.placement, key, big, { x: bubble.width / 2 / panelB.width, y: bubble.height / 2 / panelB.height }, boundsBox(), panelB)
+    run.placement = nudgePlacement(run.placement, key, big, { x: bubble.width / 2 / panelB.width, y: bubble.height / 2 / panelB.height }, limitOf(boundsBox(), panelB))
     setPreview({ index: i, placement: run.placement })
     if (nudgeTimer.current !== null) clearTimeout(nudgeTimer.current)
     nudgeTimer.current = setTimeout(flushNudge, NUDGE_COMMIT_MS)
@@ -378,7 +381,11 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     const p = press.current
     if (p === null || e.pointerId !== p.pointerId) return
     press.current = null
-    if (!p.dragging) return
+    if (!p.dragging) {
+      // A press on a handle is not a click on the bubble.
+      if (commit && !p.tail && p.width === undefined) setClicked({ index: p.index })
+      return
+    }
     dragEnded.current = true
     setDragging(null)
     if (commit && p.placement !== null) {
@@ -485,6 +492,7 @@ export function useBubbleEditing(panel: Panel, stageRef: RefObject<HTMLElement |
     lines,
     stage,
     add,
-    adding: adding !== null
+    adding: adding !== null,
+    clicked
   }
 }

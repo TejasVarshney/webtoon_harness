@@ -144,6 +144,10 @@ describe('panel tools: the tool set', () => {
     const props = (name: string) => (specs[name].inputSchema as { properties: Record<string, any> }).properties
     expect(props('create_panel').dialogue.description).toContain(sentence)
     expect(props('update_panel').patch.description).toContain(sentence)
+    const offPanel = 'Values outside 0..1 sit off the panel'
+    expect(props('create_panel').dialogue.description).toContain(offPanel)
+    expect(props('update_panel').patch.description).toContain(offPanel)
+    expect(JSON.stringify(props('create_panel').dialogue)).toContain('"maximum":10')
   })
 })
 
@@ -452,6 +456,29 @@ describe('update_panel', () => {
     const none = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, tail: 'none' }] } })
     expect(none.ok, none.content).toBe(true)
     expect((await panel(made.panelId)).dialogue[0].tail).toBe('none')
+  })
+
+  it('refuses a pixel-sized placement or tail, and accepts a bubble just off the panel', async () => {
+    const { run, character, created, panel } = await setup()
+    const mina = await character('Mina')
+    const made = await created([mina])
+    const line = { speakerId: mina.id, kind: 'speech', text: 'Hey!' }
+    const pixels = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] } })
+    expect(pixels.ok).toBe(false)
+    const tail = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, tail: { x: 0.5, y: -320 } }] } })
+    expect(tail.ok).toBe(false)
+    const off = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, placement: { x: 1.4, y: 1.2 }, tail: { x: 1.4, y: 2 } }] } })
+    expect(off.ok, off.content).toBe(true)
+    expect((await panel(made.panelId)).dialogue[0]).toMatchObject({ placement: { x: 1.4, y: 1.2 }, tail: { x: 1.4, y: 2 } })
+  })
+
+  it('create_panel refuses a pixel-sized placement too, and takes one off the panel', async () => {
+    const { run, character, draft, created, panel } = await setup()
+    const mina = await character('Mina')
+    const line = { speakerId: mina.id, kind: 'speech', text: 'Hi' }
+    expect((await run('create_panel', draft([mina], { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] }))).ok).toBe(false)
+    const made = await created([mina], { dialogue: [{ ...line, placement: { x: -0.4, y: 1.3 } }] })
+    expect((await panel(made.panelId)).dialogue[0].placement).toEqual({ x: -0.4, y: 1.3 })
   })
 
   it('a style the app cannot draw comes back as an error', async () => {

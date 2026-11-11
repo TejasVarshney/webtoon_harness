@@ -94,6 +94,22 @@ describe('StripBubbles', () => {
     expect(within(card(A)).queryByText('Hello.')).toBeNull()
   })
 
+  it('draws a bubble inside the strip when its stored offset would land past the edge, and keeps the stored value', () => {
+    // 2.95 panel widths from the panel's left edge at 40 px, in a panel 200 px wide: 630 px on a strip 440 wide.
+    stored = [{ ...stored[0], dialogue: [{ ...hello, placement: { x: 2.95, y: 0.5 } }] }, stored[1]]
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: stored } })
+    mount()
+    expect(bubble().style.left).toBe('200%')
+    expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID][0].dialogue[0].placement).toEqual({ x: 2.95, y: 0.5 })
+  })
+
+  it('a bubble left of the strip is drawn at its left edge', () => {
+    stored = [{ ...stored[0], dialogue: [{ ...hello, placement: { x: -0.7, y: 0.5 } }] }, stored[1]]
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: stored } })
+    mount()
+    expect(bubble().style.left).toBe('-20%')
+  })
+
   it('a bubble can be pressed on a panel that is not selected', () => {
     mount()
     expect(useAppStore.getState().selectedPanelIds).toEqual([])
@@ -163,9 +179,48 @@ describe('StripBubbles', () => {
     expect(useAppStore.getState().focusedPanelId).toBeNull()
   })
 
-  it('selecting a bubble opens its text and style controls in the panel\'s tools', async () => {
+  /** A press and release on the bubble with no travel: a click. */
+  const click = (): void => {
+    fireEvent.pointerDown(bubble(), { clientX: 50, clientY: 25, button: 0, buttons: 1 })
+    fireEvent.pointerUp(bubble(), { clientX: 50, clientY: 25, button: 0 })
+  }
+
+  it('dragging a bubble opens no popover, only selects it', () => {
     mount()
     fireEvent.pointerDown(bubble(), { clientX: 50, clientY: 25, button: 0, buttons: 1 })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.pointerMove(layer(A), { clientX: 100, clientY: 400, buttons: 1 })
+    fireEvent.pointerUp(layer(A), { clientX: 100, clientY: 400 })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(bubble()).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('the popover opened by a click does not cover the selected bubble', async () => {
+    const was = vi.mocked(Element.prototype.getBoundingClientRect).getMockImplementation()!
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      // The Lines button is at the foot of the panel; the bubble is just under it, where the popover would open.
+      if (this instanceof HTMLButtonElement && this.getAttribute('aria-label') === 'Lines') return rect(100, 400, 28, 28)
+      if (this.classList.contains('bubble')) return rect(60, 460, 100, 50)
+      if (this instanceof HTMLElement && this.classList.contains('tool-popover')) {
+        const top = this.style.top !== '' ? parseFloat(this.style.top) : window.innerHeight - parseFloat(this.style.bottom) - 200
+        return rect(parseFloat(this.style.left), top, parseFloat(this.style.width), 200)
+      }
+      return was.call(this)
+    })
+    mount()
+    click()
+    const popover = await screen.findByRole('dialog', { name: 'Lines' })
+    await waitFor(() => {
+      const p = popover.getBoundingClientRect()
+      const b = bubble().getBoundingClientRect()
+      const apart = p.bottom <= b.top || p.top >= b.bottom || p.right <= b.left || p.left >= b.right
+      expect(apart).toBe(true)
+    })
+  })
+
+  it('selecting a bubble opens its text and style controls in the panel\'s tools', async () => {
+    mount()
+    click()
     const popover = await screen.findByRole('dialog', { name: 'Lines' })
     const row = within(popover).getAllByRole('listitem').find((li) => li.getAttribute('aria-current') === 'true')!
     expect(within(row).getByDisplayValue('Hello.')).toBeInTheDocument()
@@ -177,7 +232,7 @@ describe('StripBubbles', () => {
 
   it('opening another tool lets go of the bubble, so it opens on its own tab', async () => {
     mount()
-    fireEvent.pointerDown(bubble(), { clientX: 50, clientY: 25, button: 0, buttons: 1 })
+    click()
     await screen.findByRole('dialog', { name: 'Lines' })
     await userEvent.click(screen.getByRole('button', { name: 'Cast' }))
     expect(await screen.findByRole('dialog', { name: 'Cast' })).toBeInTheDocument()

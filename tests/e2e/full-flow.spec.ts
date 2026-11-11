@@ -118,9 +118,11 @@ test('a story from setup to continuation survives a relaunch', async () => {
   const cards = page.getByTestId('panel-card')
   await expect(cards).toHaveCount(2)
   await expect(cards.locator('img')).toHaveCount(2)
-  await expect(cards.locator('.dialogue-overlay')).toHaveCount(2)
-  await expect(cards.nth(0).locator('.dialogue-overlay')).toContainText('Is anyone there?')
-  await expect(cards.nth(1).locator('.dialogue-overlay')).toContainText('Someone had been listening too.')
+  // The lettering is the strip's bubble layer, one over each card.
+  const layerOf = async (n: number) => page.getByTestId('strip-bubbles').and(page.locator(`[data-panel-id="${await cards.nth(n).getAttribute('data-panel-id')}"]`))
+  await expect(page.getByTestId('strip-bubbles').locator('.dialogue-overlay')).toHaveCount(2)
+  await expect(await layerOf(0)).toContainText('Is anyone there?')
+  await expect(await layerOf(1)).toContainText('Someone had been listening too.')
 
   // 3. The panel chat edits panel 2: a second ready version. Then back to the strip, since focus mode covers it.
   await cards.nth(1).dblclick()

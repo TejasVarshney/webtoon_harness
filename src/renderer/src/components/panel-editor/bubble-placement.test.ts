@@ -93,11 +93,11 @@ describe('nudgePlacement with bounds', () => {
   const strip = { left: 0, top: 0, width: 440, height: 5000 }
 
   it('a bubble off its panel keeps its place when nudged', () => {
-    expect(nudgePlacement({ x: 1.5, y: 3 }, 'ArrowRight', false, { x: 0.1, y: 0.05 }, strip, own)).toEqual({ x: 1.51, y: 3 })
+    expect(nudgePlacement({ x: 1.5, y: 3 }, 'ArrowRight', false, { x: 0.1, y: 0.05 }, { bounds: strip, panel: own })).toEqual({ x: 1.51, y: 3 })
   })
 
   it('stops at the strip edge', () => {
-    expect(nudgePlacement({ x: 2.1, y: 3 }, 'ArrowRight', true, { x: 0.1, y: 0.05 }, strip, own)).toEqual({ x: 2.1, y: 3 })
+    expect(nudgePlacement({ x: 2.1, y: 3 }, 'ArrowRight', true, { x: 0.1, y: 0.05 }, { bounds: strip, panel: own })).toEqual({ x: 2.1, y: 3 })
   })
 })
 

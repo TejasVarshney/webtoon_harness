@@ -72,19 +72,21 @@ export function placementFromPointer(a: {
   return keep({ x, y }, { x: bubble.width / 2 / panel.width, y: bubble.height / 2 / panel.height }, panel, bounds)
 }
 
-/** `half` is the bubble's half-size as fractions of the panel. With `bounds` (and the `panel` they are measured against) it may leave the panel. */
+/** The `limit` of `nudgePlacement` for a stage with `bounds` (none on the focus stage). */
+export const limitOf = (bounds: Box | undefined, panel: Box): { bounds: Box; panel: Box } | undefined => (bounds === undefined ? undefined : { bounds, panel })
+
+/** `half` is the bubble's half-size as fractions of the panel. With `limit` (the bounds, and the panel they are measured against) it may leave the panel. */
 export function nudgePlacement(
   p: BubblePlacement,
   key: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown',
   big: boolean,
   half: { x: number; y: number },
-  bounds?: Box,
-  panel?: Box
+  limit?: { bounds: Box; panel: Box }
 ): BubblePlacement {
   const step = big ? NUDGE_BIG : NUDGE
   const x = p.x + (key === 'ArrowRight' ? step : key === 'ArrowLeft' ? -step : 0)
   const y = p.y + (key === 'ArrowDown' ? step : key === 'ArrowUp' ? -step : 0)
-  return keep({ x, y }, half, panel ?? null, bounds)
+  return keep({ x, y }, half, limit?.panel ?? null, limit?.bounds)
 }
 
 /** Where the Add bubble menu puts a panel's next line, given how many it has: across three columns and down five rows, 15 spots before it starts over. */

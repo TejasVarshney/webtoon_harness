@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, type CSSProperties, type HTMLAttributes, type MouseEvent, type PointerEvent, type RefObject } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
 import type { PlacedPanel } from '@shared/strip-canvas'
-import type { Panel } from '@shared/types'
+import { STRIP_CSS_WIDTH } from '@shared/strip-width'
+import type { DialogueLine, Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { boxOf, type Box } from '../panel-editor/bubble-placement'
 import { useBubbleEditing } from '../panel-editor/use-bubble-editing'
@@ -36,6 +37,22 @@ function BubbleBox({ placed, children, ...rest }: { placed: PlacedPanel; ref?: R
   )
 }
 
+/**
+ * The lines as they are drawn on the strip: a bubble's centre is held inside the strip's width. A placement is a
+ * fraction of its panel, so widening or moving the panel carries an off-panel bubble with it, possibly past the edge;
+ * the stored value is left alone, and the bubble is back where it was put if the panel comes back.
+ */
+function insideStrip(lines: DialogueLine[], placed: PlacedPanel): DialogueLine[] {
+  if (placed.width <= 0) return lines
+  const low = -placed.x / placed.width
+  const high = (STRIP_CSS_WIDTH - placed.x) / placed.width
+  return lines.map((line) => {
+    const p = line.placement
+    if (p === null || (p.x >= low && p.x <= high)) return line
+    return { ...line, placement: { ...p, x: Math.round(Math.min(high, Math.max(low, p.x)) * 10000) / 10000 } }
+  })
+}
+
 function EditableBubbles({ placed, canvas }: { placed: PlacedPanel; canvas: RefObject<HTMLElement | null> }) {
   const panel: Panel = placed.panel
   const box = useRef<HTMLDivElement>(null)
@@ -45,7 +62,7 @@ function EditableBubbles({ placed, canvas }: { placed: PlacedPanel; canvas: RefO
   const showTools = sole && !focusing
   // A bubble may go anywhere on the strip, but not off it.
   const bounds = useCallback((): Box | null => (canvas.current === null ? null : boxOf(canvas.current)), [canvas])
-  const { editing, lines, select, selected, stage, add, adding } = useBubbleEditing(panel, box, bounds)
+  const { editing, lines, select, selected, stage, add, adding, clicked } = useBubbleEditing(panel, box, bounds)
 
   // A press on another panel never reaches this one, so the bubble it had selected is let go when the selection moves.
   useEffect(() => {
@@ -73,9 +90,9 @@ function EditableBubbles({ placed, canvas }: { placed: PlacedPanel; canvas: RefO
       onClick={(e: MouseEvent<HTMLDivElement>) => e.stopPropagation()}
     >
       <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
-        <DialogueOverlay dialogue={lines} cast={panel.characters} editing={editing} />
+        <DialogueOverlay dialogue={insideStrip(lines, placed)} cast={panel.characters} editing={editing} />
       </div>
-      {showTools && <PanelTools panel={panel} selectedLine={selected} onSelectLine={select} onAddBubble={add} addingBubble={adding} />}
+      {showTools && <PanelTools panel={panel} selectedLine={selected} onSelectLine={select} linesRequest={clicked} onAddBubble={add} addingBubble={adding} />}
     </BubbleBox>
   )
 }

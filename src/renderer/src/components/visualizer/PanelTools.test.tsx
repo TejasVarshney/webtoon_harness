@@ -33,7 +33,7 @@ beforeEach(() => {
 function Host() {
   const p = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((x) => x.id === A))
   const [line, setLine] = useState<number | null>(null)
-  return p === undefined ? null : <PanelTools panel={p} selectedLine={line} onSelectLine={setLine} onAddBubble={() => undefined} addingBubble={false} />
+  return p === undefined ? null : <PanelTools panel={p} selectedLine={line} onSelectLine={setLine} linesRequest={null} onAddBubble={() => undefined} addingBubble={false} />
 }
 
 function mount(handlers: Parameters<typeof installFakeApi>[0] = {}) {

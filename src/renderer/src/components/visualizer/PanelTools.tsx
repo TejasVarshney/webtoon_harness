@@ -12,6 +12,8 @@ import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 
 type Tool = InspectorTab | 'versions'
 
+type Rect = { left: number; right: number; top: number; bottom: number }
+
 /** The tools that open a popover, in the order of the bar. */
 const POPOVER_TOOLS: { id: Tool; label: string; Icon: LucideIcon }[] = [
   { id: 'lines', label: 'Lines', Icon: MessageSquare },
@@ -27,7 +29,7 @@ const POPOVER_COMFORT = 280
 const MIN_POPOVER_HEIGHT = 120
 
 /** Where a popover sits for the button it opens from: fixed to the window, so neither the strip nor the pane can clip it. */
-function spotFor(button: Element): { left: number; top?: number; bottom?: number; maxHeight: number; width: number } {
+function spotFor(button: Element, avoid: Rect | null, height: number): { left: number; top?: number; bottom?: number; maxHeight: number; width: number } {
   const rect = button.getBoundingClientRect()
   const width = Math.min(POPOVER_WIDTH, window.innerWidth - 2 * POPOVER_MARGIN)
   const left = Math.max(POPOVER_MARGIN, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - POPOVER_MARGIN))
@@ -37,6 +39,13 @@ function spotFor(button: Element): { left: number; top?: number; bottom?: number
   const room = (edge: number): number => Math.max(POPOVER_MARGIN, Math.min(edge, window.innerHeight - MIN_POPOVER_HEIGHT - POPOVER_MARGIN))
   const topEdge = room(rect.bottom + 4)
   const bottomEdge = room(window.innerHeight - rect.top + 4)
+  // Where it would open over the bubble the user is working on, it goes below that bubble, or above it with no room below.
+  if (avoid !== null && below >= POPOVER_COMFORT && avoid.right > left && avoid.left < left + width && avoid.bottom > topEdge && avoid.top < topEdge + height) {
+    const under = room(avoid.bottom + POPOVER_MARGIN)
+    if (window.innerHeight - under - POPOVER_MARGIN >= POPOVER_COMFORT) return { left, width, top: under, maxHeight: window.innerHeight - under - POPOVER_MARGIN }
+    const over = room(window.innerHeight - avoid.top + POPOVER_MARGIN)
+    return { left, width, bottom: over, maxHeight: Math.max(window.innerHeight - over - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
+  }
   return below >= POPOVER_COMFORT || below >= above
     ? { left, width, top: topEdge, maxHeight: Math.max(window.innerHeight - topEdge - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
     : { left, width, bottom: bottomEdge, maxHeight: Math.max(window.innerHeight - bottomEdge - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
@@ -45,26 +54,34 @@ function spotFor(button: Element): { left: number; top?: number; bottom?: number
 interface ToolPopoverProps {
   label: string
   anchor: Element
-  /** Where its button's card is along the strip, so it is placed again when the bar moves. */
-  shift: number
   /** Closes it, and `focusBack` says the focus should return to the button that opened it. */
   onClose(focusBack: boolean): void
-  /** Opened by selecting a bubble, which keeps the focus for its keys: the popover does not take it. */
+  /** Opened by clicking a bubble, which keeps the focus for its keys: the popover does not take it. */
   quiet?: boolean
+  /** The box of the bubble being worked on, which the popover keeps clear of. */
+  avoid?(): Rect | null
   children: ReactNode
 }
 
 /** A panel of controls beside a tool's button, in the window's own layer. A press elsewhere or Escape closes it. */
-function ToolPopover({ label, anchor, shift, onClose, quiet = false, children }: ToolPopoverProps) {
+function ToolPopover({ label, anchor, onClose, quiet = false, avoid, children }: ToolPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const [spot, setSpot] = useState(() => spotFor(anchor))
+  const place = (): ReturnType<typeof spotFor> => {
+    const height = ref.current?.getBoundingClientRect().height
+    return spotFor(anchor, avoid?.() ?? null, height !== undefined && height > 0 ? height : POPOVER_COMFORT)
+  }
+  const [spot, setSpot] = useState(place)
 
   // The first focus goes in, so the next Tab is in the controls: the popover is at the end of the page, not by its button.
   useEffect(() => {
     if (!quiet) ref.current?.focus({ preventScroll: true })
   }, [quiet])
   // The bar slides along the card when the card is moved or the strip is resized: the button is somewhere else now.
-  useLayoutEffect(() => setSpot(spotFor(anchor)), [anchor, shift])
+  // Also when the bubble moves: it is read on every render, and the spot only changes when it moves.
+  useLayoutEffect(() => {
+    const next = place()
+    setSpot((now) => (now.left === next.left && now.top === next.top && now.bottom === next.bottom && now.maxHeight === next.maxHeight && now.width === next.width ? now : next))
+  })
 
   useEffect(() => {
     function onPress(e: PointerEvent): void {
@@ -79,7 +96,7 @@ function ToolPopover({ label, anchor, shift, onClose, quiet = false, children }:
     // It follows its button when the strip scrolls or the window is resized. Its own list scrolling is not the strip's.
     const follow = (e: Event): void => {
       if (e.target instanceof Node && ref.current?.contains(e.target)) return
-      setSpot(spotFor(anchor))
+      setSpot(place())
     }
     document.addEventListener('pointerdown', onPress, true)
     document.addEventListener('keydown', onKey)
@@ -107,6 +124,8 @@ export interface PanelToolsProps {
   /** The line whose bubble is selected on the strip, which Lines opens on. */
   selectedLine: number | null
   onSelectLine(i: number | null): void
+  /** A click on a bubble (new each time) opens Lines on its line; a drag of it does not. */
+  linesRequest: { index: number } | null
   /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
   onAddBubble(shape: BubbleShape): void
   addingBubble: boolean
@@ -116,11 +135,11 @@ export interface PanelToolsProps {
  * The tools on a selected panel, so most edits happen where the panel sits: the lines, cast, items and scene in a
  * popover each, the versions, an upload, a redraw, the sketch, focus mode and delete. Lines, Cast, Items and Scene are
  * the same controls as focus mode's tabs, and save the same way. Sketch and Focus open focus mode, whose stage is larger.
- * Selecting a bubble on the strip opens Lines on its line, and Add bubble adds one to the panel.
+ * Clicking a bubble on the strip opens Lines on its line, and Add bubble adds one to the panel.
  * Nothing here is a press on the card: clicks, double clicks and presses stop at it, popovers and dialog included, so
  * they neither select, open, drag nor clear the selection on the strip.
  */
-export function PanelTools({ panel, selectedLine, onSelectLine, onAddBubble, addingBubble }: PanelToolsProps) {
+export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, onAddBubble, addingBubble }: PanelToolsProps) {
   const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement; quiet?: boolean } | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -161,11 +180,15 @@ export function PanelTools({ panel, selectedLine, onSelectLine, onAddBubble, add
       )
   }
 
-  // Selecting a bubble opens Lines on its line. It keeps the focus on the bubble, so its arrow keys, Enter and Delete work.
+  // Clicking a bubble opens Lines on its line, once the press is over: a drag never opens it, so it cannot cover where the
+  // bubble is going. It keeps the focus on the bubble, so its arrow keys, Enter and Delete work.
   useEffect(() => {
-    if (selectedLine === null) return
+    if (linesRequest === null) return
     setOpen((now) => (now?.tool === 'lines' || linesButton.current === null ? now : { tool: 'lines', anchor: linesButton.current, quiet: true }))
-  }, [selectedLine])
+  }, [linesRequest])
+
+  /** The selected bubble's box, for a popover to keep clear of. */
+  const selectedBubble = (): Rect | null => root.current?.closest('.strip-bubbles')?.querySelector('.bubble[data-selected="true"]')?.getBoundingClientRect() ?? null
 
   function toggle(tool: Tool, anchor: HTMLElement): void {
     // A line chosen in an earlier popover must not send this one to Lines.
@@ -226,7 +249,7 @@ export function PanelTools({ panel, selectedLine, onSelectLine, onAddBubble, add
       )}
 
       {open !== null && (
-        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} shift={shift} onClose={close} quiet={open.quiet}>
+        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} onClose={close} quiet={open.quiet} avoid={selectedBubble}>
           {open.tool === 'versions' ? (
             <VersionSwitcher panel={panel} />
           ) : (

@@ -143,7 +143,7 @@ Dialogue is drawn over the image by the app, so changing it needs no image call 
 - `"dialogue": []` removes all lines.
 - Main chat only (this tool does not exist in the panel chat): `update_panel` with `panelId` and `patch: {"dialogue": [...]}`, without `regenerate`.
 
-Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself.
+Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself. Values outside 0 to 1 are allowed: a bubble can sit off the panel, on the strip beside or below it, for example `{"x": 0.5, "y": 1.15}` just under the panel. Keep placement and tail within -10 to 10; a pixel value such as 320 is refused.
 
 - **Keep the user's placements.** A line you send without `placement` keeps the placement of the line at the same position in the list, so changing words never moves a bubble. Only if you reorder, add or remove lines can a line end up with another line's spot: then send `placement` on each line you keep.
 - **Set one only when the user asks for a spot**, for example "put Mina's bubble top right". Pick the centre of that region, such as `{"x": 0.8, "y": 0.2}`, and leave every other line without `placement`.
@@ -153,7 +153,7 @@ Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18
 A bubble's look is data too, and needs no redraw.
 
 - `style` holds only what differs from the app's default: `shape` (`speech`, `shout`, `whisper`, `thought`, `caption`, `sfx`, `fringe`, `burst`, `curly`), `font` (`comic`, `bangers`, `hand`, `impact`, `serif`, `typewriter`), `size` (0.5 to 3), `padding` (0.3 to 2, a multiplier of the room between the text and the outline), `bold`, `italic`, `caps`, `align` (`left`, `center`, `right`), `color`, `fill`, `stroke` (`#rrggbb`), `strokeWidth` (0 to 6), `width` (0.1 to 0.95, the bubble's width as a share of the panel's; leave it out to let the text decide).
-- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
+- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`; like a placement it may be outside 0 to 1 to point off the panel. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
 - **Keep the user's looks.** A line you send without `style` or `tail` keeps those of the line at the same position, so changing words never changes a look. If you reorder, add or remove lines, send them on each line you keep.
 - **Set them only when the user asks**, for example "make Mina's line red" or "point the bubble at Jun".
 

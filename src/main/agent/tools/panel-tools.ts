@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AgentDialogueSchema } from '@shared/agent-dialogue'
 import { PanelCharacterSchema, PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import type { Episode, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
@@ -164,7 +165,7 @@ const createPanel = defineTool({
     items: PanelDraftSchema.shape.items.describe(
       "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
     ),
-    dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    dialogue: AgentDialogueSchema.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     continuityNotes: z.string().optional().describe("What must match: the scene's layout in frame terms, lighting, time of day, props, outfits. Default empty."),
     offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
@@ -192,7 +193,7 @@ const updatePanel = defineTool({
     'or call regenerate_panel later. Without regenerate the result is the updated panel.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.extend({ location: locationField }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    patch: PanelPatchSchema.extend({ location: locationField, dialogue: AgentDialogueSchema.optional() }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {

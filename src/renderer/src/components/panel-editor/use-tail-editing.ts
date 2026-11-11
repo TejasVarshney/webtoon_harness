@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, type HTMLAttributes, type KeyboardEvent,
 import type { BubblePlacement, DialogueLine } from '@shared/types'
 import type { DialogueDraftLine, LineIdentity } from './dialogue-edits'
 import type { Nudge, Press } from './bubble-press'
-import { ARROWS, NUDGE_COMMIT_MS, boxOf, centreOf, nudgePlacement, type Arrow, type Box } from './bubble-placement'
+import { ARROWS, NUDGE_COMMIT_MS, boxOf, centreOf, limitOf, nudgePlacement, type Arrow, type Box } from './bubble-placement'
 import { editLine, identityOf } from './dialogue-edits'
 
 /** The dot at a tail's tip sits inside its bubble, but a press or double-click on it is not the bubble's. */
@@ -60,7 +60,7 @@ export function useTailEditing(host: TailHost) {
       nudge.current = { index: i, expect: identityOf(line), tail: true, placement: start }
     }
     const run = nudge.current!
-    run.placement = nudgePlacement(run.placement, key, big, { x: 0, y: 0 }, boundsBox(), panelB)
+    run.placement = nudgePlacement(run.placement, key, big, { x: 0, y: 0 }, limitOf(boundsBox(), panelB))
     setTailPreview({ index: i, tip: run.placement })
     if (nudgeTimer.current !== null) clearTimeout(nudgeTimer.current)
     nudgeTimer.current = setTimeout(flushNudge, NUDGE_COMMIT_MS)

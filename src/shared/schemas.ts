@@ -343,7 +343,7 @@ export const PanelSchema = z.object({
  * on purpose: left out it stays `undefined` (the line inherits the stored one), where `null` means automatic.
  */
 // No defaults on the look fields: undefined means inherit from the stored line, and a default would turn it into clear.
-const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({
+export const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({
   placement: BubblePlacementSchema.nullable().optional(),
   style: BubbleStyleSchema.nullable().optional(),
   tail: BubbleTailSchema.nullable().optional()
