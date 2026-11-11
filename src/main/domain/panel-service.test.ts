@@ -1930,6 +1930,42 @@ describe('PanelService chosen panels, style and prompt', () => {
     expect((await svc.update(ctx, panel.id, { promptOverride: null }, USER)).panel.promptOverride).toBeNull()
   })
 
+  describe('an edit by the agent', () => {
+    const AGENT_EDIT = { ...AGENT, byAgent: true }
+
+    it('clears the custom prompt when it changes what the picture shows, so the next draw uses the edit', async () => {
+      const { svc, ctx, panel } = await withChoices(() => ({ promptOverride: 'A cat on a roof.' }))
+      const next = (await svc.update(ctx, panel.id, { description: 'The cat smiles.' }, AGENT_EDIT)).panel
+      expect(next.promptOverride).toBeNull()
+      expect((await svc.generate(ctx, panel.id)).prompt).toContain('The cat smiles.')
+    })
+
+    it('clears it for each visual field, and says so in a warning', async () => {
+      const { svc, ctx, panel } = await withChoices(() => ({ promptOverride: 'P' }))
+      for (const patch of [{ setting: 'Roof' }, { shot: 'close-up' as const }, { aspect: '1:2' as const }]) {
+        await svc.update(ctx, panel.id, { promptOverride: 'P' }, USER)
+        const out = await svc.update(ctx, panel.id, patch, AGENT_EDIT)
+        expect(out.panel.promptOverride, JSON.stringify(patch)).toBeNull()
+        expect(out.warnings.join(' ')).toContain('custom prompt')
+      }
+    })
+
+    it('keeps it for an edit that does not change the picture, or restates what is stored', async () => {
+      const { svc, ctx, panel } = await withChoices(() => ({ promptOverride: 'P' }))
+      expect((await svc.update(ctx, panel.id, { frame: 'borderless', continuityNotes: 'rain' }, AGENT_EDIT)).panel.promptOverride).toBe('P')
+      const out = await svc.update(ctx, panel.id, { description: panel.description }, AGENT_EDIT)
+      expect(out.panel.promptOverride).toBe('P')
+      expect(out.warnings.join(' ')).not.toContain('custom prompt')
+    })
+  })
+
+  it("keeps the custom prompt through the user's own visual edit", async () => {
+    const { svc, ctx, panel } = await withChoices(() => ({ promptOverride: 'A cat on a roof.' }))
+    const next = (await svc.update(ctx, panel.id, { description: 'The cat smiles.' }, USER)).panel
+    expect(next.promptOverride).toBe('A cat on a roof.')
+    expect((await svc.update(ctx, panel.id, { setting: 'Roof' }, USER)).panel.promptOverride).toBe('A cat on a roof.')
+  })
+
   it('keeps these fields when another field is patched, and defaults them on an old file', async () => {
     const { svc, ctx, a, panel } = await withChoices(({ a }) => ({ referencePanelIds: [a], styleOverride: 'S', promptOverride: 'P' }))
     const next = (await svc.update(ctx, panel.id, { setting: 'Roof' }, USER)).panel
@@ -2018,8 +2054,46 @@ describe('PanelService delete, move and usage', () => {
       events.length = 0
       await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 0, y: 5000, width: 100 } }])
       expect((await episodes.get(ctx, epi.id)).panelIds).toEqual([b.id, c.id, a.id])
-      expect(events.filter((e) => e.type === 'panel.changed')).toHaveLength(3)
+      expect(events.filter((e) => e.type === 'panel.changed')).toHaveLength(1)
       expect(events).toContainEqual({ type: 'episode.changed', projectId: ctx.id, episodeId: epi.id })
+    })
+
+    it('freezing a long unplaced episode announces one change, not one per panel', async () => {
+      const { svc, epi, ctx, events } = await setup()
+      const made: Panel[] = []
+      for (let i = 0; i < 20; i++) made.push((await svc.create(ctx, draft(epi.id), USER)).panel)
+      events.length = 0
+      await svc.place(ctx, epi.id, [{ panelId: made[0].id, placement: { x: 10, y: 5, width: 200 } }])
+      expect((await svc.list(ctx, epi.id)).every((p) => p.placement !== null)).toBe(true)
+      expect(events.filter((e) => e.type === 'panel.changed')).toHaveLength(1)
+    })
+
+    it('two overlapping moves on an unplaced episode both land and leave no overlap', async () => {
+      const { svc, epi, ctx } = await setup()
+      const made: Panel[] = []
+      for (let i = 0; i < 4; i++) made.push((await svc.create(ctx, draft(epi.id), USER)).panel)
+      const first = { x: 200, y: 6000, width: 200 }
+      const second = { x: 0, y: 9000, width: 200 }
+      await Promise.all([svc.place(ctx, epi.id, [{ panelId: made[0].id, placement: first }]), svc.place(ctx, epi.id, [{ panelId: made[1].id, placement: second }])])
+      const after = await svc.list(ctx, epi.id)
+      expect(after.find((p) => p.id === made[0].id)!.placement).toEqual(first)
+      expect(after.find((p) => p.id === made[1].id)!.placement).toEqual(second)
+      const now = rects(after)
+      for (const x of now) for (const y of now) if (x.id < y.id) expect(intersects(x, y), `${x.id} ${y.id}`).toBe(false)
+    })
+
+    it('writes the moved panels last, so a reader sees the old picture of the strip until they land', async () => {
+      const { svc, epi, ctx } = await setup()
+      const [a, b, c] = [(await svc.create(ctx, draft(epi.id), USER)).panel, (await svc.create(ctx, draft(epi.id), USER)).panel, (await svc.create(ctx, draft(epi.id), USER)).panel]
+      const order: string[] = []
+      const original = ctx.mutex.run.bind(ctx.mutex)
+      vi.spyOn(ctx.mutex, 'run').mockImplementation((key, fn) => {
+        const hit = [a, b, c].find((p) => key === ctx.paths.panelFile(p.id))
+        if (hit) order.push(hit.id)
+        return original(key, fn)
+      })
+      await svc.place(ctx, epi.id, [{ panelId: a.id, placement: { x: 10, y: 5, width: 200 } }])
+      expect(order[order.length - 1]).toBe(a.id)
     })
 
     it('clamps what it stores', async () => {

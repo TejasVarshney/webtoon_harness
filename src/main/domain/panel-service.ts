@@ -4,7 +4,7 @@ import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
 import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
-import { visualFields } from '@shared/visual-fields'
+import { VISUAL_FIELDS, visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
@@ -26,6 +26,9 @@ import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { failureMessage, INTERRUPTED, now, type UploadExt } from './records'
 import type { PackComposer } from './reference-pack'
+
+/** What an agent edit that cleared the panel's custom prompt returns, for the agent to pass on to the user. */
+const CUSTOM_PROMPT_CLEARED = "This panel had a custom prompt the user wrote. This edit changed what the picture shows, so the custom prompt was cleared and the next draw uses the panel's fields. Tell the user."
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
 export class PanelValidationError extends Error {
@@ -78,6 +81,9 @@ interface Draw {
  * no lock is ever held across an image call.
  */
 export class PanelService extends PanelUsageScanner {
+  /** The `place` calls of each episode, as the promise of the last one queued. */
+  private readonly placing = new Map<string, Promise<void>>()
+
   constructor(private readonly opts: PanelServiceOptions) {
     super()
   }
@@ -152,8 +158,10 @@ export class PanelService extends PanelUsageScanner {
    * foreign-usage and holder errors apply to every entry. With `strictSheets` it also clears a failed
    * sheet check on an unchanged pair, so an agent editing a panel is never blocked by a cast it already had. Without
    * it the check stays: the person editing keeps seeing the warning on every save, since the sheet is still failed.
+   * With `byAgent`, a change to what the picture shows also clears the panel's custom prompt: the agent cannot read or
+   * edit it, so a redraw from it would ignore the edit. The warning tells the agent to say so.
    */
-  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean; byAgent?: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
@@ -186,6 +194,10 @@ export class PanelService extends PanelUsageScanner {
       const place = validatePanelLocation(merged.location, locationRoster, { changed: JSON.stringify(merged.location) !== JSON.stringify(current.location) })
       const check = { errors: [...cast.errors, ...place.errors], warnings: [...cast.warnings, ...place.warnings] }
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
+      if (opts.byAgent && current.promptOverride?.trim() && VISUAL_FIELDS.some((field) => JSON.stringify(merged[field]) !== JSON.stringify(current[field]))) {
+        merged.promptOverride = null
+        check.warnings.push(CUSTOM_PROMPT_CLEARED)
+      }
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
       return { panel: next, warnings: check.warnings }
@@ -359,11 +371,31 @@ export class PanelService extends PanelUsageScanner {
     this.emit(ctx, id)
   }
 
-  /** Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own. */
-  async place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
+  /**
+   * Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own.
+   * Calls for one episode run one after another and each plans from what the one before wrote, so a second drag never
+   * plans from a half-frozen list. The queue is in memory, so no panel lock is ever held together with an episode's.
+   * The panels that were not moved are written first and the moved ones last, and the change is announced once at the end.
+   */
+  place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
+    const key = `${ctx.id}:${episodeId}`
+    const run = (this.placing.get(key) ?? Promise.resolve()).catch(() => undefined).then(() => this.placeNow(ctx, episodeId, moves))
+    const tail = run.catch(() => undefined)
+    this.placing.set(key, tail)
+    void tail.then(() => {
+      if (this.placing.get(key) === tail) this.placing.delete(key)
+    })
+    return run
+  }
+
+  private async placeNow(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
     const plan = planPlacement(await this.list(ctx, episodeId), moves)
-    for (const write of plan.writes) await this.mutate(ctx, write.panelId, (cur) => ({ ...cur, placement: write.placement, updatedAt: now() }))
+    const moved = new Set(moves.map((m) => m.panelId))
+    const writes = [...plan.writes.filter((w) => !moved.has(w.panelId)), ...plan.writes.filter((w) => moved.has(w.panelId))]
+    for (const write of writes) await this.mutate(ctx, write.panelId, (cur) => ({ ...cur, placement: write.placement, updatedAt: now() }), { announce: false })
     await this.opts.episodes.setPanelOrder(ctx, episodeId, plan.order)
+    // The strip reloads the whole episode on any panel change, so one event covers every panel written.
+    if (writes.length > 0) this.emit(ctx, writes[writes.length - 1].panelId)
   }
 
   /**
@@ -393,14 +425,14 @@ export class PanelService extends PanelUsageScanner {
     }
   }
 
-  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel): Promise<Panel> {
+  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel, opts: { announce?: boolean } = {}): Promise<Panel> {
     const file = ctx.paths.panelFile(id)
     const next = await ctx.mutex.run(file, async () => {
       const valid = PanelSchema.parse(fn(await this.get(ctx, id)))
       await writeJsonAtomic(file, valid)
       return valid
     })
-    this.emit(ctx, id)
+    if (opts.announce !== false) this.emit(ctx, id)
     return next
   }
 

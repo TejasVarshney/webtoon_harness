@@ -1,4 +1,5 @@
 import { versionPosition } from '@shared/panel-versions'
+import { customChoicesView } from '../domain/panel-draw-choices'
 import { sheetCheckFailure } from '../domain/panel-validation'
 import type { Character, DialogueLine, Episode, Item, Location, Panel, PanelCharacter, PanelItem, PanelLocation, ProjectMeta } from '@shared/types'
 
@@ -156,6 +157,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
   const names = new Map(roster.map((c) => [c.id, oneLine(c.name)]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
   const position = versionPosition(panel, panel.currentVersionId)
+  const custom = customChoicesView(panel)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
   const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, itemRoster, locations, variationOf))
   const lines = [
@@ -168,6 +170,8 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
     `setting: ${oneLine(panel.setting)}`,
     ...(panel.location === null ? [] : [`location: ${locationLabel(panel.location, locations)}`]),
     `description: ${oneLine(panel.description)}`,
+    ...(custom.customPrompt === undefined ? [] : [`custom_prompt: ${oneLine(custom.customPrompt)}`]),
+    ...(custom.styleOverride === undefined ? [] : [`style_override: ${oneLine(custom.styleOverride)}`]),
     `cast: ${cast || 'none'}`,
     `dialogue: ${dialogueLine(panel, names, true) || 'none'}`
   ]

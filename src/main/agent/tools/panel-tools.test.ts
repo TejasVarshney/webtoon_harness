@@ -411,6 +411,29 @@ describe('view_panel_image', () => {
   })
 })
 
+describe('a custom prompt and style on a panel', () => {
+  it('list_panels shows them when set and leaves them out otherwise', async () => {
+    const { run, s, ctx, created, episode } = await setup()
+    const plain = (await created([], { description: 'Plain' })).panelId
+    const own = (await created([], { description: 'Own' })).panelId
+    await s.panels.update(ctx, own, { promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }, { strictMentions: false, strictSheets: false })
+    const listed = json(await run('list_panels', { episodeId: episode.id })).panels
+    expect(listed.find((p: { id: string }) => p.id === plain)).not.toHaveProperty('customPrompt')
+    expect(listed.find((p: { id: string }) => p.id === plain)).not.toHaveProperty('styleOverride')
+    expect(listed.find((p: { id: string }) => p.id === own)).toMatchObject({ customPrompt: 'A cat on a roof.', styleOverride: 'ink wash' })
+  })
+
+  it('update_panel clears the custom prompt on a visual edit and says so, so the redraw follows the edit', async () => {
+    const { run, s, ctx, created, panel } = await setup()
+    const id = (await created([], { description: 'Own' })).panelId
+    await s.panels.update(ctx, id, { promptOverride: 'A cat on a roof.' }, { strictMentions: false, strictSheets: false })
+    const r = await run('update_panel', { panelId: id, patch: { description: 'The cat smiles.' } })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r).warnings.join(' ')).toContain('custom prompt')
+    expect((await panel(id)).promptOverride).toBeNull()
+  })
+})
+
 describe('update_panel', () => {
   it('create_panel takes the layout fields and stores them', async () => {
     const { created, panel } = await setup()

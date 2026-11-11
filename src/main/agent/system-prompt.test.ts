@@ -260,6 +260,15 @@ describe('buildPanelContext', () => {
     expect(noted).toContain('\noff_panel_mentions: Jin, Ren\n')
   })
 
+  it("shows the user's custom prompt and style only when set", () => {
+    const bare = buildPanelContext(makePanel(), [], [], null, null)
+    expect(bare).not.toContain('custom_prompt')
+    expect(bare).not.toContain('style_override')
+    const own = buildPanelContext(makePanel({ promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }), [], [], null, null)
+    expect(own).toContain('custom_prompt: A cat on a roof.')
+    expect(own).toContain('style_override: ink wash')
+  })
+
   it('summarizes the previous and next panels on one line each, naming the cast by variation name', () => {
     const prev = makePanel({
       id: 'pnl_00000000a1',

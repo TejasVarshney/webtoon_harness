@@ -495,6 +495,25 @@ describe('get_panel_context', () => {
     expect(out.next).toMatchObject({ id: p3.id, description: 'Mina steps outside.' })
   })
 
+  it('shows a custom prompt and style when the panel has them, and nothing otherwise', async () => {
+    const { run, s, ctx, p2 } = await setup()
+    expect(json(await run('get_panel_context'))).not.toHaveProperty('customPrompt')
+    await s.panels.update(ctx, p2.id, { promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }, { strictMentions: false, strictSheets: false })
+    expect(json(await run('get_panel_context'))).toMatchObject({ customPrompt: 'A cat on a roof.', styleOverride: 'ink wash' })
+  })
+
+  it('update_panel_fields clears the custom prompt on a visual edit, and keeps it for a layout edit', async () => {
+    const { run, s, ctx, p2, panel } = await setup()
+    await s.panels.update(ctx, p2.id, { promptOverride: 'A cat on a roof.' }, { strictMentions: false, strictSheets: false })
+    const layout = json(await run('update_panel_fields', { frame: 'borderless' }))
+    expect(layout.fields.customPrompt).toBe('A cat on a roof.')
+    expect((await panel(p2.id)).promptOverride).toBe('A cat on a roof.')
+    const visual = json(await run('update_panel_fields', { description: 'Mina smiles.' }))
+    expect(visual.fields).not.toHaveProperty('customPrompt')
+    expect(visual.warnings.join(' ')).toContain('custom prompt')
+    expect((await panel(p2.id)).promptOverride).toBeNull()
+  })
+
   it('has no previous panel for the first one and no next panel for the last', async () => {
     const { run, p1, p3 } = await setup()
     expect(json(await run('get_panel_context', {}, p1.id))).toMatchObject({ previous: null, next: { id: expect.any(String) } })

@@ -45,6 +45,13 @@ export function styleOf(panel: Pick<Panel, 'styleOverride'>, projectStyle: strin
   return panel.styleOverride?.trim() || projectStyle
 }
 
+/** What the agent sees of the user's own prompt and style on a panel: each only when set, so a panel without them reads as before. */
+export function customChoicesView(panel: Pick<Panel, 'promptOverride' | 'styleOverride'>): { customPrompt?: string; styleOverride?: string } {
+  const prompt = panel.promptOverride?.trim()
+  const style = panel.styleOverride?.trim()
+  return { ...(prompt ? { customPrompt: prompt } : {}), ...(style ? { styleOverride: style } : {}) }
+}
+
 /** What a draw sends: the user's own prompt in place of the composed one (a blank one is none), and either way the fix line after a failed check. */
 export function drawPrompt(composed: string, panel: Pick<Panel, 'promptOverride'>, fix: string | undefined): string {
   const own = panel.promptOverride?.trim()

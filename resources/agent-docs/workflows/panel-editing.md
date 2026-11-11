@@ -30,10 +30,11 @@ What the lines mean:
 - `panel`: the id of the panel this chat is bound to.
 - `version`: the current image as `vN of M`, counting ready images only. `none` means the panel has no ready image yet.
 - `shot`, `aspect`, `setting`, `description`: the panel's fields.
-- `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw.
+- `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw. `beside` and `gap` only move panels the user has not placed: once the user moves anything in the episode, every panel in it is placed and they change nothing.
 - `cast`: each visible character with the name of the variation (look) they wear. Ids are not shown here: `get_panel_context` gives them.
 - `dialogue`: the lines in reading order, as `Speaker: "text"`; narration and sound effects show their kind instead of a speaker. A line the user has placed on the panel ends with `@` and its spot, as fractions of the panel (across, then down); a line without it is placed automatically.
 - `continuity_notes` and `off_panel_mentions`: shown only when the panel has them.
+- `custom_prompt` and `style_override`: shown only when the user set them (see Edit vs Regenerate).
 - `previous` and `next`: one-line summaries of the neighboring panels, `none`, or `(unreadable)`.
 
 The block is a snapshot from when the user sent the message. After you change something, call `get_panel_context` for the current state. Every id in this doc is an example.
@@ -76,6 +77,8 @@ Pick the smallest change that does the job:
 | A different composition: another shot, angle, pose, arrangement in the frame or background; a character added, removed or moved; any other aspect change | `update_panel_fields`, then `regenerate_image` | yes: a new drawing |
 | The same panel drawn again because the image came out badly | `regenerate_image` | yes: a new drawing |
 | An earlier image back | `revert_to_version` | no |
+
+A panel the user made on the Generate page can carry a **custom prompt**: their own words, sent to the image model in place of the one the app composes from the fields (`customPrompt` in `get_panel_context`, `custom_prompt` in the panel context). While it is set, changing the fields would not change the next drawing. So when your `update_panel_fields` changes what the picture shows (description, setting, shot, aspect, cast, items or location), the app clears the custom prompt and the result warns you. Say so in your reply: tell the user the custom prompt was cleared, and that the panel now draws from its fields. A `style_override` is a style for this panel alone; it is kept.
 
 What each image call does:
 

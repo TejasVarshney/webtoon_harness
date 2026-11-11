@@ -33,7 +33,7 @@ const REQUIRED: Record<string, string[]> = {
 const DOCS = Object.keys(REQUIRED)
 
 /** Snake-case keys the code itself writes into `<project_state>` / `<panel_context>`: the only backticked snake_case that is not a tool. */
-const NON_TOOL_TOKENS = ['current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions']
+const NON_TOOL_TOKENS = ['current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions', 'custom_prompt', 'style_override']
 
 const CHECK_CONTRACT = 'Respond with only one JSON object: {"passed": true|false, "issues": ["…"]}'
 
