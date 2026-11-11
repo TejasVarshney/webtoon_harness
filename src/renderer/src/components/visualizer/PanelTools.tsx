@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { History, Maximize2, MessageSquare, MapPin, Package, PencilLine, RefreshCw, Trash2, Upload, Users, type LucideIcon } from 'lucide-react'
-import type { Panel } from '@shared/types'
+import type { BubbleShape, Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
+import { AddBubbleMenu } from '../panel-editor/AddBubbleMenu'
 import { PanelInspector, type InspectorTab } from '../panel-editor/PanelInspector'
 import { whenSaved } from '../panel-editor/panel-save-queue'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
@@ -48,23 +49,28 @@ interface ToolPopoverProps {
   shift: number
   /** Closes it, and `focusBack` says the focus should return to the button that opened it. */
   onClose(focusBack: boolean): void
+  /** Opened by selecting a bubble, which keeps the focus for its keys: the popover does not take it. */
+  quiet?: boolean
   children: ReactNode
 }
 
 /** A panel of controls beside a tool's button, in the window's own layer. A press elsewhere or Escape closes it. */
-function ToolPopover({ label, anchor, shift, onClose, children }: ToolPopoverProps) {
+function ToolPopover({ label, anchor, shift, onClose, quiet = false, children }: ToolPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [spot, setSpot] = useState(() => spotFor(anchor))
 
   // The first focus goes in, so the next Tab is in the controls: the popover is at the end of the page, not by its button.
-  useEffect(() => ref.current?.focus({ preventScroll: true }), [])
+  useEffect(() => {
+    if (!quiet) ref.current?.focus({ preventScroll: true })
+  }, [quiet])
   // The bar slides along the card when the card is moved or the strip is resized: the button is somewhere else now.
   useLayoutEffect(() => setSpot(spotFor(anchor)), [anchor, shift])
 
   useEffect(() => {
     function onPress(e: PointerEvent): void {
       const target = e.target
-      if (target instanceof Node && (ref.current?.contains(target) || anchor.closest('.panel-tools')?.contains(target))) return
+      // The panel's own bubbles are not outside it: pressing one is choosing the line it shows.
+      if (target instanceof Node && (ref.current?.contains(target) || anchor.closest('.strip-bubbles')?.contains(target))) return
       onClose(false)
     }
     function onKey(e: KeyboardEvent): void {
@@ -98,23 +104,29 @@ function ToolPopover({ label, anchor, shift, onClose, children }: ToolPopoverPro
 
 export interface PanelToolsProps {
   panel: Panel
+  /** The line whose bubble is selected on the strip, which Lines opens on. */
+  selectedLine: number | null
+  onSelectLine(i: number | null): void
+  /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
+  onAddBubble(shape: BubbleShape): void
+  addingBubble: boolean
 }
 
 /**
  * The tools on a selected panel, so most edits happen where the panel sits: the lines, cast, items and scene in a
  * popover each, the versions, an upload, a redraw, the sketch, focus mode and delete. Lines, Cast, Items and Scene are
  * the same controls as focus mode's tabs, and save the same way. Sketch and Focus open focus mode, whose stage is larger.
+ * Selecting a bubble on the strip opens Lines on its line, and Add bubble adds one to the panel.
  * Nothing here is a press on the card: clicks, double clicks and presses stop at it, popovers and dialog included, so
  * they neither select, open, drag nor clear the selection on the strip.
  */
-export function PanelTools({ panel }: PanelToolsProps) {
-  const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement } | null>(null)
+export function PanelTools({ panel, selectedLine, onSelectLine, onAddBubble, addingBubble }: PanelToolsProps) {
+  const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement; quiet?: boolean } | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // The line selected in Lines' popover. (Selecting a bubble on the strip is not connected to it.)
-  const [selectedLine, setSelectedLine] = useState<number | null>(null)
   const root = useRef<HTMLDivElement>(null)
+  const linesButton = useRef<HTMLButtonElement>(null)
   // Where its bar sits along the card: centred under it, kept inside the strip so a narrow panel at an edge keeps its tools in reach.
   const [shift, setShift] = useState(0)
   const generating = panel.versions.at(-1)?.status === 'pending'
@@ -149,9 +161,15 @@ export function PanelTools({ panel }: PanelToolsProps) {
       )
   }
 
+  // Selecting a bubble opens Lines on its line. It keeps the focus on the bubble, so its arrow keys, Enter and Delete work.
+  useEffect(() => {
+    if (selectedLine === null) return
+    setOpen((now) => (now?.tool === 'lines' || linesButton.current === null ? now : { tool: 'lines', anchor: linesButton.current, quiet: true }))
+  }, [selectedLine])
+
   function toggle(tool: Tool, anchor: HTMLElement): void {
     // A line chosen in an earlier popover must not send this one to Lines.
-    setSelectedLine(null)
+    if (tool !== 'lines') onSelectLine(null)
     setOpen((now) => (now?.tool === tool ? null : { tool, anchor }))
   }
 
@@ -175,13 +193,14 @@ export function PanelTools({ panel }: PanelToolsProps) {
     >
       <div className="panel-tools-bar" role="toolbar" aria-label="Panel tools">
         {POPOVER_TOOLS.map(({ id, label, Icon }) => (
-          <button key={id} type="button" className="icon-button" aria-label={label} title={label} aria-haspopup="dialog" aria-expanded={pressed(id)} onClick={(e) => toggle(id, e.currentTarget)}>
+          <button key={id} ref={id === 'lines' ? linesButton : undefined} type="button" className="icon-button" aria-label={label} title={label} aria-haspopup="dialog" aria-expanded={pressed(id)} onClick={(e) => toggle(id, e.currentTarget)}>
             <Icon size={15} aria-hidden="true" />
           </button>
         ))}
         <button type="button" className="icon-button" aria-label="Versions" title="Versions" aria-haspopup="dialog" aria-expanded={pressed('versions')} onClick={(e) => toggle('versions', e.currentTarget)}>
           <History size={15} aria-hidden="true" />
         </button>
+        <AddBubbleMenu disabled={addingBubble} onAdd={onAddBubble} />
         <span className="panel-tools-divider" aria-hidden="true" />
         <button type="button" className="icon-button" aria-label="Upload image" title="Upload image" disabled={busy} onClick={() => run(() => usePanelsStore.getState().uploadPanelImage(panel.id))}>
           <Upload size={15} aria-hidden="true" />
@@ -207,11 +226,11 @@ export function PanelTools({ panel }: PanelToolsProps) {
       )}
 
       {open !== null && (
-        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} shift={shift} onClose={close}>
+        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} shift={shift} onClose={close} quiet={open.quiet}>
           {open.tool === 'versions' ? (
             <VersionSwitcher panel={panel} />
           ) : (
-            <PanelInspector panel={panel} initialTab={open.tool} selectedLine={selectedLine} onSelectLine={setSelectedLine} />
+            <PanelInspector panel={panel} initialTab={open.tool} selectedLine={selectedLine} onSelectLine={onSelectLine} />
           )}
         </ToolPopover>
       )}

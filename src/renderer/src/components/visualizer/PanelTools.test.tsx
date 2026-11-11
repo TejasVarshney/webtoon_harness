@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -31,7 +32,8 @@ beforeEach(() => {
 /** The tools as a card hands them the panel: fed from the store, so a save or a revert reaches them. */
 function Host() {
   const p = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((x) => x.id === A))
-  return p === undefined ? null : <PanelTools panel={p} />
+  const [line, setLine] = useState<number | null>(null)
+  return p === undefined ? null : <PanelTools panel={p} selectedLine={line} onSelectLine={setLine} onAddBubble={() => undefined} addingBubble={false} />
 }
 
 function mount(handlers: Parameters<typeof installFakeApi>[0] = {}) {
@@ -53,7 +55,7 @@ describe('PanelTools', () => {
   it('has the tools in order, each with its name', () => {
     mount()
     const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Add bubble', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
   })
 
   it('Redraw starts a generation', async () => {

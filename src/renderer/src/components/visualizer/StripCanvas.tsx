@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { contentBottom, panelHeight, resolveStrip } from '@shared/strip-canvas'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { AddPanelButton } from './AddPanelButton'
 import { PanelCard } from './PanelCard'
+import { StripBubbles } from './StripBubbles'
 import { useStripDrag } from './use-strip-drag'
 
 /** How far the canvas runs past the lowest panel, so a panel can be dragged further down. */
@@ -25,13 +26,15 @@ export interface StripCanvasProps {
 /**
  * The episode as free-standing panels on a strip 440px wide (STRIP_CSS_WIDTH), each at the place `resolveStrip` gives
  * it. The canvas is the size container the lettering is measured against, so its text keeps its size at any pane width.
- * A click on empty strip clears the selection; a click on a card selects it (see PanelCard).
+ * A click on empty strip clears the selection; a click on a card selects it (see PanelCard). The dialogue is lettered
+ * over the cards by `StripBubbles`, whose bubbles can be dragged anywhere on the strip.
  */
 export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true, background }: StripCanvasProps) {
   const selectedIds = useAppStore((s) => s.selectedPanelIds)
   const exporting = mode === 'export'
   const placed = useMemo(() => resolveStrip(panels), [panels])
   const drag = useStripDrag(placed)
+  const canvasRef = useRef<HTMLDivElement>(null)
   // A panel being moved is drawn where it is dragged to, and the strip grows to hold it.
   const drawn = placed.map((p) => {
     const preview = drag.previews[p.panel.id]
@@ -40,7 +43,7 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
   const bottom = contentBottom(drawn)
 
   const canvas = (
-    <div className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? {} : { background }) }}>
+    <div ref={canvasRef} className="strip-canvas" data-mode={mode} style={{ width: STRIP_CSS_WIDTH, height: exporting ? bottom : bottom + TRAILING_SPACE, ...(background === undefined ? {} : { background }) }}>
       {drawn.map((p, i) => (
         <PanelCard
           key={p.panel.id}
@@ -56,6 +59,8 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
           bindResize={exporting ? undefined : drag.bindResize(p.panel.id)}
         />
       ))}
+      {/* After all the cards, so the lettering sits over them. */}
+      {!exporting && lettering && <StripBubbles placed={drawn} canvas={canvasRef} />}
       {!exporting && (
         <div className="strip-canvas-add" style={{ top: bottom + 24 }}>
           <AddPanelButton episodeId={episodeId} testId="add-panel" className="add-panel-button" />

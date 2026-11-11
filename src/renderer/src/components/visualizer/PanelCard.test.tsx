@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { assetUrl } from '@shared/asset-url'
@@ -136,6 +136,17 @@ describe('PanelCard', () => {
     })
   })
 
+  it('draws the art alone on the strip, with the lettering and the tools left to the bubble layer', () => {
+    installFakeApi({})
+    const p = panel({ dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'The city never slept.', placement: null, style: null, tail: null }] })
+    useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
+    render(<PanelCard panel={p} selected={true} />)
+    const card = screen.getByTestId('panel-card')
+    expect(card.querySelector('.dialogue-overlay')).toBeNull()
+    expect(within(card).queryByText('The city never slept.')).toBeNull()
+    expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
+  })
+
   it('renders dialogue as overlay, not image text', () => {
     installFakeApi({})
     const p = panel({
@@ -146,7 +157,7 @@ describe('PanelCard', () => {
         { id: 'dlg_0000000004', speakerId: null, kind: 'sfx', text: 'BOOM', placement: null, style: null, tail: null }
       ]
     })
-    render(<PanelCard panel={p} selected={false} />)
+    render(<PanelCard panel={p} selected={false} mode="export" />)
     const card = screen.getByTestId('panel-card')
     // No name labels on the strip, as in a printed manhwa: the bubble's side and tail say who speaks, and the
     // speaker's name (from the characters store) is only a tooltip.
@@ -173,7 +184,7 @@ describe('PanelCard', () => {
   it('renders dialogue as text, never as markup', () => {
     installFakeApi({})
     const p = panel({ dialogue: [{ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: '<img src=x onerror=alert(1)><b>bold</b>', placement: null, style: null, tail: null }] })
-    render(<PanelCard panel={p} selected={false} />)
+    render(<PanelCard panel={p} selected={false} mode="export" />)
     const card = screen.getByTestId('panel-card')
     expect(card.querySelectorAll('img')).toHaveLength(1)
     expect(card.querySelector('b')).toBeNull()
@@ -221,61 +232,5 @@ describe('PanelCard', () => {
     await userEvent.keyboard('{Enter}')
     expect(useAppStore.getState().focusedPanelId).toBe(p.id)
     expect(useAppStore.getState().selectedPanelId).toBe(p.id)
-  })
-
-  describe('tools', () => {
-    it('has none on a card that is not selected', () => {
-      installFakeApi({})
-      render(<PanelCard panel={panel()} selected={false} />)
-      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
-      expect(screen.queryByRole('button')).toBeNull()
-    })
-
-    it('has them on the one selected panel, and not on a selection of several', () => {
-      installFakeApi({})
-      const p = panel()
-      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
-      const { rerender } = render(<PanelCard panel={p} selected={true} />)
-      expect(screen.getByRole('toolbar', { name: 'Panel tools' })).toBeInTheDocument()
-      expect(screen.getByTestId('panel-card')).toHaveAttribute('data-tools', 'true')
-      act(() => useAppStore.setState({ selectedPanelId: 'pnl_00000000aa', selectedPanelIds: [p.id, 'pnl_00000000aa'] }))
-      rerender(<PanelCard panel={p} selected={true} />)
-      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
-      expect(screen.getByTestId('panel-card')).toHaveAttribute('data-tools', 'false')
-    })
-
-    it.each(['Focus', 'Sketch'])('%s closes an open popover: focus mode holds the only editor of the panel', async (name) => {
-      installFakeApi({})
-      const p = panel()
-      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
-      render(<PanelCard panel={p} selected={true} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Scene' }))
-      expect(screen.getByRole('dialog', { name: 'Scene' })).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name }))
-      expect(useAppStore.getState().focusedPanelId).toBe(p.id)
-      expect(screen.queryByRole('dialog', { name: 'Scene' })).toBeNull()
-      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
-    })
-
-    it('has none while any panel is open in focus mode, however it was opened', () => {
-      installFakeApi({})
-      const p = panel()
-      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
-      render(<PanelCard panel={p} selected={true} />)
-      expect(screen.getByRole('toolbar', { name: 'Panel tools' })).toBeInTheDocument()
-      act(() => useAppStore.getState().focusPanel(p.id))
-      expect(screen.queryByRole('toolbar', { name: 'Panel tools' })).toBeNull()
-      act(() => useAppStore.getState().focusPanel(null))
-      expect(screen.getByRole('toolbar', { name: 'Panel tools' })).toBeInTheDocument()
-    })
-
-    it('clicking a tool does not select, open or clear anything on the strip', async () => {
-      installFakeApi({})
-      const p = panel()
-      useAppStore.setState({ selectedPanelId: p.id, selectedPanelIds: [p.id] })
-      render(<PanelCard panel={p} selected={true} />)
-      await userEvent.dblClick(screen.getByRole('button', { name: 'Redraw' }))
-      expect(useAppStore.getState().focusedPanelId).toBeNull()
-    })
   })
 })

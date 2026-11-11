@@ -4,7 +4,6 @@ import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { PanelArt } from './PanelArt'
 import { PanelCheckBadge } from './PanelCheckBadge'
-import { PanelTools } from './PanelTools'
 import { aspectRatio } from '@shared/strip-layout'
 
 export interface PanelCardProps {
@@ -30,29 +29,20 @@ export interface PanelCardProps {
 
 /**
  * One panel of the strip: its current image with the dialogue drawn over it, a status when the newest attempt is
- * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), a badge when
- * that image failed its consistency check or was not checked, and the panel's tools (`PanelTools`) while it is the only
- * panel selected.
- * Clicking the card selects the panel (shift adds it to the selection) and double-clicking opens it in focus mode; the
- * tools and what they open do neither.
+ * pending or failed (a failed regeneration keeps showing the image that was good, until the user reverts), and a badge when
+ * that image failed its consistency check or was not checked. On the strip its dialogue is not drawn here: the strip's
+ * bubble layer (`StripBubbles`) letters it over the cards, with the panel's tools while it is the only panel selected.
+ * Clicking the card selects the panel (shift adds it to the selection) and double-clicking opens it in focus mode.
  * Its frame, slant and place in the strip are data attributes, for the stylesheet: a tall panel fades instead of a
  * frame, whatever its own frame says.
  */
 export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'edit', lettering = true, position, bind, bindResize }: PanelCardProps) {
-  // The tools are for one panel at a time: with several selected, the selection bar acts on them.
-  const alone = useAppStore((s) => s.selectedPanelIds.length <= 1)
-  // Focus mode is the one editor of its panel: no popover of the strip may float over it with a second one.
-  const focusing = useAppStore((s) => s.focusedPanelId !== null)
-  const showTools = selected && alone && !focusing
   const cardRef = useRef<HTMLElement>(null)
 
-  // Selecting from elsewhere (a chat thumbnail) must bring the card into view, and its tools, which hang below it.
-  // (jsdom has no scrollIntoView.)
+  // Selecting from elsewhere (a chat thumbnail) must bring the card into view. (jsdom has no scrollIntoView.)
   useEffect(() => {
-    if (!selected) return
-    cardRef.current?.scrollIntoView?.({ block: 'nearest' })
-    cardRef.current?.querySelector('.panel-tools')?.scrollIntoView?.({ block: 'nearest' })
-  }, [selected, showTools])
+    if (selected) cardRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [selected])
 
   // Its aspect ratio sizes it in the row (flex-grow), so the panels of a row are one height. On the canvas it has a
   // box of its own, and the height follows its aspect.
@@ -108,7 +98,6 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
       data-testid="panel-card"
       data-panel-id={panel.id}
       data-selected={String(selected)}
-      data-tools={String(showTools)}
       data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame}
       data-beside={String(panel.beside)}
       data-gap={panel.gapAfter}
@@ -121,10 +110,9 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
       onDoubleClick={() => useAppStore.getState().focusPanel(panel.id)}
       onKeyDown={onKeyDown}
     >
-      <PanelArt panel={panel} />
+      <PanelArt panel={panel} lettering={false} />
       {/* Outside PanelArt, whose export drawing must never show it. */}
       <PanelCheckBadge panel={panel} problemsOnly />
-      {showTools && <PanelTools panel={panel} />}
       {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
     </article>
   )

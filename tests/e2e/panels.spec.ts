@@ -92,7 +92,7 @@ test('a click selects a panel, a double-click opens it, and its tools are reacha
   await expect(cards.nth(1)).toHaveAttribute('data-selected', 'true')
   await expect(workspace).toHaveCount(0)
 
-  const toolbar = cards.nth(1).getByRole('toolbar', { name: 'Panel tools' })
+  const toolbar = page.getByRole('toolbar', { name: 'Panel tools' })
   for (const name of ['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete']) {
     const button = toolbar.getByRole('button', { name })
     const box = (await button.boundingBox())!

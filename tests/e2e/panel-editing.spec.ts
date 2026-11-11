@@ -52,6 +52,9 @@ async function pointDot(page: Page, stage: Locator, x: number, y: number, saved:
   })
 }
 
+/** A press on a card where no bubble is: the strip's bubbles sit over the card, and a click at its centre can land on one. */
+const CARD_CORNER = { x: 8, y: 8 }
+
 /** Sets the window's outer size, and waits until the page has its new content size. */
 async function setWindowSize(app: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
   const [w, h] = await app.evaluate(({ BrowserWindow }, [w, h]) => {
@@ -136,7 +139,7 @@ test('edit a panel in focus mode and find the changes on the strip', async () =>
 
   // 1. Focus mode, at a laptop size.
   await setWindowSize(app, page, 1440, 900)
-  await card.click()
+  await card.click({ position: CARD_CORNER })
   // 0. The selected panel's tools edit it where it sits: a frame change saves without opening focus mode.
   await page.getByRole('button', { name: 'Scene', exact: true }).click()
   await page.getByRole('dialog', { name: 'Scene' }).getByLabel('Frame').selectOption('borderless')
@@ -228,7 +231,7 @@ test('edit a panel in focus mode and find the changes on the strip', async () =>
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await expect(workspace).toHaveCount(0)
   await expect(card).toBeFocused()
-  const placed = card.locator('.dialogue-placed .bubble')
+  const placed = page.getByTestId('strip-bubbles').first().locator('.dialogue-placed .bubble')
   await expect(placed).toHaveText(fixed)
   const left = await placed.evaluate((el: any) => el.style.left as string)
   expect(left).toMatch(/%$/)
@@ -277,7 +280,7 @@ test("a lower line's bubble is retyped and dragged without the stage moving", as
   const stored = () => readProjectJson(projectsRoot, `panels/${panelId}.json`)
 
   await setWindowSize(app, page, 1440, 900)
-  await card.dblclick()
+  await card.dblclick({ position: CARD_CORNER })
   const workspace = page.getByTestId('panel-workspace')
   const stage = workspace.getByTestId('panel-stage')
   const area = workspace.getByRole('tabpanel')
@@ -440,15 +443,64 @@ test('add, style and point a bubble, and find it on the strip', async () => {
   await expect(stage.locator('.bubble-tail path')).toHaveCount(1)
 
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
-  const card = page.getByTestId('panel-card').first()
-  const shout = card.locator('.bubble-shout')
+  const shout = page.getByTestId('strip-bubbles').first().locator('.bubble-shout')
   await expect(shout).toHaveText('BOOM!')
   expect(await shout.evaluate((el: any) => el.style.getPropertyValue('--bubble-fill'))).toBe('#ff8800')
-  await expect(card.locator('.bubble-tail path')).toHaveCount(1)
+  await expect(page.getByTestId('strip-bubbles').first().locator('.bubble-tail path')).toHaveCount(1)
   const line = (await stored()).dialogue[0]
   expect(line.style).toBeTruthy()
   expect(line.tail).toMatchObject({ x: expect.any(Number), y: expect.any(Number) })
   await app.close()
+})
+
+// On the strip a bubble belongs to its panel but is free to leave it: dragged below the panel it keeps the place, in the
+// file and after a relaunch, as a fraction of the panel past 1.
+test('a bubble dragged below its panel stays there after a relaunch', async () => {
+  const first = await launchApp()
+  const { page, projectsRoot, userDataDir } = first
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await page.getByTestId('add-panel').last().click()
+  const workspace = page.getByTestId('panel-workspace')
+  await workspace.getByRole('button', { name: 'Generate' }).click()
+  await expect(workspace.getByTestId('panel-stage').locator('img')).toHaveCount(1)
+  await setWindowSize(first.app, page, 1440, 900)
+  await workspace.getByRole('button', { name: 'Add bubble', exact: true }).click()
+  await workspace.getByRole('menuitem', { name: 'Caption' }).click()
+  await page.keyboard.type('Down here.')
+  await page.keyboard.press('Enter')
+  const stored = async () => (await readProjectJson(projectsRoot, 'panels'))[0]
+  await expect.poll(async () => (await stored()).dialogue[0]?.text).toBe('Down here.')
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
+
+  const card = page.getByTestId('panel-card').first()
+  const bubble = page.getByTestId('strip-bubbles').first().locator('.bubble')
+  await expect(bubble).toHaveText('Down here.')
+  const from = await boxOf(bubble)
+  const panel = await boxOf(card)
+  // A press on the bubble of a panel that is not selected grabs the bubble, not the panel.
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(from.x + from.width / 2, panel.y + panel.height + 120, { steps: 14 })
+  await page.mouse.up()
+  await expect.poll(async () => (await stored()).dialogue[0].placement?.y ?? 0).toBeGreaterThan(1)
+  const moved = await boxOf(card)
+  expect(moved.x).toBeCloseTo(panel.x, 0)
+  expect(moved.y).toBeCloseTo(panel.y, 0)
+  await expect(card).toHaveAttribute('data-selected', 'true')
+  await first.app.close()
+
+  const second = await launchApp({ userDataDir, projectsRoot })
+  await openFirstProject(second.page)
+  await openSessions(second.page)
+  await second.page.getByTestId('session-item').click()
+  await openTab(second.page, 'webtoon')
+  const again = second.page.getByTestId('strip-bubbles').first().locator('.bubble')
+  await expect(again).toHaveText('Down here.')
+  const below = await boxOf(again)
+  const cardBox = await boxOf(second.page.getByTestId('panel-card').first())
+  expect(below.y).toBeGreaterThan(cardBox.y + cardBox.height)
+  await second.app.close()
 })
 
 // In the smallest window the stage is short, and the menu must still show all six choices: each one is what a click at
@@ -497,7 +549,7 @@ async function openPanelWith(dialogue: object[]) {
   await expect(card.locator('img')).toHaveCount(1)
   const panelId = (await card.getAttribute('data-panel-id'))!
   await setWindowSize(app, page, 1440, 900)
-  await card.dblclick()
+  await card.dblclick({ position: CARD_CORNER })
   const workspace = page.getByTestId('panel-workspace')
   const stage = workspace.getByTestId('panel-stage')
   await expect(stage.locator('.bubble')).toHaveCount(dialogue.length)
@@ -721,9 +773,9 @@ test("a bubble's width is set by dragging its handle", async () => {
   await expect.poll(async () => Math.abs((await drawn(stage)) - style.width) <= 0.02, { message: 'the stage draws the width' }).toBe(true)
 
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
-  const card = page.getByTestId('panel-card').first()
-  await expect(card.locator('.bubble-sized')).toHaveCount(1)
-  expect(Math.abs((await drawn(card)) - style.width), 'the strip draws the width').toBeLessThanOrEqual(0.02)
+  const layer = page.getByTestId('strip-bubbles').first()
+  await expect(layer.locator('.bubble-sized')).toHaveCount(1)
+  expect(Math.abs((await drawn(layer)) - style.width), 'the strip draws the width').toBeLessThanOrEqual(0.02)
   await app.close()
 })
 

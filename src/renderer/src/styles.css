@@ -2310,7 +2310,7 @@ kbd {
 }
 
 /* The tools of the one selected panel, centred under its card (PanelTools nudges them to stay inside the strip), clear
-   of the card's own corner handle. Nothing shows on a card that is not selected, and nothing covers the selected one. */
+   of the card's own corner handle. They sit in the panel's bubble layer. Nothing shows on a card that is not selected, and nothing covers the selected one. */
 .panel-tools {
   position: absolute;
   top: calc(100% + 10px);
@@ -2389,7 +2389,7 @@ kbd {
   flex: 0 1 auto;
 }
 
-/* A card that holds the tools stays above a hovered neighbour, which would otherwise cover the bar where they meet. */
+/* A selected card stays above a hovered neighbour, which would otherwise cover its corner handle. */
 .panel-card:focus-within,
 .panel-card[data-selected='true'] {
   z-index: 2;
@@ -2397,10 +2397,6 @@ kbd {
 
 .panel-card:hover {
   z-index: 3;
-}
-
-.panel-card[data-tools='true'] {
-  z-index: 4;
 }
 
 /* The strip canvas: panels placed at their own coordinates on a strip 440px wide, centred on a neutral pane. Its 440px
@@ -2458,6 +2454,62 @@ kbd {
 .panel-card:focus-within .panel-resize,
 .panel-card[data-selected='true'] .panel-resize {
   opacity: 1;
+}
+
+/* The strip's lettering: a layer for each panel, exactly over its card and drawn after all the cards, so a bubble sits
+   over every card and can be dragged off its own panel. The layer has the card's frame (transparent) and a transparent
+   copy of its media box, which a bubble's placement is a fraction of; only the bubbles take the pointer, so everything
+   else falls through to the cards. The art keeps its own clip below: a slanted frame cuts the art, never the bubbles.
+   The canvas isolates its stack, which keeps the bubbles and tools under the pane's sticky bar. */
+.strip-canvas {
+  isolation: isolate;
+}
+
+.strip-bubbles {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  --slant: calc(4cqw * var(--share, 1));
+}
+
+.strip-bubbles[data-frame='bordered'] {
+  border: 2.5px solid transparent;
+  border-radius: 2px;
+}
+
+.strip-bubbles:focus {
+  outline: none;
+}
+
+.strip-bubbles .panel-media {
+  overflow: visible;
+  background: none;
+}
+
+.strip-bubbles[data-frame='slanted'] .dialogue-flow {
+  top: calc(var(--slant) + 2.5px + 4cqw * var(--lettering));
+}
+
+.strip-bubbles[data-frame='slanted'] .dialogue-sfx {
+  inset: calc(var(--slant) + 2.5px) 0;
+}
+
+/* The panel holding the tools is over the other panels' bubbles, and the tools over its own. */
+.strip-bubbles[data-tools='true'] {
+  z-index: 6;
+}
+
+.strip-bubbles .panel-tools {
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.panel-tools-bar .stage-add > button {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: transparent;
+  border: 0;
 }
 
 /* Under the lowest panel, where the next one would go. */

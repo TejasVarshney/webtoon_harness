@@ -169,9 +169,12 @@ describe('Panel', () => {
 
   it('keeps a bubble centre inside the panel', () => {
     expect(BubblePlacementSchema.parse({ x: 0, y: 1 })).toEqual({ x: 0, y: 1 })
-    expect(() => BubblePlacementSchema.parse({ x: 1.2, y: 0 })).toThrow()
-    expect(() => BubblePlacementSchema.parse({ x: 0.5, y: -0.1 })).toThrow()
-    expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: 1.2, y: 0 } })).toThrow()
+    // A bubble on the strip may sit outside its panel.
+    expect(BubblePlacementSchema.parse({ x: 1.2, y: 4.5 })).toEqual({ x: 1.2, y: 4.5 })
+    expect(BubblePlacementSchema.parse({ x: -0.3, y: -0.1 })).toEqual({ x: -0.3, y: -0.1 })
+    expect(() => BubblePlacementSchema.parse({ x: Infinity, y: 0 })).toThrow()
+    expect(() => BubblePlacementSchema.parse({ x: 0.5, y: Number.NaN })).toThrow()
+    expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: -Infinity, y: 0 } })).toThrow()
   })
 })
 
@@ -197,7 +200,7 @@ describe('bubble look', () => {
     { style: { font: 'Arial' } },
     { style: { size: 4 } },
     { style: { strokeWidth: 7 } },
-    { tail: { x: 1.2, y: 0 } },
+    { tail: { x: Infinity, y: 0 } },
     { tail: 'down' }
   ])('refuses what the app cannot draw: %j', (bad) => {
     expect(() => DialogueLineSchema.parse({ ...base, ...bad })).toThrow()

@@ -229,8 +229,8 @@ export const PanelItemSchema = z.object({
   action: z.string().default('')
 })
 
-/** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
-export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+/** Where a speech bubble's centre sits, as fractions of the panel's width and height. On the strip it may be outside 0..1: a bubble can leave its panel. */
+export const BubblePlacementSchema = z.object({ x: z.number().finite(), y: z.number().finite() })
 
 export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx', 'fringe', 'burst', 'curly'])
 export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])

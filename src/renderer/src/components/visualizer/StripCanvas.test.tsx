@@ -75,7 +75,7 @@ describe('StripCanvas', () => {
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const [first, second] = screen.getAllByTestId('panel-card')
     await userEvent.click(first)
-    await userEvent.click(within(first).getByRole('button', { name: 'Delete' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete panel' })).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(useAppStore.getState().selectedPanelIds).toEqual([a.id])

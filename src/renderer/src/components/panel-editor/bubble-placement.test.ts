@@ -64,6 +64,43 @@ describe('placementFromPointer', () => {
   })
 })
 
+describe('placementFromPointer with bounds', () => {
+  const small = { width: 40, height: 20 }
+  const own = { left: 0, top: 0, width: 200, height: 200 }
+  const strip = { left: 0, top: 0, width: 440, height: 5000 }
+
+  it('with bounds a bubble can leave its panel', () => {
+    expect(placementFromPointer({ pointer: { x: 100, y: 900 }, grab, panel: own, bubble: small, bounds: strip })).toEqual({ x: 0.5, y: 4.5 })
+  })
+
+  it('with bounds it stays inside the strip', () => {
+    // The right edge stops at 440, so the centre is at 420: 2.1 panel widths.
+    expect(placementFromPointer({ pointer: { x: 900, y: 50 }, grab, panel: own, bubble: small, bounds: strip })).toEqual({ x: 2.1, y: 0.25 })
+    expect(placementFromPointer({ pointer: { x: -300, y: 50 }, grab, panel: own, bubble: small, bounds: strip }).x).toBe(0.1)
+  })
+
+  it('with bounds it stays below the top of the strip', () => {
+    expect(placementFromPointer({ pointer: { x: 100, y: -300 }, grab, panel: { ...own, top: 100 }, bubble: small, bounds: strip }).y).toBe(-0.45)
+  })
+
+  it('without bounds it stays inside the panel', () => {
+    expect(placementFromPointer({ pointer: { x: 900, y: 900 }, grab, panel: own, bubble: small })).toEqual({ x: 0.9, y: 0.95 })
+  })
+})
+
+describe('nudgePlacement with bounds', () => {
+  const own = { left: 0, top: 0, width: 200, height: 200 }
+  const strip = { left: 0, top: 0, width: 440, height: 5000 }
+
+  it('a bubble off its panel keeps its place when nudged', () => {
+    expect(nudgePlacement({ x: 1.5, y: 3 }, 'ArrowRight', false, { x: 0.1, y: 0.05 }, strip, own)).toEqual({ x: 1.51, y: 3 })
+  })
+
+  it('stops at the strip edge', () => {
+    expect(nudgePlacement({ x: 2.1, y: 3 }, 'ArrowRight', true, { x: 0.1, y: 0.05 }, strip, own)).toEqual({ x: 2.1, y: 3 })
+  })
+})
+
 describe('nudgePlacement', () => {
   const half = { x: 0.1, y: 0.1 }
 
