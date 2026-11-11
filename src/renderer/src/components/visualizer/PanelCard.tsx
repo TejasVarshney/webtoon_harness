@@ -19,7 +19,7 @@ export interface PanelCardProps {
   mode?: 'edit' | 'export'
   /** Export mode: whether the dialogue is drawn. Default true. */
   lettering?: boolean
-  /** Export mode: the panel's 1-based place in the whole episode, for naming it when its image fails to load. */
+  /** The panel's 1-based place in the whole episode: the number badge on the strip, and in the export the name it has when its image fails to load. */
   position?: number
   /** Handlers that move the card on the strip (see `useStripDrag`). Presses on its tools and their popovers are left to them. */
   bind?: HTMLAttributes<HTMLElement>
@@ -113,6 +113,11 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
       <PanelArt panel={panel} lettering={false} />
       {/* Outside PanelArt, whose export drawing must never show it. */}
       <PanelCheckBadge panel={panel} problemsOnly />
+      {position !== undefined && (
+        <span className="panel-number" data-testid="panel-number" title={`Panel ${position}`}>
+          {position}
+        </span>
+      )}
       {bindResize !== undefined && <div className="panel-resize" data-testid="panel-resize" aria-hidden="true" {...bindResize} />}
     </article>
   )

@@ -3236,6 +3236,26 @@ kbd {
   z-index: 1;
 }
 
+/* The panel's number in the episode, which the agent, the export errors and the Generate page's references call it by. */
+.panel-card > .panel-number {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  min-width: 20px;
+  padding: 1px 6px;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+  background: var(--raised);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--line);
+  opacity: 0.85;
+  pointer-events: none;
+  user-select: none;
+}
+
 .panel-check-passed {
   font-size: var(--fs-small);
   color: var(--muted);

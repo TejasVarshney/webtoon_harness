@@ -97,6 +97,16 @@ describe('StripCanvas', () => {
     expect(container.querySelector<HTMLElement>('.strip-canvas')?.style.backgroundImage).toContain(`webtoon-asset://${projectId}/episode-backgrounds/${EPISODE_ID}/x.png`)
   })
 
+  it('numbers each card by its place in the episode, in the edit view only', () => {
+    installFakeApi({})
+    const view = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
+    expect(screen.getAllByTestId('panel-card').map((card) => card.querySelector('[data-testid="panel-number"]')?.textContent)).toEqual(['1', '2'])
+    expect(screen.getAllByTestId('panel-number')[1]).toHaveAttribute('title', 'Panel 2')
+    view.unmount()
+    render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} mode="export" />)
+    expect(screen.queryByTestId('panel-number')).toBeNull()
+  })
+
   it('the export drawing ends at the lowest panel and has no chrome', () => {
     installFakeApi({})
     const { container } = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} mode="export" background={{ kind: 'solid', color: '#123456' }} />)

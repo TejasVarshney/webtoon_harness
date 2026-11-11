@@ -78,7 +78,7 @@ export function StripCanvas({ episodeId, panels, mode = 'edit', lettering = true
           place={{ x: p.x, y: p.y, width: p.width, height: p.height }}
           mode={mode}
           lettering={false}
-          position={exporting ? panels.indexOf(p.panel) + 1 : undefined}
+          position={panels.indexOf(p.panel) + 1}
           bind={exporting ? undefined : drag.bindCard(p.panel.id)}
           bindResize={exporting ? undefined : drag.bindResize(p.panel.id)}
         />
