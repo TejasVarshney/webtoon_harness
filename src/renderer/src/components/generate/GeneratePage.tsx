@@ -10,6 +10,7 @@ import { errorText } from '../characters/controls'
 import { canDraw, pruneDraft } from './generate-draft'
 import { GenerateSketch } from './GenerateSketch'
 import { LibraryColumn } from './LibraryColumn'
+import { PromptColumn } from './PromptColumn'
 import { ReferenceRow } from './ReferenceRow'
 
 /**
@@ -65,9 +66,6 @@ export function GeneratePage() {
     const panel = panels?.[index]
     return panel === undefined ? [] : [{ panel, number: index + 1 }]
   })
-  const castNames = draft.characters.flatMap((m) => characters.find((c) => c.id === m.characterId)?.name ?? [])
-  const itemNames = draft.items.flatMap((u) => items.find((i) => i.id === u.itemId)?.name ?? [])
-  const locationName = locations.find((l) => l.id === draft.location?.locationId)?.name
 
   return (
     <div className="generate-page" data-testid="generate-page">
@@ -108,10 +106,7 @@ export function GeneratePage() {
           <GenerateSketch />
         </section>
         <section className="generate-column" aria-label="This panel">
-          <h3>This panel</h3>
-          <p className="hint">{castNames.length === 0 ? 'No characters' : castNames.join(', ')}</p>
-          <p className="hint">{itemNames.length === 0 ? 'No items' : itemNames.join(', ')}</p>
-          <p className="hint">{locationName ?? 'No location'}</p>
+          <PromptColumn />
         </section>
       </div>
       {confirming &&

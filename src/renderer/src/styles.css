@@ -4188,3 +4188,37 @@ kbd {
   border: 1px solid var(--border);
   box-sizing: border-box;
 }
+
+/* The prompt column: the new panel's fields, style and the prompt it is drawn with. */
+.prompt-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prompt-column h3 {
+  margin-bottom: 0;
+}
+
+.prompt-column textarea,
+.prompt-column select,
+.prompt-column input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.prompt-column .field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.prompt-column .field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.prompt-text {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-small);
+}

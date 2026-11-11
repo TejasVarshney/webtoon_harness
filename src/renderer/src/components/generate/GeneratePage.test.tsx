@@ -30,6 +30,8 @@ function setup(handlers: Parameters<typeof installFakeApi>[0] = {}) {
     'locations:list': () => [stockroom],
     'panels:create': () => ({ panel: made, warnings: [] }),
     'panels:list': () => [a, b, made],
+    'panels:previewPrompt': () => ({ prompt: 'Automatic prompt', references: [], droppedPanelIds: [] }),
+    'styles:list': () => ({ styles: [], loadError: null }),
     ...handlers
   })
   return { ...fake, made }
