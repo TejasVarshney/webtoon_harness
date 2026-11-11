@@ -78,12 +78,13 @@ export interface PreviewDeps {
 }
 
 /**
- * The prompt a new panel would be drawn with and the references it would send, as the draw would compose them, and
- * the chosen panels the model's reference cap leaves out. Writes nothing and calls no model. A draft the prompt cannot
+ * The prompt the app would compose for a new panel and the references it would send, and
+ * the chosen panels the model's reference cap leaves out. The draft's own prompt (`promptOverride`) is ignored on purpose: the preview is the automatic text. Writes nothing and calls no model. A draft the prompt cannot
  * be composed from rejects with the reason.
  */
 export async function previewPrompt(ctx: ProjectContext, deps: PreviewDeps, draft: PanelDraft, hasSketch: boolean): Promise<PromptPreview> {
-  await deps.episodes.get(ctx, draft.episodeId) // an unknown episode is the caller's error, not a panel with no continuity
+  const episode = await deps.episodes.get(ctx, draft.episodeId)
+  if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
   const meta = await deps.projects.getMeta(ctx)
   const panel = panelFromDraft(draft, { id: newId('pnl'), aspect: draft.aspect ?? meta.defaultAspect, createdBy: 'user', at: now(), dialogue: [] })
   // A new panel goes after the anchor, at the start for null and at the end for none: where the draw will find it.

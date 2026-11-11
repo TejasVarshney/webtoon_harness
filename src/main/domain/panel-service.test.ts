@@ -2463,6 +2463,39 @@ describe('PanelService previewPrompt and creation with a sketch', () => {
     expect(references).toEqual([{ label: 'earlier panel in the same place' }])
   })
 
+  it('previews the composed prompt even when the draft has its own', async () => {
+    const { svc, epi, ctx } = await withPictures(0)
+    const plain = await svc.previewPrompt(ctx, draft(epi.id), false)
+    const own = await svc.previewPrompt(ctx, draft(epi.id, { promptOverride: 'A cat on a roof.' }), false)
+    expect(own.prompt).toBe(plain.prompt)
+    expect(own.prompt).toContain('[ACTION] A door opens.')
+  })
+
+  it('refuses an anchor panel that is not in the episode, as create does', async () => {
+    const { svc, epi, ctx } = await withPictures(1)
+    await expect(svc.previewPrompt(ctx, draft(epi.id, { afterPanelId: 'pnl_ffffffffff' }), false)).rejects.toThrow('Unknown panel: pnl_ffffffffff')
+  })
+
+  it('leaves no panel file or folder when inserting into the episode fails after the sketch is stored', async () => {
+    const { svc, epi, episodes, ctx } = await withPictures(0)
+    vi.spyOn(episodes, 'insertPanel').mockRejectedValueOnce(new Error('episode locked'))
+    await expect(svc.create(ctx, draft(epi.id), { ...USER, sketch: PNG })).rejects.toThrow('episode locked')
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual([])
+  })
+
+  it('still removes the folder when removing the panel file fails', async () => {
+    const { svc, epi, episodes, ctx } = await withPictures(0)
+    vi.spyOn(episodes, 'insertPanel').mockRejectedValueOnce(new Error('episode locked'))
+    const rm = fs.promises.rm
+    vi.spyOn(fs.promises, 'rm').mockImplementation(async (p, o) => {
+      if (String(p).endsWith('.json')) throw new Error('locked file')
+      return rm(p, o)
+    })
+    await expect(svc.create(ctx, draft(epi.id), { ...USER, sketch: PNG })).rejects.toThrow('episode locked')
+    const left = fs.readdirSync(ctx.paths.panelsDir())
+    expect(left.filter((n) => !n.endsWith('.json'))).toEqual([])
+  })
+
   it('reports a compose error as a rejection', async () => {
     const { svc, epi, ctx } = await withPictures(0)
     await expect(svc.previewPrompt(ctx, draft(epi.id, { characters: [{ ...castOf(await mina(ctx)), characterId: 'chr_ffffffffff' }] }), false)).rejects.toThrow('Unknown character')

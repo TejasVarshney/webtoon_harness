@@ -162,7 +162,7 @@ export interface IpcContract {
    * the drawing starts; if it cannot be, no panel is made.
    */
   'panels:create': { req: { projectId: string; draft: PanelDraft; generate: boolean; sketchPng?: string }; res: { panel: Panel; warnings: string[] } }
-  /** The prompt and references a new panel from this draft would be drawn with, and the chosen panels the model has no room for. Writes nothing; rejects when no prompt can be composed. */
+  /** The automatic prompt (the draft's `promptOverride` is ignored) and references a new panel from this draft would be drawn with, and the chosen panels the model has no room for. Writes nothing; rejects when no prompt can be composed. */
   'panels:previewPrompt': { req: { projectId: string; draft: PanelDraft; hasSketch: boolean }; res: PromptPreview }
   /** Changes only the fields named in `patch`; it never touches the image. */
   'panels:update': { req: { projectId: string; panelId: string; patch: PanelPatch }; res: { panel: Panel; warnings: string[] } }

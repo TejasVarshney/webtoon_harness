@@ -398,6 +398,11 @@ describe('panels:previewPrompt', () => {
     expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
   })
 
+  it('refuses a request whose hasSketch is not a boolean', async () => {
+    const { h, projectId, draft } = await setup()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft(), hasSketch: 'yes' as never })).rejects.toThrow('Invalid input: hasSketch')
+  })
+
   it('refuses a bad draft and rejects what the prompt cannot be built from', async () => {
     const { h, projectId, draft } = await setup()
     await expect(h['panels:previewPrompt']({ projectId, draft: draft({ shot: 'huge' as never }), hasSketch: false })).rejects.toThrow()

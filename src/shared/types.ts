@@ -101,7 +101,7 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>
 export type RoleAssignments = z.infer<typeof RoleAssignmentsSchema>
 
 export type PanelDraft = z.infer<typeof PanelDraftSchema>
-/** What a new panel would be drawn with: the prompt, the references it would send (in order), and the chosen panels the model has no room for. */
+/** What a new panel would be drawn with when the app composes the prompt (the draft's own `promptOverride` is ignored, so the page can show the automatic text and reset to it): the prompt, the references it would send (in order), and the chosen panels the model has no room for. */
 export interface PromptPreview {
   prompt: string
   references: { label: string }[]

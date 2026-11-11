@@ -126,10 +126,12 @@ export class PanelService extends PanelUsageScanner {
       await this.opts.episodes.insertPanel(ctx, draft.episodeId, id, draft.afterPanelId)
     } catch (error) {
       // Nothing else knows this id yet, so removing its files is not a user deletion (no trash).
-      await ctx.mutex.run(file, async () => {
-        await fs.promises.rm(file, { force: true })
-        await fs.promises.rm(ctx.paths.panelDir(id), { recursive: true, force: true })
-      }).catch(() => undefined)
+      await ctx.mutex
+        .run(file, async () => {
+          // Independent: a file that cannot be removed must not keep its folder.
+          await Promise.allSettled([fs.promises.rm(file, { force: true }), fs.promises.rm(ctx.paths.panelDir(id), { recursive: true, force: true })])
+        })
+        .catch(() => undefined)
       throw error
     }
     this.emit(ctx, id)

@@ -41,6 +41,7 @@ const PlaceSchema = z.object({
   episodeId: z.string(),
   moves: z.array(z.object({ panelId: z.string(), placement: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() }) }))
 })
+const PreviewPromptSchema = z.object({ projectId: z.string(), draft: PanelDraftSchema, hasSketch: z.boolean() })
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
 const MAX_SKETCH_BYTES = 8 * 1024 * 1024
@@ -98,7 +99,10 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
       return created
     },
 
-    'panels:previewPrompt': async ({ projectId, draft, hasSketch }) => panels.previewPrompt(await s.projects.open(projectId), PanelDraftSchema.parse(draft), hasSketch === true),
+    'panels:previewPrompt': async (req) => {
+      const { projectId, draft, hasSketch } = parseInput(PreviewPromptSchema, req)
+      return panels.previewPrompt(await s.projects.open(projectId), draft, hasSketch)
+    },
 
     'panels:update': async ({ projectId, panelId, patch }) =>
       showIssues(panels.update(await s.projects.open(projectId), panelId, PanelPatchSchema.parse(patch), { strictMentions: false, strictSheets: false })),
