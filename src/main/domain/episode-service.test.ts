@@ -1,9 +1,11 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { writeJsonAtomic } from '../storage/atomic'
 import { makeEpisode } from '../test/factories'
 import { EntityNotFoundError } from './errors'
+import { removeBackgroundImage } from './background-files'
 import { EpisodeService } from './episode-service'
 
 let tp: TempProject | undefined
@@ -242,31 +244,48 @@ describe('EpisodeService backgrounds', () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)
     const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    const refused = /A background image lives at episode-backgrounds/
     fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: 'characters/x.png', background: { kind: 'image', path: 'characters/x.png' } }))
-    await expect(svc.get(ctx, ep.id)).rejects.toThrow()
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(refused)
     fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: `episode-backgrounds/${ep.id}/../../x.png` }))
-    await expect(svc.get(ctx, ep.id)).rejects.toThrow()
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(refused)
   })
 
-  it('replacing an image never deletes a file outside the episode folder', async () => {
+  it('a path in another episode\'s folder is refused on read, and on write', async () => {
     const { svc, ctx } = await setup()
     const [ep] = await svc.list(ctx)
-    const picked = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
-    const other = ctx.paths.resolveAsset('characters/x.png')
-    fs.mkdirSync(ctx.paths.resolveAsset('characters'), { recursive: true })
-    fs.writeFileSync(other, 'keep')
-    // Another episode's file is outside this episode's folder too.
-    const foreign = ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff/y.png')
-    fs.mkdirSync(ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff'), { recursive: true })
-    fs.writeFileSync(foreign, 'keep')
-    const file = ctx.paths.episodeFile(ep.id)
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
-    // Written past the schema's reach: the old value is raw JSON in the lock's read, so a bad one fails the read, but a
-    // foreign episode's folder passes the schema and must still not be removed.
-    fs.writeFileSync(file, JSON.stringify({ ...raw, backgroundImage: 'episode-backgrounds/epi_ffffffffff/y.png', background: null }))
-    await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
-    expect(fs.readFileSync(foreign, 'utf8')).toBe('keep')
-    expect(fs.readFileSync(other, 'utf8')).toBe('keep')
-    expect(fs.existsSync(ctx.paths.resolveAsset((picked.background as { path: string }).path))).toBe(true)
+    const foreign = 'episode-backgrounds/epi_ffffffffff/y.png'
+    const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    const owner = /another episode/
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: foreign }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(owner)
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, background: { kind: 'image', path: foreign } }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(owner)
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify(raw))
+    await expect(svc.setBackground(ctx, ep.id, { kind: 'image', path: foreign, fit: 'width', opacity: 1, color: '#ffffff' })).rejects.toThrow()
+    expect((await svc.get(ctx, ep.id)).background).toBeNull()
+  })
+})
+
+describe('removeBackgroundImage', () => {
+  it('deletes only a file in the episode\'s own folder, and never the one it is told to keep', async () => {
+    const t = await tempProject()
+    tp = t
+    const { ctx } = t
+    const put = (rel: string) => {
+      fs.mkdirSync(path.dirname(ctx.paths.resolveAsset(rel)), { recursive: true })
+      fs.writeFileSync(ctx.paths.resolveAsset(rel), 'x')
+      return rel
+    }
+    const own = put('episode-backgrounds/epi_aaaaaaaaaa/a.png')
+    const kept = put('episode-backgrounds/epi_aaaaaaaaaa/b.png')
+    const character = put('characters/x.png')
+    const foreign = put('episode-backgrounds/epi_bbbbbbbbbb/c.png')
+    const sneaky = put('characters/y.png')
+    for (const rel of [character, foreign, `episode-backgrounds/epi_aaaaaaaaaa/../../${sneaky}`, kept]) await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', rel, kept)
+    for (const rel of [character, foreign, sneaky, kept]) expect(fs.existsSync(ctx.paths.resolveAsset(rel))).toBe(true)
+    await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', null, kept)
+    await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', own, kept)
+    expect(fs.existsSync(ctx.paths.resolveAsset(own))).toBe(false)
   })
 })

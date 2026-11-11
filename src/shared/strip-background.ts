@@ -9,13 +9,26 @@ import { contentBottom, type PlacedPanel } from './strip-canvas'
 export const BACKGROUND_DIR = 'episode-backgrounds'
 
 /**
- * A stored background image: `episode-backgrounds/<episodeId>/<file>` and nothing else, so a hand-edited project file
- * cannot point the app at (and later delete) some other file of the project. A refine and not a regex, like HexColor.
+ * The shape of a stored background image: `episode-backgrounds/<folder>/<file>` and nothing else, so a hand-edited
+ * project file cannot point the app at (and later delete) some other file of the project. A refine and not a regex,
+ * like HexColor. That the folder is the episode's own is checked by `checkBackgroundOwner`, which knows the episode.
  */
 export const BackgroundImagePath = z.string().refine((v) => {
   const parts = v.split('/')
   return parts.length === 3 && parts[0] === BACKGROUND_DIR && parts.every((part) => part !== '' && part !== '.' && part !== '..' && !part.includes('\\'))
 }, 'A background image lives at episode-backgrounds/<episode>/<file>')
+
+/** Refuses, on the episode that holds it, a background image kept in another episode's folder. */
+export function checkBackgroundOwner(episode: { id: string; background: { kind: string; path?: string } | null; backgroundImage: string | null }, ctx: z.RefinementCtx): void {
+  const own = `${BACKGROUND_DIR}/${episode.id}/`
+  const paths: [string, string | null | undefined][] = [
+    ['background', episode.background?.kind === 'image' ? episode.background.path : null],
+    ['backgroundImage', episode.backgroundImage]
+  ]
+  for (const [field, value] of paths) {
+    if (typeof value === 'string' && !value.startsWith(own)) ctx.addIssue({ code: 'custom', path: [field], message: `That background image belongs to another episode: it must be in ${own}` })
+  }
+}
 
 const GradientStopSchema = z.object({ color: HexColor, at: z.number().min(0).max(1) })
 const StopsSchema = z.array(GradientStopSchema).min(2).max(12)

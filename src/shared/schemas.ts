@@ -14,7 +14,7 @@
 import { z } from 'zod'
 import { PanelLocationSchema } from './location-schemas'
 import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
-import { BackgroundImagePath, StripBackgroundSchema } from './strip-background'
+import { BackgroundImagePath, checkBackgroundOwner, StripBackgroundSchema } from './strip-background'
 
 export { CheckResultSchema } from './schema-primitives'
 export * from './location-schemas'
@@ -215,7 +215,7 @@ export const EpisodeSchema = z.object({
   backgroundImage: BackgroundImagePath.nullable().default(null), // the last image picked; it outlives a switch to another kind
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
-})
+}).superRefine(checkBackgroundOwner)
 
 export const PanelCharacterSchema = z.object({
   characterId: Id,

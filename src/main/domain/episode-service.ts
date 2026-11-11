@@ -7,6 +7,7 @@ import type { Episode, StripBackground } from '@shared/types'
 import type { EventBus } from '../events/bus'
 import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
+import { removeBackgroundImage } from './background-files'
 import { EntityNotFoundError } from './errors'
 import { now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
@@ -131,10 +132,10 @@ export class EpisodeService {
         replaced = e.backgroundImage
         return { ...e, backgroundImage: rel, background: { kind: 'image', path: rel, fit: old?.fit ?? 'width', opacity: old?.opacity ?? 1, color: old?.color ?? '#ffffff' }, updatedAt: now() }
       })
-      await removeImage(ctx, id, replaced, rel)
+      await removeBackgroundImage(ctx, id, replaced, rel)
       return episode
     } catch (error) {
-      await removeImage(ctx, id, rel, null)
+      await removeBackgroundImage(ctx, id, rel, null)
       throw error
     }
   }
@@ -189,18 +190,5 @@ export class EpisodeService {
 
   private emit(ctx: ProjectContext, episodeId: string): void {
     this.opts.bus.emit({ type: 'episode.changed', projectId: ctx.id, episodeId })
-  }
-}
-
-/**
- * Deletes a background image of this episode, never the one that is `kept`. Anything outside the episode's own folder
- * is left alone, and a failure is ignored: the change it follows is already saved.
- */
-async function removeImage(ctx: ProjectContext, episodeId: string, rel: string | null, kept: string | null): Promise<void> {
-  if (rel === null || rel === kept || !rel.startsWith(`${BACKGROUND_DIR}/${episodeId}/`) || rel.includes('..')) return
-  try {
-    await fs.promises.rm(ctx.paths.resolveAsset(rel), { force: true })
-  } catch {
-    // The file stays; nothing refers to it.
   }
 }
