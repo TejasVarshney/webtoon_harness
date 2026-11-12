@@ -1,11 +1,13 @@
 import fs from 'node:fs'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Panel, PanelVersion } from '@shared/types'
+import type { CropArea, Panel, PanelAspect, PanelVersion } from '@shared/types'
 import { visualFields } from '@shared/visual-fields'
 import { writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import { isNotFound } from '../storage/fs-errors'
 import type { ProjectContext } from '../storage/project-store'
+import { EntityNotFoundError } from './errors'
+import type { ImageOps } from './image-ops'
 import { getPanel } from './panel-files'
 import { panelImageRelPath } from './panel-recording'
 import { composePanelPrompt, type PanelPromptInput, type PanelPromptResult } from './prompts'
@@ -45,6 +47,44 @@ export async function storeUploadedImage(ctx: ProjectContext, id: string, data: 
       throw error
     }
     return uploaded
+  })
+}
+
+/**
+ * Stores the part `area` covers of a ready version's picture as a new current version (a PNG), so Versions can go back
+ * to the whole picture. It shows what its source drew, so it keeps that version's prompt, references and fields. With
+ * `aspect` the panel takes that shape too, in the same write, and the crop counts as drawn at it, so it is not stale.
+ * The caller emits the change.
+ */
+export async function storeCroppedImage(ctx: ProjectContext, id: string, versionId: string, area: CropArea, ops: Pick<ImageOps, 'crop'>, aspect?: PanelAspect): Promise<PanelVersion> {
+  const file = ctx.paths.panelFile(id)
+  return ctx.mutex.run(file, async () => {
+    const current = await getPanel(ctx, id)
+    const source = current.versions.find((v) => v.id === versionId)
+    if (!source || source.status !== 'ready' || source.imagePath === null) throw new EntityNotFoundError('version', versionId)
+    const png = ops.crop(await fs.promises.readFile(ctx.paths.resolveAsset(source.imagePath)), area)
+    const cropId = newId('ver')
+    const rel = panelImageRelPath(id, cropId, 'png')
+    const abs = ctx.paths.resolveAsset(rel)
+    await writeFileAtomic(abs, png)
+    const cropped: PanelVersion = {
+      ...source,
+      id: cropId,
+      source: 'crop',
+      imagePath: rel,
+      instruction: null,
+      parentVersionId: source.id,
+      drawnFrom: { ...(source.drawnFrom ?? visualFields(current)), aspect: aspect ?? (source.drawnFrom ?? current).aspect },
+      check: null,
+      createdAt: now()
+    }
+    try {
+      await writeJsonAtomic(file, { ...current, aspect: aspect ?? current.aspect, versions: [...current.versions, cropped], currentVersionId: cropId, updatedAt: now() })
+    } catch (error) {
+      await fs.promises.rm(abs, { force: true }).catch(() => undefined)
+      throw error
+    }
+    return cropped
   })
 }
 

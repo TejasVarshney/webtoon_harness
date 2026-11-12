@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripBackground } from '@shared/types'
+import type { CropArea, Episode, Panel, PanelAspect, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripBackground } from '@shared/types'
 import { api } from '../api'
 import { NO_PANEL_SELECTION, useAppStore } from './app-store'
 
@@ -60,6 +60,8 @@ export interface PanelsActions {
   revertPanel(id: string, versionId: string): Promise<Panel>
   /** Opens the file dialog in main; resolves to `null` when it is cancelled. */
   uploadPanelImage(id: string): Promise<PanelVersion | null>
+  /** Stores the part `area` covers of a version's picture as the panel's new current version, in `aspect` if given, and reloads its episode. */
+  cropPanelImage(id: string, versionId: string, area: CropArea, aspect?: PanelAspect): Promise<PanelVersion>
   /** Stores the layout sketch (a PNG data URL), or forgets it with `null`, and reloads the panel's episode. */
   saveSketch(id: string, png: string | null): Promise<Panel>
   /** The stored sketch as a PNG data URL, or `null`. */
@@ -248,6 +250,12 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async uploadPanelImage(id) {
       const stored = await api.invoke('panels:uploadImage', { projectId: requireProject(), panelId: id })
       if (stored !== null) await reload(episodeOf(id))
+      return stored
+    },
+
+    async cropPanelImage(id, versionId, area, aspect) {
+      const stored = await api.invoke('panels:crop', { projectId: requireProject(), panelId: id, versionId, area, ...(aspect === undefined ? {} : { aspect }) })
+      await reload(episodeOf(id))
       return stored
     },
 

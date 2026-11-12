@@ -35,6 +35,25 @@ describe('sniffImageMime', () => {
 })
 
 describe('createNativeImageOps', () => {
+  it('crops the area, in whole pixels inside the image, to a PNG', () => {
+    const native = fakeNativeImage()
+    const ops = createNativeImageOps(native)
+    // The fake decodes everything as 3000 by 1500.
+    expect(ops.crop(JPEG, { x: 0.25, y: 0.1, width: 0.5, height: 0.8 }).toString()).toBe('PNG 1500x1200')
+    expect(native.cropped).toEqual([{ x: 750, y: 150, width: 1500, height: 1200 }])
+    ops.crop(JPEG, { x: 0.99999, y: 0, width: 0.00001, height: 1 })
+    expect(native.cropped[1]).toEqual({ x: 2999, y: 0, width: 1, height: 1500 })
+  })
+
+  it('refuses to crop what it cannot decode, never handing the image back whole', () => {
+    const ops = createNativeImageOps(fakeNativeImage())
+    const area = { x: 0, y: 0, width: 0.5, height: 0.5 }
+    expect(() => ops.crop(WEBP, area)).toThrow("A WEBP image can't be cropped: use png or jpg")
+    expect(() => ops.crop(GIF, area)).toThrow("A GIF image can't be cropped: use png or jpg")
+    // A PNG the decoder fails on is corrupt.
+    expect(() => createNativeImageOps(fakeNativeImage(() => false)).crop(encodeSolidPng(1, 1, [0, 0, 0]), area)).toThrow('The image is corrupt or truncated')
+  })
+
   it('downscales a decodable image and encodes PNG by default, JPEG on request', async () => {
     const native = fakeNativeImage()
     const ops = createNativeImageOps(native)

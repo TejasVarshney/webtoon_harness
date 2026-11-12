@@ -732,12 +732,13 @@ describe('ConsistencyChecker.checkSheet', () => {
       return { provider, seen }
     }
 
-    const emptyDownscale: ImageOps = { downscale: async () => ({ mime: 'image/jpeg', data: Buffer.alloc(0) }), size: () => ({ width: 0, height: 0 }) }
+    const emptyDownscale: ImageOps = { downscale: async () => ({ mime: 'image/jpeg', data: Buffer.alloc(0) }), size: () => ({ width: 0, height: 0 }), crop: (data) => data }
     const unreadable: ImageOps = {
       downscale: async () => {
         throw new UnreadableImageError('not an image')
       },
-      size: () => ({ width: 0, height: 0 })
+      size: () => ({ width: 0, height: 0 }),
+      crop: (data) => data
     }
 
     it.each([

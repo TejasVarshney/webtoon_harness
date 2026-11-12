@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import type { CropArea } from '@shared/types'
 import { ImageUnavailableError } from '../models/providers/types'
 import type { ProjectContext } from '../storage/project-store'
 import { isNotFound } from '../storage/fs-errors'
@@ -25,6 +26,11 @@ export interface ImageOps {
    */
   downscale(data: Buffer, maxEdge: number, opts?: DownscaleOptions): Promise<{ mime: string; data: Buffer }>
   size(data: Buffer): { width: number; height: number }
+  /**
+   * The part of the image `area` covers (fractions of its width and height), as a PNG. Throws `UnreadableImageError`
+   * for what the decoder cannot read (WebP on Electron's `nativeImage`): a crop never passes the image through whole.
+   */
+  crop(data: Buffer, area: CropArea): Buffer
 }
 
 /** The bytes are not a png, jpeg, webp or gif image. */
@@ -56,6 +62,7 @@ export interface NativeImageLike {
   resize(options: { width: number; height: number; quality: 'best' }): NativeImageLike
   toPNG(): Buffer
   toJPEG(quality: number): Buffer
+  crop(rect: { x: number; y: number; width: number; height: number }): NativeImageLike
 }
 
 export interface NativeImageFactory {
@@ -84,8 +91,26 @@ export function createNativeImageOps(native: NativeImageFactory): ImageOps {
     },
     size(data) {
       return native.createFromBuffer(data).getSize()
+    },
+    crop(data, area) {
+      const img = native.createFromBuffer(data)
+      if (img.isEmpty()) {
+        const mime = data.length > 0 ? sniffImageMime(data) : null
+        throw new UnreadableImageError(mime === 'image/webp' || mime === 'image/gif' ? `A ${mime.slice(6).toUpperCase()} image can't be cropped: use png or jpg` : 'The image is corrupt or truncated')
+      }
+      const out = img.crop(cropPixels(area, img.getSize())).toPNG()
+      if (out.length === 0) throw new UnreadableImageError('The cropped image came out empty')
+      return out
     }
   }
+}
+
+/** `area` in whole pixels of an image `size`, inside it and at least one pixel each way. */
+function cropPixels(area: CropArea, size: { width: number; height: number }): { x: number; y: number; width: number; height: number } {
+  const edge = (f: number, n: number): number => Math.min(n, Math.max(0, Math.round(f * n)))
+  const x = Math.min(edge(area.x, size.width), size.width - 1)
+  const y = Math.min(edge(area.y, size.height), size.height - 1)
+  return { x, y, width: Math.max(1, edge(area.x + area.width, size.width) - x), height: Math.max(1, edge(area.y + area.height, size.height) - y) }
 }
 
 /**
@@ -104,11 +129,12 @@ export interface IdentityImageOps extends ImageOps {
   calls: { maxEdge: number; bytes: number; format?: 'png' | 'jpeg' }[]
 }
 
-/** Test double: returns the input unchanged (mime sniffed from the bytes, png when unknown), reads PNG sizes, records calls. */
+/** Test double: returns the input unchanged (mime sniffed from the bytes, png when unknown), reads PNG sizes, records calls. A crop is the input too. */
 export function createIdentityImageOps(): IdentityImageOps {
   const calls: IdentityImageOps['calls'] = []
   return {
     calls,
+    crop: (data) => data,
     async downscale(data, maxEdge, opts = {}) {
       calls.push({ maxEdge, bytes: data.length, ...(opts.format ? { format: opts.format } : {}) })
       return { mime: sniffImageMime(data) ?? 'image/png', data }

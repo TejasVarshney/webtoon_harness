@@ -3,7 +3,7 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
+import type { Character, CheckResult, CropArea, Episode, Item, Location, Panel, PanelAspect, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
 import { VISUAL_FIELDS, visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
@@ -12,15 +12,16 @@ import type { CharacterService } from './character-service'
 import type { ConsistencyChecker } from './consistency-checker'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
+import type { ImageOps } from './image-ops'
 import type { ImageGenRequest, ImageService } from './image-service'
 import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
 import { drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
 import { planPlacement } from './panel-placement'
-import { continuityOf, panelFromDraft, previewPrompt } from './panel-preview'
+import { continuityOf, panelFromDraft, previewPrompt, withId } from './panel-preview'
 import { PanelUsageScanner } from './panel-usage'
-import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
+import { composeWithPacks, readSketchFile, storeCroppedImage, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
 import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft, validatePanelLocation } from './panel-validation'
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
@@ -319,20 +320,27 @@ export class PanelService extends PanelUsageScanner {
   }
 
   /** Stores the user's own image as a new current version. The bytes are in hand, so there is no pending phase. */
-  async uploadImage(ctx: ProjectContext, id: string, data: Buffer, ext: UploadExt): Promise<PanelVersion> {
-    const version = await storeUploadedImage(ctx, id, data, ext)
+  uploadImage(ctx: ProjectContext, id: string, data: Buffer, ext: UploadExt): Promise<PanelVersion> {
+    return this.announced(ctx, id, storeUploadedImage(ctx, id, data, ext))
+  }
+
+  /** Stores a part of a ready version's picture as a new current version, in `aspect` if given (see `storeCroppedImage`). */
+  cropImage(ctx: ProjectContext, id: string, versionId: string, area: CropArea, ops: Pick<ImageOps, 'crop'>, aspect?: PanelAspect): Promise<PanelVersion> {
+    return this.announced(ctx, id, storeCroppedImage(ctx, id, versionId, area, ops, aspect))
+  }
+
+  private async announced<T>(ctx: ProjectContext, id: string, work: Promise<T>): Promise<T> {
+    const done = await work
     this.emit(ctx, id)
-    return version
+    return done
   }
 
   /**
    * Stores the user's layout sketch (a PNG) under a new name, so versions drawn from an older sketch keep pointing at
    * it, or forgets it with `null`. Generation sends it as a reference (see `composePanelPrompt`); edits do not.
    */
-  async saveSketch(ctx: ProjectContext, id: string, png: Buffer | null): Promise<Panel> {
-    const next = await storeSketch(ctx, id, png)
-    this.emit(ctx, id)
-    return next
+  saveSketch(ctx: ProjectContext, id: string, png: Buffer | null): Promise<Panel> {
+    return this.announced(ctx, id, storeSketch(ctx, id, png))
   }
 
   /** The bytes of the panel's layout sketch, or `null` when it has none (or its file is gone). */
@@ -480,20 +488,4 @@ async function runCheck(checker: Pick<ConsistencyChecker, 'check'>, ctx: Project
 /** The extra instruction for a redraw after a failed check; none when the checker named no issue (the redraw is then a plain re-roll). */
 function fixInstruction(issues: string[]): string | undefined {
   return issues.length > 0 ? `Fix these consistency issues: ${issues.join('; ')}` : undefined
-}
-
-/** Gives a draft line its id. A line sent without a placement, style or tail takes `inherited`'s; an explicit null stays null. */
-function withId(
-  line: Omit<DialogueLine, 'id' | 'placement' | 'style' | 'tail'> & Partial<Pick<DialogueLine, 'placement' | 'style' | 'tail'>>,
-  inherited: Pick<DialogueLine, 'placement' | 'style' | 'tail'> | undefined
-): DialogueLine {
-  return {
-    id: newId('dlg'),
-    speakerId: line.speakerId,
-    kind: line.kind,
-    text: line.text,
-    placement: line.placement === undefined ? (inherited?.placement ?? null) : line.placement,
-    style: line.style === undefined ? (inherited?.style ?? null) : line.style,
-    tail: line.tail === undefined ? (inherited?.tail ?? null) : line.tail
-  }
 }

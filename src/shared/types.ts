@@ -43,6 +43,7 @@ import type {
   PanelLocationSchema,
   PanelPatchSchema,
   PanelPlacementSchema,
+  CropAreaSchema,
   PanelSchema,
   PanelVersionSchema,
   ProjectMetaSchema,
@@ -76,6 +77,7 @@ export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
 export type PanelPlacement = z.infer<typeof PanelPlacementSchema>
+export type CropArea = z.infer<typeof CropAreaSchema>
 export type PanelLocation = z.infer<typeof PanelLocationSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>

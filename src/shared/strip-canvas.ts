@@ -10,7 +10,7 @@ import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 const MIN_PANEL_WIDTH = 80
 
 /** The gap between the panels of one row. */
-const ROW_GAP = 6
+export const ROW_GAP = 6
 
 /** The gap below a flowing row, by its `gapAfter`. */
 const GAP_PX: Record<PanelGap, number> = { tight: 8, normal: 48, long: 120 }

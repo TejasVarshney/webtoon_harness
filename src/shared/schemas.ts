@@ -44,7 +44,7 @@ export const PanelGutterSchema = z.enum(['white', 'black'])
 /** Where a cast member stands, in the user's words ("left", "far right, half in shadow", "background"). */
 const PanelPositionSchema = z.string()
 export const DialogueKindSchema = z.enum(['speech', 'thought', 'narration', 'sfx'])
-const VersionSourceSchema = z.enum(['generate', 'edit', 'upload'])
+const VersionSourceSchema = z.enum(['generate', 'edit', 'upload', 'crop'])
 const BeatStatusSchema = z.enum(['planned', 'drawn', 'dropped'])
 const StopReasonSchema = z.enum(['end', 'tool_use', 'max_tokens', 'refusal'])
 export const EndpointKindSchema = z.enum(['anthropic', 'openai', 'gemini', 'mock'])
@@ -297,6 +297,11 @@ export const PanelVersionSchema = z.object({
 
 /** Where a panel sits on the free strip, in strip px (the strip is 440 wide): its top-left corner and its width. Height follows from the aspect. */
 export const PanelPlacementSchema = z.object({ x: z.number(), y: z.number(), width: z.number() })
+
+/** A part of an image, as fractions of its width and height: inside it, and not empty. */
+export const CropAreaSchema = z
+  .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().gt(0).max(1), height: z.number().gt(0).max(1) })
+  .refine((a) => a.x + a.width <= 1 + 1e-6 && a.y + a.height <= 1 + 1e-6, 'The crop must lie inside the image')
 
 export const PanelSchema = z.object({
   id: Id,

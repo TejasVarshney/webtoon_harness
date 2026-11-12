@@ -30,6 +30,8 @@ import type {
   PanelPatch,
   PanelPlacement,
   PanelVersion,
+  CropArea,
+  PanelAspect,
   PluginView,
   PromptPreview,
   ProjectMeta,
@@ -176,6 +178,11 @@ export interface IpcContract {
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
   'panels:uploadImage': { req: { projectId: string; panelId: string }; res: PanelVersion | null }
+  /**
+   * Stores the part `area` covers of a ready version's picture as a new current version, a PNG (WebP and GIF are
+   * refused). With `aspect` the panel takes that shape in the same save.
+   */
+  'panels:crop': { req: { projectId: string; panelId: string; versionId: string; area: CropArea; aspect?: PanelAspect }; res: PanelVersion }
   /** Stores the layout sketch, a `data:image/png;base64,` URL, as a new file; `null` forgets it. It never touches the image. */
   'panels:saveSketch': { req: { projectId: string; panelId: string; png: string | null }; res: Panel }
   /** The layout sketch as a `data:image/png;base64,` URL (a canvas can read it back, unlike an asset URL), or `null`. */
@@ -306,6 +313,7 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:place': true,
   'panels:revert': true,
   'panels:uploadImage': true,
+  'panels:crop': true,
   'panels:saveSketch': true,
   'panels:readSketch': true,
   'panelChat:load': true,

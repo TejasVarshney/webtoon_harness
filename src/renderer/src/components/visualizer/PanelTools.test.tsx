@@ -55,7 +55,7 @@ describe('PanelTools', () => {
   it('has the tools in order, each with its name', () => {
     mount()
     const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Add bubble', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Lines', 'Crop', 'Versions', 'Layout', 'Add bubble', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
   })
 
   it('Redraw starts a generation', async () => {
@@ -83,12 +83,13 @@ describe('PanelTools', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Unknown panel: pnl_0000000001')
   })
 
-  it("Scene opens the panel's scene fields in place", async () => {
+  it('has no cast, items or scene: Lines holds the lines alone, and the rest is in focus mode', async () => {
     mount()
-    await userEvent.click(tool('Scene'))
-    const popover = screen.getByRole('dialog', { name: 'Scene' })
-    expect(within(popover).getByLabelText('Description')).toHaveValue('Mina stands on the rooftop.')
-    expect(useAppStore.getState().focusedPanelId).toBeNull()
+    for (const name of ['Cast', 'Items', 'Scene']) expect(screen.queryByRole('button', { name })).toBeNull()
+    await userEvent.click(tool('Lines'))
+    const popover = screen.getByRole('dialog', { name: 'Lines' })
+    expect(within(popover).queryByRole('tablist')).toBeNull()
+    expect(within(popover).getAllByRole('listitem')).toHaveLength(1)
   })
 
   it('Lines edits a line in place', async () => {
@@ -107,18 +108,18 @@ describe('PanelTools', () => {
 
   it('closes the open tool on Escape, and when another is opened', async () => {
     mount()
-    await userEvent.click(tool('Cast'))
-    expect(screen.getByRole('dialog', { name: 'Cast' })).toBeInTheDocument()
-    await userEvent.click(tool('Items'))
-    expect(screen.queryByRole('dialog', { name: 'Cast' })).toBeNull()
-    expect(screen.getByRole('dialog', { name: 'Items' })).toBeInTheDocument()
+    await userEvent.click(tool('Lines'))
+    expect(screen.getByRole('dialog', { name: 'Lines' })).toBeInTheDocument()
+    await userEvent.click(tool('Versions'))
+    expect(screen.queryByRole('dialog', { name: 'Lines' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Versions' })).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('closes the open tool when the press lands anywhere else', async () => {
     mount()
-    await userEvent.click(tool('Scene'))
+    await userEvent.click(tool('Lines'))
     fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -142,6 +143,72 @@ describe('PanelTools', () => {
     expect(calls.find((c) => c.channel === 'panels:revert')?.req).toEqual({ projectId: P, panelId: A, versionId: v1.id })
     await waitFor(() => expect(within(screen.getByRole('dialog', { name: 'Versions' })).getByTestId('panel-version-label')).toHaveTextContent('v1 / 2'))
     expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('Crop opens the crop dialog on the current picture, and Cancel closes it', async () => {
+    mount()
+    await userEvent.click(tool('Crop'))
+    const dialog = screen.getByRole('dialog', { name: 'Crop panel' })
+    expect(dialog.querySelector('img')?.getAttribute('src')).toContain(`panels/${A}/ver_00000000a2.png`)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('cannot crop a panel whose picture is still being drawn', () => {
+    stored = panel({ id: A, versions: [panelVersion({ id: 'ver_00000000a3', status: 'pending', imagePath: null })], currentVersionId: null })
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    expect(tool('Crop')).toBeDisabled()
+    expect(tool('Crop')).toHaveAttribute('title', 'Crop (the panel has no picture yet)')
+  })
+
+  it('cannot crop a WebP picture', () => {
+    const webp = panelVersion({ id: 'ver_00000000a4', imagePath: `panels/${A}/ver_00000000a4.webp` })
+    stored = panel({ id: A, versions: [webp], currentVersionId: webp.id })
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    expect(tool('Crop')).toBeDisabled()
+    expect(tool('Crop')).toHaveAttribute('title', "Crop (a WebP or GIF picture can't be cropped)")
+  })
+
+  it('Layout changes the shape at once, without opening focus mode', async () => {
+    const { calls } = mount()
+    await userEvent.click(tool('Layout'))
+    const popover = screen.getByRole('dialog', { name: 'Layout' })
+    const shapes = within(popover).getByRole('group', { name: 'Panel shape' })
+    expect(within(shapes).getByRole('button', { name: '2:3' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(shapes).getByRole('button', { name: '16:9' }))
+    await waitFor(() => expect(calls.some((c) => c.channel === 'panels:update')).toBe(true))
+    expect((calls.find((c) => c.channel === 'panels:update')?.req as { patch: PanelPatch }).patch).toEqual({ aspect: '16:9' })
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('Layout sets the width on the strip, keeping the corner and the strip edge, and the side', async () => {
+    stored = { ...stored, placement: { x: 20, y: 0, width: 220 } }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    const { calls } = mount({ 'panels:place': () => undefined })
+    await userEvent.click(tool('Layout'))
+    const popover = screen.getByRole('dialog', { name: 'Layout' })
+    const widths = within(popover).getByRole('group', { name: 'Panel width' })
+    expect(within(widths).getByRole('button', { name: 'Half' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(widths).getByRole('button', { name: 'One third' }))
+    await userEvent.click(within(widths).getByRole('button', { name: 'Full width' }))
+    await userEvent.click(within(within(popover).getByRole('group', { name: 'Panel position' })).getByRole('button', { name: 'Right' }))
+    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:place')).toHaveLength(3))
+    expect(calls.filter((c) => c.channel === 'panels:place').map((c) => (c.req as { moves: unknown }).moves)).toEqual([
+      [{ panelId: A, placement: { x: 20, y: 0, width: 147 } }],
+      [{ panelId: A, placement: { x: 0, y: 0, width: 440 } }],
+      [{ panelId: A, placement: { x: 220, y: 0, width: 220 } }]
+    ])
+  })
+
+  it('Layout offers only the layouts there are panels enough for, from this one', async () => {
+    mount()
+    await userEvent.click(tool('Layout'))
+    const layouts = within(screen.getByRole('dialog', { name: 'Layout' })).getByRole('group', { name: 'Layouts' })
+    expect(within(layouts).getByRole('button', { name: 'Full width' })).toBeEnabled()
+    expect(within(layouts).getByRole('button', { name: 'Two across' })).toBeDisabled()
+    expect(within(layouts).getByRole('button', { name: 'Two across' })).toHaveAttribute('title', 'Two across needs 1 more panel after this one')
   })
 
   it('Focus opens focus mode', async () => {
@@ -184,8 +251,8 @@ describe('PanelTools', () => {
       </div>
     )
     const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
-    await userEvent.click(within(bar).getByRole('button', { name: 'Scene' }))
-    const field = within(screen.getByRole('dialog', { name: 'Scene' })).getByLabelText('Description')
+    await userEvent.click(within(bar).getByRole('button', { name: 'Lines' }))
+    const field = within(screen.getByRole('dialog', { name: 'Lines' })).getByLabelText('Text')
     await userEvent.click(field)
     fireEvent.doubleClick(field)
     fireEvent.pointerDown(bar)

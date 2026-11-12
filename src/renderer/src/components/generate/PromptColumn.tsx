@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StyleEntry } from '@shared/ipc'
-import { PanelAspectSchema, ShotTypeSchema } from '@shared/schemas'
+import { ShotTypeSchema } from '@shared/schemas'
 import type { Panel, PanelAspect, PromptPreview } from '@shared/types'
 import { api } from '../../api'
 import { useGenerateStore } from '../../stores/generate-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
+import { ShapePicker } from '../panel-editor/ShapePicker'
 import { toPanelDraft } from './generate-draft'
 
 /** Waits for typing to pause, so a preview is not asked for on every keystroke. */
@@ -107,29 +108,22 @@ export function PromptColumn() {
       <h3 className="library-heading">Panel details</h3>
       <Field label="Description">{(id) => <textarea id={id} rows={3} value={draft.description} placeholder="What happens in this panel" onChange={(e) => patch({ description: e.target.value })} />}</Field>
       <Field label="Setting">{(id) => <input id={id} value={draft.setting} placeholder="Where and when" onChange={(e) => patch({ setting: e.target.value })} />}</Field>
-      <div className="field-row">
-        <Field label="Shot">
-          {(id) => (
-            <select id={id} value={draft.shot} onChange={(e) => patch({ shot: e.target.value as Panel['shot'] })}>
-              {ShotTypeSchema.options.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="Aspect">
-          {(id) => (
-            <select id={id} value={draft.aspect} onChange={(e) => patch({ aspect: e.target.value as PanelAspect })}>
-              {PanelAspectSchema.options.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
+      <Field label="Shot">
+        {(id) => (
+          <select id={id} value={draft.shot} onChange={(e) => patch({ shot: e.target.value as Panel['shot'] })}>
+            {ShotTypeSchema.options.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+      <div className="field">
+        <span className="field-label" aria-hidden="true">
+          Shape
+        </span>
+        <ShapePicker label="Shape" value={draft.aspect} onChange={(aspect: PanelAspect) => patch({ aspect })} />
       </div>
       <Field label="Style">
         {(id) => (

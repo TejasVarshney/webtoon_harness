@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { History, Maximize2, MessageSquare, MapPin, Package, PencilLine, RefreshCw, Trash2, Upload, Users, type LucideIcon } from 'lucide-react'
+import { Crop, History, LayoutTemplate, Maximize2, MessageSquare, PencilLine, RefreshCw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import type { BubbleShape, Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
@@ -9,18 +9,15 @@ import { AddBubbleMenu } from '../panel-editor/AddBubbleMenu'
 import { PanelInspector, type InspectorTab } from '../panel-editor/PanelInspector'
 import { whenSaved } from '../panel-editor/panel-save-queue'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
+import { croppable, CropDialog } from './CropDialog'
+import { PanelLayout } from './PanelLayout'
 
-type Tool = InspectorTab | 'versions'
+type Tool = Extract<InspectorTab, 'lines'> | 'versions' | 'layout'
 
 type Rect = { left: number; right: number; top: number; bottom: number }
 
 /** The tools that open a popover, in the order of the bar. */
-const POPOVER_TOOLS: { id: Tool; label: string; Icon: LucideIcon }[] = [
-  { id: 'lines', label: 'Lines', Icon: MessageSquare },
-  { id: 'cast', label: 'Cast', Icon: Users },
-  { id: 'items', label: 'Items', Icon: Package },
-  { id: 'scene', label: 'Scene', Icon: MapPin }
-]
+const POPOVER_TOOLS: { id: Tool; label: string; Icon: LucideIcon }[] = [{ id: 'lines', label: 'Lines', Icon: MessageSquare }]
 
 const POPOVER_WIDTH = 340
 const POPOVER_MARGIN = 8
@@ -133,9 +130,9 @@ export interface PanelToolsProps {
 }
 
 /**
- * The tools on a selected panel, so most edits happen where the panel sits: the lines, cast, items and scene in a
- * popover each, the versions, an upload, a redraw, the sketch, focus mode and delete. Lines, Cast, Items and Scene are
- * the same controls as focus mode's tabs, and save the same way. Sketch and Focus open focus mode, whose stage is larger.
+ * The tools on a selected panel, so most edits happen where the panel sits: the lines in a popover, a crop, the
+ * versions, the layout (arranging panels, shape and width), an upload, a redraw, the sketch, focus mode and delete. Lines is focus mode's Lines tab, and saves the same way;
+ * the cast, items and scene are in focus mode's other tabs. Sketch and Focus open focus mode, whose stage is larger.
  * Clicking a bubble on the strip opens Lines on its line, and Add bubble adds one to the panel.
  * Nothing here is a press on the card: clicks, double clicks and presses stop at it, popovers and dialog included, so
  * they neither select, open, drag nor clear the selection on the strip.
@@ -143,6 +140,7 @@ export interface PanelToolsProps {
 export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, onAddBubble, addingBubble }: PanelToolsProps) {
   const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement; quiet?: boolean } | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [cropping, setCropping] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
@@ -150,6 +148,9 @@ export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, on
   // Where its bar sits along the card: centred under it, kept inside the strip so a narrow panel at an edge keeps its tools in reach.
   const [shift, setShift] = useState(0)
   const generating = panel.versions.at(-1)?.status === 'pending'
+  const current = panel.versions.find((v) => v.id === panel.currentVersionId)
+  const picture = current?.status === 'ready' && current.imagePath !== null ? { versionId: current.id, imagePath: current.imagePath } : null
+  const canCrop = picture !== null && croppable(picture.imagePath)
 
   useLayoutEffect(() => {
     const bar = root.current
@@ -221,8 +222,21 @@ export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, on
             <Icon size={15} aria-hidden="true" />
           </button>
         ))}
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Crop"
+          title={picture === null ? 'Crop (the panel has no picture yet)' : canCrop ? 'Crop' : "Crop (a WebP or GIF picture can't be cropped)"}
+          disabled={busy || generating || !canCrop}
+          onClick={() => setCropping(true)}
+        >
+          <Crop size={15} aria-hidden="true" />
+        </button>
         <button type="button" className="icon-button" aria-label="Versions" title="Versions" aria-haspopup="dialog" aria-expanded={pressed('versions')} onClick={(e) => toggle('versions', e.currentTarget)}>
           <History size={15} aria-hidden="true" />
+        </button>
+        <button type="button" className="icon-button" aria-label="Layout" title="Layout: arrange panels, shape and width" aria-haspopup="dialog" aria-expanded={pressed('layout')} onClick={(e) => toggle('layout', e.currentTarget)}>
+          <LayoutTemplate size={15} aria-hidden="true" />
         </button>
         <AddBubbleMenu disabled={addingBubble} onAdd={onAddBubble} />
         <span className="panel-tools-divider" aria-hidden="true" />
@@ -250,14 +264,18 @@ export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, on
       )}
 
       {open !== null && (
-        <ToolPopover key={open.tool} label={POPOVER_TOOLS.find((t) => t.id === open.tool)?.label ?? 'Versions'} anchor={open.anchor} onClose={close} quiet={open.quiet} avoid={selectedBubble}>
+        <ToolPopover key={open.tool} label={open.tool === 'lines' ? 'Lines' : open.tool === 'layout' ? 'Layout' : 'Versions'} anchor={open.anchor} onClose={close} quiet={open.quiet} avoid={selectedBubble}>
           {open.tool === 'versions' ? (
             <VersionSwitcher panel={panel} />
+          ) : open.tool === 'layout' ? (
+            <PanelLayout panel={panel} />
           ) : (
-            <PanelInspector panel={panel} initialTab={open.tool} selectedLine={selectedLine} onSelectLine={onSelectLine} />
+            <PanelInspector panel={panel} only="lines" selectedLine={selectedLine} onSelectLine={onSelectLine} />
           )}
         </ToolPopover>
       )}
+
+      {cropping && picture !== null && <CropDialog panel={panel} versionId={picture.versionId} imagePath={picture.imagePath} onClose={() => setCropping(false)} />}
 
       {confirming &&
         createPortal(
