@@ -7,6 +7,7 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { ShapePicker } from '../panel-editor/ShapePicker'
 import { useFieldAutosave } from '../panel-editor/use-field-autosave'
+import { FramePicker } from './FramePicker'
 import { alignedX, applyLayout, layoutBlock, PANEL_LAYOUTS, type PanelLayout as Layout } from './panel-layouts'
 
 /** The widths offered, as shares of the strip: thirds and halves fit side by side. */
@@ -41,7 +42,8 @@ export interface PanelLayoutProps {
 /**
  * The panel tools' Layout. Layouts arrange this panel and the ones after it in reading order (side by side, a wide one
  * over two, a big one beside two, a stagger...), and the panels below move up or down with the block's bottom. Then the
- * panel's own shape, saved at once (the next drawing is made in it), its width on the strip, and its side. Nothing here
+ * panel's frame (straight, no border, or a slanted cut: see `FramePicker`), its own shape, saved at once (the next
+ * drawing is made in it), its width on the strip, and its side. Nothing here
  * redraws a picture. The first box of a layout's picture is this panel.
  */
 export function PanelLayout({ panel }: PanelLayoutProps) {
@@ -92,6 +94,8 @@ export function PanelLayout({ panel }: PanelLayoutProps) {
           )
         })}
       </div>
+      <h3 className="panel-size-heading">Frame</h3>
+      <FramePicker panel={panel} />
       <h3 className="panel-size-heading">Shape</h3>
       <ShapePicker label="Panel shape" value={aspect.value} onChange={pickShape} />
       {isTallAspect(aspect.value) && <p className="hint">Tall panels fade instead of a frame</p>}

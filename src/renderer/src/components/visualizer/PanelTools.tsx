@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Crop, History, LayoutTemplate, Maximize2, MessageSquare, PencilLine, RefreshCw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import type { BubbleShape, Panel } from '@shared/types'
@@ -11,111 +11,12 @@ import { whenSaved } from '../panel-editor/panel-save-queue'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 import { croppable, CropDialog } from './CropDialog'
 import { PanelLayout } from './PanelLayout'
+import { ToolPopover, type Rect } from './ToolPopover'
 
 type Tool = Extract<InspectorTab, 'lines'> | 'versions' | 'layout'
 
-type Rect = { left: number; right: number; top: number; bottom: number }
-
 /** The tools that open a popover, in the order of the bar. */
 const POPOVER_TOOLS: { id: Tool; label: string; Icon: LucideIcon }[] = [{ id: 'lines', label: 'Lines', Icon: MessageSquare }]
-
-const POPOVER_WIDTH = 340
-const POPOVER_MARGIN = 8
-/** The room under or over a button that is enough to open there, before the side with more room is taken. */
-const POPOVER_COMFORT = 280
-const MIN_POPOVER_HEIGHT = 120
-
-/** Where a popover sits for the button it opens from: fixed to the window, so neither the strip nor the pane can clip it. */
-function spotFor(button: Element, avoid: Rect | null, height: number): { left: number; top?: number; bottom?: number; maxHeight: number; width: number } {
-  const rect = button.getBoundingClientRect()
-  const width = Math.min(POPOVER_WIDTH, window.innerWidth - 2 * POPOVER_MARGIN)
-  const left = Math.max(POPOVER_MARGIN, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - POPOVER_MARGIN))
-  const below = window.innerHeight - rect.bottom - POPOVER_MARGIN - 4
-  const above = rect.top - POPOVER_MARGIN - 4
-  // A button scrolled out of the window keeps the popover inside it, at the edge it left by.
-  const room = (edge: number): number => Math.max(POPOVER_MARGIN, Math.min(edge, window.innerHeight - MIN_POPOVER_HEIGHT - POPOVER_MARGIN))
-  const topEdge = room(rect.bottom + 4)
-  const bottomEdge = room(window.innerHeight - rect.top + 4)
-  // Where it would open over the bubble the user is working on, it goes below that bubble, or above it with no room below.
-  if (avoid !== null && below >= POPOVER_COMFORT && avoid.right > left && avoid.left < left + width && avoid.bottom > topEdge && avoid.top < topEdge + height) {
-    const under = room(avoid.bottom + POPOVER_MARGIN)
-    if (window.innerHeight - under - POPOVER_MARGIN >= POPOVER_COMFORT) return { left, width, top: under, maxHeight: window.innerHeight - under - POPOVER_MARGIN }
-    const over = room(window.innerHeight - avoid.top + POPOVER_MARGIN)
-    return { left, width, bottom: over, maxHeight: Math.max(window.innerHeight - over - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
-  }
-  return below >= POPOVER_COMFORT || below >= above
-    ? { left, width, top: topEdge, maxHeight: Math.max(window.innerHeight - topEdge - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
-    : { left, width, bottom: bottomEdge, maxHeight: Math.max(window.innerHeight - bottomEdge - POPOVER_MARGIN, MIN_POPOVER_HEIGHT) }
-}
-
-export interface ToolPopoverProps {
-  label: string
-  anchor: Element
-  /** Closes it, and `focusBack` says the focus should return to the button that opened it. */
-  onClose(focusBack: boolean): void
-  /** Opened by clicking a bubble, which keeps the focus for its keys: the popover does not take it. */
-  quiet?: boolean
-  /** The box of the bubble being worked on, which the popover keeps clear of. */
-  avoid?(): Rect | null
-  children: ReactNode
-}
-
-/** A panel of controls beside a tool's button, in the window's own layer. A press elsewhere or Escape closes it. */
-export function ToolPopover({ label, anchor, onClose, quiet = false, avoid, children }: ToolPopoverProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const place = (): ReturnType<typeof spotFor> => {
-    const height = ref.current?.getBoundingClientRect().height
-    return spotFor(anchor, avoid?.() ?? null, height !== undefined && height > 0 ? height : POPOVER_COMFORT)
-  }
-  const [spot, setSpot] = useState(place)
-
-  // The first focus goes in, so the next Tab is in the controls: the popover is at the end of the page, not by its button.
-  useEffect(() => {
-    if (!quiet) ref.current?.focus({ preventScroll: true })
-  }, [quiet])
-  // The bar slides along the card when the card is moved or the strip is resized: the button is somewhere else now.
-  // Also when the bubble moves: it is read on every render, and the spot only changes when it moves.
-  useLayoutEffect(() => {
-    const next = place()
-    setSpot((now) => (now.left === next.left && now.top === next.top && now.bottom === next.bottom && now.maxHeight === next.maxHeight && now.width === next.width ? now : next))
-  })
-
-  useEffect(() => {
-    function onPress(e: PointerEvent): void {
-      const target = e.target
-      // The panel's own bubbles are not outside it: pressing one is choosing the line it shows.
-      if (target instanceof Node && (ref.current?.contains(target) || anchor.closest('.strip-bubbles')?.contains(target))) return
-      onClose(false)
-    }
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === 'Escape' && !e.defaultPrevented && !e.isComposing) onClose(true)
-    }
-    // It follows its button when the strip scrolls or the window is resized. Its own list scrolling is not the strip's.
-    const follow = (e: Event): void => {
-      if (e.target instanceof Node && ref.current?.contains(e.target)) return
-      setSpot(place())
-    }
-    document.addEventListener('pointerdown', onPress, true)
-    document.addEventListener('keydown', onKey)
-    window.addEventListener('scroll', follow, true)
-    window.addEventListener('resize', follow)
-    return () => {
-      document.removeEventListener('pointerdown', onPress, true)
-      document.removeEventListener('keydown', onKey)
-      window.removeEventListener('scroll', follow, true)
-      window.removeEventListener('resize', follow)
-    }
-  }, [anchor, onClose])
-
-  const { left, top, bottom, maxHeight, width } = spot
-  return createPortal(
-    // Clicks stop here, in the React tree the portal shares with whatever opened it, so one never reaches a strip behind it.
-    <div ref={ref} className="tool-popover" role="dialog" aria-label={label} tabIndex={-1} style={{ left, top, bottom, width, maxHeight }} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-      {children}
-    </div>,
-    document.body
-  )
-}
 
 export interface PanelToolsProps {
   panel: Panel

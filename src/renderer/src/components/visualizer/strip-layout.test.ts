@@ -47,6 +47,11 @@ describe('layoutStrip', () => {
     expect(rows[2].slants).toEqual({ c: 'right', d: 'left' })
   })
 
+  it("uses a panel's own cut, and keeps the alternation going around it", () => {
+    const rows = layoutStrip([p('a', { frame: 'slanted' }), p('b', { frame: 'slanted', cut: 'top-down' }), p('c', { frame: 'slanted' }), p('d', { cut: 'top-up' })])
+    expect(rows.map((r) => r.slants)).toEqual([{ a: 'left' }, { b: 'top-down' }, { c: 'left' }, {}])
+  })
+
   it('gives a slanted tall panel no lean and does not advance the alternation', () => {
     const rows = layoutStrip([p('a', { frame: 'slanted', aspect: '1:3' }), p('b', { frame: 'slanted' }), p('c', { frame: 'slanted' })])
     expect(rows[0].slants).toEqual({})

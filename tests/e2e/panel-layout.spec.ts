@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
 
@@ -14,6 +15,7 @@ const panel = (description: string) => ({
     dialogue: []
   }
 })
+const shots = resolve(__dirname, '..', '..', 'test-results', 'panel-layout')
 const script = {
   turns: [
     { toolCalls: [{ name: 'create_character', input: { name: 'Mina', role: 'protagonist', appearanceLock: 'Teenage girl, silver bob haircut, amber eyes, red bomber jacket.' } }] },
@@ -47,5 +49,39 @@ test('Layout puts a panel and the next one side by side', async () => {
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1)
   expect(b.x).toBeGreaterThan(a.x + a.width)
   await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
+
+  // The Layout popover moves anywhere by its head, and stays there while it is used.
+  const dialog = page.getByRole('dialog', { name: 'Layout' })
+  const before = (await dialog.boundingBox())!
+  const grip = (await dialog.getByRole('button', { name: 'Move Layout' }).boundingBox())!
+  await page.mouse.move(grip.x + 30, grip.y + grip.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(grip.x + 30 + 400, grip.y + grip.height / 2 - 120, { steps: 6 })
+  await page.mouse.up()
+  const after = (await dialog.boundingBox())!
+  expect(Math.round(after.x - before.x)).toBe(400)
+  expect(Math.round(after.y - before.y)).toBe(-120)
+
+  // A slanted cut from the Layout's frames: the top falls to the right, the picture is cut to it, nothing is redrawn.
+  const frames = page.getByRole('dialog', { name: 'Layout' }).getByRole('group', { name: 'Panel frame' })
+  await frames.getByRole('button', { name: 'Top falls' }).click()
+  const stored = async (id: string) => readProjectJson(projectsRoot, `panels/${id}.json`)
+  await expect.poll(async () => ((await stored(firstId)) as { cut: string }).cut).toBe('top-down')
+  expect((await stored(firstId)).frame).toBe('slanted')
+  expect((await stored(firstId)).versions).toHaveLength(1)
+  await expect(cards.nth(0)).toHaveAttribute('data-slant', 'top-down')
+  await expect(frames.getByRole('button', { name: 'Top falls' })).toHaveAttribute('aria-pressed', 'true')
+  expect(Math.round((await dialog.boundingBox())!.x)).toBe(Math.round(after.x))
+  await page.screenshot({ path: resolve(shots, 'frames.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
+  await cards.nth(1).click({ position: { x: 20, y: 40 } })
+  await page.getByRole('button', { name: 'Layout', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Layout' }).getByRole('group', { name: 'Panel frame' }).getByRole('button', { name: 'Leans left' }).click()
+  await expect(cards.nth(1)).toHaveAttribute('data-slant', 'lean-left')
+  await page.keyboard.press('Escape')
+  const pane = (await page.locator('.strip-canvas').boundingBox())!
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + 300)
+  await page.mouse.wheel(0, -3000)
+  await page.screenshot({ path: resolve(shots, 'cut-strip.png'), animations: 'disabled' })
   await app.close()
 })

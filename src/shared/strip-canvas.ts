@@ -3,6 +3,7 @@
 
 import type { Panel, PanelAspect, PanelGap, PanelPlacement } from '@shared/types'
 import { isFinished } from '@shared/export-status'
+import type { PanelSlant } from '@shared/panel-cuts'
 import { aspectRatio, layoutStrip, rowShares } from '@shared/strip-layout'
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 
@@ -23,8 +24,8 @@ export interface PlacedPanel {
   height: number
   /** The width over the strip's width. */
   share: number
-  /** Which way a slanted panel leans; tall panels fade instead, so they have none. */
-  slant?: 'left' | 'right'
+  /** How a slanted panel is cut; tall panels fade instead, so they have none. */
+  slant?: PanelSlant
 }
 
 /** A panel's height at `width`. */
@@ -40,7 +41,7 @@ export function panelHeight(width: number, aspect: PanelAspect): number {
  * inserted into the flow never lands on top of one placed below it. Slants are numbered over the whole list.
  */
 export function resolveStrip(panels: Panel[]): PlacedPanel[] {
-  const slants: Record<string, 'left' | 'right'> = {}
+  const slants: Record<string, PanelSlant> = {}
   for (const row of layoutStrip(panels)) Object.assign(slants, row.slants)
 
   const out: PlacedPanel[] = []

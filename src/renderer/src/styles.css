@@ -2119,19 +2119,13 @@ kbd {
 }
 
 /*
- * Slanted: the top and bottom edges cut on a slope (4% of the panel's width: the row's `cqw` times the panel's share),
- * leaning the way the layout says. The media is ink cut to the slope; the image and the lettering sit in it cut 2.5px
- * smaller, so the ink shows as the frame. Only the media is cut: the card's outline and toolbar stay whole.
+ * Slanted: edges cut on a slope 4% of the panel's width deep (the row's `cqw` times the panel's share), in the panel's
+ * cut, or the automatic wedge that alternates down the strip. The cut's polygons (`--cut`, `--cut-inner`) come from
+ * `cutStyle` in src/shared/panel-cuts.ts, set on the shape. The media is ink cut to them; the image and the lettering sit
+ * in it cut 2.5px smaller, so the ink shows as the frame. Only the media is cut: the card's outline and toolbar stay whole.
  */
 .panel-shape[data-frame='slanted'] {
   --slant: calc(4cqw * var(--share, 1));
-  --cut: polygon(0 0, 100% var(--slant), 100% calc(100% - var(--slant)), 0 100%);
-  --cut-inner: polygon(2.5px 2.5px, calc(100% - 2.5px) calc(var(--slant) + 2.5px), calc(100% - 2.5px) calc(100% - var(--slant) - 2.5px), 2.5px calc(100% - 2.5px));
-}
-
-.panel-shape[data-frame='slanted'][data-slant='right'] {
-  --cut: polygon(0 var(--slant), 100% 0, 100% 100%, 0 calc(100% - var(--slant)));
-  --cut-inner: polygon(2.5px calc(var(--slant) + 2.5px), calc(100% - 2.5px) 2.5px, calc(100% - 2.5px) calc(100% - 2.5px), 2.5px calc(100% - var(--slant) - 2.5px));
 }
 
 .panel-shape[data-frame='slanted'] .panel-media {
@@ -2287,6 +2281,37 @@ kbd {
 
 .tool-popover:focus {
   outline: none;
+}
+
+/* The head a popover is moved by (ToolPopover): a grip and its name, across its top. */
+.tool-popover-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin: -6px -4px 8px;
+  padding: 2px 4px 6px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 4px 4px 0 0;
+}
+
+.tool-popover-head:active {
+  cursor: grabbing;
+}
+
+.tool-popover-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tool-popover[data-moved] {
+  box-shadow: var(--float-shadow), 0 0 0 1px var(--accent-soft);
 }
 
 /* The inspector inside is the focus mode's, which fills a column; here it takes what it needs and scrolls past the
@@ -4620,4 +4645,49 @@ kbd {
 .layout-icon rect.layout-icon-this {
   fill: var(--accent-soft);
   stroke: var(--accent);
+}
+
+/* The Layout popover's frames: each a button with the panel's outline cut as it would be (FramePicker). */
+.frame-picker {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.frame-choice {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 5px 2px 4px;
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
+.frame-icon {
+  width: 20px;
+  height: 25px;
+}
+
+.frame-icon :is(rect, polygon) {
+  fill: var(--accent-soft);
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.frame-icon .frame-icon-faint {
+  stroke-dasharray: 2 2;
+  stroke-width: 1;
+}
+
+.frame-choice[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }

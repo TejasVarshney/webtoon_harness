@@ -1,5 +1,6 @@
 import { useEffect, useRef, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
+import { cutStyle, type PanelSlant } from '@shared/panel-cuts'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { PanelArt } from './PanelArt'
@@ -10,7 +11,7 @@ export interface PanelCardProps {
   panel: Panel
   selected: boolean
   /** Which way a slanted panel leans, from the strip's layout. */
-  slant?: 'left' | 'right'
+  slant?: PanelSlant
   /** Its share of the row's width (see `rowShares`), which scales the lettering. A lone panel has the whole row. */
   share?: number
   /** Where it sits on the strip canvas, in strip px (see `resolveStrip`). Without it the card flows in its row. */
@@ -49,6 +50,7 @@ export function PanelCard({ panel, selected, slant, share = 1, place, mode = 'ed
   const shape = {
     '--ar': String(aspectRatio(panel.aspect)),
     '--share': String(share),
+    ...(slant === undefined ? {} : cutStyle(slant)),
     ...(place === undefined ? {} : { position: 'absolute', left: `${place.x}px`, top: `${place.y}px`, width: `${place.width}px`, height: `${place.height}px` })
   } as CSSProperties
 

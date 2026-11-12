@@ -35,6 +35,7 @@ import type {
   LocationStateSchema,
   ModelConfigSchema,
   PanelAspectSchema,
+  PanelCutSchema,
   PanelCharacterSchema,
   PanelDraftSchema,
   PanelGapSchema,
@@ -121,6 +122,7 @@ export type LocationPatch = z.infer<typeof LocationPatchSchema>
 export type LocationStateInput = z.infer<typeof LocationStateInputSchema>
 
 export type PanelAspect = z.infer<typeof PanelAspectSchema>
+export type PanelCut = z.infer<typeof PanelCutSchema>
 export type DrawAspect = z.infer<typeof DrawAspectSchema>
 export type PanelGap = z.infer<typeof PanelGapSchema>
 export type PanelGutter = z.infer<typeof PanelGutterSchema>

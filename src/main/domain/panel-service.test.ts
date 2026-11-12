@@ -522,6 +522,15 @@ describe('PanelService update', () => {
     expect(panel.versions).toHaveLength(1)
   })
 
+  it('stores a slanted cut, keeps it through other frames, and clears it with null', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    expect(p.cut).toBeNull()
+    expect((await svc.update(ctx, p.id, { frame: 'slanted', cut: 'top-down' }, USER)).panel).toMatchObject({ frame: 'slanted', cut: 'top-down' })
+    expect((await svc.update(ctx, p.id, { frame: 'bordered' }, USER)).panel).toMatchObject({ frame: 'bordered', cut: 'top-down' })
+    expect((await svc.update(ctx, p.id, { frame: 'slanted', cut: null }, USER)).panel).toMatchObject({ frame: 'slanted', cut: null })
+  })
+
   it('validates the merged panel and leaves the file untouched on error', async () => {
     const { svc, epi, ctx } = await setup()
     const p = (await svc.create(ctx, draft(epi.id), USER)).panel
