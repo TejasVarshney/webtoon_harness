@@ -854,19 +854,20 @@ describe('PanelWorkspace', () => {
       await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(3))
     })
 
-    it('moves a zoomed sketch with a middle-button drag, and draws nothing', async () => {
+    it('moves the sketch with a middle- or right-button drag, and draws nothing', async () => {
       fakeCanvas()
       withBlank()
       const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: `panels/${B}/sketch-1.png` }) })
       const v = screen.getByTestId('sketch-viewport')
-      for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
-      Object.defineProperty(v, 'scrollLeft', { configurable: true, writable: true, value: 100 })
-      Object.defineProperty(v, 'scrollTop', { configurable: true, writable: true, value: 100 })
       const canvas = screen.getByTestId('sketch-canvas')
-      fireEvent.pointerDown(canvas, { button: 1, buttons: 4, clientX: 50, clientY: 50 })
-      fireEvent.pointerMove(v, { buttons: 4, clientX: 80, clientY: 90 })
-      fireEvent.pointerUp(v, { button: 1, clientX: 80, clientY: 90 })
-      expect([v.scrollLeft, v.scrollTop]).toEqual([70, 60])
+      // Where the panel ends up is the paper view's (paper-view.test.ts); here, the drags are pans and not strokes.
+      for (const button of [1, 2]) {
+        fireEvent.pointerDown(canvas, { button, buttons: button === 1 ? 4 : 2, clientX: 50, clientY: 50 })
+        expect(v).toHaveAttribute('data-pan', 'panning')
+        fireEvent.pointerMove(v, { buttons: button === 1 ? 4 : 2, clientX: 80, clientY: 90 })
+        fireEvent.pointerUp(v, { button, clientX: 80, clientY: 90 })
+        expect(v).not.toHaveAttribute('data-pan', 'panning')
+      }
       expect(drawn).toEqual([])
       expect(within(screen.getByRole('toolbar', { name: 'Sketch tools' })).getByRole('button', { name: 'Undo stroke' })).toBeDisabled()
       await act(async () => undefined)

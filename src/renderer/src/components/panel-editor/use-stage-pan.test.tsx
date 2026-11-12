@@ -69,6 +69,27 @@ describe('useStagePan', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  it('hands each drag step to a stage that moves its own content, even when everything fits', () => {
+    const moves: [number, number][] = []
+    function Moving() {
+      const viewport = useRef<HTMLDivElement>(null)
+      const pan = useStagePan(viewport, (dx, dy) => moves.push([dx, dy]))
+      return <div ref={viewport} data-testid="moving" data-pan={pan ?? undefined} />
+    }
+    render(<Moving />)
+    const v = screen.getByTestId('moving')
+    fireEvent.pointerDown(v, { button: 2, buttons: 2, clientX: 50, clientY: 50 })
+    expect(v).toHaveAttribute('data-pan', 'panning')
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 40, clientY: 45 })
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 70, clientY: 45 })
+    fireEvent.pointerUp(v, { button: 2 })
+    expect(moves).toEqual([
+      [-10, -5],
+      [30, 0]
+    ])
+    expect(v.scrollLeft).toBe(0)
+  })
+
   it('keeps the context menu off the stage even when there is nothing to move', () => {
     const { panel } = mount(100)
     expect(fireEvent.contextMenu(panel)).toBe(false)

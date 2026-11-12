@@ -210,7 +210,8 @@ test('a sketch drawn on a new panel is the layout reference of its generation', 
   await app.close()
 })
 
-// The sketch's shapes land where they are dragged, and a zoomed sketch scrolls and still draws under the pointer.
+// The sketch's shapes land where they are dragged; a zoomed sketch grows past its frame, the plain wheel zooms it, a
+// right-button drag moves it but never out of the frame, and it still draws under the pointer.
 test('sketch shapes and zoom draw where the pointer is', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
@@ -240,15 +241,22 @@ test('sketch shapes and zoom draw where the pointer is', async () => {
   const zoomed = (await canvas.boundingBox())!
   expect(zoomed.width / box.width).toBeCloseTo(1.5625, 1)
   const viewport = workspace.getByTestId('sketch-viewport')
-  expect(await viewport.evaluate((el: any) => el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth)).toBe(true)
-
-  // Ctrl + wheel zooms further, at the pointer.
   const view = (await viewport.boundingBox())!
+  expect(zoomed.height).toBeGreaterThan(view.height)
+
+  // The wheel on its own zooms further, at the pointer.
   await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
-  await page.keyboard.down('Control')
   await page.mouse.wheel(0, -200)
-  await page.keyboard.up('Control')
   await expect.poll(async () => parseInt((await zoom.getByRole('button', { name: /^Zoom \d+%/ }).textContent()) ?? '0', 10)).toBeGreaterThan(156)
+
+  // A right-button drag moves the panel, past the frame's edge, but a quarter of the frame stays covered however far it goes.
+  const beforePan = (await canvas.boundingBox())!
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2 + 40, { steps: 4 })
+  await page.mouse.up({ button: 'right' })
+  const afterPan = (await canvas.boundingBox())!
+  expect(afterPan.y).not.toBeCloseTo(beforePan.y, 0)
 
   // A pen dot in the middle of the visible part lands on the canvas pixel under the pointer.
   await workspace.getByRole('button', { name: 'Pen' }).click()
@@ -257,6 +265,18 @@ test('sketch shapes and zoom draw where the pointer is', async () => {
   const y = view.y + view.height / 2
   await page.mouse.click(x, y)
   expect(await inkAt((x - box.x) / box.width, (y - box.y) / box.height)).toBe(true)
+
+  // However far the drag goes, a quarter of the frame stays covered.
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(view.x + view.width / 2 + 3000, view.y + view.height / 2 + 3000, { steps: 4 })
+  await page.mouse.up({ button: 'right' })
+  const far = (await canvas.boundingBox())!
+  const shown = Math.min(far.y + far.height, view.y + view.height) - Math.max(far.y, view.y)
+  expect(far.y).toBeGreaterThan(view.y)
+  expect(shown).toBeGreaterThanOrEqual(Math.min(far.height, view.height) * 0.25 - 4)
+  expect(shown).toBeLessThanOrEqual(Math.min(far.height, view.height) * 0.25 + 4)
+  expect(await inkAt(0.4, 0.2)).toBe(true)
 
   await zoom.getByRole('button', { name: /^Zoom \d+%/ }).click()
   await expect(zoom.getByRole('button', { name: /^Zoom \d+%/ })).toHaveText('100%')

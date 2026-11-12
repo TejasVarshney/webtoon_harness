@@ -7,10 +7,11 @@ import { useAppStore } from '../../stores/app-store'
 import { STAGE_ROW_PX } from './bubble-placement'
 import { useStageFit } from './PanelStage'
 import { SketchToolbar } from './SketchToolbar'
+import { usePaperView } from './use-paper-view'
 import { useSketchPad } from './use-sketch-pad'
 import { useSketchShortcuts } from './use-sketch-shortcuts'
 import { useStagePan } from './use-stage-pan'
-import { useStageZoom, ZoomBar } from './use-stage-zoom'
+import { ZoomBar } from './use-stage-zoom'
 
 export interface SketchStageProps {
   panel: Panel
@@ -23,29 +24,28 @@ export interface SketchStageProps {
 }
 
 /**
- * The stage in sketch mode: the panel's shape, laid out and fitted as on the panel stage, holding a canvas the user
- * scribbles the scene on. Under the canvas is white paper, or the panel's picture, faint, to trace over (Picture hides
- * it). A rail of tools sits at the stage's left edge (pen, eraser, line, rectangle, ellipse, three widths, undo), New
- * sketch at its top right wipes the canvas, and the zoom bar is at its bottom right; Ctrl and the wheel (or a pinch)
- * zoom at the pointer, and a zoomed sketch scrolls, or moves with a right- or middle-button drag or a drag with Space held
- * (`useStagePan`), which draws nothing. The sketch is stored as the user draws, always as ink on white
- * paper, never with the picture, and sent with the next generation as a layout reference.
+ * The stage in sketch mode: the panel's shape, laid out as on the panel stage, holding a canvas the user scribbles the
+ * scene on. Under the canvas is white paper, or the panel's picture, faint, to trace over (Picture hides it). A rail of
+ * tools sits at the stage's left edge (pen, eraser, line, rectangle, ellipse, three widths, undo), New sketch at its
+ * top right wipes the canvas, and the zoom bar is at its bottom right. The panel sits in a frame as high as it is at the
+ * fit (`usePaperView`): the wheel zooms at the pointer, and a right- or middle-button drag, or a drag with Space held
+ * (`useStagePan`), moves it any way, never out of sight, and draws nothing. The sketch is stored as the user draws,
+ * always as ink on white paper, never with the picture, and sent with the next generation as a layout reference.
  */
 export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: SketchStageProps) {
   const projectId = useAppStore((s) => s.projectId)
   const stageRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const shapeRef = useRef<HTMLDivElement>(null)
+  // The panel's laid-out size, and the scale that fits it to the stage: the frame is as high as the fitted panel.
   const fit = useStageFit(stageRef, shapeRef)
   const pad = useSketchPad(panel)
-  const [ownZoom, setOwnZoom] = useState(1)
-  const zoom = heldZoom ?? ownZoom
-  const zoomControl = useStageZoom(viewportRef, shapeRef, zoom, onZoom ?? setOwnZoom)
-  const pan = useStagePan(viewportRef)
-  useSketchShortcuts({ pad, zoom: { zoom, control: zoomControl } })
+  const view = usePaperView(viewportRef, fit === null ? 1 : fit.width / fit.height, { height: fit === null ? null : fit.height * fit.scale, zoom: heldZoom, onZoom })
+  const pan = useStagePan(viewportRef, view.move)
+  useSketchShortcuts({ pad, zoom: { zoom: view.zoom, control: view.control } })
   const [showPicture, setShowPicture] = useState(true)
   const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
-  const scale = fit === null ? null : fit.scale * zoom
+  const scale = fit === null || view.paper.width <= 0 ? null : view.paper.width / fit.width
 
   const current = panel.versions.find((v) => v.id === panel.currentVersionId)
   const picture = current?.status === 'ready' && current.imagePath && projectId !== null ? assetUrl(projectId, current.imagePath) : null
@@ -65,8 +65,8 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
           New sketch
         </button>
       </div>
-      <div ref={viewportRef} className="stage-viewport" data-testid="sketch-viewport" data-pan={pan ?? undefined}>
-        <div className="stage-fit" style={fit === null || scale === null ? undefined : { width: fit.width * scale, height: fit.height * scale }}>
+      <div ref={viewportRef} className="stage-viewport paper-frame" data-testid="sketch-viewport" data-pan={pan ?? undefined} style={view.frameStyle}>
+        <div className="stage-fit" style={scale === null ? undefined : { left: view.paper.x, top: view.paper.y, width: view.paper.width, height: view.paper.height }}>
           <div className="stage-row" style={{ width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})` }}>
             <div ref={shapeRef} className="panel-shape" data-frame={isTallAspect(panel.aspect) ? 'fade' : panel.frame} data-slant={slant} style={shape}>
               <div className="panel-media sketch-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
@@ -77,7 +77,7 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
           </div>
         </div>
       </div>
-      <ZoomBar zoom={zoom} control={zoomControl}>
+      <ZoomBar zoom={view.zoom} control={view.control} wheel="plain">
         <p className="sketch-status" role="status">
           {pad.error !== null ? <span className="error">{`Sketch not saved: ${pad.error}`}</span> : pad.saving ? 'Saving sketch…' : null}
         </p>

@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 /** `ready`: Space is held over a stage that can move, so a left press pans. `panning`: a pan's drag is going. */
 export type StagePan = 'ready' | 'panning' | null
@@ -21,10 +21,17 @@ function canPan(v: HTMLElement): boolean {
  * A pan's press, and the click or double-click it makes, are the pan's alone: they are stopped at the viewport on the
  * way down, so they neither select, drag nor add a bubble nor start a stroke. A plain left press is the stage's.
  * Returns what the cursor shows: an open hand while Space is held, a closed one while panning.
+ *
+ * With `move`, the stage moves its own content instead of scrolling: each drag step's travel goes to `move`, which
+ * keeps it in sight, and a pan is always possible, whatever fits.
  */
-export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
+export function useStagePan(viewport: RefObject<HTMLElement | null>, move?: (dx: number, dy: number) => void): StagePan {
   const [ready, setReady] = useState(false)
   const [panning, setPanning] = useState(false)
+  const moveRef = useRef(move)
+  useLayoutEffect(() => {
+    moveRef.current = move
+  })
 
   useEffect(() => {
     const v = viewport.current
@@ -33,7 +40,9 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     /** The pointer is over the viewport. */
     let over = false
     let space = false
-    let drag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null
+    let drag: { pointerId: number; x: number; y: number; left: number; top: number; lastX: number; lastY: number } | null = null
+    /** Something to move: content the viewport scrolls over, or a stage that moves its own. */
+    const movable = (): boolean => moveRef.current !== undefined || canPan(el)
     /** The last press was a pan's: the click and double-click that follow it are not the stage's. */
     let pressPanned = false
 
@@ -49,7 +58,7 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     }
     function onKeyDown(e: KeyboardEvent): void {
       if (!isSpace(e) || e.ctrlKey || e.altKey || e.metaKey || inText(e.target)) return
-      if (drag === null && !(over && canPan(el))) return
+      if (drag === null && !(over && movable())) return
       // Held, Space would press a focused button, or scroll the column.
       e.preventDefault()
       if (space) return
@@ -68,10 +77,10 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     }
 
     function onPointerDown(e: PointerEvent): void {
-      pressPanned = drag === null && (e.button === 1 || e.button === 2 || (e.button === 0 && space)) && !inText(e.target) && canPan(el)
+      pressPanned = drag === null && (e.button === 1 || e.button === 2 || (e.button === 0 && space)) && !inText(e.target) && movable()
       if (!pressPanned) return
       e.stopPropagation()
-      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+      drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop, lastX: e.clientX, lastY: e.clientY }
       try {
         el.setPointerCapture?.(e.pointerId)
       } catch {
@@ -82,6 +91,13 @@ export function useStagePan(viewport: RefObject<HTMLElement | null>): StagePan {
     function onPointerMove(e: PointerEvent): void {
       if (drag === null || e.pointerId !== drag.pointerId) return
       e.stopPropagation()
+      const move = moveRef.current
+      if (move !== undefined) {
+        move(e.clientX - drag.lastX, e.clientY - drag.lastY)
+        drag.lastX = e.clientX
+        drag.lastY = e.clientY
+        return
+      }
       el.scrollLeft = drag.left - (e.clientX - drag.x)
       el.scrollTop = drag.top - (e.clientY - drag.y)
     }

@@ -1567,6 +1567,18 @@ kbd {
   margin: auto;
 }
 
+/* A sketch's frame does not scroll: the panel is placed in it, moved and zoomed by usePaperView, and clipped to it. */
+.stage-viewport.paper-frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.stage-viewport.paper-frame > .stage-fit {
+  position: absolute;
+  margin: 0;
+}
+
 /* A zoomed stage moves with a middle-button drag, or a drag with Space held (useStagePan). While it does, the hand is
    the only cursor: nothing under it is pressed, so a bubble's grab or the sketch's crosshair would say otherwise. */
 .stage-viewport[data-pan='ready'],
@@ -4328,16 +4340,17 @@ kbd {
   gap: 6px;
 }
 
-/* A window onto the paper: about half the window high, scrolling once the paper is zoomed past it. The zoom bar sits at
-   its bottom right, as on a panel's stage. */
+/* A frame the paper moves and zooms in (`usePaperView` sets its height and the paper's place). The zoom bar sits at its
+   bottom right, as on a panel's stage. */
 .generate-sketch-stage {
   position: relative;
 }
 
 .generate-sketch-viewport {
-  display: flex;
-  max-height: calc(50vh + 2px);
-  overflow: auto;
+  position: relative;
+  min-height: 160px;
+  overflow: hidden;
+  background: var(--raised);
   border-radius: var(--radius-card);
 }
 
@@ -4351,13 +4364,8 @@ kbd {
   cursor: grabbing !important;
 }
 
-/* At the fit the paper is as wide as the column allows, but never taller than about half the window, at the draft's
-   aspect; the zoom scales that. The auto margins centre it while it is smaller than the viewport. */
 .generate-sketch-paper {
-  position: relative;
-  flex: none;
-  width: calc(min(100%, var(--paper-ratio) * 50vh) * var(--zoom, 1));
-  margin: auto;
+  position: absolute;
   background: #fff;
   border: 1px solid var(--border);
   box-sizing: border-box;

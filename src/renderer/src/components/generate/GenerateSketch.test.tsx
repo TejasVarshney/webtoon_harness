@@ -106,33 +106,83 @@ describe('GenerateSketch', () => {
     expect(useGenerateStore.getState().isDirty()).toBe(false)
   })
 
-  it('zooms with the bar, the keys and Ctrl and the wheel, and goes back to the fit', async () => {
+  it('zooms with the bar, the keys and the wheel, and goes back to the fit', async () => {
     render(<GenerateSketch />)
-    const paper = (): string => (screen.getByTestId('generate-sketch-canvas').parentElement as HTMLElement).style.getPropertyValue('--zoom')
-    expect(paper()).toBe('1')
+    const zoom = (): string => screen.getByTestId('generate-sketch-paper').style.getPropertyValue('--zoom')
+    expect(zoom()).toBe('1')
     expect(screen.getByRole('button', { name: 'Zoom 100%, fit to the stage' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
-    expect(paper()).toBe('1.25')
+    expect(zoom()).toBe('1.25')
     fireEvent.keyDown(window, { key: '+' })
-    expect(paper()).toBe('1.5625')
-    fireEvent.wheel(screen.getByTestId('generate-sketch-viewport'), { ctrlKey: true, deltaY: 200 })
-    expect(Number(paper())).toBeLessThan(1.5625)
+    expect(zoom()).toBe('1.5625')
+    // The plain wheel zooms, no Ctrl needed: down zooms out, up zooms in.
+    fireEvent.wheel(screen.getByTestId('generate-sketch-viewport'), { deltaY: 200 })
+    expect(Number(zoom())).toBeLessThan(1.5625)
+    fireEvent.wheel(screen.getByTestId('generate-sketch-viewport'), { deltaY: -400 })
+    expect(Number(zoom())).toBeGreaterThan(1.5625)
     fireEvent.keyDown(window, { key: '0' })
-    expect(paper()).toBe('1')
+    expect(zoom()).toBe('1')
   })
 
-  it('moves the zoomed sketch with a right-button drag, and draws nothing', () => {
-    render(<GenerateSketch />)
-    const v = screen.getByTestId('generate-sketch-viewport')
-    for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
-    const canvas = screen.getByTestId('generate-sketch-canvas')
-    fireEvent.pointerDown(canvas, { button: 2, buttons: 2, clientX: 50, clientY: 50 })
-    expect(v).toHaveAttribute('data-pan', 'panning')
-    fireEvent.pointerMove(v, { buttons: 2, clientX: 20, clientY: 10 })
-    fireEvent.pointerUp(v, { button: 2 })
-    expect(v.scrollLeft).toBe(30)
-    expect(v.scrollTop).toBe(40)
-    expect(useGenerateStore.getState().draft.sketchPng).toBeNull()
+  describe('in a 600 by 400 frame', () => {
+    // jsdom has no layout: the frame is 600 wide in a window 800 high, so a 2:3 paper fits it at 266.67 by 400.
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('generate-sketch-viewport') ? 600 : 0
+      })
+      vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800)
+    })
+
+    const paper = () => {
+      const style = screen.getByTestId('generate-sketch-paper').style
+      return { left: parseFloat(style.left), top: parseFloat(style.top), width: parseFloat(style.width) }
+    }
+    const drag = (dx: number, dy: number, button = 2): void => {
+      const canvas = screen.getByTestId('generate-sketch-canvas')
+      const v = screen.getByTestId('generate-sketch-viewport')
+      fireEvent.pointerDown(canvas, { button, buttons: button === 2 ? 2 : 4, clientX: 300, clientY: 200 })
+      fireEvent.pointerMove(v, { buttons: 2, clientX: 300 + dx, clientY: 200 + dy })
+      fireEvent.pointerUp(v, { button })
+    }
+
+    it('puts the paper in the middle of the frame at the fit', () => {
+      render(<GenerateSketch />)
+      expect(screen.getByTestId('generate-sketch-viewport').style.height).toBe('400px')
+      expect(paper().width).toBeCloseTo(266.67, 1)
+      expect(paper().left).toBeCloseTo(166.67, 1)
+      expect(paper().top).toBeCloseTo(0, 5)
+    })
+
+    it('moves the paper sideways with a right-button drag at the fit, and draws nothing', () => {
+      render(<GenerateSketch />)
+      drag(-100, 0)
+      expect(paper().left).toBeCloseTo(66.67, 1)
+      expect(useGenerateStore.getState().draft.sketchPng).toBeNull()
+    })
+
+    it('moves the paper past the frame, but always leaves a quarter of it in view', () => {
+      render(<GenerateSketch />)
+      // 266.67 by 400: a quarter of its width, 66.67, and of its height, 100, stay in the frame.
+      drag(-1000, -1000)
+      expect(paper().left).toBeCloseTo(-200, 1)
+      expect(paper().top).toBeCloseTo(-300, 1)
+      drag(2000, 2000)
+      expect(paper().left).toBeCloseTo(533.33, 1)
+      expect(paper().top).toBeCloseTo(300, 1)
+    })
+
+    it('zoomed in, moves past the frame too, leaving a quarter of the frame covered', async () => {
+      render(<GenerateSketch />)
+      for (let i = 0; i < 4; i++) await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+      expect(paper().width).toBeGreaterThan(600)
+      drag(5000, 5000)
+      expect(paper().left).toBeCloseTo(450, 5)
+      expect(paper().top).toBeCloseTo(300, 5)
+      drag(-9000, -9000)
+      const style = screen.getByTestId('generate-sketch-paper').style
+      expect(paper().left + parseFloat(style.width)).toBeCloseTo(150, 5)
+      expect(paper().top + parseFloat(style.height)).toBeCloseTo(100, 5)
+    })
   })
 
   it('picks tools and undoes from the keyboard, but not while typing elsewhere', () => {
