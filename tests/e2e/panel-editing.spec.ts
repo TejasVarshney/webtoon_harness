@@ -240,12 +240,13 @@ test('edit a panel in focus mode and find the changes on the strip', async () =>
   expect(left).toMatch(/%$/)
   expect(Math.abs(parseFloat(left) - 25)).toBeLessThanOrEqual(2)
 
-  // 9. Size, from the panel's tools: the width on the strip, in place.
-  await page.getByRole('button', { name: 'Size', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Size' }).getByRole('button', { name: 'Full width' }).click()
+  // 9. Layout, from the panel's tools: the width on the strip, in place.
+  await page.getByRole('button', { name: 'Layout', exact: true }).click()
+  const layoutTool = page.getByRole('dialog', { name: 'Layout' })
+  await layoutTool.getByRole('group', { name: 'Panel width' }).getByRole('button', { name: 'Full width' }).click()
   await expect.poll(async () => (await stored()).placement?.width).toBe(440)
-  await expect(page.getByRole('dialog', { name: 'Size' }).getByRole('button', { name: 'Full width' })).toHaveAttribute('aria-pressed', 'true')
-  await page.screenshot({ path: resolve(shots, 'size-popover.png'), animations: 'disabled' })
+  await expect(layoutTool.getByRole('group', { name: 'Panel width' }).getByRole('button', { name: 'Full width' })).toHaveAttribute('aria-pressed', 'true')
+  await page.screenshot({ path: resolve(shots, 'layout-popover.png'), animations: 'disabled' })
   await page.keyboard.press('Escape')
 
   // 10. Crop, from the panel's tools: a smaller square box makes a new version of that part of the picture, and the

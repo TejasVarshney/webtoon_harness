@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Crop, History, Maximize2, MessageSquare, PencilLine, Proportions, RefreshCw, Trash2, Upload, type LucideIcon } from 'lucide-react'
+import { Crop, History, LayoutTemplate, Maximize2, MessageSquare, PencilLine, RefreshCw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import type { BubbleShape, Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
@@ -10,9 +10,9 @@ import { PanelInspector, type InspectorTab } from '../panel-editor/PanelInspecto
 import { whenSaved } from '../panel-editor/panel-save-queue'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
 import { croppable, CropDialog } from './CropDialog'
-import { PanelSize } from './PanelSize'
+import { PanelLayout } from './PanelLayout'
 
-type Tool = Extract<InspectorTab, 'lines'> | 'versions' | 'size'
+type Tool = Extract<InspectorTab, 'lines'> | 'versions' | 'layout'
 
 type Rect = { left: number; right: number; top: number; bottom: number }
 
@@ -124,8 +124,6 @@ export interface PanelToolsProps {
   onSelectLine(i: number | null): void
   /** A click on a bubble (new each time) opens Lines on its line; a drag of it does not. */
   linesRequest: { index: number } | null
-  /** Where the panel is drawn on the strip, for Size's widths. */
-  place: { x: number; y: number; width: number }
   /** The Add bubble menu's choice, and whether a new bubble is being typed (the menu waits for it). */
   onAddBubble(shape: BubbleShape): void
   addingBubble: boolean
@@ -133,13 +131,13 @@ export interface PanelToolsProps {
 
 /**
  * The tools on a selected panel, so most edits happen where the panel sits: the lines in a popover, a crop, the
- * versions, the size (shape and width), an upload, a redraw, the sketch, focus mode and delete. Lines is focus mode's Lines tab, and saves the same way;
+ * versions, the layout (arranging panels, shape and width), an upload, a redraw, the sketch, focus mode and delete. Lines is focus mode's Lines tab, and saves the same way;
  * the cast, items and scene are in focus mode's other tabs. Sketch and Focus open focus mode, whose stage is larger.
  * Clicking a bubble on the strip opens Lines on its line, and Add bubble adds one to the panel.
  * Nothing here is a press on the card: clicks, double clicks and presses stop at it, popovers and dialog included, so
  * they neither select, open, drag nor clear the selection on the strip.
  */
-export function PanelTools({ panel, place, selectedLine, onSelectLine, linesRequest, onAddBubble, addingBubble }: PanelToolsProps) {
+export function PanelTools({ panel, selectedLine, onSelectLine, linesRequest, onAddBubble, addingBubble }: PanelToolsProps) {
   const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement; quiet?: boolean } | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [cropping, setCropping] = useState(false)
@@ -237,8 +235,8 @@ export function PanelTools({ panel, place, selectedLine, onSelectLine, linesRequ
         <button type="button" className="icon-button" aria-label="Versions" title="Versions" aria-haspopup="dialog" aria-expanded={pressed('versions')} onClick={(e) => toggle('versions', e.currentTarget)}>
           <History size={15} aria-hidden="true" />
         </button>
-        <button type="button" className="icon-button" aria-label="Size" title="Shape and width" aria-haspopup="dialog" aria-expanded={pressed('size')} onClick={(e) => toggle('size', e.currentTarget)}>
-          <Proportions size={15} aria-hidden="true" />
+        <button type="button" className="icon-button" aria-label="Layout" title="Layout: arrange panels, shape and width" aria-haspopup="dialog" aria-expanded={pressed('layout')} onClick={(e) => toggle('layout', e.currentTarget)}>
+          <LayoutTemplate size={15} aria-hidden="true" />
         </button>
         <AddBubbleMenu disabled={addingBubble} onAdd={onAddBubble} />
         <span className="panel-tools-divider" aria-hidden="true" />
@@ -266,11 +264,11 @@ export function PanelTools({ panel, place, selectedLine, onSelectLine, linesRequ
       )}
 
       {open !== null && (
-        <ToolPopover key={open.tool} label={open.tool === 'lines' ? 'Lines' : open.tool === 'size' ? 'Size' : 'Versions'} anchor={open.anchor} onClose={close} quiet={open.quiet} avoid={selectedBubble}>
+        <ToolPopover key={open.tool} label={open.tool === 'lines' ? 'Lines' : open.tool === 'layout' ? 'Layout' : 'Versions'} anchor={open.anchor} onClose={close} quiet={open.quiet} avoid={selectedBubble}>
           {open.tool === 'versions' ? (
             <VersionSwitcher panel={panel} />
-          ) : open.tool === 'size' ? (
-            <PanelSize panel={panel} place={place} />
+          ) : open.tool === 'layout' ? (
+            <PanelLayout panel={panel} />
           ) : (
             <PanelInspector panel={panel} only="lines" selectedLine={selectedLine} onSelectLine={onSelectLine} />
           )}

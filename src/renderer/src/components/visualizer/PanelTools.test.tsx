@@ -33,7 +33,7 @@ beforeEach(() => {
 function Host() {
   const p = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID]?.find((x) => x.id === A))
   const [line, setLine] = useState<number | null>(null)
-  return p === undefined ? null : <PanelTools panel={p} place={{ x: 20, y: 0, width: 220 }} selectedLine={line} onSelectLine={setLine} linesRequest={null} onAddBubble={() => undefined} addingBubble={false} />
+  return p === undefined ? null : <PanelTools panel={p} selectedLine={line} onSelectLine={setLine} linesRequest={null} onAddBubble={() => undefined} addingBubble={false} />
 }
 
 function mount(handlers: Parameters<typeof installFakeApi>[0] = {}) {
@@ -55,7 +55,7 @@ describe('PanelTools', () => {
   it('has the tools in order, each with its name', () => {
     mount()
     const bar = screen.getByRole('toolbar', { name: 'Panel tools' })
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Lines', 'Crop', 'Versions', 'Size', 'Add bubble', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Lines', 'Crop', 'Versions', 'Layout', 'Add bubble', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete'])
   })
 
   it('Redraw starts a generation', async () => {
@@ -171,10 +171,10 @@ describe('PanelTools', () => {
     expect(tool('Crop')).toHaveAttribute('title', "Crop (a WebP or GIF picture can't be cropped)")
   })
 
-  it('Size changes the shape at once, without opening focus mode', async () => {
+  it('Layout changes the shape at once, without opening focus mode', async () => {
     const { calls } = mount()
-    await userEvent.click(tool('Size'))
-    const popover = screen.getByRole('dialog', { name: 'Size' })
+    await userEvent.click(tool('Layout'))
+    const popover = screen.getByRole('dialog', { name: 'Layout' })
     const shapes = within(popover).getByRole('group', { name: 'Panel shape' })
     expect(within(shapes).getByRole('button', { name: '2:3' })).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(within(shapes).getByRole('button', { name: '16:9' }))
@@ -183,19 +183,32 @@ describe('PanelTools', () => {
     expect(useAppStore.getState().focusedPanelId).toBeNull()
   })
 
-  it('Size sets the width on the strip, keeping the corner and the strip edge', async () => {
+  it('Layout sets the width on the strip, keeping the corner and the strip edge, and the side', async () => {
+    stored = { ...stored, placement: { x: 20, y: 0, width: 220 } }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
     const { calls } = mount({ 'panels:place': () => undefined })
-    await userEvent.click(tool('Size'))
-    const widths = within(screen.getByRole('dialog', { name: 'Size' })).getByRole('group', { name: 'Panel width' })
-    // Drawn at x 20, 220 wide: half the strip.
+    await userEvent.click(tool('Layout'))
+    const popover = screen.getByRole('dialog', { name: 'Layout' })
+    const widths = within(popover).getByRole('group', { name: 'Panel width' })
     expect(within(widths).getByRole('button', { name: 'Half' })).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(within(widths).getByRole('button', { name: 'One third' }))
     await userEvent.click(within(widths).getByRole('button', { name: 'Full width' }))
-    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:place')).toHaveLength(2))
-    expect(calls.filter((c) => c.channel === 'panels:place').map((c) => c.req)).toEqual([
-      { projectId: P, episodeId: EPISODE_ID, moves: [{ panelId: A, placement: { x: 20, y: 0, width: 147 } }] },
-      { projectId: P, episodeId: EPISODE_ID, moves: [{ panelId: A, placement: { x: 0, y: 0, width: 440 } }] }
+    await userEvent.click(within(within(popover).getByRole('group', { name: 'Panel position' })).getByRole('button', { name: 'Right' }))
+    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:place')).toHaveLength(3))
+    expect(calls.filter((c) => c.channel === 'panels:place').map((c) => (c.req as { moves: unknown }).moves)).toEqual([
+      [{ panelId: A, placement: { x: 20, y: 0, width: 147 } }],
+      [{ panelId: A, placement: { x: 0, y: 0, width: 440 } }],
+      [{ panelId: A, placement: { x: 220, y: 0, width: 220 } }]
     ])
+  })
+
+  it('Layout offers only the layouts there are panels enough for, from this one', async () => {
+    mount()
+    await userEvent.click(tool('Layout'))
+    const layouts = within(screen.getByRole('dialog', { name: 'Layout' })).getByRole('group', { name: 'Layouts' })
+    expect(within(layouts).getByRole('button', { name: 'Full width' })).toBeEnabled()
+    expect(within(layouts).getByRole('button', { name: 'Two across' })).toBeDisabled()
+    expect(within(layouts).getByRole('button', { name: 'Two across' })).toHaveAttribute('title', 'Two across needs 1 more panel after this one')
   })
 
   it('Focus opens focus mode', async () => {

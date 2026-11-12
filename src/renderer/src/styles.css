@@ -4543,6 +4543,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -4573,5 +4574,50 @@ kbd {
 
 .panel-size .shape-picker {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.panel-size .shape-choice {
+  min-width: 0;
+  padding: 5px 0 4px;
+  font-size: 11px;
+}
+
+/* The panel tools' Layout: each layout a button with a little drawing of its boxes, this panel's box in the accent. */
+.panel-layouts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.layout-choice {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 6px 2px 5px;
+  white-space: normal;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.layout-icon {
+  width: 24px;
+  height: 30px;
+}
+
+.layout-icon rect {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.layout-icon rect.layout-icon-this {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
 }
