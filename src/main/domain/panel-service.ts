@@ -3,20 +3,22 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
-import { visualFields } from '@shared/visual-fields'
+import type { Character, CheckResult, DialogueLine, Episode, Item, Location, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
+import { VISUAL_FIELDS, visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext, ProjectStore } from '../storage/project-store'
 import type { CharacterService } from './character-service'
 import type { ConsistencyChecker } from './consistency-checker'
-import { pickContinuity, type ContinuityImage } from './continuity'
 import type { EpisodeService } from './episode-service'
 import { EntityNotFoundError } from './errors'
 import type { ImageGenRequest, ImageService } from './image-service'
 import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
+import { drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
+import { planPlacement } from './panel-placement'
+import { continuityOf, panelFromDraft, previewPrompt } from './panel-preview'
 import { PanelUsageScanner } from './panel-usage'
 import { composeWithPacks, readSketchFile, storeSketch, storeUploadedImage } from './panel-images'
 import { recordAttempt, recordCheck, type Attempt, type EmitPanelChanged } from './panel-recording'
@@ -24,6 +26,9 @@ import { grandfatherUnchangedCast, grandfatherUnchangedItems, validatePanelDraft
 import { composePanelPrompt, editPanelPrompt, type PanelPromptReference } from './prompts'
 import { failureMessage, INTERRUPTED, now, type UploadExt } from './records'
 import type { PackComposer } from './reference-pack'
+
+/** What an agent edit that cleared the panel's custom prompt returns, for the agent to pass on to the user. */
+const CUSTOM_PROMPT_CLEARED = "This panel had a custom prompt the user wrote. This edit changed what the picture shows, so the custom prompt was cleared and the next draw uses the panel's fields. Tell the user."
 
 /** A panel draft or patch broke a consistency rule. `issues` lists every problem, one per line in the message. */
 export class PanelValidationError extends Error {
@@ -49,7 +54,6 @@ export interface PanelServiceOptions {
   /** Draws packed reference images. Without one, a generation drops the references over the image model's cap. */
   packComposer?: PackComposer
 }
-
 
 /** What the consistency check needs to know about a draw, captured while its prompt was composed. */
 interface DrawContext {
@@ -77,6 +81,9 @@ interface Draw {
  * no lock is ever held across an image call.
  */
 export class PanelService extends PanelUsageScanner {
+  /** The `place` calls of each episode, as the promise of the last one queued. */
+  private readonly placing = new Map<string, Promise<void>>()
+
   constructor(private readonly opts: PanelServiceOptions) {
     super()
   }
@@ -101,7 +108,7 @@ export class PanelService extends PanelUsageScanner {
     return this.previousOf(ctx, await this.get(ctx, panelId))
   }
 
-  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async create(ctx: ProjectContext, draft: PanelDraft, opts: { createdBy: Panel['createdBy']; strictMentions: boolean; strictSheets: boolean; sketch?: Buffer }): Promise<{ panel: Panel; warnings: string[] }> {
     const episode = await this.opts.episodes.get(ctx, draft.episodeId)
     if (typeof draft.afterPanelId === 'string' && !episode.panelIds.includes(draft.afterPanelId)) throw new EntityNotFoundError('panel', draft.afterPanelId)
 
@@ -114,43 +121,32 @@ export class PanelService extends PanelUsageScanner {
 
     const meta = await this.opts.projects.getMeta(ctx)
     const id = newId('pnl')
-    const at = now()
-    const panel = PanelSchema.parse({
-      id,
-      episodeId: draft.episodeId,
-      description: draft.description,
-      setting: draft.setting,
-      location: draft.location ?? null,
-      shot: draft.shot,
-      aspect: draft.aspect ?? meta.defaultAspect,
-      frame: draft.frame,
-      beside: draft.beside,
-      gapAfter: draft.gapAfter,
-      gutter: draft.gutter,
-      characters: draft.characters,
-      items: draft.items ?? [],
-      dialogue: draft.dialogue.map((line) => withId(line, undefined)),
-      continuityNotes: draft.continuityNotes ?? '',
-      offPanelMentions: draft.offPanelMentions ?? [],
-      versions: [],
-      currentVersionId: null,
-      createdBy: opts.createdBy,
-      createdAt: at,
-      updatedAt: at
-    })
+    let panel = panelFromDraft(draft, { id, aspect: draft.aspect ?? meta.defaultAspect, createdBy: opts.createdBy, at: now(), dialogue: draft.dialogue.map((line) => withId(line, undefined)) })
 
     // The panel file first, then the episode, with no lock held across the two steps.
     const file = ctx.paths.panelFile(id)
     await ctx.mutex.run(file, () => writeJsonAtomic(file, panel))
     try {
+      // The sketch lands before the panel is in the episode, so a draw started after this call always sends it.
+      if (opts.sketch) panel = await storeSketch(ctx, id, opts.sketch)
       await this.opts.episodes.insertPanel(ctx, draft.episodeId, id, draft.afterPanelId)
     } catch (error) {
-      // Nothing else knows this id yet, so removing the file is not a user deletion (no trash).
-      await ctx.mutex.run(file, () => fs.promises.rm(file, { force: true })).catch(() => undefined)
+      // Nothing else knows this id yet, so removing its files is not a user deletion (no trash).
+      await ctx.mutex
+        .run(file, async () => {
+          // Independent: a file that cannot be removed must not keep its folder.
+          await Promise.allSettled([fs.promises.rm(file, { force: true }), fs.promises.rm(ctx.paths.panelDir(id), { recursive: true, force: true })])
+        })
+        .catch(() => undefined)
       throw error
     }
     this.emit(ctx, id)
     return { panel, warnings: check.warnings }
+  }
+
+  /** The prompt and references a new panel from this draft would be drawn with. Writes nothing; see `previewPrompt`. */
+  previewPrompt(ctx: ProjectContext, draft: PanelDraft, hasSketch: boolean): Promise<PromptPreview> {
+    return previewPrompt(ctx, this.opts, draft, hasSketch)
   }
 
   /**
@@ -162,8 +158,10 @@ export class PanelService extends PanelUsageScanner {
    * foreign-usage and holder errors apply to every entry. With `strictSheets` it also clears a failed
    * sheet check on an unchanged pair, so an agent editing a panel is never blocked by a cast it already had. Without
    * it the check stays: the person editing keeps seeing the warning on every save, since the sheet is still failed.
+   * With `byAgent`, a change to what the picture shows also clears the panel's custom prompt: the agent cannot read or
+   * edit it, so a redraw from it would ignore the edit. The warning tells the agent to say so.
    */
-  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
+  async update(ctx: ProjectContext, id: string, patch: PanelPatch, opts: { strictMentions: boolean; strictSheets: boolean; byAgent?: boolean }): Promise<{ panel: Panel; warnings: string[] }> {
     const file = ctx.paths.panelFile(id)
     const roster = await this.opts.characters.list(ctx, { includeArchived: true })
     const itemRoster = await this.itemRoster(ctx)
@@ -179,7 +177,8 @@ export class PanelService extends PanelUsageScanner {
         frame: patch.frame ?? current.frame,
         beside: patch.beside ?? current.beside,
         gapAfter: patch.gapAfter ?? current.gapAfter,
-        gutter: patch.gutter ?? current.gutter,
+        gutter: current.gutter,
+        ...mergeDrawChoices(patch, current),
         characters: patch.characters ?? current.characters,
         items: patch.items ?? current.items,
         // A line sent without a placement, style or tail keeps the one stored at its index: agents send the whole array when they reword one line.
@@ -195,6 +194,10 @@ export class PanelService extends PanelUsageScanner {
       const place = validatePanelLocation(merged.location, locationRoster, { changed: JSON.stringify(merged.location) !== JSON.stringify(current.location) })
       const check = { errors: [...cast.errors, ...place.errors], warnings: [...cast.warnings, ...place.warnings] }
       if (check.errors.length > 0) throw new PanelValidationError(check.errors)
+      if (opts.byAgent && current.promptOverride?.trim() && VISUAL_FIELDS.some((field) => JSON.stringify(merged[field]) !== JSON.stringify(current[field]))) {
+        merged.promptOverride = null
+        check.warnings.push(CUSTOM_PROMPT_CLEARED)
+      }
       const next = PanelSchema.parse({ ...current, ...merged, updatedAt: now() })
       await writeJsonAtomic(file, next)
       return { panel: next, warnings: check.warnings }
@@ -258,24 +261,24 @@ export class PanelService extends PanelUsageScanner {
       const roster = await this.roster(ctx)
       const itemRoster = await this.itemRoster(ctx)
       const locations = await this.locationRoster(ctx)
-      const previous = await this.continuityOf(ctx, panel)
+      const previous = await continuityOf(ctx, this.opts.episodes, panel)
       const maxReferences = this.opts.images.maxReferences('image')
       const composed = await composeWithPacks(ctx, this.opts.packComposer, panel.id, {
-        stylePreset: meta.stylePreset,
+        stylePreset: styleOf(panel, meta.stylePreset),
         panel,
         roster,
         itemRoster: new Map(itemRoster.map((i) => [i.id, i])),
         locations: new Map(locations.map((l) => [l.id, l])),
         previous,
         sketch: panel.sketchPath ?? null,
+        referencePanels: await readReferencePanels(ctx, panel),
         maxReferences
       })
-      const fix = opts.extraInstruction
-      attempt.prompt = fix && fix.trim() ? `${composed.prompt}\n[FIX] ${fix}` : composed.prompt
+      attempt.prompt = drawPrompt(composed.prompt, panel, opts.extraInstruction)
       attempt.referenceImagePaths = composed.references.map((r) => r.relPath)
       request = { prompt: attempt.prompt, references: composed.references, aspect: drawAspect(panel.aspect), signal: opts.signal }
-      // The checker compares the picture with the cast, items and previous panel; the sketch is only a layout guide.
-      context = { panel, roster: [...roster.values()], itemRoster, locations, references: composed.references.filter((r) => r.subject.kind !== 'sketch'), retries: meta.consistencyRetries }
+      // The checker compares the picture with the cast, items and previous panel; the sketch and the chosen panels are only guides.
+      context = { panel, roster: [...roster.values()], itemRoster, locations, references: composed.references.filter((r) => r.subject.kind !== 'sketch' && r.subject.kind !== 'panel'), retries: meta.consistencyRetries }
     } catch (error) {
       return { version: await recordAttempt(this.emit, ctx, id, attempt, { error: failureMessage(error) }), context: null }
     }
@@ -297,7 +300,7 @@ export class PanelService extends PanelUsageScanner {
       // The cast and item references (and the unknown-cast and unknown-item errors) come from composePanelPrompt so an edit
       // sees exactly the images a generation would; the edit has no previous panel, no location picture (it keeps the
       // image's own place) and its own prompt.
-      const { references } = composePanelPrompt({ stylePreset: meta.stylePreset, panel, roster, itemRoster, previous: null, maxReferences })
+      const { references } = composePanelPrompt({ stylePreset: styleOf(panel, meta.stylePreset), panel, roster, itemRoster, previous: null, maxReferences })
       const cast = panel.characters.flatMap((entry) => {
         const character = roster.get(entry.characterId)
         return character ? [{ name: character.name, appearanceLock: character.appearanceLock }] : []
@@ -368,10 +371,31 @@ export class PanelService extends PanelUsageScanner {
     this.emit(ctx, id)
   }
 
-  async move(ctx: ProjectContext, id: string, toIndex: number): Promise<void> {
-    const panel = await this.get(ctx, id)
-    await this.opts.episodes.movePanel(ctx, panel.episodeId, id, toIndex)
-    this.emit(ctx, id)
+  /**
+   * Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own.
+   * Calls for one episode run one after another and each plans from what the one before wrote, so a second drag never
+   * plans from a half-frozen list. The queue is in memory, so no panel lock is ever held together with an episode's.
+   * The panels that were not moved are written first and the moved ones last, and the change is announced once at the end.
+   */
+  place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
+    const key = `${ctx.id}:${episodeId}`
+    const run = (this.placing.get(key) ?? Promise.resolve()).catch(() => undefined).then(() => this.placeNow(ctx, episodeId, moves))
+    const tail = run.catch(() => undefined)
+    this.placing.set(key, tail)
+    void tail.then(() => {
+      if (this.placing.get(key) === tail) this.placing.delete(key)
+    })
+    return run
+  }
+
+  private async placeNow(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
+    const plan = planPlacement(await this.list(ctx, episodeId), moves)
+    const moved = new Set(moves.map((m) => m.panelId))
+    const writes = [...plan.writes.filter((w) => !moved.has(w.panelId)), ...plan.writes.filter((w) => moved.has(w.panelId))]
+    for (const write of writes) await this.mutate(ctx, write.panelId, (cur) => ({ ...cur, placement: write.placement, updatedAt: now() }), { announce: false })
+    await this.opts.episodes.setPanelOrder(ctx, episodeId, plan.order)
+    // The strip reloads the whole episode on any panel change, so one event covers every panel written.
+    if (writes.length > 0) this.emit(ctx, writes[writes.length - 1].panelId)
   }
 
   /**
@@ -401,14 +425,14 @@ export class PanelService extends PanelUsageScanner {
     }
   }
 
-  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel): Promise<Panel> {
+  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel, opts: { announce?: boolean } = {}): Promise<Panel> {
     const file = ctx.paths.panelFile(id)
     const next = await ctx.mutex.run(file, async () => {
       const valid = PanelSchema.parse(fn(await this.get(ctx, id)))
       await writeJsonAtomic(file, valid)
       return valid
     })
-    this.emit(ctx, id)
+    if (opts.announce !== false) this.emit(ctx, id)
     return next
   }
 
@@ -422,24 +446,6 @@ export class PanelService extends PanelUsageScanner {
     }
     const index = episode.panelIds.indexOf(panel.id)
     return index > 0 ? tryReadPanel(ctx, episode.panelIds[index - 1]) : null
-  }
-
-  /**
-   * The image a draw of the panel continues from (see `pickContinuity`). Without a location only the panel right before
-   * can be it, so only that one is read.
-   */
-  private async continuityOf(ctx: ProjectContext, panel: Panel): Promise<ContinuityImage | null> {
-    let episode: Episode
-    try {
-      episode = await this.opts.episodes.get(ctx, panel.episodeId)
-    } catch (error) {
-      if (error instanceof EntityNotFoundError) return null
-      throw error
-    }
-    const index = episode.panelIds.indexOf(panel.id)
-    if (index <= 0) return null
-    const ids = panel.location === null ? [episode.panelIds[index - 1]] : episode.panelIds.slice(0, index)
-    return pickContinuity(panel, await Promise.all(ids.map((id) => tryReadPanel(ctx, id))))
   }
 
   /** Every character, archived ones included: existing panels keep regenerating after a character is archived. */

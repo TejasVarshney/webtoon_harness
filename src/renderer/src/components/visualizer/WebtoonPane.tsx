@@ -3,9 +3,10 @@ import { useAppStore } from '../../stores/app-store'
 import { useCharactersStore } from '../../stores/characters-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { EpisodeBar } from './EpisodeBar'
-import { WebtoonStrip } from './WebtoonStrip'
+import { SelectionBar } from './SelectionBar'
+import { StripCanvas } from './StripCanvas'
 
-/** The Webtoon tab: an episode picker above the vertical strip of the open episode's panels. */
+/** The Webtoon tab: an episode picker above the strip of the open episode's panels, and the bar for a shift selection. */
 export function WebtoonPane() {
   const projectId = useAppStore((s) => s.projectId)
   const activeEpisodeId = useAppStore((s) => s.activeEpisodeId)
@@ -32,7 +33,8 @@ export function WebtoonPane() {
           {error}
         </p>
       )}
-      {ready ? <WebtoonStrip episodeId={activeEpisodeId} panels={panels} /> : error === null && <p className="placeholder">Loading panels…</p>}
+      {ready ? <StripCanvas episodeId={activeEpisodeId} panels={panels} /> : error === null && <p className="placeholder">Loading panels…</p>}
+      <SelectionBar />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 import { PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
+import { StripBackgroundSchema } from '@shared/strip-background'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import { parseInput } from '../validate'
@@ -33,12 +34,19 @@ async function showIssues<T>(task: Promise<T>): Promise<T> {
 
 const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
-const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ title: Title.optional(), synopsis: z.string().optional() }) })
-const MoveSchema = z.object({ projectId: z.string(), panelId: z.string(), toIndex: z.number().int().min(0) })
+const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
+const SetBackgroundSchema = z.object({ projectId: z.string(), episodeId: z.string(), background: StripBackgroundSchema.nullable() })
+const PlaceSchema = z.object({
+  projectId: z.string(),
+  episodeId: z.string(),
+  moves: z.array(z.object({ panelId: z.string(), placement: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() }) }))
+})
+const PreviewPromptSchema = z.object({ projectId: z.string(), draft: PanelDraftSchema, hasSketch: z.boolean() })
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
 const MAX_SKETCH_BYTES = 8 * 1024 * 1024
-const SaveSketchSchema = z.object({ projectId: z.string(), panelId: z.string(), png: z.string().startsWith(PNG_DATA_URL).nullable() })
+const SketchUrl = z.string().startsWith(PNG_DATA_URL)
+const SaveSketchSchema = z.object({ projectId: z.string(), panelId: z.string(), png: SketchUrl.nullable() })
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** The PNG a sketch data URL holds. Throws for anything that is not a PNG of a sane size. */
@@ -64,16 +72,36 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
       const { projectId, episodeId, patch } = parseInput(UpdateEpisodeSchema, req)
       return episodes.update(await s.projects.open(projectId), episodeId, patch)
     },
+    'episodes:setBackground': async (req) => {
+      const { projectId, episodeId, background } = parseInput(SetBackgroundSchema, req)
+      return episodes.setBackground(await s.projects.open(projectId), episodeId, background)
+    },
+    'episodes:pickBackgroundImage': async ({ projectId, episodeId }, event) => {
+      const ctx = await s.projects.open(projectId)
+      await episodes.get(ctx, episodeId)
+      const [file] = await pickFiles(event, { multiple: false, title: 'Choose a background image' })
+      if (file === undefined) return null
+      const ext = STORED_EXT[path.extname(file).toLowerCase()]
+      if (!ext) throw new Error('Unsupported image type: use png, jpg or webp')
+      return episodes.storeBackgroundImage(ctx, episodeId, await fs.promises.readFile(file), ext)
+    },
 
     'panels:list': async ({ projectId, episodeId }) => panels.list(await s.projects.open(projectId), episodeId),
     'panels:get': async ({ projectId, panelId }) => panels.get(await s.projects.open(projectId), panelId),
 
-    'panels:create': async ({ projectId, draft, generate }) => {
+    'panels:create': async ({ projectId, draft, generate, sketchPng }) => {
+      // Checked before anything is made, so a bad sketch leaves no panel.
+      const sketch = sketchPng === undefined ? undefined : sketchBytes(parseInput(SketchUrl, sketchPng))
       const ctx = await s.projects.open(projectId)
       // The manual editor is lenient: a mention of a character who is not attached is a warning, not an error.
-      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false, strictSheets: false }))
+      const created = await showIssues(panels.create(ctx, PanelDraftSchema.parse(draft), { createdBy: 'user', strictMentions: false, strictSheets: false, sketch }))
       if (generate) inBackground(panels.generate(ctx, created.panel.id), 'Panel image generation')
       return created
+    },
+
+    'panels:previewPrompt': async (req) => {
+      const { projectId, draft, hasSketch } = parseInput(PreviewPromptSchema, req)
+      return panels.previewPrompt(await s.projects.open(projectId), draft, hasSketch)
     },
 
     'panels:update': async ({ projectId, panelId, patch }) =>
@@ -87,9 +115,9 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     },
 
     'panels:delete': async ({ projectId, panelId }) => panels.delete(await s.projects.open(projectId), panelId),
-    'panels:move': async (req) => {
-      const { projectId, panelId, toIndex } = parseInput(MoveSchema, req)
-      return panels.move(await s.projects.open(projectId), panelId, toIndex)
+    'panels:place': async (req) => {
+      const { projectId, episodeId, moves } = parseInput(PlaceSchema, req)
+      return panels.place(await s.projects.open(projectId), episodeId, moves)
     },
     'panels:revert': async ({ projectId, panelId, versionId }) => panels.revert(await s.projects.open(projectId), panelId, versionId),
 

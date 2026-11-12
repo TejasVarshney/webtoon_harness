@@ -1,6 +1,6 @@
 import type { BubbleShape, DialogueLine } from '@shared/types'
 
-// Dialogue patches for the editing mode. Each is built from the panel's lines as the store has them when the save is
+// Dialogue patches for focus mode. Each is built from the panel's lines as the store has them when the save is
 // sent, and sends the whole array: line ids change on every dialogue save, so a line is found by its index, and
 // checked by what it says. Pure: no React, so the rules are easy to test.
 

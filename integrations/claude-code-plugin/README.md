@@ -54,7 +54,7 @@ Plugin commands are namespaced by the plugin name:
 
 | Command | What it does |
 |---|---|
-| `/webtoon-harness:continue-story [N]` | AI-led autopilot: plans the next beats and draws the next N panels (default 4). Same request as the **Continue story** button. |
+| `/webtoon-harness:continue-story [N]` | Autopilot: plans the next beats and draws the next N panels (default 4). Same request as the **Continue story** button. |
 | `/webtoon-harness:draw-panel <what it shows>` | Draws one panel, following `workflows/panel-generation`. |
 | `/webtoon-harness:new-character <who>` | Creates a character with an appearance lock and base image, following `workflows/character-creation`. |
 

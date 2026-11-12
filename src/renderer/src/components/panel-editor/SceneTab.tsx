@@ -1,16 +1,15 @@
 import { useId, useState } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
-import { PanelAspectSchema, PanelFrameSchema, PanelGapSchema, PanelGutterSchema, ShotTypeSchema } from '@shared/schemas'
+import { PanelAspectSchema, PanelFrameSchema, ShotTypeSchema } from '@shared/schemas'
 import type { Panel } from '@shared/types'
 import { Field } from '../characters/controls'
 import { useLocationRoster } from '../visualizer/use-location-roster'
+import { cameraKind } from './camera-kind'
 import type { FieldAutosave } from './use-field-autosave'
 
 const SHOTS = ShotTypeSchema.options
 const ASPECTS = PanelAspectSchema.options
 const FRAMES = PanelFrameSchema.options
-const GAPS = PanelGapSchema.options
-const GUTTERS = PanelGutterSchema.options
 
 /** The Scene tab's fields, each saved on its own (`useFieldAutosave`). */
 export interface SceneFields {
@@ -20,9 +19,8 @@ export interface SceneFields {
   shot: FieldAutosave<Panel['shot']>
   aspect: FieldAutosave<Panel['aspect']>
   frame: FieldAutosave<Panel['frame']>
-  beside: FieldAutosave<Panel['beside']>
-  gapAfter: FieldAutosave<Panel['gapAfter']>
-  gutter: FieldAutosave<Panel['gutter']>
+  /** A prompt of the panel's own, sent in place of the composed one; null: the app composes it. */
+  promptOverride: FieldAutosave<Panel['promptOverride']>
 }
 
 /** A select over a field's options, saved after the last change and when it is left. */
@@ -36,12 +34,6 @@ function Choice<T extends string>({ id, field, options, disabled, describedBy }:
       ))}
     </select>
   )
-}
-
-/** How the camera select reads a panel's camera: its main angle, the reverse, or the user's own words. */
-function cameraKind(camera: string): 'main' | 'reverse' | 'other' {
-  const said = camera.trim().toLowerCase()
-  return said === '' || said === 'main' ? 'main' : said === 'reverse' ? 'reverse' : 'other'
 }
 
 /**
@@ -134,20 +126,33 @@ function LocationPicker({ field }: { field: FieldAutosave<Panel['location']> }) 
 }
 
 /**
- * What the panel shows and where it sits in the strip: description, setting, location, shot and aspect, then the layout group
- * from the old panel dialog. Each field saves on its own; the text fields at once when they are left. Layout changes
- * never redraw.
+ * What the panel shows: description, setting, location, shot and aspect, then its frame. Each field saves on its own; the
+ * text fields at once when they are left. A frame change never redraws. Where the panel sits is set by dragging it on the strip.
  */
 export function SceneTab({ fields }: { fields: SceneFields }) {
   const tallNoteId = useId()
   // A tall panel fades at its edges instead of having a frame, whatever its frame says.
   const tall = isTallAspect(fields.aspect.value)
-  const { description, setting, location, shot, aspect, frame, beside, gapAfter, gutter } = fields
+  const { description, setting, location, shot, aspect, frame, promptOverride } = fields
   return (
     <div className="scene-tab">
       <Field label="Description">
         {(id) => <textarea id={id} rows={3} value={description.value} placeholder="What happens in this panel" onChange={(e) => description.set(e.target.value)} onBlur={description.flush} />}
       </Field>
+      {promptOverride.value !== null && (
+        <p className="hint custom-prompt-note">
+          This panel uses a custom prompt{' '}
+          <button
+            type="button"
+            onClick={() => {
+              promptOverride.set(null)
+              promptOverride.flush()
+            }}
+          >
+            Use automatic prompt
+          </button>
+        </p>
+      )}
       <Field label="Setting">{(id) => <input id={id} value={setting.value} placeholder="Where and when" onChange={(e) => setting.set(e.target.value)} onBlur={setting.flush} />}</Field>
       <LocationPicker field={location} />
       <div className="field-row">
@@ -158,18 +163,12 @@ export function SceneTab({ fields }: { fields: SceneFields }) {
         <legend>Layout</legend>
         <div className="field-row">
           <Field label="Frame">{(id) => <Choice id={id} field={frame} options={FRAMES} disabled={tall} describedBy={tall ? tallNoteId : undefined} />}</Field>
-          <Field label="Gap after">{(id) => <Choice id={id} field={gapAfter} options={GAPS} />}</Field>
-          <Field label="Gutter">{(id) => <Choice id={id} field={gutter} options={GUTTERS} />}</Field>
         </div>
         {tall && (
           <p id={tallNoteId} className="hint">
             Tall panels fade instead of a frame
           </p>
         )}
-        <label className="inline-label">
-          <input type="checkbox" checked={beside.value} onChange={(e) => beside.set(e.target.checked)} onBlur={beside.flush} />
-          Beside the previous panel
-        </label>
       </fieldset>
     </div>
   )

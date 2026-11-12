@@ -56,13 +56,27 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<LaunchedApp> 
   return { app, page, userDataDir, projectsRoot }
 }
 
+/** The app starts on the home page, so a relaunch opens the project it should show by clicking its card. */
+export async function openFirstProject(page: Page): Promise<void> {
+  await page.getByTestId('project-card').first().click()
+  await expect(page.getByTestId('pane-chat')).toBeVisible()
+}
+
 /** Runs the new-project dialog, then creates a session. Leaves the new session selected. */
 export async function createProjectAndSession(page: Page, title: string): Promise<void> {
   await page.getByTestId('new-project').click()
   await page.getByLabel('Title').fill(title)
   await page.getByRole('button', { name: 'Create' }).click()
   await page.getByTestId('new-session').click()
+  await openSessions(page)
   await expect(page.getByTestId('session-item')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+}
+
+/** Opens the session list at the top of the chat. Choosing a session, or Escape, closes it again. */
+export async function openSessions(page: Page): Promise<void> {
+  await page.getByTestId('sessions-toggle').click()
+  await expect(page.getByTestId('sessions-popup')).toBeVisible()
 }
 
 /**
@@ -111,4 +125,49 @@ export async function openTab(page: Page, tab: 'webtoon' | 'characters' | 'items
   const button = page.getByTestId(`tab-${tab}`)
   await button.click()
   await expect(button).toHaveAttribute('aria-selected', 'true')
+}
+
+/**
+ * Makes a blank panel through the Generate page ("+" on the strip, then Add blank panel), and opens it in focus mode,
+ * where the page leaves it selected on the strip.
+ */
+export async function addBlankPanel(page: Page): Promise<void> {
+  await page.getByTestId('add-panel').last().click()
+  await page.getByTestId('generate-blank').click()
+  await page.locator('[data-testid="panel-card"][data-selected="true"]').dblclick()
+}
+
+/**
+ * Clicks an item of the window's menu bar by its id (see `MENU_IDS` in src/main/app-menu.ts). Playwright cannot reach
+ * a native menu, so this runs the item's click in main, which is what a real click on it does.
+ */
+export async function clickMenuItem(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(({ Menu }, itemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(itemId)
+    if (!item) throw new Error(`No menu item ${itemId}`)
+    item.click()
+  }, id)
+}
+
+/** The titles under File > Open project, as the menu shows them now. */
+export async function menuProjects(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(({ Menu }) => (Menu.getApplicationMenu()?.getMenuItemById('menu-open-project')?.submenu?.items ?? []).filter((i) => i.enabled).map((i) => i.label))
+}
+
+/** Switches to a project by its title, through File > Open project in the window's menu bar. */
+export async function openProjectFromMenu(app: ElectronApplication, page: Page, title: string): Promise<void> {
+  // The renderer reports its projects to the menu, so a project made a moment ago may take a tick to be listed.
+  await expect.poll(() => menuProjects(app)).toContain(title)
+  await app.evaluate(({ Menu }, label) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById('menu-open-project')?.submenu?.items.find((i) => i.label === label)
+    if (!item) throw new Error(`No project ${label} in File > Open project`)
+    item.click()
+  }, title)
+  await expect(page.getByTestId('pane-chat')).toBeVisible()
+}
+
+/** Opens the Settings dialog from File > Settings in the window's menu bar. */
+export async function openSettings(app: ElectronApplication, page: Page): Promise<void> {
+  await clickMenuItem(app, 'menu-settings')
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
 }

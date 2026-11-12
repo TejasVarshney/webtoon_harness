@@ -54,6 +54,47 @@ describe('useStagePan', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('moves a zoomed stage with a right-button drag, with no context menu and nothing for the stage', () => {
+    const { v, panel, onPress, onClick } = mount()
+    fireEvent.pointerDown(panel, { button: 2, buttons: 2, clientX: 50, clientY: 50 })
+    expect(v).toHaveAttribute('data-pan', 'panning')
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 20, clientY: 10 })
+    expect(v.scrollLeft).toBe(130)
+    expect(v.scrollTop).toBe(140)
+    fireEvent.pointerUp(v, { button: 2 })
+    expect(v).not.toHaveAttribute('data-pan')
+    expect(fireEvent.contextMenu(panel)).toBe(false)
+    expect(fireEvent.click(panel, { detail: 1 })).toBe(false)
+    expect(onPress).not.toHaveBeenCalled()
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('hands each drag step to a stage that moves its own content, even when everything fits', () => {
+    const moves: [number, number][] = []
+    function Moving() {
+      const viewport = useRef<HTMLDivElement>(null)
+      const pan = useStagePan(viewport, (dx, dy) => moves.push([dx, dy]))
+      return <div ref={viewport} data-testid="moving" data-pan={pan ?? undefined} />
+    }
+    render(<Moving />)
+    const v = screen.getByTestId('moving')
+    fireEvent.pointerDown(v, { button: 2, buttons: 2, clientX: 50, clientY: 50 })
+    expect(v).toHaveAttribute('data-pan', 'panning')
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 40, clientY: 45 })
+    fireEvent.pointerMove(v, { buttons: 2, clientX: 70, clientY: 45 })
+    fireEvent.pointerUp(v, { button: 2 })
+    expect(moves).toEqual([
+      [-10, -5],
+      [30, 0]
+    ])
+    expect(v.scrollLeft).toBe(0)
+  })
+
+  it('keeps the context menu off the stage even when there is nothing to move', () => {
+    const { panel } = mount(100)
+    expect(fireEvent.contextMenu(panel)).toBe(false)
+  })
+
   it('stops the middle press from starting the browser’s own scroll', () => {
     const { panel } = mount()
     fireEvent.pointerDown(panel, { button: 1, buttons: 4 })

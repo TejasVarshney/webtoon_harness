@@ -13,7 +13,9 @@
 
 import { z } from 'zod'
 import { PanelLocationSchema } from './location-schemas'
-import { CheckResultSchema, CreatedBySchema, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
+import { PanelDrawChoices, PanelDrawChoicesInput } from './panel-draw-choices'
+import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
+import { BackgroundImagePath, checkBackgroundOwner, StripBackgroundSchema } from './strip-background'
 
 export { CheckResultSchema } from './schema-primitives'
 export * from './location-schemas'
@@ -28,20 +30,10 @@ function withoutDefaults<S extends z.ZodRawShape>(shape: S): WithoutDefaults<S> 
 // Enums
 // ---------------------------------------------------------------------------------------------
 
-export const StoryModeSchema = z.enum(['user', 'ai'])
 export const CharacterRoleSchema = z.enum(['protagonist', 'antagonist', 'supporting', 'minor'])
 export const VariationKindSchema = z.enum(['base', 'outfit', 'expression', 'pose', 'age', 'form', 'other'])
 const ItemUsageKindSchema = z.enum(['base', 'state', 'action'])
-export const ShotTypeSchema = z.enum([
-  'establishing',
-  'wide',
-  'medium',
-  'close-up',
-  'extreme-close-up',
-  'over-the-shoulder',
-  'birds-eye',
-  'worms-eye'
-])
+export const ShotTypeSchema = z.enum(['establishing', 'wide', 'medium', 'close-up', 'extreme-close-up', 'over-the-shoulder', 'birds-eye', 'worms-eye'])
 /** What an image model can be asked to draw. */
 export const DrawAspectSchema = z.enum(['1:1', '2:3', '3:4', '9:16', '4:3', '16:9'])
 /** A panel's shape: the draw aspects plus the two very tall ones, which are drawn at 9:16 and faded at the top and bottom. */
@@ -70,7 +62,6 @@ export const ProjectMetaSchema = z.object({
   title: z.string(),
   logline: z.string().default(''),
   stylePreset: z.string().default(DEFAULT_STYLE_PRESET),
-  storyMode: StoryModeSchema.default('user'),
   defaultAspect: PanelAspectSchema.default('2:3'),
   autopilotPanels: z.number().int().min(1).default(4),
   consistencyRetries: z.number().int().min(0).default(1),
@@ -212,9 +203,11 @@ export const EpisodeSchema = z.object({
   title: z.string(),
   synopsis: z.string().default(''),
   panelIds: z.array(Id).default([]),
+  background: StripBackgroundSchema.nullable().default(null), // null: white, with black where a gutter was black
+  backgroundImage: BackgroundImagePath.nullable().default(null), // the last image picked; it outlives a switch to another kind
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
-})
+}).superRefine(checkBackgroundOwner)
 
 export const PanelCharacterSchema = z.object({
   characterId: Id,
@@ -231,13 +224,11 @@ export const PanelItemSchema = z.object({
   action: z.string().default('')
 })
 
-/** Where a speech bubble's centre sits, as fractions of the panel's width and height. */
-export const BubblePlacementSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+/** Where a speech bubble's centre sits, as fractions of the panel's width and height. On the strip it may be outside 0..1: a bubble can leave its panel. */
+export const BubblePlacementSchema = z.object({ x: z.number().finite(), y: z.number().finite() })
 
 export const BubbleShapeSchema = z.enum(['speech', 'shout', 'whisper', 'thought', 'caption', 'sfx', 'fringe', 'burst', 'curly'])
 export const BubbleFontSchema = z.enum(['comic', 'bangers', 'hand', 'impact', 'serif', 'typewriter'])
-// A refine and not a regex: a regex reaches the tool schemas as `pattern`, sent as it is to every provider.
-const HexColor = z.string().refine((v) => /^#[0-9a-f]{6}$/i.test(v), 'A colour is written as #rrggbb')
 
 /** How one bubble looks. Every key is optional: only what differs from the shape's default is stored. */
 export const BubbleStyleSchema = z.object({
@@ -304,6 +295,9 @@ export const PanelVersionSchema = z.object({
   createdAt: IsoTimestamp
 })
 
+/** Where a panel sits on the free strip, in strip px (the strip is 440 wide): its top-left corner and its width. Height follows from the aspect. */
+export const PanelPlacementSchema = z.object({ x: z.number(), y: z.number(), width: z.number() })
+
 export const PanelSchema = z.object({
   id: Id,
   episodeId: Id,
@@ -321,6 +315,8 @@ export const PanelSchema = z.object({
   beside: z.boolean().default(false),
   gapAfter: PanelGapSchema.default('normal'),
   gutter: PanelGutterSchema.default('white'),
+  /** Null: the panel flows with the rows around it (see `resolveStrip`). Set: it holds that place on the strip. */
+  placement: PanelPlacementSchema.nullable().default(null),
   characters: z.array(PanelCharacterSchema).default([]),
   items: z.array(PanelItemSchema).default([]),
   dialogue: z.array(DialogueLineSchema),
@@ -330,6 +326,7 @@ export const PanelSchema = z.object({
   currentVersionId: Id.nullable().default(null),
   /** The user's rough layout sketch (`panels/<pnlId>/sketch-<n>.png`), a reference for generation only. Absent or null: none. */
   sketchPath: z.string().nullable().optional(),
+  ...PanelDrawChoices,
   createdBy: CreatedBySchema,
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp
@@ -340,7 +337,7 @@ export const PanelSchema = z.object({
  * on purpose: left out it stays `undefined` (the line inherits the stored one), where `null` means automatic.
  */
 // No defaults on the look fields: undefined means inherit from the stored line, and a default would turn it into clear.
-const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({
+export const DialogueDraftSchema = DialogueLineSchema.omit({ id: true }).extend({
   placement: BubblePlacementSchema.nullable().optional(),
   style: BubbleStyleSchema.nullable().optional(),
   tail: BubbleTailSchema.nullable().optional()
@@ -358,12 +355,12 @@ export const PanelDraftSchema = z.object({
   frame: PanelFrameSchema.optional(),
   beside: z.boolean().optional(),
   gapAfter: PanelGapSchema.optional(),
-  gutter: PanelGutterSchema.optional(),
   characters: z.array(PanelCharacterSchema),
   items: z.array(PanelItemSchema).optional(),
   dialogue: z.array(DialogueDraftSchema),
   continuityNotes: z.string().optional(),
-  offPanelMentions: z.array(z.string()).optional()
+  offPanelMentions: z.array(z.string()).optional(),
+  ...PanelDrawChoicesInput
 })
 
 export const PanelPatchSchema = PanelDraftSchema.omit({ episodeId: true, afterPanelId: true }).partial()

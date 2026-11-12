@@ -165,6 +165,46 @@ describe('composePanelPrompt', () => {
     expect(prompt).not.toContain('[LAYOUT]')
   })
 
+  describe('chosen panels', () => {
+    const base = { stylePreset: 'STYLE', panel: panel({ characters: [] }), roster, itemRoster }
+    const chosen = [
+      { panelId: 'p1', imagePath: 'a.png' },
+      { panelId: 'p2', imagePath: 'b.png' }
+    ]
+
+    it('adds the chosen panels after the sketch and before the previous panel', () => {
+      const r = composePanelPrompt({ ...base, previous: PREVIOUS, sketch: 's.png', referencePanels: chosen, maxReferences: 8 })
+      expect(r.references.map((x) => x.relPath)).toEqual(['s.png', 'a.png', 'b.png', PREVIOUS.imagePath])
+      expect(r.references[1]).toEqual({ relPath: 'a.png', label: 'panel the user chose', subject: { kind: 'panel', id: 'p1' } })
+      expect(r.prompt).toContain('[REFERENCE PANELS] Reference images 2 and 3 are panels the user chose: match their characters, art style, palette and setting. Never copy their composition.')
+      expect(r.prompt.indexOf('[LAYOUT]')).toBeLessThan(r.prompt.indexOf('[REFERENCE PANELS]'))
+      expect(r.prompt.indexOf('[REFERENCE PANELS]')).toBeLessThan(r.prompt.indexOf('[CONTINUITY]'))
+    })
+
+    it('words one image in the singular and three or more as a list', () => {
+      const one = composePanelPrompt({ ...base, previous: null, referencePanels: chosen.slice(0, 1), maxReferences: 8 })
+      expect(one.prompt).toContain('[REFERENCE PANELS] Reference image 1 is a panel the user chose: match its characters, art style, palette and setting. Never copy its composition.')
+      const three = composePanelPrompt({ ...base, previous: null, sketch: 's.png', referencePanels: [...chosen, { panelId: 'p3', imagePath: 'c.png' }], maxReferences: 8 })
+      expect(three.prompt).toContain('Reference images 2, 3 and 4 are panels the user chose')
+    })
+
+    it('over the cap the previous panel goes first, then chosen panels from the end', () => {
+      const four = composePanelPrompt({ ...base, previous: PREVIOUS, sketch: 's.png', referencePanels: chosen, maxReferences: 3 })
+      expect(four.references.map((x) => x.relPath)).toEqual(['s.png', 'a.png', 'b.png'])
+      expect(four.prompt).toContain('(no reference image)')
+      const two = composePanelPrompt({ ...base, previous: PREVIOUS, sketch: 's.png', referencePanels: chosen, maxReferences: 2 })
+      expect(two.references.map((x) => x.relPath)).toEqual(['s.png', 'a.png'])
+      expect(two.prompt).toContain('[REFERENCE PANELS] Reference image 2 is a panel the user chose')
+    })
+
+    it('says nothing when no chosen panel was sent', () => {
+      expect(composePanelPrompt({ ...base, previous: null, maxReferences: 8 }).prompt).not.toContain('[REFERENCE PANELS]')
+      const full = composePanelPrompt({ ...base, panel: panel({ characters: [cast(mina, 'var_m1')] }), previous: null, referencePanels: chosen, maxReferences: 1 })
+      expect(full.references.map((x) => x.subject.kind)).toEqual(['character'])
+      expect(full.prompt).not.toContain('[REFERENCE PANELS]')
+    })
+  })
+
   it("takes a position in the user's own words, and leaves an empty one out", () => {
     const own = composePanelPrompt({ stylePreset: 'S', panel: panel({ characters: [cast(mina, 'var_m1', '', '', 'far left, half in shadow')] }), roster, itemRoster, previous: null, maxReferences: 4 })
     expect(own.prompt).toContain('Position: far left, half in shadow.')
@@ -524,6 +564,15 @@ describe('composePanelPrompt with packing', () => {
   const base = { stylePreset: 'STYLE', roster: everyone, itemRoster, previous: PREVIOUS, maxReferences: 4, packing }
   const NOTE = (n: number, k: number) =>
     `[CHARACTERS] Reference image ${n} holds ${k} character sheets, each labeled with the person's name, only to show what each person looks like: never copy its layout, background, poses or labels.`
+
+  it('counts chosen panels when it packs the cast, so they keep their images', () => {
+    const chosen = [
+      { panelId: 'p1', imagePath: 'a.png' },
+      { panelId: 'p2', imagePath: 'b.png' }
+    ]
+    const { references } = composePanelPrompt({ ...base, panel: panel({ characters: four }), previous: null, referencePanels: chosen, maxReferences: 4 })
+    expect(references.map((r) => r.relPath)).toEqual(['characters/chr_mina/base.png', 'panels/pnl_1/pack-Jin-Dohyun-Yuna.png', 'a.png', 'b.png'])
+  })
 
   it('changes nothing at or under the cap', () => {
     for (const characters of [four.slice(0, 3), four.slice(0, 2)]) {

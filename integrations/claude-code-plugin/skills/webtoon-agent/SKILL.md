@@ -1,6 +1,6 @@
 ---
 name: webtoon-agent
-description: Use when driving the Webtoon AI Harness through its MCP tools: planning beats, creating characters or items, drawing or editing panels, AI-led story runs.
+description: Use when driving the Webtoon AI Harness through its MCP tools: planning beats, creating characters or items, drawing or editing panels, story runs.
 ---
 
 # Webtoon agent
@@ -13,7 +13,7 @@ The user works in the same project at the same time. Trust the current state and
 
 ## Start every task the same way
 
-1. Call `get_project_state`. It returns the project's title, style, story mode, the current episode, the cast and items with their ids, and the recent panels. Call it again whenever the user may have changed things.
+1. Call `get_project_state`. It returns the project's title, style, the current episode, the cast and items with their ids, and the recent panels. Call it again whenever the user may have changed things.
 2. If the tools answer "Open a project in the Webtoon AI Harness window first.", stop and tell the user to open one.
 3. Read the workflow doc for the kind of work with `read_workflow_doc` before the first task of that kind, and again whenever you are unsure. The docs are the project's own and may have been edited, so they are the source of truth over this summary.
 
@@ -35,7 +35,7 @@ Never invent ids. Copy every `characterId`, `variationId`, `itemId`, `episodeId`
 - **Read before you draw.** Call `list_panels` before `create_panel` and continue from the previous panel: same place, light and clothes unless the story changes them.
 - **One beat per panel.** One moment: one action, or one action and its reaction.
 - **No text in images.** Dialogue, narration and sound effects go in `dialogue`, never in a description.
-- **Respect the story mode.** In `user` mode, ask before a major plot event, a new named character or a death. In `ai` mode, lead inside the story bible.
+- **Lead inside the story bible.** Decide the story yourself; a direct instruction from the user wins over your plan.
 - **Never destroy work.** There are no delete tools. Edits create versions.
 - **Keep the bible current.** After a reveal, a new character, a changed relationship, a death or a new mystery, call `update_story_bible`.
 - **Declare off-panel mentions.** A roster character named in the description but not visible goes in `offPanelMentions`, or the panel is rejected.
@@ -49,11 +49,11 @@ Never invent ids. Copy every `characterId`, `variationId`, `itemId`, `episodeId`
 - **Items:** `list_items`, `get_item`, `create_item`, `update_item`, `create_item_usage`, `regenerate_item_usage`.
 - **Panels:** `list_panels`, `get_panel`, `view_panel_image`, `create_panel`, `update_panel`, `regenerate_panel`, `edit_panel_image`. After a panel's beat is drawn, mark it with `update_beat`.
 
-Image tools wait for the image, so a call can take a while. There is no tool to revert a panel to an older version: the user does that in the app: they open the panel (click its card) and use the ‹ vN / M › switcher in the editor's header, above the panel.
+Image tools wait for the image, so a call can take a while. There is no tool to revert a panel to an older version: the user does that in the app: they open the panel (double-click the card, or select it and press Focus) and use the ‹ vN / M › switcher in the editor's header, above the panel.
 
-## AI-led story runs
+## Story runs
 
-When the story mode is `ai` and you are asked to continue the story for N panels: read `get_story` and `list_panels`, take the oldest planned beats (add missing ones with `add_beats`), prepare any new cast, draw one panel per beat and mark each beat drawn, update the bible, then stop and summarize. Do not draw more than N panels. The details are in `workflows/story-direction` (AI-Led Mode).
+When you are asked to continue the story for N panels: read `get_story` and `list_panels`, take the oldest planned beats (add missing ones with `add_beats`), prepare any new cast, draw one panel per beat and mark each beat drawn, update the bible, then stop and summarize. Do not draw more than N panels. The details are in `workflows/story-direction` (Directing the Story).
 
 ## Communication
 

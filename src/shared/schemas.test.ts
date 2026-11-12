@@ -132,6 +132,12 @@ describe('Panel', () => {
     expect(PanelSchema.parse(minimalPanel)).toMatchObject({ frame: 'bordered', beside: false, gapAfter: 'normal', gutter: 'white' })
   })
 
+  it('the draft and the patch have no gutter, and the panel keeps it for the files that have one', () => {
+    expect(Object.keys(PanelDraftSchema.shape)).not.toContain('gutter')
+    expect(Object.keys(PanelPatchSchema.shape)).not.toContain('gutter')
+    expect(Object.keys(PanelSchema.shape)).toContain('gutter')
+  })
+
   it('refuses a frame or gap it does not know', () => {
     expect(() => PanelSchema.parse({ ...minimalPanel, frame: 'tilted' })).toThrow()
     expect(() => PanelSchema.parse({ ...minimalPanel, gapAfter: 'huge' })).toThrow()
@@ -163,9 +169,12 @@ describe('Panel', () => {
 
   it('keeps a bubble centre inside the panel', () => {
     expect(BubblePlacementSchema.parse({ x: 0, y: 1 })).toEqual({ x: 0, y: 1 })
-    expect(() => BubblePlacementSchema.parse({ x: 1.2, y: 0 })).toThrow()
-    expect(() => BubblePlacementSchema.parse({ x: 0.5, y: -0.1 })).toThrow()
-    expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: 1.2, y: 0 } })).toThrow()
+    // A bubble on the strip may sit outside its panel.
+    expect(BubblePlacementSchema.parse({ x: 1.2, y: 4.5 })).toEqual({ x: 1.2, y: 4.5 })
+    expect(BubblePlacementSchema.parse({ x: -0.3, y: -0.1 })).toEqual({ x: -0.3, y: -0.1 })
+    expect(() => BubblePlacementSchema.parse({ x: Infinity, y: 0 })).toThrow()
+    expect(() => BubblePlacementSchema.parse({ x: 0.5, y: Number.NaN })).toThrow()
+    expect(() => DialogueLineSchema.parse({ id: 'dlg_0000000001', speakerId: null, kind: 'narration', text: 'A', placement: { x: -Infinity, y: 0 } })).toThrow()
   })
 })
 
@@ -191,7 +200,7 @@ describe('bubble look', () => {
     { style: { font: 'Arial' } },
     { style: { size: 4 } },
     { style: { strokeWidth: 7 } },
-    { tail: { x: 1.2, y: 0 } },
+    { tail: { x: Infinity, y: 0 } },
     { tail: 'down' }
   ])('refuses what the app cannot draw: %j', (bad) => {
     expect(() => DialogueLineSchema.parse({ ...base, ...bad })).toThrow()
@@ -388,13 +397,14 @@ describe('Episode, Beat, Outline, ProjectMeta', () => {
 
   it('project meta defaults', () => {
     const m = ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', createdAt: T, updatedAt: T })
-    expect(m).toMatchObject({ storyMode: 'user', defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, logline: '' })
+    expect(m).toMatchObject({ defaultAspect: '2:3', autopilotPanels: 4, consistencyRetries: 1, logline: '' })
     expect(m.stylePreset).toContain('Korean webtoon style')
     expect(m.stylePreset).toBe('Clean full-color Korean webtoon style, crisp line art, soft cel shading, expressive faces')
   })
 
-  it('rejects an unknown story mode', () => {
-    expect(() => ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', storyMode: 'both', createdAt: T, updatedAt: T })).toThrow()
+  it('reads a project saved with the old mode field and drops it', () => {
+    const m = ProjectMetaSchema.parse({ id: 'prj_0000000001', title: 'T', storyMode: 'user', createdAt: T, updatedAt: T })
+    expect(m).not.toHaveProperty('storyMode')
   })
 })
 

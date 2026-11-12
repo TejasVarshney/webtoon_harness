@@ -5,6 +5,7 @@ import { useChatStore } from '../../stores/chat-store'
 import { useModelsStore } from '../../stores/models-store'
 import { claudeCodeIsAgent, usePluginsStore } from '../../stores/plugins-store'
 import { MOCK_BANNER_TEXT } from './ChatHeader'
+import { ChatSessions } from './ChatSessions'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
 import { ModelPicker } from './ModelPicker'
@@ -59,6 +60,7 @@ export function ChatPane() {
 
   return (
     <div className="chat-pane">
+      <ChatSessions />
       {onMock && !claudeCodeAgent && (
         <p className="mock-banner" data-testid="mock-banner">
           {MOCK_BANNER_TEXT}

@@ -1,13 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { newId } from '@shared/ids'
+import { BACKGROUND_DIR } from '@shared/strip-background'
 import { EpisodeSchema } from '@shared/schemas'
-import type { Episode } from '@shared/types'
+import type { Episode, StripBackground } from '@shared/types'
 import type { EventBus } from '../events/bus'
-import { readJson, writeJsonAtomic } from '../storage/atomic'
+import { readJson, writeFileAtomic, writeJsonAtomic } from '../storage/atomic'
 import type { ProjectContext } from '../storage/project-store'
+import { removeBackgroundImage } from './background-files'
 import { EntityNotFoundError } from './errors'
-import { now } from './records'
+import { now, UPLOAD_EXTS, type UploadExt } from './records'
 import { isNotFound } from '../storage/fs-errors'
 
 const EPISODE_FILE = /^epi_[A-Za-z0-9]+\.json$/
@@ -85,14 +87,57 @@ export class EpisodeService {
     return this.mutate(ctx, episodeId, (e) => (e.panelIds.includes(panelId) ? { ...e, panelIds: e.panelIds.filter((id) => id !== panelId), updatedAt: now() } : null))
   }
 
-  /** `toIndex` is clamped to the episode's range. */
-  movePanel(ctx: ProjectContext, episodeId: string, panelId: string, toIndex: number): Promise<Episode> {
+  /**
+   * Sets the order to `ids`. An id the episode does not hold is dropped, and a panel the episode holds that `ids`
+   * lacks (added while the order was worked out) stays, at the end in its old order. Nothing is written when the
+   * order is unchanged.
+   */
+  setPanelOrder(ctx: ProjectContext, episodeId: string, ids: string[]): Promise<Episode> {
     return this.mutate(ctx, episodeId, (e) => {
-      if (!e.panelIds.includes(panelId)) throw new EntityNotFoundError('panel', panelId)
-      const rest = e.panelIds.filter((id) => id !== panelId)
-      const index = Math.min(Math.max(Math.trunc(toIndex), 0), rest.length)
-      return { ...e, panelIds: [...rest.slice(0, index), panelId, ...rest.slice(index)], updatedAt: now() }
+      const held = new Set(e.panelIds)
+      const ordered = [...new Set(ids)].filter((id) => held.has(id))
+      const listed = new Set(ordered)
+      const panelIds = [...ordered, ...e.panelIds.filter((id) => !listed.has(id))]
+      if (panelIds.every((id, i) => id === e.panelIds[i])) return null
+      return { ...e, panelIds, updatedAt: now() }
     })
+  }
+
+  /**
+   * Sets the strip's background, or clears it with null. An image background must use the image this episode last
+   * picked (`storeBackgroundImage`): any other path is refused. The picked image stays when another kind is chosen.
+   */
+  setBackground(ctx: ProjectContext, id: string, background: StripBackground | null): Promise<Episode> {
+    return this.mutate(ctx, id, (e) => {
+      if (background?.kind === 'image' && background.path !== e.backgroundImage) throw new Error('This episode did not store that background image; choose the image again')
+      return { ...e, background, updatedAt: now() }
+    })
+  }
+
+  /**
+   * Stores `data` as the episode's background image and makes it the background, keeping the fit, opacity and colour of
+   * an image background already there. The file is written first, outside the lock; the image it replaces is deleted
+   * once the new one is recorded.
+   */
+  async storeBackgroundImage(ctx: ProjectContext, id: string, data: Buffer, ext: UploadExt): Promise<Episode> {
+    if (!UPLOAD_EXTS.includes(ext)) throw new Error(`Unsupported image extension: ${String(ext)} (use png, jpg or webp)`)
+    await this.get(ctx, id)
+    // Time first, so names sort by age; the random tail keeps two saves in one millisecond apart.
+    const rel = `${BACKGROUND_DIR}/${id}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`
+    await writeFileAtomic(ctx.paths.resolveAsset(rel), data)
+    let replaced: string | null = null
+    try {
+      const episode = await this.mutate(ctx, id, (e) => {
+        const old = e.background?.kind === 'image' ? e.background : null
+        replaced = e.backgroundImage
+        return { ...e, backgroundImage: rel, background: { kind: 'image', path: rel, fit: old?.fit ?? 'width', opacity: old?.opacity ?? 1, color: old?.color ?? '#ffffff' }, updatedAt: now() }
+      })
+      await removeBackgroundImage(ctx, id, replaced, rel)
+      return episode
+    } catch (error) {
+      await removeBackgroundImage(ctx, id, rel, null)
+      throw error
+    }
   }
 
   /** Read-modify-write of one episode under its file lock. `fn` returning null means "no change". */

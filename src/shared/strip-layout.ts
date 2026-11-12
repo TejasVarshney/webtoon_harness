@@ -2,7 +2,6 @@
 
 import type { Panel, PanelAspect, PanelGap, PanelGutter } from '@shared/types'
 import { isTallAspect } from '@shared/draw-aspect'
-import { isFinished } from '@shared/export-status'
 
 /** The most panels that share one row. */
 const MAX_PER_ROW = 3
@@ -34,22 +33,6 @@ export function layoutStrip(panels: Panel[]): StripRow[] {
       row.slants[panel.id] = slanted % 2 === 0 ? 'left' : 'right'
       slanted += 1
     }
-  }
-  return rows
-}
-
-/**
- * The rows an export draws: the full layout with unfinished panels left out. Rows keep the grouping and slants the
- * full layout gave, so nothing shifts; a row left empty is dropped, and the gap and gutter below a row come from
- * its new last panel.
- */
-export function exportRows(panels: Panel[]): StripRow[] {
-  const rows: StripRow[] = []
-  for (const row of layoutStrip(panels)) {
-    const kept = row.panels.filter(isFinished)
-    if (kept.length === 0) continue
-    const last = kept[kept.length - 1]
-    rows.push({ panels: kept, gapAfter: last.gapAfter, gutter: last.gutter, slants: row.slants })
   }
   return rows
 }

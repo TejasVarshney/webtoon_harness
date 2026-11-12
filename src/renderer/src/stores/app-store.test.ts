@@ -17,6 +17,102 @@ afterEach(() => {
   stop = null
 })
 
+describe('loadProjects and closeProject', () => {
+  const second = { id: 'prj_bbbbbbbbbb', title: 'Sun' } as unknown as ProjectMeta
+
+  it('loadProjects lists projects and opens none', async () => {
+    const { calls } = installFakeApi({ 'projects:list': () => ({ projects: [meta, second], problems: [] }) })
+    await useAppStore.getState().loadProjects()
+    expect(useAppStore.getState().projects).toHaveLength(2)
+    expect(useAppStore.getState().projectId).toBeNull()
+    expect(calls.some((c) => c.channel === 'projects:open')).toBe(false)
+  })
+
+  it('closeProject empties the open project, its problems, sessions and the selection', () => {
+    useAppStore.setState({
+      projects: [meta],
+      projectId: P,
+      problems: [{ path: 'panels/pnl_0000000bad.json', message: 'Unexpected token' }],
+      sessions: [{ id: 'ses_0000000001' }] as never,
+      sessionId: 'ses_0000000001',
+      selectedPanelId: 'pnl_0000000001',
+      activeEpisodeId: E
+    })
+    useAppStore.getState().closeProject()
+    const s = useAppStore.getState()
+    expect([s.projectId, s.problems, s.sessions, s.sessionId, s.selectedPanelId, s.activeEpisodeId]).toEqual([null, [], [], null, null, null])
+    expect(s.projects).toEqual([meta])
+  })
+})
+
+describe('panel selection', () => {
+  const state = (): ReturnType<typeof useAppStore.getState> => useAppStore.getState()
+
+  it('a plain click replaces the selection', () => {
+    state().selectPanel('a')
+    state().selectPanel('b')
+    expect(state().selectedPanelIds).toEqual(['b'])
+    expect(state().selectedPanelId).toBe('b')
+    expect(state().shiftSelecting).toBe(false)
+  })
+
+  it('shift adds the selected panel and the clicked one', () => {
+    state().selectPanel('a')
+    state().togglePanelSelection('b')
+    expect(state().selectedPanelIds).toEqual(['a', 'b'])
+    expect(state().selectedPanelId).toBe('b')
+    expect(state().shiftSelecting).toBe(true)
+  })
+
+  it('shift on a selected panel takes it out', () => {
+    state().selectPanel('a')
+    state().togglePanelSelection('b')
+    state().togglePanelSelection('a')
+    expect(state().selectedPanelIds).toEqual(['b'])
+    expect(state().selectedPanelId).toBe('b')
+    state().togglePanelSelection('b')
+    expect([state().selectedPanelIds, state().selectedPanelId, state().shiftSelecting]).toEqual([[], null, false])
+  })
+
+  it('a plain click after a shift selection ends it, and clearing empties it', () => {
+    state().selectPanel('a')
+    state().togglePanelSelection('b')
+    state().selectPanel('c')
+    expect([state().selectedPanelIds, state().shiftSelecting]).toEqual([['c'], false])
+    state().selectPanel(null)
+    expect([state().selectedPanelIds, state().selectedPanelId]).toEqual([[], null])
+  })
+
+  it('focusing a panel selects only it; focusing none leaves the selection', () => {
+    state().selectPanel('a')
+    state().togglePanelSelection('b')
+    state().focusPanel('c')
+    expect([state().focusedPanelId, state().selectedPanelIds, state().shiftSelecting]).toEqual(['c', ['c'], false])
+    state().focusPanel(null)
+    expect([state().focusedPanelId, state().selectedPanelIds]).toEqual([null, ['c']])
+  })
+
+  it('focusing with the sketch tool asks for the sketch canvas once; any other focus clears the ask', () => {
+    state().focusPanel('a', { sketch: true })
+    expect([state().focusedPanelId, state().focusSketch]).toEqual(['a', true])
+    state().focusPanel('b')
+    expect([state().focusedPanelId, state().focusSketch]).toEqual(['b', false])
+    state().focusPanel('c', { sketch: true })
+    state().focusPanel(null)
+    expect(state().focusSketch).toBe(false)
+  })
+
+  it('closeProject and openProject reset the selection and the focus', async () => {
+    installFakeApi({ 'projects:open': () => ({ meta, problems: [] }), 'sessions:list': () => [] })
+    useAppStore.setState({ projectId: P, selectedPanelId: 'a', selectedPanelIds: ['a', 'b'], shiftSelecting: true, focusedPanelId: 'a' })
+    state().closeProject()
+    expect([state().selectedPanelIds, state().shiftSelecting, state().focusedPanelId]).toEqual([[], false, null])
+    useAppStore.setState({ selectedPanelId: 'a', selectedPanelIds: ['a'], shiftSelecting: true, focusedPanelId: 'a' })
+    await state().openProject(P)
+    expect([state().selectedPanelId, state().selectedPanelIds, state().shiftSelecting, state().focusedPanelId]).toEqual([null, [], false, null])
+  })
+})
+
 function contexts(calls: { channel: string; req: unknown }[]): unknown[] {
   return calls.filter((c) => c.channel === 'app:setActiveContext').map((c) => c.req)
 }
@@ -45,7 +141,7 @@ describe('active context sync', () => {
 
     // Other state changes do not repeat the call.
     useAppStore.getState().selectPanel('pnl_0000000001')
-    useAppStore.getState().setRightTab('story')
+    useAppStore.getState().setStudioTab('story')
     expect(contexts(calls)).toHaveLength(3)
   })
 

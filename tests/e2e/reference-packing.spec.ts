@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication } from '@playwright/test'
-import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openSettings, openTab, readProjectJson, sendChat } from './helpers'
 
 // Reference packing on the real offscreen canvas. Four cast members and the previous panel are one reference over the
 // mock image model's cap of 4, so the last two cast sheets are drawn onto one image, side by side under their names.
@@ -119,7 +119,7 @@ test('a panel over the reference cap is drawn from a packed, labeled image, and 
   expect(side.ink[1]).toBeGreaterThan(10)
 
   // The user lowers the image model's cap to 2.
-  await page.getByTestId('settings-open').click()
+  await openSettings(app, page)
   const settings = page.getByRole('dialog', { name: 'Settings' })
   await settings.getByTestId('model-row-mdl_000000000b').getByRole('button', { name: 'Edit' }).click()
   const form = settings.getByRole('form', { name: 'Edit model' })

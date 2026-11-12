@@ -31,34 +31,62 @@ function clampAxis(centre: number, half: number): number {
   return Math.min(1 - half, Math.max(half, centre))
 }
 
+/** The room a bubble may move in as fractions of the panel: across the whole of `bounds`, and down from its top. */
+function limitsIn(bounds: Box, panel: Box): { left: number; right: number; top: number } {
+  return {
+    left: (bounds.left - panel.left) / panel.width,
+    right: (bounds.left + bounds.width - panel.left) / panel.width,
+    top: (bounds.top - panel.top) / panel.height
+  }
+}
+
+/** Keeps a centre where the bubble stays between `low` and `high`; an axis it overflows is centred between them. */
+function clampBetween(centre: number, half: number, low: number, high: number): number {
+  if (half * 2 >= high - low) return (low + high) / 2
+  return Math.min(high - half, Math.max(low + half, centre))
+}
+
+/**
+ * A bubble's centre where it stays inside the panel, or, with `bounds`, inside those horizontally and below their top
+ * and free to leave the panel: a bubble on the strip belongs to its panel but is not held by it.
+ */
+function keep(centre: { x: number; y: number }, half: { x: number; y: number }, panel: Box | null, bounds: Box | undefined): BubblePlacement {
+  if (bounds === undefined || panel === null || panel.width <= 0 || panel.height <= 0) return { x: round(clampAxis(centre.x, half.x)), y: round(clampAxis(centre.y, half.y)) }
+  const limit = limitsIn(bounds, panel)
+  return { x: round(clampBetween(centre.x, half.x, limit.left, limit.right)), y: round(Math.max(limit.top + half.y, centre.y)) }
+}
+
 /** `grab` is the pointer's offset from the bubble's centre at press time, so the bubble does not jump to the pointer. */
 export function placementFromPointer(a: {
   pointer: { x: number; y: number }
   grab: { dx: number; dy: number }
   panel: Box
   bubble: { width: number; height: number }
+  /** Given, the bubble may leave the panel but not these (the strip). */
+  bounds?: Box
 }): BubblePlacement {
-  const { pointer, grab, panel, bubble } = a
+  const { pointer, grab, panel, bubble, bounds } = a
   if (panel.width <= 0 || panel.height <= 0) return { x: 0.5, y: 0.5 }
   const x = (pointer.x - grab.dx - panel.left) / panel.width
   const y = (pointer.y - grab.dy - panel.top) / panel.height
-  return {
-    x: round(clampAxis(x, bubble.width / 2 / panel.width)),
-    y: round(clampAxis(y, bubble.height / 2 / panel.height))
-  }
+  return keep({ x, y }, { x: bubble.width / 2 / panel.width, y: bubble.height / 2 / panel.height }, panel, bounds)
 }
 
-/** `half` is the bubble's half-size as fractions of the panel. */
+/** The `limit` of `nudgePlacement` for a stage with `bounds` (none on the focus stage). */
+export const limitOf = (bounds: Box | undefined, panel: Box): { bounds: Box; panel: Box } | undefined => (bounds === undefined ? undefined : { bounds, panel })
+
+/** `half` is the bubble's half-size as fractions of the panel. With `limit` (the bounds, and the panel they are measured against) it may leave the panel. */
 export function nudgePlacement(
   p: BubblePlacement,
   key: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown',
   big: boolean,
-  half: { x: number; y: number }
+  half: { x: number; y: number },
+  limit?: { bounds: Box; panel: Box }
 ): BubblePlacement {
   const step = big ? NUDGE_BIG : NUDGE
   const x = p.x + (key === 'ArrowRight' ? step : key === 'ArrowLeft' ? -step : 0)
   const y = p.y + (key === 'ArrowDown' ? step : key === 'ArrowUp' ? -step : 0)
-  return { x: round(clampAxis(x, half.x)), y: round(clampAxis(y, half.y)) }
+  return keep({ x, y }, half, limit?.panel ?? null, limit?.bounds)
 }
 
 /** Where the Add bubble menu puts a panel's next line, given how many it has: across three columns and down five rows, 15 spots before it starts over. */

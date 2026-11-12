@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp } from './helpers'
+import { createProjectAndSession, launchApp, openSettings } from './helpers'
 
 test('chat with the mock agent', async () => {
   const { app, page } = await launchApp({ script: { turns: [{ text: 'Hello from mock' }] } })
@@ -13,8 +13,9 @@ test('chat with the mock agent', async () => {
 
 test('settings opens on the models tab and closes on Escape', async () => {
   const { app, page } = await launchApp()
-  await page.getByTestId('settings-open').click()
-  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+  // Settings is in the File menu, which only a project's top bar has.
+  await createProjectAndSession(page, 'Moon Diary')
+  await openSettings(app, page)
   await expect(page.getByLabel('agent role')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)

@@ -1,8 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react'
+import { resolveStrip } from '@shared/strip-canvas'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { Field, errorText } from '../characters/controls'
 import { ExportDialog } from '../export/ExportDialog'
+import { AddPanelButton } from './AddPanelButton'
+import { BackgroundEditor } from './BackgroundEditor'
 
 /** Picks which episode the strip shows, and starts a new one. */
 export function EpisodeBar() {
@@ -13,6 +16,16 @@ export function EpisodeBar() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [editingBackground, setEditingBackground] = useState(false)
+  const backgroundButton = useRef<HTMLButtonElement>(null)
+  const active = episodes.find((e) => e.id === activeEpisodeId)
+  const activePanels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
+  const placed = useMemo(() => resolveStrip(activePanels ?? []), [activePanels])
+  const backgroundError = usePanelsStore((s) => s.backgroundError)
+  const closeBackground = useCallback((focusBack: boolean) => {
+    setEditingBackground(false)
+    if (focusBack) backgroundButton.current?.focus()
+  }, [])
 
   function startCreating(): void {
     const next = episodes.reduce((max, e) => Math.max(max, e.number), 0) + 1
@@ -64,6 +77,14 @@ export function EpisodeBar() {
           New episode
         </button>
       )}
+      {activeEpisodeId !== null && (
+        <AddPanelButton episodeId={activeEpisodeId} className="add-panel-text-button">
+          Add panel
+        </AddPanelButton>
+      )}
+      <button ref={backgroundButton} type="button" data-testid="background-open" aria-haspopup="dialog" aria-expanded={editingBackground} disabled={active === undefined} onClick={() => setEditingBackground(true)}>
+        Background
+      </button>
       <button type="button" data-testid="export-open" disabled={episodes.length === 0} onClick={() => setExporting(true)}>
         Export
       </button>
@@ -72,6 +93,15 @@ export function EpisodeBar() {
           {error}
         </p>
       )}
+      {backgroundError !== null && (
+        <p role="alert" className="error">
+          {backgroundError}{' '}
+          <button type="button" onClick={() => usePanelsStore.getState().dismissBackgroundError()}>
+            Dismiss
+          </button>
+        </p>
+      )}
+      {editingBackground && active !== undefined && backgroundButton.current !== null && <BackgroundEditor key={active.id} episode={active} placed={placed} anchor={backgroundButton.current} onClose={closeBackground} />}
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
     </div>
   )

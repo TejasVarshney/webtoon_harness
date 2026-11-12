@@ -1,7 +1,7 @@
 import { readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, openSessions } from './helpers'
 
 // A hand-edited, corrupt project file is reported to the user and the project still opens.
 // An episode file is only read when the episodes are listed, after the project has opened, so this also shows
@@ -15,11 +15,15 @@ test('a corrupt project file is shown as a problem and the project still opens',
   await writeFile(join(first.projectsRoot, projectDir, 'episodes', 'epi_0000000bad.json'), '{ "id": "epi_0000000bad", ', 'utf8')
 
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot: first.projectsRoot })
+  await openFirstProject(second.page)
+  // The sessions list opens first: the problems popup, once open, covers the chat's top.
+  await openSessions(second.page)
+  await expect(second.page.getByTestId('session-item')).toHaveCount(1)
+  await second.page.keyboard.press('Escape')
   const problems = second.page.getByTestId('project-problems')
   await expect(problems).toContainText('1 file could not be read')
   await problems.locator('summary').click()
   await expect(problems).toContainText('episodes/epi_0000000bad.json')
-  await expect(second.page.getByTestId('session-item')).toHaveCount(1)
   await expect(second.page.getByTestId('pane-visualizer')).toBeVisible()
   await second.app.close()
 })

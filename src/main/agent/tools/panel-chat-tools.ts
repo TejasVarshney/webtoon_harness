@@ -1,9 +1,12 @@
 import { z } from 'zod'
 import { versionLabel } from '@shared/panel-versions'
+import { AgentDialogueSchema } from '@shared/agent-dialogue'
+import { PanelDrawChoiceKeys } from '@shared/panel-draw-choices'
 import { PanelPatchSchema } from '@shared/schemas'
 import type { Character, Episode, Item, Location, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { CorruptFileError, EntityNotFoundError, PathEscapeError } from '../../domain/errors'
+import { customChoicesView } from '../../domain/panel-draw-choices'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
 import type { ProjectContext } from '../../storage/project-store'
@@ -26,10 +29,10 @@ function fieldsView(panel: Panel, roster: Character[], itemRoster: Item[]) {
     frame: panel.frame,
     beside: panel.beside,
     gapAfter: panel.gapAfter,
-    gutter: panel.gutter,
     setting: panel.setting,
     location: panel.location,
     description: panel.description,
+    ...customChoicesView(panel),
     continuityNotes: panel.continuityNotes,
     offPanelMentions: panel.offPanelMentions,
     cast: panel.characters.map((entry) => ({
@@ -168,7 +171,7 @@ const getPanelContext = (panelId: string): ToolDefinition =>
   defineTool({
     name: 'get_panel_context',
     description:
-      'Read this panel as it is now: shot, aspect, setting, description, the cast with variation names, the items with their usages, the dialogue, the version list ' +
+      'Read this panel as it is now: shot, aspect, setting, description, the custom prompt and style the user set (when set), the cast with variation names, the items with their usages, the dialogue, the version list ' +
       '(label vN counts ready images only; a version that is not ready has no label and its status says why) and a summary of the previous and next panels. ' +
       "Use it when the panel_context in the user's message may be out of date, for example after a change you made.",
     input: z.object({}),
@@ -201,7 +204,7 @@ const viewCurrentImage = (panelId: string): ToolDefinition =>
     }
   })
 
-const patchInput = PanelPatchSchema.extend({
+const patchInput = PanelPatchSchema.omit(PanelDrawChoiceKeys).extend({
   description: PanelPatchSchema.shape.description.describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
   setting: PanelPatchSchema.shape.setting.describe('Where and when, e.g. "Apartment hallway, evening"'),
   location: locationField,
@@ -211,7 +214,7 @@ const patchInput = PanelPatchSchema.extend({
   items: PanelPatchSchema.shape.items.describe(
     'Items in the panel (itemId, a ready usageId, heldBy a cast member or null, action), replacing the whole list. Removing a cast member who holds an item is rejected: change heldBy too.'
   ),
-  dialogue: PanelPatchSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+  dialogue: AgentDialogueSchema.optional().describe('Speech, thought, narration and sound effects in reading order, replacing all the dialogue. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
   continuityNotes: PanelPatchSchema.shape.continuityNotes.describe("What must match: the scene's layout in frame terms, lighting, time of day, props, outfits."),
   offPanelMentions: PanelPatchSchema.shape.offPanelMentions.describe('Roster characters named in the description but not shown, e.g. ["Jin"]')
 })
@@ -222,14 +225,15 @@ const updatePanelFields = (panelId: string): ToolDefinition =>
     description:
       'Change fields of this panel. Only the fields you name change, and the merged panel is validated. ' +
       'When the description changes, a roster character it names must be cast or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
-      'This does not redraw the image: a dialogue-only change needs no image at all, and a visual change needs regenerate_image or edit_image afterwards.',
+      'This does not redraw the image: a dialogue-only change needs no image at all, and a visual change needs regenerate_image or edit_image afterwards. ' +
+      'A custom prompt the user wrote for this panel (customPrompt in get_panel_context) is cleared by a change to what the picture shows; the result warns, and you tell the user.',
     input: patchInput,
     handler: async (patch, ctx) => {
       let updated: { panel: Panel; warnings: string[] }
       try {
         // Strict only for a description edit, so a panel saved with an unattached-mention warning
         // (the manual editor allows it) stays editable here; the warning is passed on instead.
-        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
+        updated = await ctx.services.panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true, byAgent: true })
       } catch (error) {
         throw asToolError(error)
       }

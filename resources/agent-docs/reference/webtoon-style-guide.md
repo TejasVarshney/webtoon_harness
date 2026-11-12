@@ -5,7 +5,7 @@ This is a reference for the visual choices of a panel: format, aspect, shot, pac
 ## Format
 
 - A webtoon is one long vertical strip, read on a phone by scrolling down. One panel at a time fills most of the screen.
-- Panels run top to bottom in episode order. By default each panel is a full-width row; a panel can sit beside the previous one (2 or 3 to a row), and its frame, the gap after it and its gutter colour can change. See Panel Layout.
+- Panels run top to bottom in episode order. By default each panel is a full-width row; a panel can sit beside the previous one (2 or 3 to a row), and its frame and the gap after it can change. See Panel Layout.
 - Every image is drawn **without text** (R6). The app draws the dialogue over the image as HTML: speech and thought bubbles on the left, narration as a full-width caption box, sound effects as large centered lettering.
 - The bubbles stack from the **top** of the panel downward. When a panel has dialogue, keep faces and the key action out of the top quarter of the frame: put sky, ceiling, wall or empty background there. Say it in the description when it matters: "Mina in the lower half of the frame, the night sky above her".
 - The project's `style` (from `<project_state>`) is added to every prompt. Never add style words of your own (anime, realistic, watercolor) to a description.
@@ -33,17 +33,16 @@ Rules of thumb:
 
 ## Panel Layout
 
-Four optional fields on `create_panel` and `update_panel` set how a panel sits in the strip. Leave them out for the defaults: a full-width, bordered panel with a normal gap and a white gutter. Changing them never needs a redraw.
+Three optional fields on `create_panel` and `update_panel` (`frame`, `beside`, `gapAfter`) steer how a panel flows in the strip until the user places it. Leave them out for the defaults: a full-width, bordered panel with a normal gap. Changing them never needs a redraw. `beside` and `gapAfter` only affect panels the user has not placed: once the user moves any panel in an episode, every panel in it is placed, and these two no longer change anything there.
 
 - **Quick exchanges:** shot, reverse shot and reaction go **beside each other by default** (`beside: true`), 2 to 3 to a row, as close-ups or medium shots at `2:3` or `9:16`. A row is one exchange, and a new speaker topic starts a new row.
 - **Clashes and wide establishing shots:** `frame: borderless`.
 - **Action runs (blows, dodges, chases):** `frame: slanted`.
 - **Descents, falls, tall structures, reveals from above or below:** aspect `1:2` or `1:3`. These panels fade instead of a frame, so `frame` is ignored on them.
 - **Time passing, scene changes:** `gapAfter: long` on the last panel before the change.
-- **Dark places (dungeon, night, a void):** `gutter: black` on every panel of the scene; consecutive black panels form one dark band.
 - **Rapid fire within one moment:** `gapAfter: tight`.
 
-A row takes its gap and gutter from its last panel. The first panel of the strip always starts a row, and a fourth `beside` panel starts a new one.
+A row takes its gap from its last panel. The first panel of the strip always starts a row, and a fourth `beside` panel starts a new one.
 
 ## Shot Vocabulary
 
@@ -71,7 +70,7 @@ Avoid the same shot three panels in a row; vary the distance to keep the strip a
 
 ## Pacing and Gutters
 
-The space between panels (the gutter) is set per panel with `gapAfter` and `gutter` (see Panel Layout). Control pacing with that and with what each panel shows:
+The space between panels (the gutter) is set per panel with `gapAfter` (see Panel Layout). Control pacing with that and with what each panel shows:
 
 - **One beat per panel** (R5). The reader gets one new thing per scroll.
 - **To slow down:** a silent panel (`"dialogue": []`), a tall `9:16` panel, a wide establishing panel, or a close-up of a face holding a feeling.

@@ -47,7 +47,7 @@ export interface ProjectInput {
 }
 
 /** The fields a caller may change; `id`, `createdAt` and `updatedAt` are the store's. */
-const PATCHABLE_FIELDS = ['title', 'logline', 'stylePreset', 'storyMode', 'defaultAspect', 'autopilotPanels', 'consistencyRetries'] as const
+const PATCHABLE_FIELDS = ['title', 'logline', 'stylePreset', 'defaultAspect', 'autopilotPanels', 'consistencyRetries'] as const
 
 export type ProjectMetaPatch = Partial<Pick<ProjectMeta, (typeof PATCHABLE_FIELDS)[number]>>
 

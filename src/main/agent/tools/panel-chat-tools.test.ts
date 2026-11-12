@@ -83,13 +83,15 @@ describe('panel chat tools: the tool set', () => {
     expect(schema('revert_to_version').required).toEqual(['versionId'])
     expect(schema('update_panel_fields').required ?? []).toEqual([])
     expect(Object.keys(schema('update_panel_fields').properties)).toEqual(
-      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
+      expect.arrayContaining(['description', 'setting', 'shot', 'aspect', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions'])
     )
+    expect(Object.keys(schema('update_panel_fields').properties)).not.toContain('gutter')
+    for (const key of ['referencePanelIds', 'styleOverride', 'promptOverride']) expect(Object.keys(schema('update_panel_fields').properties)).not.toContain(key)
     expect(schema('update_panel_fields').properties.shot.enum).toContain('close-up')
-    for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'gutter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
+    for (const field of ['description', 'setting', 'frame', 'beside', 'gapAfter', 'characters', 'items', 'dialogue', 'continuityNotes', 'offPanelMentions']) {
       expect(schema('update_panel_fields').properties[field].description, field).toEqual(expect.any(String))
     }
-    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
+    for (const field of ['frame', 'beside', 'gapAfter']) expect(schema('update_panel_fields').properties[field].description, field).toContain('No redraw needed.')
     expect(schema('update_panel_fields').properties.items.description).toContain('Removing a cast member who holds an item is rejected: change heldBy too.')
     expect(schema('update_panel_fields').properties.dialogue.description).toContain(PLACEMENT_DOC)
     expect(schema('update_panel_fields').properties.dialogue.description).toContain('leave either out to keep the one at the same position')
@@ -301,11 +303,11 @@ describe('update_panel_fields', () => {
   it('sets the layout fields without drawing, and shows them in fields', async () => {
     const { run, s, p2, panel } = await setup()
     const generate = vi.spyOn(s.images, 'generate')
-    const r = await run('update_panel_fields', { gutter: 'black' })
+    const r = await run('update_panel_fields', { gapAfter: 'long' })
     expect(r.ok, r.content).toBe(true)
-    expect(json(r)).toMatchObject({ updated: ['gutter'], fields: { gutter: 'black', frame: 'bordered', beside: false, gapAfter: 'normal' } })
+    expect(json(r)).toMatchObject({ updated: ['gapAfter'], fields: { gapAfter: 'long', frame: 'bordered', beside: false } })
     expect(generate).not.toHaveBeenCalled()
-    expect(await panel(p2.id)).toMatchObject({ gutter: 'black' })
+    expect(await panel(p2.id)).toMatchObject({ gapAfter: 'long' })
     expect((await panel(p2.id)).versions).toHaveLength(1)
   })
 
@@ -342,6 +344,15 @@ describe('update_panel_fields', () => {
     const r = await run('update_panel_fields', { dialogue: [{ speakerId: mina.id, kind: 'speech', text: 'New text' }] })
     expect(r.ok, r.content).toBe(true)
     expect((await panel(p2.id)).dialogue[0]).toMatchObject({ text: 'New text', ...look })
+  })
+
+  it('refuses a pixel-sized placement and accepts one just off the panel', async () => {
+    const { run, mina, panel, p2 } = await setup()
+    const line = { speakerId: mina.id, kind: 'speech', text: 'A' }
+    expect((await run('update_panel_fields', { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] })).ok).toBe(false)
+    const off = await run('update_panel_fields', { dialogue: [{ ...line, placement: { x: 1.4, y: 0.5 } }] })
+    expect(off.ok, off.content).toBe(true)
+    expect((await panel(p2.id)).dialogue[0].placement).toEqual({ x: 1.4, y: 0.5 })
   })
 
   it('clears a placement with an explicit null and sets one when given', async () => {
@@ -482,6 +493,25 @@ describe('get_panel_context', () => {
     ])
     expect(out.previous).toMatchObject({ id: p1.id, shot: 'medium', description: 'Mina waits.', cast: [{ name: 'Mina', variationName: 'Base' }] })
     expect(out.next).toMatchObject({ id: p3.id, description: 'Mina steps outside.' })
+  })
+
+  it('shows a custom prompt and style when the panel has them, and nothing otherwise', async () => {
+    const { run, s, ctx, p2 } = await setup()
+    expect(json(await run('get_panel_context'))).not.toHaveProperty('customPrompt')
+    await s.panels.update(ctx, p2.id, { promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }, { strictMentions: false, strictSheets: false })
+    expect(json(await run('get_panel_context'))).toMatchObject({ customPrompt: 'A cat on a roof.', styleOverride: 'ink wash' })
+  })
+
+  it('update_panel_fields clears the custom prompt on a visual edit, and keeps it for a layout edit', async () => {
+    const { run, s, ctx, p2, panel } = await setup()
+    await s.panels.update(ctx, p2.id, { promptOverride: 'A cat on a roof.' }, { strictMentions: false, strictSheets: false })
+    const layout = json(await run('update_panel_fields', { frame: 'borderless' }))
+    expect(layout.fields.customPrompt).toBe('A cat on a roof.')
+    expect((await panel(p2.id)).promptOverride).toBe('A cat on a roof.')
+    const visual = json(await run('update_panel_fields', { description: 'Mina smiles.' }))
+    expect(visual.fields).not.toHaveProperty('customPrompt')
+    expect(visual.warnings.join(' ')).toContain('custom prompt')
+    expect((await panel(p2.id)).promptOverride).toBeNull()
   })
 
   it('has no previous panel for the first one and no next panel for the last', async () => {

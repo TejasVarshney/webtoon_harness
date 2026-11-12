@@ -8,7 +8,7 @@
  */
 import { createServer } from 'node:net'
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, openTab } from './helpers'
+import { createProjectAndSession, launchApp, openSettings, openTab } from './helpers'
 
 test.skip(!process.env.WEBTOON_LIVE_CLAUDE, 'set WEBTOON_LIVE_CLAUDE=1 with Claude Code installed and signed in (uses your Claude Code account)')
 
@@ -33,7 +33,7 @@ test('Claude Code runs the main chat and creates a character through the link', 
   try {
     await createProjectAndSession(page, 'Claude Live')
 
-    await page.getByTestId('settings-open').click()
+    await openSettings(app, page)
     const dialog = page.getByRole('dialog', { name: 'Settings' })
     await dialog.getByRole('tab', { name: 'Plugins' }).click()
     await dialog.getByRole('switch', { name: 'Claude Code', exact: true }).click()

@@ -1,9 +1,11 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { tempProject, type TempProject } from '../test/temp-project'
 import { writeJsonAtomic } from '../storage/atomic'
 import { makeEpisode } from '../test/factories'
 import { EntityNotFoundError } from './errors'
+import { removeBackgroundImage } from './background-files'
 import { EpisodeService } from './episode-service'
 
 let tp: TempProject | undefined
@@ -128,20 +130,18 @@ describe('EpisodeService', () => {
     expect(events).toEqual([])
   })
 
-  it('moves a panel to an index, clamping out-of-range targets', async () => {
-    const { svc, ctx } = await setup()
+  it('setPanelOrder reorders, and keeps a panel added meanwhile at the end', async () => {
+    const { svc, ctx, events } = await setup()
     const [ep] = await svc.list(ctx)
-    for (const n of [1, 2, 3, 4]) await svc.insertPanel(ctx, ep.id, `pnl_000000000${n}`, undefined)
-    const order = async () => (await svc.get(ctx, ep.id)).panelIds.map((id) => id.slice(-1))
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000004', 0)
-    expect(await order()).toEqual(['4', '1', '2', '3'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000004', 2)
-    expect(await order()).toEqual(['1', '2', '4', '3'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000001', 99)
-    expect(await order()).toEqual(['2', '4', '3', '1'])
-    await svc.movePanel(ctx, ep.id, 'pnl_0000000001', -5)
-    expect(await order()).toEqual(['1', '2', '4', '3'])
-    await expect(svc.movePanel(ctx, ep.id, 'pnl_ffffffffff', 0)).rejects.toThrow('Unknown panel: pnl_ffffffffff')
+    for (const id of ['pnl_0000000001', 'pnl_0000000002', 'pnl_0000000003']) await svc.insertPanel(ctx, ep.id, id, undefined)
+    events.length = 0
+    const next = await svc.setPanelOrder(ctx, ep.id, ['pnl_0000000003', 'pnl_ffffffffff', 'pnl_0000000001'])
+    expect(next.panelIds).toEqual(['pnl_0000000003', 'pnl_0000000001', 'pnl_0000000002'])
+    expect(events).toEqual([{ type: 'episode.changed', projectId: ctx.id, episodeId: ep.id }])
+    events.length = 0
+    await svc.setPanelOrder(ctx, ep.id, next.panelIds)
+    expect(events).toEqual([])
+    await expect(svc.setPanelOrder(ctx, 'epi_ffffffffff', [])).rejects.toBeInstanceOf(EntityNotFoundError)
   })
 
   it('skips and reports a corrupt episode file', async () => {
@@ -160,5 +160,132 @@ describe('EpisodeService', () => {
     expect(await svc.list(ctx)).toEqual([])
     expect(ctx.problems.map((p) => p.path)).toEqual(['episodes/epi_ffffffffff.json'])
     expect(fs.readdirSync(ctx.paths.episodesDir())).toEqual(['epi_ffffffffff.json'])
+  })
+})
+
+describe('EpisodeService backgrounds', () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+  const SOLID = { kind: 'solid', color: '#112233' } as const
+
+  it('an episode saved without a background reads null', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    expect(ep.background).toBeNull()
+    const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    delete raw.background
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify(raw))
+    expect((await svc.get(ctx, ep.id)).background).toBeNull()
+  })
+
+  it('sets and clears a background and announces it', async () => {
+    const { svc, ctx, events } = await setup()
+    const [ep] = await svc.list(ctx)
+    events.length = 0
+    expect((await svc.setBackground(ctx, ep.id, SOLID)).background).toEqual(SOLID)
+    expect((await svc.get(ctx, ep.id)).background).toEqual(SOLID)
+    expect((await svc.setBackground(ctx, ep.id, null)).background).toBeNull()
+    expect(events).toHaveLength(2)
+  })
+
+  it('stores an image under the episode and keeps its settings across a new one', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const stored = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    expect(stored.background).toMatchObject({ kind: 'image', fit: 'width', opacity: 1, color: '#ffffff' })
+    const first = (stored.background as { path: string }).path
+    expect(stored.backgroundImage).toBe(first)
+    expect(first).toMatch(new RegExp(`^episode-backgrounds/${ep.id}/[a-z0-9]+\.png$`))
+    expect(fs.readFileSync(ctx.paths.resolveAsset(first))).toEqual(PNG)
+    await svc.setBackground(ctx, ep.id, { kind: 'image', path: first, fit: 'tile', opacity: 0.4, color: '#000000' })
+    const second = (await svc.storeBackgroundImage(ctx, ep.id, PNG, 'jpg')).background as { path: string; fit: string; opacity: number }
+    expect(second).toMatchObject({ fit: 'tile', opacity: 0.4 })
+    expect(second.path).not.toBe(first)
+  })
+
+  it('refuses an image path it did not store', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const image = (path: string) => ({ kind: 'image', path, fit: 'width', opacity: 1, color: '#ffffff' }) as const
+    await expect(svc.setBackground(ctx, ep.id, image(`episode-backgrounds/${ep.id}/elsewhere.png`))).rejects.toThrow(/did not store/)
+    await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    await expect(svc.setBackground(ctx, ep.id, image(`episode-backgrounds/${ep.id}/elsewhere.png`))).rejects.toThrow(/did not store/)
+  })
+
+  it('a new image removes the old file', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const first = ((await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')).background as { path: string }).path
+    const second = ((await svc.storeBackgroundImage(ctx, ep.id, PNG, 'webp')).background as { path: string }).path
+    expect(fs.existsSync(ctx.paths.resolveAsset(first))).toBe(false)
+    expect(fs.existsSync(ctx.paths.resolveAsset(second))).toBe(true)
+  })
+
+  it('switching to a gradient keeps the picked image, and switching back finds it', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const picked = await svc.storeBackgroundImage(ctx, ep.id, PNG, 'png')
+    const path = (picked.background as { path: string }).path
+    await svc.setBackground(ctx, ep.id, SOLID)
+    await svc.setBackground(ctx, ep.id, null)
+    expect(fs.existsSync(ctx.paths.resolveAsset(path))).toBe(true)
+    const back = await svc.setBackground(ctx, ep.id, { kind: 'image', path, fit: 'stretch', opacity: 0.7, color: '#222222' })
+    expect(back).toMatchObject({ backgroundImage: path, background: { kind: 'image', path, fit: 'stretch' } })
+  })
+
+  it('a bad extension or episode stores nothing', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    await expect(svc.storeBackgroundImage(ctx, ep.id, PNG, 'gif' as never)).rejects.toThrow(/png, jpg or webp/)
+    await expect(svc.storeBackgroundImage(ctx, 'epi_ffffffffff', PNG, 'png')).rejects.toBeInstanceOf(EntityNotFoundError)
+    expect(fs.existsSync(ctx.paths.resolveAsset('episode-backgrounds/epi_ffffffffff'))).toBe(false)
+  })
+
+  it('a project file naming a path outside the episode background folder is refused on read', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    const refused = /A background image lives at episode-backgrounds/
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: 'characters/x.png', background: { kind: 'image', path: 'characters/x.png' } }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(refused)
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: `episode-backgrounds/${ep.id}/../../x.png` }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(refused)
+  })
+
+  it('a path in another episode\'s folder is refused on read, and on write', async () => {
+    const { svc, ctx } = await setup()
+    const [ep] = await svc.list(ctx)
+    const foreign = 'episode-backgrounds/epi_ffffffffff/y.png'
+    const raw = JSON.parse(fs.readFileSync(ctx.paths.episodeFile(ep.id), 'utf8')) as Record<string, unknown>
+    const owner = /another episode/
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, backgroundImage: foreign }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(owner)
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify({ ...raw, background: { kind: 'image', path: foreign } }))
+    await expect(svc.get(ctx, ep.id)).rejects.toThrow(owner)
+    fs.writeFileSync(ctx.paths.episodeFile(ep.id), JSON.stringify(raw))
+    await expect(svc.setBackground(ctx, ep.id, { kind: 'image', path: foreign, fit: 'width', opacity: 1, color: '#ffffff' })).rejects.toThrow()
+    expect((await svc.get(ctx, ep.id)).background).toBeNull()
+  })
+})
+
+describe('removeBackgroundImage', () => {
+  it('deletes only a file in the episode\'s own folder, and never the one it is told to keep', async () => {
+    const t = await tempProject()
+    tp = t
+    const { ctx } = t
+    const put = (rel: string) => {
+      fs.mkdirSync(path.dirname(ctx.paths.resolveAsset(rel)), { recursive: true })
+      fs.writeFileSync(ctx.paths.resolveAsset(rel), 'x')
+      return rel
+    }
+    const own = put('episode-backgrounds/epi_aaaaaaaaaa/a.png')
+    const kept = put('episode-backgrounds/epi_aaaaaaaaaa/b.png')
+    const character = put('characters/x.png')
+    const foreign = put('episode-backgrounds/epi_bbbbbbbbbb/c.png')
+    const sneaky = put('characters/y.png')
+    for (const rel of [character, foreign, `episode-backgrounds/epi_aaaaaaaaaa/../../${sneaky}`, kept]) await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', rel, kept)
+    for (const rel of [character, foreign, sneaky, kept]) expect(fs.existsSync(ctx.paths.resolveAsset(rel))).toBe(true)
+    await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', null, kept)
+    await removeBackgroundImage(ctx, 'epi_aaaaaaaaaa', own, kept)
+    expect(fs.existsSync(ctx.paths.resolveAsset(own))).toBe(false)
   })
 })

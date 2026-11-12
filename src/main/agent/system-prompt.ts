@@ -1,4 +1,5 @@
 import { versionPosition } from '@shared/panel-versions'
+import { customChoicesView } from '../domain/panel-draw-choices'
 import { sheetCheckFailure } from '../domain/panel-validation'
 import type { Character, DialogueLine, Episode, Item, Location, Panel, PanelCharacter, PanelItem, PanelLocation, ProjectMeta } from '@shared/types'
 
@@ -46,7 +47,7 @@ export function buildStateSnapshot(s: StateSnapshotInput): string {
   // Archived characters are left out of the roster but still name the speakers of existing panels.
   const names = new Map(s.characters.map((c) => [c.id, c.name]))
   const roster = s.characters.filter((c) => !c.archived)
-  const lines = ['<project_state>', `title: ${oneLine(s.meta.title)}`, `story_mode: ${s.meta.storyMode}`, `style: ${oneLine(s.meta.stylePreset)}`]
+  const lines = ['<project_state>', `title: ${oneLine(s.meta.title)}`, `style: ${oneLine(s.meta.stylePreset)}`]
   lines.push(s.episode ? `current_episode: ${s.episode.id} "${oneLine(s.episode.title)}" (${s.episode.panelIds.length} panels)` : 'current_episode: none')
   if (roster.length === 0) lines.push('characters: none')
   else {
@@ -90,7 +91,6 @@ function layoutParts(p: Panel): string[] {
   if (p.beside) parts.push('beside')
   if (p.frame !== 'bordered') parts.push(p.frame)
   if (p.gapAfter !== 'normal') parts.push(`gap ${p.gapAfter}`)
-  if (p.gutter !== 'white') parts.push(`gutter ${p.gutter}`)
   return parts
 }
 
@@ -157,6 +157,7 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
   const names = new Map(roster.map((c) => [c.id, oneLine(c.name)]))
   const variationOf = (entry: PanelCharacter): string => castNames(entry, roster).variationName
   const position = versionPosition(panel, panel.currentVersionId)
+  const custom = customChoicesView(panel)
   const cast = panel.characters.map((pc) => `${castNames(pc, roster).name} (${variationOf(pc)})`).join(', ')
   const neighbor = (n: PanelNeighbor): string => (n === null ? 'none' : n === 'unreadable' ? '(unreadable)' : panelSummary(n, names, itemRoster, locations, variationOf))
   const lines = [
@@ -169,6 +170,8 @@ export function buildPanelContext(panel: Panel, roster: Character[], itemRoster:
     `setting: ${oneLine(panel.setting)}`,
     ...(panel.location === null ? [] : [`location: ${locationLabel(panel.location, locations)}`]),
     `description: ${oneLine(panel.description)}`,
+    ...(custom.customPrompt === undefined ? [] : [`custom_prompt: ${oneLine(custom.customPrompt)}`]),
+    ...(custom.styleOverride === undefined ? [] : [`style_override: ${oneLine(custom.styleOverride)}`]),
     `cast: ${cast || 'none'}`,
     `dialogue: ${dialogueLine(panel, names, true) || 'none'}`
   ]

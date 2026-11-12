@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { assetUrl } from '@shared/asset-url'
@@ -6,6 +6,7 @@ import type { Panel } from '@shared/types'
 import { startEventSync } from '../../events'
 import { initialAppState, useAppStore } from '../../stores/app-store'
 import { initialCharactersState, useCharactersStore } from '../../stores/characters-store'
+import { initialGenerateState, useGenerateStore } from '../../stores/generate-store'
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
@@ -18,6 +19,7 @@ let stopSync: (() => void) | undefined
 
 beforeEach(() => {
   useAppStore.setState({ ...initialAppState, projectId })
+  useGenerateStore.setState({ ...initialGenerateState })
   usePanelsStore.setState({ ...initialPanelsState })
   useCharactersStore.setState({ ...initialCharactersState })
 })
@@ -43,62 +45,31 @@ describe('WebtoonPane', () => {
     expect(useAppStore.getState().activeEpisodeId).toBe(EPISODE_ID)
   })
 
-  it('puts an insert button after every panel, so the last one appends', async () => {
+  it('draws the panels on the canvas at their resolved places', async () => {
+    const placed = { ...b, placement: { x: 200, y: 400, width: 220 } }
+    mount({ 'episodes:list': () => [episode()], 'panels:list': () => [{ ...a, placement: { x: 0, y: 0, width: 200 } }, placed] })
+    const cards = await screen.findAllByTestId('panel-card')
+    const canvas = document.querySelector('.strip-canvas') as HTMLElement
+    expect(canvas).not.toBeNull()
+    expect(cards.map((c) => c.closest('.strip-canvas'))).toEqual([canvas, canvas])
+    expect(cards[1].style.left).toBe('200px')
+    expect(cards[1].style.top).toBe('400px')
+  })
+
+  it('has an add panel button in the episode bar and one below the strip', async () => {
     mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, b] })
     await screen.findAllByTestId('panel-card')
-    expect(screen.getAllByTestId('add-panel')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Add panel' })).toHaveLength(2)
+    expect(screen.getAllByTestId('add-panel')).toHaveLength(1)
   })
 
-  it('passes the panel to insert after, and nothing at the end of the strip', async () => {
-    const created = panel({ id: 'pnl_00000000cc' })
-    const { calls } = mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, b], 'panels:create': () => ({ panel: created, warnings: [] }) })
-    await screen.findAllByTestId('panel-card')
-    const [between, end] = screen.getAllByTestId('add-panel')
-
-    await userEvent.click(between)
-    await waitFor(() => expect(useAppStore.getState().selectedPanelId).toBe(created.id))
-    useAppStore.getState().selectPanel(null)
-
-    await userEvent.click(end)
-    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:create')).toHaveLength(2))
-
-    const drafts = calls.filter((c) => c.channel === 'panels:create').map((c) => (c.req as { draft: Record<string, unknown> }).draft)
-    expect(drafts[0].afterPanelId).toBe(a.id)
-    expect(drafts[1]).not.toHaveProperty('afterPanelId')
-    expect(drafts.every((d) => d.episodeId === EPISODE_ID)).toBe(true)
-  })
-
-  describe('rows', () => {
-    const c = panel({ id: 'pnl_00000000cc' })
-    const beside = { ...b, beside: true }
-
-    it('puts a beside panel in the row before it', async () => {
-      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, beside, c] })
-      await screen.findAllByTestId('panel-card')
-      const rows = document.querySelectorAll('.strip-row')
-      expect([...rows].map((r) => r.getAttribute('data-row-size'))).toEqual(['2', '1'])
-      expect(within(rows[0] as HTMLElement).getAllByTestId('panel-card')).toHaveLength(2)
-      // Two 2:3 panels split their row; the lone one has it all.
-      expect(screen.getAllByTestId('panel-card').map((card) => card.style.getPropertyValue('--share'))).toEqual(['0.5', '0.5', '1'])
-    })
-
-    it('puts the insert button only between rows, after the row`s last panel', async () => {
-      const created = panel({ id: 'pnl_00000000dd' })
-      const { calls } = mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, beside, c], 'panels:create': () => ({ panel: created, warnings: [] }) })
-      await screen.findAllByTestId('panel-card')
-      const buttons = screen.getAllByTestId('add-panel')
-      expect(buttons).toHaveLength(2)
-      await userEvent.click(buttons[0])
-      await waitFor(() => expect(calls.some((x) => x.channel === 'panels:create')).toBe(true))
-      expect((calls.find((x) => x.channel === 'panels:create')?.req as { draft: Record<string, unknown> }).draft.afterPanelId).toBe(beside.id)
-    })
-
-    it('draws a black-gutter row on a black band', async () => {
-      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, { ...c, gutter: 'black' }] })
-      const cards = await screen.findAllByTestId('panel-card')
-      expect(cards[0].closest('.strip-band')).toHaveAttribute('data-gutter', 'white')
-      expect(cards[1].closest('.strip-band')).toHaveAttribute('data-gutter', 'black')
-    })
+  it('shows the selection bar for a shift selection', async () => {
+    mount({ 'episodes:list': () => [episode()], 'panels:list': () => [a, b] })
+    const cards = await screen.findAllByTestId('panel-card')
+    expect(screen.queryByText(/Generate from/)).toBeNull()
+    fireEvent.click(cards[0])
+    fireEvent.click(cards[1], { shiftKey: true })
+    expect(screen.getByText('Generate from 2 panels')).toBeInTheDocument()
   })
 
   it('shows one insert button and a hint for an empty episode', async () => {
@@ -108,23 +79,12 @@ describe('WebtoonPane', () => {
     expect(screen.getByText(/no panels yet/i)).toBeInTheDocument()
   })
 
-  it('opens the new blank panel in editing mode once the strip has it', async () => {
-    const blank = panel({ id: 'pnl_00000000f1', description: '', setting: '', characters: [], dialogue: [], versions: [], currentVersionId: null })
-    let panels: Panel[] = []
-    const { calls } = mount({
-      'episodes:list': () => [episode()],
-      'panels:list': () => panels,
-      'panels:create': () => {
-        panels = [blank]
-        return { panel: blank, warnings: [] }
-      }
-    })
+  it('opens the Generate page with no references from the add panel button', async () => {
+    mount({ 'episodes:list': () => [episode()], 'panels:list': () => [] })
     await screen.findByText(/no panels yet/i)
     await userEvent.click(screen.getByTestId('add-panel'))
-    await waitFor(() => expect(useAppStore.getState().selectedPanelId).toBe(blank.id))
-    // The strip already holds it, so the workspace finds it at once.
-    expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]?.map((p) => p.id)).toEqual([blank.id])
-    expect(calls.filter((c) => c.channel === 'panels:create').map((c) => (c.req as { generate: boolean }).generate)).toEqual([false])
+    expect(useGenerateStore.getState().request).toEqual({ episodeId: EPISODE_ID, referencePanelIds: [] })
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
   })
 
   it('shows a new panel when panel.changed arrives', async () => {
@@ -210,6 +170,13 @@ describe('WebtoonPane', () => {
       expect(calls.find((c) => c.channel === 'episodes:create')?.req).toEqual({ projectId, title: 'The Rooftop' })
       expect(screen.queryByLabelText('Episode title')).toBeNull()
       expect(screen.getByLabelText('Episode')).toHaveValue(second.id)
+    })
+
+    it('offers no way to rename an episode', async () => {
+      mount({ 'episodes:list': () => [episode()], 'panels:list': () => [] })
+      await screen.findByLabelText('Episode')
+      expect(screen.queryByRole('button', { name: /rename/i })).toBeNull()
+      expect(screen.queryByRole('textbox', { name: /rename/i })).toBeNull()
     })
 
     it('can cancel creating an episode, and shows a failure', async () => {

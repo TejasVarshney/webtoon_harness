@@ -724,25 +724,50 @@ describe('PanelInspector', () => {
   })
 
   describe('Scene', () => {
-    it('holds the description, setting, shot, aspect and the layout', () => {
+    it('has no Beside, Gap after or Gutter field: the strip places panels', () => {
+      mount()
+      open('Scene')
+      for (const label of ['Gap after', 'Gutter', 'Beside the previous panel']) expect(within(tabPanel()).queryByLabelText(label)).toBeNull()
+      expect(field('Frame')).toBeInTheDocument()
+    })
+
+    it('holds the description, setting, shot, aspect and the frame', () => {
       mount()
       open('Scene')
       for (const label of ['Description', 'Setting', 'Shot', 'Aspect']) expect(field(label)).toBeInTheDocument()
       const layout = within(tabPanel()).getByRole('group', { name: 'Layout' })
-      for (const label of ['Frame', 'Gap after', 'Gutter', 'Beside the previous panel']) expect(within(layout).getByLabelText(label)).toBeInTheDocument()
+      expect(within(layout).getByLabelText('Frame')).toBeInTheDocument()
       expect(field('Setting')).toHaveValue('Rooftop at dusk')
     })
 
-    it('saves exactly the layout field that changed, and never redraws', async () => {
+    it('saves exactly the frame that changed, and never redraws', async () => {
       fakeTimers()
       const { calls } = mount()
       open('Scene')
-      fireEvent.change(field('Gap after'), { target: { value: 'long' } })
+      fireEvent.change(field('Frame'), { target: { value: 'borderless' } })
       await wait(600)
       vi.useRealTimers()
       await waitFor(() => expect(updates(calls)).toHaveLength(1))
-      expect(updates(calls)).toEqual([{ gapAfter: 'long' }])
+      expect(updates(calls)).toEqual([{ frame: 'borderless' }])
       expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+
+    it('says the panel uses a custom prompt and clears it', async () => {
+      replaceStored({ ...stored, promptOverride: 'A cat on a roof.' })
+      const { calls } = mount()
+      open('Scene')
+      expect(within(tabPanel()).getByText('This panel uses a custom prompt')).toBeInTheDocument()
+      fireEvent.click(within(tabPanel()).getByRole('button', { name: 'Use automatic prompt' }))
+      await waitFor(() => expect(updates(calls)).toEqual([{ promptOverride: null }]))
+      await waitFor(() => expect(within(tabPanel()).queryByText('This panel uses a custom prompt')).toBeNull())
+      expect(calls.some((c) => c.channel === 'panels:generate')).toBe(false)
+    })
+
+    it('says nothing about a custom prompt when the panel has none', () => {
+      mount()
+      open('Scene')
+      expect(within(tabPanel()).queryByText('This panel uses a custom prompt')).toBeNull()
+      expect(within(tabPanel()).queryByRole('button', { name: 'Use automatic prompt' })).toBeNull()
     })
 
     it('sets a saved location at its base state and main angle, and offers no archived one', async () => {

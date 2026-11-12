@@ -17,8 +17,8 @@ const DOCS_DIR = path.resolve('resources', 'agent-docs')
 const read = (name: string): string => fs.readFileSync(path.join(DOCS_DIR, ...`${name}.md`.split('/')), 'utf8')
 
 const REQUIRED: Record<string, string[]> = {
-  AGENTS: ['Mission', 'Operating Loop', 'Story Modes', 'Hard Rules', 'Tool Catalog', 'Workflow Docs Index', 'Communication Style', 'Failure Handling'],
-  'workflows/story-direction': ['Purpose', 'User-Led Mode', 'AI-Led Mode', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
+  AGENTS: ['Mission', 'Operating Loop', 'Story Direction', 'Hard Rules', 'Tool Catalog', 'Workflow Docs Index', 'Communication Style', 'Failure Handling'],
+  'workflows/story-direction': ['Purpose', 'Directing the Story', 'Story Bible', 'Beats and Outline', 'Episode Structure', 'Vertical Pacing', 'Continuity Across Sessions', 'Conflicts and Retcons', 'Examples'],
   'workflows/character-creation': ['Purpose', 'Character Sheet', 'Writing the Appearance Lock', 'Base Reference Image', 'Variations', 'Variation Naming', 'When Not to Create a Variation', 'Automating Creation from Chat', 'Updating Characters', 'Examples'],
   'workflows/item-creation': ['Purpose', 'Item Sheet', 'Writing the Item Lock', 'Base Reference Image', 'Usages', 'Reusing Usages', 'When to Create an Item', 'Using Items in Panels', 'Examples'],
   'workflows/location-creation': ['Purpose', 'Location Sheet', 'Writing the Layout', 'Base Picture', 'States', 'Cameras', 'When to Create a Location', 'Using Locations in Panels', 'Examples'],
@@ -33,7 +33,7 @@ const REQUIRED: Record<string, string[]> = {
 const DOCS = Object.keys(REQUIRED)
 
 /** Snake-case keys the code itself writes into `<project_state>` / `<panel_context>`: the only backticked snake_case that is not a tool. */
-const NON_TOOL_TOKENS = ['story_mode', 'current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions']
+const NON_TOOL_TOKENS = ['current_episode', 'recent_panels', 'continuity_notes', 'off_panel_mentions', 'custom_prompt', 'style_override']
 
 const CHECK_CONTRACT = 'Respond with only one JSON object: {"passed": true|false, "issues": ["…"]}'
 
@@ -221,6 +221,19 @@ describe('workflow docs lint', () => {
     expect(section).toContain(lastLine(null))
   })
 
+  it('prompt templates reproduce the [REFERENCE PANELS] line verbatim', () => {
+    const line = (n: number): string => {
+      const base = { stylePreset: 'S', panel: { description: 'd', setting: 's', shot: 'medium' as const, aspect: '2:3' as const, frame: 'bordered' as const, characters: [], items: [], continuityNotes: '' }, roster: new Map(), itemRoster: new Map(), previous: null, maxReferences: 8 }
+      const chosen = Array.from({ length: n }, (_, i) => ({ panelId: `pnl_000000000${i}`, imagePath: `panels/${i}.png` }))
+      return composePanelPrompt({ ...base, referencePanels: chosen }).prompt.split('\n').find((l) => l.startsWith('[REFERENCE PANELS]'))!
+    }
+    const section = extractSection(read('reference/prompt-templates'), 'Panel Prompt')
+    expect(section).toContain(line(1).replace('image 1', 'image {r}'))
+    expect(section).toContain(line(2).replace('1 and 2', '{r1} and {r2}').slice('[REFERENCE PANELS] '.length))
+    expect(line(3)).toContain('Reference images 1, 2 and 3 are panels the user chose')
+    expect(section).toContain('{r1}, {r2} and {r3}')
+  })
+
   /** A location written in placeholders, in a state with a ready picture of its own. */
   function placeholderLocation() {
     const state = makeLocationState({ id: 'lst_0000000002', name: '{state.name}', kind: 'state', delta: '{state.delta}', status: 'ready', imagePath: 'locations/b.png' })
@@ -403,13 +416,13 @@ describe('workflow docs lint', () => {
     const table = extractSection(read('workflows/panel-editing'), 'Edit vs Regenerate')
     const row = table.split('\n').find((line) => line.includes('`frame`'))
     expect(row, 'a row for the layout fields').toBeDefined()
-    for (const word of ['`beside`', '`gapAfter`', '`gutter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
+    for (const word of ['`beside`', '`gapAfter`', '`update_panel_fields`', '9:16', '1:2', '1:3']) expect(row).toContain(word)
     expect(row!.trimEnd().endsWith('| no |')).toBe(true)
     // The composition row is about the picture's arrangement, not the panel's layout.
     expect(table.split('\n').find((line) => line.includes('A different composition'))).not.toMatch(/\blayout\b/)
     const catalog = extractSection(read('AGENTS'), 'Tool Catalog')
     const update = catalog.split('\n').find((line) => line.startsWith('- `update_panel` '))!
-    expect(update).toContain('`frame`, `beside`, `gapAfter` and `gutter` need no redraw')
+    expect(update).toContain('`frame`, `beside` and `gapAfter` need no redraw')
     expect(update).toContain('an aspect change between 9:16, 1:2 and 1:3')
   })
 

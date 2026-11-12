@@ -38,11 +38,15 @@ export function panel(o: Partial<Panel> = {}): Panel {
     beside: false,
     gapAfter: 'normal',
     gutter: 'white',
+    placement: null,
     characters: [],
     items: [],
     dialogue: [],
     continuityNotes: '',
     offPanelMentions: [],
+    referencePanelIds: [],
+    styleOverride: null,
+    promptOverride: null,
     versions: [version],
     currentVersionId: version.id,
     createdBy: 'user',
@@ -53,5 +57,5 @@ export function panel(o: Partial<Panel> = {}): Panel {
 }
 
 export function episode(o: Partial<Episode> = {}): Episode {
-  return { id: EPISODE_ID, number: 1, title: 'Episode 1', synopsis: '', panelIds: [], createdAt: T, updatedAt: T, ...o }
+  return { id: EPISODE_ID, number: 1, title: 'Episode 1', synopsis: '', panelIds: [], background: null, backgroundImage: null, createdAt: T, updatedAt: T, ...o }
 }

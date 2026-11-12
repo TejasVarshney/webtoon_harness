@@ -82,9 +82,46 @@ describe('episodes IPC handlers', () => {
     expect(second).toMatchObject({ number: 2, title: 'The Letter', synopsis: 'Mina finds a letter.' })
     expect((await h['episodes:list']({ projectId })).map((e) => e.number)).toEqual([1, 2])
 
-    const renamed = await h['episodes:update']({ projectId, episodeId: second.id, patch: { title: 'The Letter, Again' } })
-    expect(renamed).toMatchObject({ id: second.id, title: 'The Letter, Again', synopsis: 'Mina finds a letter.', number: 2 })
-    await expect(h['episodes:update']({ projectId, episodeId: 'epi_ffffffffff', patch: { title: 'x' } })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+    const edited = await h['episodes:update']({ projectId, episodeId: second.id, patch: { synopsis: 'Mina burns it.' } })
+    expect(edited).toMatchObject({ id: second.id, title: 'The Letter', synopsis: 'Mina burns it.', number: 2 })
+    await expect(h['episodes:update']({ projectId, episodeId: 'epi_ffffffffff', patch: { synopsis: 'x' } })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+  })
+
+  it('refuses a new title', async () => {
+    const { h, projectId, episode } = await setup()
+    // @ts-expect-error a title is not part of the patch type; the runtime check must refuse it too
+    await expect(h['episodes:update']({ projectId, episodeId: episode.id, patch: { title: 'New' } })).rejects.toThrow()
+    expect((await h['episodes:list']({ projectId }))[0].title).toBe('Episode 1')
+  })
+})
+
+describe('episodes:setBackground and episodes:pickBackgroundImage', () => {
+  it('stores the picked image as the background, keeps what is stored on a cancel, and refuses a path it did not store', async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'episode background '))
+    tmp = dir
+    const file = path.join(dir, 'sky.JPG')
+    await fs.promises.writeFile(file, Buffer.from([1, 2, 3]))
+    const picker = vi.fn<PickFiles>(async () => [file])
+    const { h, projectId, episode, ctx } = await setup(picker)
+    const stored = await h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id }, { sender: 'window' })
+    expect(picker).toHaveBeenCalledWith({ sender: 'window' }, expect.objectContaining({ multiple: false }))
+    const image = stored!.background as { kind: 'image'; path: string }
+    expect(image.path).toMatch(/\.jpg$/)
+    expect([...fs.readFileSync(ctx.paths.resolveAsset(image.path))]).toEqual([1, 2, 3])
+
+    const gradient = { kind: 'linear' as const, angle: 90, repeatEvery: null, stops: [{ color: '#000000', at: 0 }, { color: '#ffffff', at: 1 }] }
+    expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: gradient })).background).toEqual(gradient)
+    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { ...image, path: `episode-backgrounds/${episode.id}/other.png`, fit: 'width', opacity: 1, color: '#ffffff' } })).rejects.toThrow(/did not store/)
+    await expect(h['episodes:setBackground']({ projectId, episodeId: episode.id, background: { kind: 'solid', color: 'red' } })).rejects.toThrow(/^Invalid input/)
+    expect((await h['episodes:setBackground']({ projectId, episodeId: episode.id, background: null })).background).toBeNull()
+  })
+
+  it('returns null when the dialog is cancelled and refuses a file that is not an image', async () => {
+    let chosen: string[] = []
+    const { h, projectId, episode } = await setup(async () => chosen)
+    expect(await h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id })).toBeNull()
+    chosen = ['notes.txt']
+    await expect(h['episodes:pickBackgroundImage']({ projectId, episodeId: episode.id })).rejects.toThrow(/png, jpg or webp/)
   })
 })
 
@@ -250,13 +287,14 @@ describe('panels:delete, move and revert', () => {
     await expect(h['panels:delete']({ projectId, panelId: GHOST_PANEL })).rejects.toThrow(`Unknown panel: ${GHOST_PANEL}`)
   })
 
-  it('moves a panel to an index', async () => {
+  it('places panels and reads the episode in that order', async () => {
     const { h, projectId, draft, episode } = await setup()
     const a = (await h['panels:create']({ projectId, draft: draft({ description: 'A' }), generate: false })).panel
     await h['panels:create']({ projectId, draft: draft({ description: 'B' }), generate: false })
-    await h['panels:create']({ projectId, draft: draft({ description: 'C' }), generate: false })
-    await h['panels:move']({ projectId, panelId: a.id, toIndex: 2 })
-    expect((await h['panels:list']({ projectId, episodeId: episode.id })).map((p) => p.description)).toEqual(['B', 'C', 'A'])
+    await h['panels:place']({ projectId, episodeId: episode.id, moves: [{ panelId: a.id, placement: { x: 0, y: 5000, width: 100 } }] })
+    const listed = await h['panels:list']({ projectId, episodeId: episode.id })
+    expect(listed.map((p) => p.description)).toEqual(['B', 'A'])
+    expect(listed.every((p) => p.placement !== null)).toBe(true)
   })
 
   it('reverts to an earlier ready version, and refuses an unknown or failed one', async () => {
@@ -345,5 +383,50 @@ describe('panels:saveSketch and panels:readSketch', () => {
     await expect(h['panels:saveSketch']({ projectId, panelId: panel.id, png: 'data:image/jpeg;base64,AAAA' })).rejects.toThrow()
     await expect(h['panels:saveSketch']({ projectId, panelId: panel.id, png: dataUrl(Buffer.from('not a png at all')) })).rejects.toThrow('Sketch is not a PNG image')
     expect((await get(panel.id)).sketchPath ?? null).toBeNull()
+  })
+})
+
+describe('panels:previewPrompt', () => {
+  it('returns the prompt a new panel would be drawn with and writes nothing', async () => {
+    const { h, projectId, draft, cast, s, ctx, episode } = await setup()
+    const before = fs.readdirSync(ctx.paths.panelsDir())
+    const out = await h['panels:previewPrompt']({ projectId, draft: draft({ characters: cast }), hasSketch: true })
+    expect(out.prompt).toContain('[ACTION] Mina opens the door.')
+    expect(out.references.map((r) => r.label)).toEqual(['Mina', 'layout sketch'])
+    expect(out.droppedPanelIds).toEqual([])
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual(before)
+    expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
+  })
+
+  it('refuses a request whose hasSketch is not a boolean', async () => {
+    const { h, projectId, draft } = await setup()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft(), hasSketch: 'yes' as never })).rejects.toThrow('Invalid input: hasSketch')
+  })
+
+  it('refuses a bad draft and rejects what the prompt cannot be built from', async () => {
+    const { h, projectId, draft } = await setup()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft({ shot: 'huge' as never }), hasSketch: false })).rejects.toThrow()
+    await expect(h['panels:previewPrompt']({ projectId, draft: draft({ episodeId: 'epi_ffffffffff' }), hasSketch: false })).rejects.toThrow('Unknown episode: epi_ffffffffff')
+  })
+})
+
+describe('panels:create with a sketch', () => {
+  const dataUrl = (bytes: Buffer): string => `data:image/png;base64,${bytes.toString('base64')}`
+
+  it('stores the sketch before the background draw, so the first version sends it', async () => {
+    const { h, projectId, draft, settled, ctx } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: dataUrl(PNG) })
+    expect(panel.sketchPath).toMatch(/^panels\/pnl_[0-9a-f]{10}\/sketch-[a-z0-9]+\.png$/)
+    expect(fs.readFileSync(ctx.paths.resolveAsset(panel.sketchPath!))).toEqual(PNG)
+    const done = await settled(panel.id)
+    expect(done.versions[0].referenceImagePaths).toContain(panel.sketchPath)
+  })
+
+  it('refuses a sketch that is not a PNG and creates no panel', async () => {
+    const { s, h, projectId, draft, ctx, episode } = await setup()
+    await expect(h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: dataUrl(Buffer.from('not a png at all')) })).rejects.toThrow('Sketch is not a PNG image')
+    await expect(h['panels:create']({ projectId, draft: draft(), generate: true, sketchPng: 'data:image/jpeg;base64,AAAA' })).rejects.toThrow()
+    expect(fs.readdirSync(ctx.paths.panelsDir())).toEqual([])
+    expect((await s.episodes.get(ctx, episode.id)).panelIds).toEqual([])
   })
 })

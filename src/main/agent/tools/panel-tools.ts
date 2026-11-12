@@ -1,8 +1,11 @@
 import { z } from 'zod'
+import { AgentDialogueSchema } from '@shared/agent-dialogue'
+import { PanelDrawChoiceKeys } from '@shared/panel-draw-choices'
 import { PanelCharacterSchema, PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import type { Episode, Panel, PanelVersion } from '@shared/types'
 import { skippedCheckWarning } from '../../domain/consistency-checker'
 import { EntityNotFoundError, PathEscapeError } from '../../domain/errors'
+import { customChoicesView } from '../../domain/panel-draw-choices'
 import { PanelValidationError } from '../../domain/panel-service'
 import { ToolError, defineTool, type ToolContext, type ToolDefinition, type ToolOutput } from './registry'
 import { FIRST_ART_NOTE } from './style-tools'
@@ -57,8 +60,7 @@ function versionBrief(panel: Panel): { id: string; status: PanelVersion['status'
 export const layoutFields = {
   frame: PanelDraftSchema.shape.frame.describe('bordered (default), borderless for clashes and wide establishing shots, slanted for action runs. Ignored on 1:2 and 1:3, which fade. No redraw needed.'),
   beside: PanelDraftSchema.shape.beside.describe("true puts this panel in the previous panel's row (at most 3 a row): the default for quick exchanges. Default false. No redraw needed."),
-  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.'),
-  gutter: PanelDraftSchema.shape.gutter.describe('white (default) or black for dark places; consecutive black panels form one dark band. No redraw needed.')
+  gapAfter: PanelDraftSchema.shape.gapAfter.describe('Space after this panel or its row: tight for rapid fire, normal (default), long for time passing or a scene change. No redraw needed.')
 }
 
 /** The location input with its describe text, shared by create_panel, update_panel and the panel chat's update_panel_fields. */
@@ -91,7 +93,7 @@ const createEpisode = defineTool({
 const listPanels = defineTool({
   name: 'list_panels',
   description:
-    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), location, shot, aspect, frame, beside, gapAfter, gutter, cast, description, continuityNotes, dialogue and ' +
+    'List the last panels of an episode in story order (default the last 5): id, index (position in the episode, from 0), location, shot, aspect, frame, beside, gapAfter, cast, description, customPrompt and styleOverride (only when the user set one), continuityNotes, dialogue and ' +
     'the current version (id, status, imagePath), which is null while the panel has no ready image. Read recent panels before drawing the next one.',
   input: z.object({
     episodeId,
@@ -113,9 +115,9 @@ const listPanels = defineTool({
           frame: p.frame,
           beside: p.beside,
           gapAfter: p.gapAfter,
-          gutter: p.gutter,
           cast: p.characters.map((c) => ({ name: names.get(c.characterId) ?? c.characterId, characterId: c.characterId, variationId: c.variationId })),
           description: p.description,
+          ...customChoicesView(p),
           continuityNotes: p.continuityNotes,
           dialogue: p.dialogue,
           currentVersion: versionBrief(p)
@@ -154,7 +156,7 @@ const createPanel = defineTool({
     'Dialogue is stored as data and drawn over the image, so the picture contains no text. ' +
     'If the image fails the panel still exists: read status and error, then call regenerate_panel. check is the consistency check result, or null when none ran. ' +
     FIRST_ART_NOTE,
-  input: PanelDraftSchema.extend({
+  input: PanelDraftSchema.omit(PanelDrawChoiceKeys).extend({
     episodeId,
     afterPanelId: z.string().nullable().optional().describe('Insert after this panel; null inserts at the start. Default: append at the end.'),
     description: z.string().describe('What happens in the panel: action, composition, mood. No dialogue and no text in the picture.'),
@@ -166,7 +168,7 @@ const createPanel = defineTool({
     items: PanelDraftSchema.shape.items.describe(
       "Items shown in the panel: itemId, a usageId with a ready image, heldBy (a cast member's id or null), action. An item named in the description must be attached or listed in offPanelMentions."
     ),
-    dialogue: PanelDraftSchema.shape.dialogue.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    dialogue: AgentDialogueSchema.describe('Speech, thought, narration and sound effects in reading order. speakerId is a character id, or null for narration and sfx. placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     continuityNotes: z.string().optional().describe("What must match: the scene's layout in frame terms, lighting, time of day, props, outfits. Default empty."),
     offPanelMentions: z.array(z.string()).optional().describe('Roster characters or items named in the description but not shown, e.g. ["Jin"]')
   }),
@@ -191,10 +193,11 @@ const updatePanel = defineTool({
     'Change fields of a panel. Only the fields named in patch change, and the merged panel is validated like create_panel; ' +
     'when the description changes, a roster character or item it names must be cast, attached or listed in offPanelMentions, otherwise the call is rejected (any other edit only returns that as a warning). ' +
     'This does not redraw the image: pass regenerate true to generate a new one now and wait for it (the result is then the new version, like create_panel), ' +
-    'or call regenerate_panel later. Without regenerate the result is the updated panel.',
+    'or call regenerate_panel later. Without regenerate the result is the updated panel. ' +
+    'A panel the user made with a custom prompt (customPrompt in get_panel and list_panels) loses it when this changes what the picture shows, so the redraw follows your edit; the result warns, and you tell the user.',
   input: z.object({
     panelId,
-    patch: PanelPatchSchema.extend({ location: locationField }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
+    patch: PanelPatchSchema.omit(PanelDrawChoiceKeys).extend({ location: locationField, dialogue: AgentDialogueSchema.optional() }).describe('The fields to change; fields left out stay as they are. A characters, items or dialogue list replaces the whole list. In dialogue, placement is the bubble\'s centre as fractions of the panel (x across, y down), or null for automatic; leave it out to keep the line\'s current placement. Values outside 0..1 sit off the panel (a bubble may leave it); keep placement and tail within -10 to 10. style holds only what differs from the app\'s look (shape, font, size, padding, bold, italic, caps, align, color, fill, stroke, strokeWidth, width); tail is where the bubble points, as fractions of the panel, or "none", or null for automatic; leave either out to keep the one at the same position in the list, and when removing or reordering lines, send style and tail on every line kept.'),
     regenerate: z.boolean().optional().describe('Generate a new image after the update. Default false.')
   }),
   handler: async ({ panelId, patch, regenerate }, ctx) => {
@@ -204,7 +207,7 @@ const updatePanel = defineTool({
     try {
       // The guard is strict only for a description edit. A panel saved with an unattached-mention
       // warning (the manual editor allows it) must stay editable by the agent; the warning is passed on instead.
-      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true })
+      updated = await panels.update(ctx.project, panelId, patch, { strictMentions: patch.description !== undefined, strictSheets: true, byAgent: true })
     } catch (error) {
       throw asToolError(error)
     }

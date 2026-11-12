@@ -108,7 +108,7 @@ export async function createServices(opts: ServicesOptions): Promise<Services> {
   const locations = new LocationService({ bus, images, projects, usage: locationUsage, trash: opts.trash, sheetChecker: checker })
   const episodes = new EpisodeService({ bus })
   const panels = new PanelService({ bus, projects, episodes, characters, items, locations, images, checker, trash: opts.trash, packComposer: opts.packComposer })
-  const story = new StoryService({ bus, projects })
+  const story = new StoryService({ bus })
   const styleLibrary = new StyleLibrary(join(opts.userDataDir, 'styles.json'))
   await styleLibrary.load()
   const styles = new StyleService({ projects, characters, items, locations, episodes, panels })

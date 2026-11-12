@@ -124,7 +124,8 @@ describe('panel tools: the tool set', () => {
     for (const optional of ['afterPanelId', 'aspect', 'continuityNotes', 'offPanelMentions']) expect(schema('create_panel').required).not.toContain(optional)
     expect(schema('create_panel').properties.shot.enum).toContain('close-up')
     expect(schema('create_panel').properties.aspect.enum).toEqual(expect.arrayContaining(['2:3', '1:2', '1:3']))
-    for (const field of ['frame', 'beside', 'gapAfter', 'gutter']) {
+    expect(schema('create_panel').properties, 'has no gutter').not.toHaveProperty('gutter')
+    for (const field of ['frame', 'beside', 'gapAfter']) {
       expect(schema('create_panel').required).not.toContain(field)
       expect(schema('create_panel').properties[field].description, field).toEqual(expect.any(String))
       expect(schema('create_panel').properties[field].description, field).toContain('No redraw needed.')
@@ -143,6 +144,10 @@ describe('panel tools: the tool set', () => {
     const props = (name: string) => (specs[name].inputSchema as { properties: Record<string, any> }).properties
     expect(props('create_panel').dialogue.description).toContain(sentence)
     expect(props('update_panel').patch.description).toContain(sentence)
+    const offPanel = 'Values outside 0..1 sit off the panel'
+    expect(props('create_panel').dialogue.description).toContain(offPanel)
+    expect(props('update_panel').patch.description).toContain(offPanel)
+    expect(JSON.stringify(props('create_panel').dialogue)).toContain('"maximum":10')
   })
 })
 
@@ -344,7 +349,6 @@ describe('list_panels and get_panel', () => {
       frame: 'bordered',
       beside: false,
       gapAfter: 'normal',
-      gutter: 'white',
       cast: [{ name: 'Mina', characterId: mina.id, variationId: mina.variations[0].id }],
       description: 'Mina opens the door.',
       continuityNotes: '',
@@ -355,9 +359,9 @@ describe('list_panels and get_panel', () => {
 
   it('list_panels shows the layout fields a panel was made with', async () => {
     const { run, created, episode } = await setup()
-    await created([], { beside: true, gapAfter: 'tight', frame: 'slanted', gutter: 'black' })
+    await created([], { beside: true, gapAfter: 'tight', frame: 'slanted' })
     const { panels } = json(await run('list_panels', { episodeId: episode.id }))
-    expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight', gutter: 'black' })
+    expect(panels[0]).toMatchObject({ frame: 'slanted', beside: true, gapAfter: 'tight' })
   })
 
   it('reports no current version for a panel with no ready image, and keeps naming an archived cast member', async () => {
@@ -407,11 +411,34 @@ describe('view_panel_image', () => {
   })
 })
 
+describe('a custom prompt and style on a panel', () => {
+  it('list_panels shows them when set and leaves them out otherwise', async () => {
+    const { run, s, ctx, created, episode } = await setup()
+    const plain = (await created([], { description: 'Plain' })).panelId
+    const own = (await created([], { description: 'Own' })).panelId
+    await s.panels.update(ctx, own, { promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }, { strictMentions: false, strictSheets: false })
+    const listed = json(await run('list_panels', { episodeId: episode.id })).panels
+    expect(listed.find((p: { id: string }) => p.id === plain)).not.toHaveProperty('customPrompt')
+    expect(listed.find((p: { id: string }) => p.id === plain)).not.toHaveProperty('styleOverride')
+    expect(listed.find((p: { id: string }) => p.id === own)).toMatchObject({ customPrompt: 'A cat on a roof.', styleOverride: 'ink wash' })
+  })
+
+  it('update_panel clears the custom prompt on a visual edit and says so, so the redraw follows the edit', async () => {
+    const { run, s, ctx, created, panel } = await setup()
+    const id = (await created([], { description: 'Own' })).panelId
+    await s.panels.update(ctx, id, { promptOverride: 'A cat on a roof.' }, { strictMentions: false, strictSheets: false })
+    const r = await run('update_panel', { panelId: id, patch: { description: 'The cat smiles.' } })
+    expect(r.ok, r.content).toBe(true)
+    expect(json(r).warnings.join(' ')).toContain('custom prompt')
+    expect((await panel(id)).promptOverride).toBeNull()
+  })
+})
+
 describe('update_panel', () => {
   it('create_panel takes the layout fields and stores them', async () => {
     const { created, panel } = await setup()
     const made = await created([], { beside: true, gapAfter: 'tight' })
-    expect(await panel(made.panelId)).toMatchObject({ beside: true, gapAfter: 'tight', frame: 'bordered', gutter: 'white' })
+    expect(await panel(made.panelId)).toMatchObject({ beside: true, gapAfter: 'tight', frame: 'bordered' })
   })
 
   it('a layout-only patch returns the updated panel and records no new version', async () => {
@@ -454,6 +481,29 @@ describe('update_panel', () => {
     expect((await panel(made.panelId)).dialogue[0].tail).toBe('none')
   })
 
+  it('refuses a pixel-sized placement or tail, and accepts a bubble just off the panel', async () => {
+    const { run, character, created, panel } = await setup()
+    const mina = await character('Mina')
+    const made = await created([mina])
+    const line = { speakerId: mina.id, kind: 'speech', text: 'Hey!' }
+    const pixels = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] } })
+    expect(pixels.ok).toBe(false)
+    const tail = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, tail: { x: 0.5, y: -320 } }] } })
+    expect(tail.ok).toBe(false)
+    const off = await run('update_panel', { panelId: made.panelId, patch: { dialogue: [{ ...line, placement: { x: 1.4, y: 1.2 }, tail: { x: 1.4, y: 2 } }] } })
+    expect(off.ok, off.content).toBe(true)
+    expect((await panel(made.panelId)).dialogue[0]).toMatchObject({ placement: { x: 1.4, y: 1.2 }, tail: { x: 1.4, y: 2 } })
+  })
+
+  it('create_panel refuses a pixel-sized placement too, and takes one off the panel', async () => {
+    const { run, character, draft, created, panel } = await setup()
+    const mina = await character('Mina')
+    const line = { speakerId: mina.id, kind: 'speech', text: 'Hi' }
+    expect((await run('create_panel', draft([mina], { dialogue: [{ ...line, placement: { x: 320, y: 0.5 } }] }))).ok).toBe(false)
+    const made = await created([mina], { dialogue: [{ ...line, placement: { x: -0.4, y: 1.3 } }] })
+    expect((await panel(made.panelId)).dialogue[0].placement).toEqual({ x: -0.4, y: 1.3 })
+  })
+
   it('a style the app cannot draw comes back as an error', async () => {
     const { run, character, created, panel } = await setup()
     const mina = await character('Mina')
@@ -469,6 +519,16 @@ describe('update_panel', () => {
     expect(schema).not.toContain('"pattern"')
     const tail = (z.toJSONSchema(PanelPatchSchema) as any).properties.dialogue.items.properties.tail
     expect(JSON.stringify(tail)).toContain('"enum":["none"]')
+  })
+
+  it("leaves the user's chosen panels, style and prompt out of the agent's tools", async () => {
+    const { tools } = await setup()
+    for (const name of ['create_panel', 'update_panel', 'update_panel_fields']) {
+      const spec = tools.specs().find((t) => t.name === name)
+      if (!spec) continue
+      const schema = JSON.stringify(spec.inputSchema)
+      for (const key of ['referencePanelIds', 'styleOverride', 'promptOverride']) expect(schema, `${name} ${key}`).not.toContain(key)
+    }
   })
 
   it('says a look is kept by position, and must be sent on the lines kept when lines are removed or reordered', async () => {

@@ -86,8 +86,8 @@ export function useStageFit(slot: RefObject<HTMLElement | null>, shape: RefObjec
 }
 
 /**
- * The open panel on a field of its own gutter colour, zoomable (the bar at its bottom right, or Ctrl and the wheel) and,
- * once zoomed, moved with a middle-button drag or a drag with Space held (`useStagePan`), drawn by the card's own `PanelArt` and lettered as on the strip:
+ * The open panel on the neutral surface, zoomable (the bar at its bottom right, or Ctrl and the wheel) and,
+ * once zoomed, moved with a right- or middle-button drag or a drag with Space held (`useStagePan`), drawn by the card's own `PanelArt` and lettered as on the strip:
  * it is laid out at its share of the strip's reference row (`STAGE_ROW_PX`, the lettering's container) and scaled up
  * or down with a transform to fit, so the bubbles' placement fractions are exact at every size. Its bubbles can be
  * selected, retyped, dragged, nudged, added and deleted (`useBubbleEditing`); each change saves the dialogue alone,
@@ -123,7 +123,7 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
   const rowStyle = { width: STAGE_ROW_PX, transform: scale === null ? undefined : `scale(${scale})`, '--stage-scale': scale ?? undefined } as CSSProperties
 
   return (
-    <div ref={stageRef} className="panel-stage" data-testid="panel-stage" data-gutter={panel.gutter} tabIndex={-1} {...stage}>
+    <div ref={stageRef} className="panel-stage" data-testid="panel-stage" tabIndex={-1} {...stage}>
       <div ref={viewportRef} className="stage-viewport" data-testid="stage-viewport" data-pan={pan ?? undefined}>
         <div className="stage-fit" style={fit === null || scale === null ? undefined : { width: fit.width * scale, height: fit.height * scale }}>
           <div className="stage-row" style={rowStyle}>

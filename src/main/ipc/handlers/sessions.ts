@@ -4,6 +4,7 @@ import { parseInput } from '../validate'
 import type { HandlerMap } from './projects'
 
 const RenameSchema = z.object({ projectId: z.string(), sessionId: z.string(), title: z.string().trim().min(1) })
+const BookmarkSchema = z.object({ projectId: z.string(), sessionId: z.string(), bookmarked: z.boolean() })
 
 export function sessionsHandlers(s: Services): HandlerMap {
   return {
@@ -12,6 +13,10 @@ export function sessionsHandlers(s: Services): HandlerMap {
     'sessions:rename': async (req) => {
       const { projectId, sessionId, title } = parseInput(RenameSchema, req)
       return s.sessions.rename(await s.projects.open(projectId), sessionId, title)
+    },
+    'sessions:bookmark': async (req) => {
+      const { projectId, sessionId, bookmarked } = parseInput(BookmarkSchema, req)
+      return s.sessions.setBookmarked(await s.projects.open(projectId), sessionId, bookmarked)
     },
     'sessions:delete': async ({ projectId, sessionId }) => {
       const ctx = await s.projects.open(projectId)

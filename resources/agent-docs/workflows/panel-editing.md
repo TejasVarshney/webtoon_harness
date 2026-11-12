@@ -4,7 +4,7 @@
 
 This doc tells you how to change a panel that already exists: its dialogue, its fields, or its image. It applies in two places:
 
-- **The panel chat.** The user opened one panel in editing mode and is talking to you about it in the chat beside it. This doc and the Hard Rules are your instructions there.
+- **The panel chat.** The user opened one panel in focus mode and is talking to you about it in the chat beside it. This doc and the Hard Rules are your instructions there.
 - **The main chat**, when the user asks to change an existing panel there. The Scope table gives the main-chat tool for each panel-chat tool, and Example 7 is a main-chat edit.
 
 In the panel chat, every user message starts with a `<panel_context>` block. The app writes it; the user does not see it. Example:
@@ -30,10 +30,11 @@ What the lines mean:
 - `panel`: the id of the panel this chat is bound to.
 - `version`: the current image as `vN of M`, counting ready images only. `none` means the panel has no ready image yet.
 - `shot`, `aspect`, `setting`, `description`: the panel's fields.
-- `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`, `gutter black`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw.
+- `layout`: how the panel sits in the strip, only where it differs from the defaults (`beside`, a `borderless` or `slanted` frame, `gap tight` or `gap long`). Absent for a plain bordered panel in a row of its own. Changing it needs no redraw. `beside` and `gap` only move panels the user has not placed: once the user moves anything in the episode, every panel in it is placed and they change nothing.
 - `cast`: each visible character with the name of the variation (look) they wear. Ids are not shown here: `get_panel_context` gives them.
 - `dialogue`: the lines in reading order, as `Speaker: "text"`; narration and sound effects show their kind instead of a speaker. A line the user has placed on the panel ends with `@` and its spot, as fractions of the panel (across, then down); a line without it is placed automatically.
 - `continuity_notes` and `off_panel_mentions`: shown only when the panel has them.
+- `custom_prompt` and `style_override`: shown only when the user set them (see Edit vs Regenerate).
 - `previous` and `next`: one-line summaries of the neighboring panels, `none`, or `(unreadable)`.
 
 The block is a snapshot from when the user sent the message. After you change something, call `get_panel_context` for the current state. Every id in this doc is an example.
@@ -49,7 +50,7 @@ In the panel chat, every tool acts on this one panel, and none takes a panel id:
 | `update_panel_fields` | Changes fields. Draws nothing. | `update_panel` |
 | `regenerate_image` | Draws the panel again from its fields: a new version. | `regenerate_panel` |
 | `edit_image` | Edits the current image with an instruction: a new version. | `edit_panel_image` |
-| `revert_to_version` | Makes an earlier ready version current. | none: the user opens the panel (clicks its card) and uses the ‹ vN / M › switcher in the editor's header |
+| `revert_to_version` | Makes an earlier ready version current. | none: the user opens the panel (double-clicks the card, or selects it and presses Focus) and uses the ‹ vN / M › switcher in the editor's header |
 
 In the panel chat, the main-chat tools in the right column do not exist: never call them there. Use the panel chat tools in the left column.
 
@@ -59,7 +60,7 @@ You cannot do these in the panel chat. Tell the user to ask in the main chat:
 - create a character or a variation, or change a character's appearance lock;
 - read or change the story bible or the beats.
 
-You also cannot look up other characters or variations here: `get_panel_context` only shows the ids of the cast already in the panel. To add a character, or to switch someone to another look, ask the user to do it in the Cast tab under the panel in its editor (they click the panel's card in the Webtoon tab to open it) or in the main chat.
+You also cannot look up other characters or variations here: `get_panel_context` only shows the ids of the cast already in the panel. To add a character, or to switch someone to another look, ask the user to do it in the Cast tab under the panel in its editor (they double-click the panel's card in the Webtoon tab, or select it and press Focus, to open it) or in the main chat.
 
 The Hard Rules apply here too. In particular: never put text in the image (R6), never restate a character's appearance (R2), and read every result (R11).
 
@@ -72,10 +73,12 @@ Pick the smallest change that does the job:
 | Different words in a bubble, caption or sound effect | `update_panel_fields` with `dialogue` | no |
 | The fields corrected, the picture is fine | `update_panel_fields` | no |
 | A small local change: an expression, a color, a small object added or removed, stray text removed, a detail fixed to match the reference | `edit_image` | yes: an edit |
-| How the panel sits in the strip: `frame`, `beside`, `gapAfter` or `gutter`, or an aspect change between 9:16, 1:2 and 1:3 (they are drawn alike) | `update_panel_fields` | no |
+| How the panel sits in the strip: `frame`, `beside` or `gapAfter`, or an aspect change between 9:16, 1:2 and 1:3 (they are drawn alike) | `update_panel_fields` | no |
 | A different composition: another shot, angle, pose, arrangement in the frame or background; a character added, removed or moved; any other aspect change | `update_panel_fields`, then `regenerate_image` | yes: a new drawing |
 | The same panel drawn again because the image came out badly | `regenerate_image` | yes: a new drawing |
 | An earlier image back | `revert_to_version` | no |
+
+A panel the user made on the Generate page can carry a **custom prompt**: their own words, sent to the image model in place of the one the app composes from the fields (`customPrompt` in `get_panel_context`, `custom_prompt` in the panel context). While it is set, changing the fields would not change the next drawing. So when your `update_panel_fields` changes what the picture shows (description, setting, shot, aspect, cast, items or location), the app clears the custom prompt and the result warns you. Say so in your reply: tell the user the custom prompt was cleared, and that the panel now draws from its fields. A `style_override` is a style for this panel alone; it is kept.
 
 What each image call does:
 
@@ -130,7 +133,7 @@ To revert, you need the version's id (ver_...), not its label:
 2. Find the label the user means ("the first one" is `v1`).
 3. Call `revert_to_version` with that version's `id`.
 
-Only a `ready` version can be made current. In the main chat there is no revert tool: tell the user to open the panel (click its card) and use the ‹ vN / M › switcher in the editor's header, above the panel.
+Only a `ready` version can be made current. In the main chat there is no revert tool: tell the user to open the panel (double-click the card, or select it and press Focus) and use the ‹ vN / M › switcher in the editor's header, above the panel.
 
 ## Dialogue-Only Changes
 
@@ -143,17 +146,17 @@ Dialogue is drawn over the image by the app, so changing it needs no image call 
 - `"dialogue": []` removes all lines.
 - Main chat only (this tool does not exist in the panel chat): `update_panel` with `panelId` and `patch: {"dialogue": [...]}`, without `regenerate`.
 
-Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself.
+Placement is where the bubble's centre sits on the panel: `{"x": 0.62, "y": 0.18}` is 62% across and 18% down. `null` means the app places the bubble itself. Values outside 0 to 1 are allowed: a bubble can sit off the panel, on the strip beside or below it, for example `{"x": 0.5, "y": 1.15}` just under the panel. Keep placement and tail within -10 to 10; a pixel value such as 320 is refused.
 
 - **Keep the user's placements.** A line you send without `placement` keeps the placement of the line at the same position in the list, so changing words never moves a bubble. Only if you reorder, add or remove lines can a line end up with another line's spot: then send `placement` on each line you keep.
 - **Set one only when the user asks for a spot**, for example "put Mina's bubble top right". Pick the centre of that region, such as `{"x": 0.8, "y": 0.2}`, and leave every other line without `placement`.
 - **`placement: null` clears a spot** and hands the bubble back to the app. Use it when the user asks to reset a bubble, not otherwise.
-- A placement is layout, like `frame` or `gutter`: it needs no redraw.
+- A placement is layout, like `frame` or `gapAfter`: it needs no redraw.
 
 A bubble's look is data too, and needs no redraw.
 
 - `style` holds only what differs from the app's default: `shape` (`speech`, `shout`, `whisper`, `thought`, `caption`, `sfx`, `fringe`, `burst`, `curly`), `font` (`comic`, `bangers`, `hand`, `impact`, `serif`, `typewriter`), `size` (0.5 to 3), `padding` (0.3 to 2, a multiplier of the room between the text and the outline), `bold`, `italic`, `caps`, `align` (`left`, `center`, `right`), `color`, `fill`, `stroke` (`#rrggbb`), `strokeWidth` (0 to 6), `width` (0.1 to 0.95, the bubble's width as a share of the panel's; leave it out to let the text decide).
-- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
+- `tail` is where the bubble points, as fractions of the panel like a placement: `{"x": 0.3, "y": 0.7}`; like a placement it may be outside 0 to 1 to point off the panel. `"none"` removes it and `null` hands it back to the app. Captions and sound effects have none.
 - **Keep the user's looks.** A line you send without `style` or `tail` keeps those of the line at the same position, so changing words never changes a look. If you reorder, add or remove lines, send them on each line you keep.
 - **Set them only when the user asks**, for example "make Mina's line red" or "point the bubble at Jun".
 

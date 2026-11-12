@@ -85,23 +85,26 @@ export interface ZoomBarProps {
   control: StageZoom
   /** Shown to the left of the controls, such as a save status. */
   children?: ReactNode
+  /** How the wheel zooms this stage: with Ctrl (the default), or on its own (a sketch). */
+  wheel?: 'ctrl' | 'plain'
 }
 
 /** The zoom bar at a stage's bottom right: out, the zoom (a click goes back to the fit) and in. */
-export function ZoomBar({ zoom, control, children }: ZoomBarProps) {
+export function ZoomBar({ zoom, control, children, wheel = 'ctrl' }: ZoomBarProps) {
   const percent = `${Math.round(zoom * 100)}%`
+  const wheelHint = wheel === 'plain' ? 'the wheel' : 'Ctrl + wheel'
   return (
     // A press here is not a press on the stage: it neither clears the selected bubble nor starts a stroke.
     <div className="stage-zoom" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {children}
       <div className="stage-zoom-controls" role="group" aria-label="Zoom">
-        <button type="button" className="icon-button" aria-label="Zoom out" title="Zoom out (Ctrl + wheel)" disabled={zoom <= MIN_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, -1))}>
+        <button type="button" className="icon-button" aria-label="Zoom out" title={`Zoom out (- or ${wheelHint})`} disabled={zoom <= MIN_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, -1))}>
           <ZoomOut size={16} aria-hidden="true" />
         </button>
-        <button type="button" className="stage-zoom-level" aria-label={`Zoom ${percent}, fit to the stage`} title={zoom === 1 ? 'Fit to the stage' : 'Fit to the stage. Move around with a middle-button drag, or hold Space and drag'} disabled={zoom === 1} onClick={() => control.zoomTo(1)}>
+        <button type="button" className="stage-zoom-level" aria-label={`Zoom ${percent}, fit to the stage`} title={zoom === 1 ? 'Fit to the stage (0)' : 'Fit to the stage (0). Move around with a right-button drag, or hold Space and drag'} disabled={zoom === 1} onClick={() => control.zoomTo(1)}>
           {percent}
         </button>
-        <button type="button" className="icon-button" aria-label="Zoom in" title="Zoom in (Ctrl + wheel). Once zoomed, drag with the middle button, or hold Space and drag, to move around" disabled={zoom >= MAX_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, 1))}>
+        <button type="button" className="icon-button" aria-label="Zoom in" title={`Zoom in (+ or ${wheelHint}). Drag with the right button, or hold Space and drag, to move around`} disabled={zoom >= MAX_ZOOM} onClick={() => control.zoomTo(stepZoom(zoom, 1))}>
           <ZoomIn size={16} aria-hidden="true" />
         </button>
       </div>

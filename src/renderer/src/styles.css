@@ -331,25 +331,17 @@ kbd {
 
 /* --- The shell: frame, top bar, sheet ----------------------------------------------------------------- */
 
-.three-pane {
-  height: 100%;
-  background: var(--frame);
-}
-
 .pane-content {
   height: 100%;
   overflow: auto;
-}
-
-.pane-sidebar {
-  padding: 14px 12px 12px;
 }
 
 .workspace {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0 var(--sheet-inset) var(--sheet-inset) 0;
+  padding: 0 var(--sheet-inset) var(--sheet-inset);
+  background: var(--frame);
 }
 
 .top-bar {
@@ -374,7 +366,7 @@ kbd {
   height: 100%;
 }
 
-/* Editing mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
+/* Focus mode covers the chat and the visualizer, which stay mounted under it. Above the strip's raised cards and
    its episode bar, below menus and dialogs. */
 .sheet-overlay {
   position: absolute;
@@ -400,10 +392,6 @@ kbd {
   outline: none;
 }
 
-.pane-separator-frame {
-  width: 6px;
-}
-
 .pane-separator-sheet {
   width: 1px;
   background: var(--border);
@@ -418,12 +406,6 @@ kbd {
 .pane-separator:hover,
 .pane-separator[data-separator='active'] {
   background: var(--accent);
-}
-
-.pane-separator-frame:hover,
-.pane-separator-frame[data-separator='active'] {
-  background: transparent;
-  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 .placeholder {
@@ -447,31 +429,17 @@ kbd {
   min-width: 0;
 }
 
-.breadcrumb {
+.chat-header-actions {
   display: flex;
-  flex: 1;
+  flex: none;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+
+.project-title {
+  flex: 1;
   min-width: 0;
-  font-size: var(--fs-title);
-}
-
-.breadcrumb-project {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.breadcrumb-sep {
-  flex: none;
-  color: var(--faint);
-}
-
-.breadcrumb-current {
-  min-width: 0;
+  margin: 0;
   overflow: hidden;
   font-size: var(--fs-title);
   font-weight: 600;
@@ -479,11 +447,48 @@ kbd {
   white-space: nowrap;
 }
 
-.chat-header-actions {
+/* Why a project chosen in the window's File menu would not open, over whichever screen is showing. */
+.menu-error {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 40;
   display: flex;
-  flex: none;
+  gap: 12px;
   align-items: center;
-  gap: 8px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 8px 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+  transform: translateX(-50%);
+}
+
+/* The problems warning sits in the top bar and opens its list under it. */
+.chat-header .project-problems {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-header .project-problems summary {
+  padding: 5px 10px;
+}
+
+.chat-header .project-problems ul {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 420px;
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  background: var(--pill-warning-bg);
+  border: 1px solid var(--pill-warning-edge);
+  border-radius: var(--radius-control);
 }
 
 .style-button {
@@ -493,32 +498,71 @@ kbd {
   white-space: nowrap;
 }
 
-.story-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* --- Sessions, at the top of the chat --------------------------------------------------------------------------------------- */
+
+.chat-sessions {
+  position: relative;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
-.story-mode select {
-  background-color: transparent;
-}
-
-/* --- Sidebar ------------------------------------------------------------------------------------------ */
-
-.session-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 100%;
-}
-
-.brand {
+.chat-sessions-bar {
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 26px;
-  padding: 0 6px;
-  margin-bottom: 14px;
+  gap: 8px;
+}
+
+.sessions-toggle {
+  flex: 1;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.sessions-toggle:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.sessions-toggle-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessions-popup {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 12px;
+  left: 12px;
+  z-index: 20;
+  max-height: 50vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+.session-star {
+  flex: none;
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--faint);
+  background: transparent;
+  border-color: transparent;
+}
+
+.session-star:hover,
+.session-star[data-on='true'] {
+  color: var(--accent);
 }
 
 .brand-mark {
@@ -539,46 +583,10 @@ kbd {
   white-space: nowrap;
 }
 
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-
-.new-project-first {
-  flex: 1;
-  height: 36px;
-}
-
-.project-switcher {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.project-switcher select {
-  width: 100%;
-  height: 36px;
-  padding-left: 10px;
-  font-weight: 500;
-  background-image: none;
-  border-color: var(--border);
-}
-
-.project-switcher-icon {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: var(--muted);
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
 .new-session {
+  flex: none;
   justify-content: flex-start;
   gap: 10px;
-  width: 100%;
   height: 36px;
   padding: 0 8px;
   color: var(--text);
@@ -599,12 +607,73 @@ kbd {
   background: transparent;
 }
 
-.sidebar-note {
-  padding: 4px 8px;
+/* --- Home page ---------------------------------------------------------------------------------------- */
+
+.home {
+  box-sizing: border-box;
+  max-width: 880px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 40px var(--pad);
+  overflow-y: auto;
+}
+
+.home-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 32px;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.home-projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  height: auto;
+  min-height: 96px;
+  padding: 14px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.project-card:hover {
+  background: var(--raised);
+}
+
+.project-card-title {
+  font-size: var(--fs-section);
+  font-weight: 600;
+}
+
+.project-card-time {
+  font-size: var(--fs-small);
+  color: var(--muted);
 }
 
 .sidebar-group {
-  margin: 18px 8px 6px;
+  margin: 8px 8px 4px;
   font-size: var(--fs-small);
   font-weight: 500;
   color: var(--muted);
@@ -612,7 +681,7 @@ kbd {
 
 .session-list {
   display: flex;
-  flex: 1;
+  flex: none;
   flex-direction: column;
   gap: 1px;
   margin: 0;
@@ -684,23 +753,6 @@ kbd {
   100% {
     box-shadow: 0 0 0 7px transparent;
   }
-}
-
-.settings-open {
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  margin-top: 6px;
-  color: var(--muted);
-  background: transparent;
-  border-color: transparent;
-}
-
-.settings-open:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
 }
 
 .project-problems {
@@ -1346,7 +1398,7 @@ kbd {
   height: 22px;
 }
 
-/* Editing mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
+/* Focus mode: the open panel and its controls on the left, under a header that stays put while they scroll, and
    the panel's own chat on the right. */
 .panel-workspace,
 .editing-columns {
@@ -1513,6 +1565,18 @@ kbd {
 
 .stage-viewport > .stage-fit {
   margin: auto;
+}
+
+/* A sketch's frame does not scroll: the panel is placed in it, moved and zoomed by usePaperView, and clipped to it. */
+.stage-viewport.paper-frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.stage-viewport.paper-frame > .stage-fit {
+  position: absolute;
+  margin: 0;
 }
 
 /* A zoomed stage moves with a middle-button drag, or a drag with Space held (useStagePan). While it does, the hand is
@@ -1883,7 +1947,7 @@ kbd {
 
 /* --- Visualizer: tabs, then each tab ----------------------------------------------------------------- */
 
-.right-pane {
+.studio-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1939,7 +2003,7 @@ kbd {
   overflow: auto;
 }
 
-.right-pane > .tab-panel > .placeholder {
+.studio-pane > .tab-panel > .placeholder {
   padding: 24px;
 }
 
@@ -1987,75 +2051,6 @@ kbd {
 .webtoon-pane > .error,
 .webtoon-pane > .placeholder {
   padding: 16px;
-}
-
-/* The strip: panels in rows, each row on its gutter band, the "+" waiting in each gap between rows. */
-.webtoon-strip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 28px 0 40px;
-}
-
-.webtoon-strip > .placeholder {
-  max-width: 300px;
-  margin: 0 20px 12px;
-  text-align: center;
-}
-
-/* A row and the gap after it, on the row's gutter colour from edge to edge: the page, or black. Bands sit flush, so
-   black rows in a run read as one dark band. */
-.strip-band {
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-  align-items: center;
-  padding: 0 20px;
-  background: var(--raised);
-}
-
-.strip-band[data-gutter='black'],
-.panel-stage[data-gutter='black'] {
-  background: #000;
-}
-
-/* The panels of a row share one height: each takes the row's width in proportion to its aspect (`--ar`, set by the
-   card). The row is also the size container the lettering is measured against. Its 440px (and the gap's) is
-   STRIP_CSS_WIDTH in src/shared/strip-width.ts, the width the export lays the strip out at: change them together. */
-.strip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: min(100%, 440px);
-  container-type: inline-size;
-}
-
-.strip-gap {
-  position: relative;
-  width: min(100%, 440px);
-  height: 48px;
-}
-
-.strip-gap[data-gap='tight'] {
-  height: 8px;
-}
-
-.strip-gap[data-gap='long'] {
-  height: 120px;
-}
-
-/* Centred on the gap, and over the panels when the gap is narrower than the button. The button is raised, not its
-   wrapper: the wrapper also holds the editor the button opens, which must not be shut inside a stacking context. */
-.strip-gap .insert-panel {
-  position: absolute;
-  inset: 0;
-  width: auto;
-  height: auto;
-}
-
-.strip-gap .insert-panel-button {
-  position: relative;
-  z-index: 1;
 }
 
 .panel-card {
@@ -2226,37 +2221,87 @@ kbd {
   padding: 6px 10px;
 }
 
-/*
- * Hidden until the card is hovered or focused, but always clickable, so a script (or a keyboard) can reach it.
- * It straddles the panel's bottom edge, half in the gutter, so it never covers the dialogue drawn at the top.
- */
-.panel-toolbar {
+/* The tools of the one selected panel, centred under its card (PanelTools nudges them to stay inside the strip), clear
+   of the card's own corner handle. They sit in the panel's bubble layer. Nothing shows on a card that is not selected, and nothing covers the selected one. */
+.panel-tools {
   position: absolute;
-  right: 10px;
-  bottom: -18px;
+  top: calc(100% + 10px);
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: default;
+}
+
+.panel-tools-bar {
   display: flex;
   align-items: center;
   gap: 1px;
-  padding: 3px 3px 3px 10px;
+  padding: 3px;
+  white-space: nowrap;
   background: var(--surface);
   border-radius: var(--radius-card);
   box-shadow: var(--float-shadow);
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 0.14s var(--ease),
-    transform 0.14s var(--ease);
 }
 
-/* Wider than a narrow card, so it grows towards the row: the first card of a row has nothing to its left (and the pane
-   cannot scroll that way), so its toolbar is anchored on the left and grows over its neighbours instead. */
-.strip-row > .panel-card:first-child:not(:only-child) .panel-toolbar {
-  right: auto;
-  left: 10px;
+.panel-tools-bar .icon-button {
+  width: 28px;
+  height: 28px;
 }
 
-/* A toolbar that grows over its neighbour must stay above the neighbour's own (hidden, but still hit-testable) one. */
+.panel-tools-bar .icon-button[aria-expanded='true'] {
+  background: var(--control);
+}
+
+.panel-tools-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--border);
+}
+
+.panel-tools-error {
+  max-width: 280px;
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+/* Window-fixed beside a tool's button (see ToolPopover), so no pane or strip clips it. Above the cards and the strip's
+   bar, below dialogs. */
+.tool-popover {
+  position: fixed;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float-shadow);
+}
+
+.tool-popover:focus {
+  outline: none;
+}
+
+/* The inspector inside is the focus mode's, which fills a column; here it takes what it needs and scrolls past the
+   popover's own height. */
+.tool-popover .panel-inspector {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.tool-popover .inspector-panel {
+  flex: 0 1 auto;
+}
+
+/* A selected card stays above a hovered neighbour, which would otherwise cover its corner handle. */
 .panel-card:focus-within,
 .panel-card[data-selected='true'] {
   z-index: 2;
@@ -2266,75 +2311,181 @@ kbd {
   z-index: 3;
 }
 
-.panel-card:hover .panel-toolbar,
-.panel-card:focus-within .panel-toolbar,
-.panel-card[data-selected='true'] .panel-toolbar {
-  opacity: 1;
-  transform: none;
-}
-
-.panel-number {
-  margin-right: 4px;
-  font-size: var(--fs-small);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.panel-toolbar .icon-button {
-  width: 28px;
-  height: 28px;
-}
-
-.insert-panel {
+/* The strip canvas: panels placed at their own coordinates on a strip 440px wide, centred on a neutral pane. Its 440px
+   is STRIP_CSS_WIDTH in src/shared/strip-width.ts. It is the size container the lettering is measured against (`cqw`),
+   like the export's row, so the lettering of a panel keeps its size wherever the panel sits. */
+.strip-canvas-pane {
   display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px 0;
+  background: var(--raised);
+}
+
+.strip-canvas-pane > .placeholder {
+  max-width: 300px;
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+.strip-canvas {
+  position: relative;
+  flex: none;
+  width: 440px;
+  container-type: inline-size;
+}
+
+.strip-canvas > .panel-card {
+  flex: none;
+  /* The card is dragged with the pointer, so the browser must not scroll, select or drag the picture instead. */
+  touch-action: none;
+  user-select: none;
+}
+
+.strip-canvas > .panel-card img {
+  -webkit-user-drag: none;
+}
+
+/* A card on the canvas is as tall as the layout gives it, and its picture fills the box inside the frame (the image
+   covers it), so the frame never makes the drawn panel taller or shorter than the layout, which the export is cut by.
+   The bubble layer does the same, so a bubble's fraction of its panel is the same on both. */
+.strip-canvas > .panel-card .panel-media,
+.strip-bubbles .panel-media {
+  height: 100%;
+  aspect-ratio: auto !important;
+}
+
+/* The corner that sets a card's width. It shows with the toolbar, and stays inside the card so no neighbour covers it. */
+.panel-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
+  border-radius: 0 0 2px;
+  opacity: 0;
+  transition: opacity 0.14s var(--ease);
+}
+
+.panel-card:hover .panel-resize,
+.panel-card:focus-within .panel-resize,
+.panel-card[data-selected='true'] .panel-resize {
+  opacity: 1;
+}
+
+/* The strip's lettering: a layer for each panel, exactly over its card and drawn after all the cards, so a bubble sits
+   over every card and can be dragged off its own panel. The layer has the card's frame (transparent) and a transparent
+   copy of its media box, which a bubble's placement is a fraction of; only the bubbles take the pointer, so everything
+   else falls through to the cards. The art keeps its own clip below: a slanted frame cuts the art, never the bubbles.
+   The canvas isolates its stack, which keeps the bubbles and tools under the pane's sticky bar. */
+.strip-canvas {
+  isolation: isolate;
+}
+
+.strip-bubbles {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  --slant: calc(4cqw * var(--share, 1));
+}
+
+.strip-bubbles[data-frame='bordered'] {
+  border: 2.5px solid transparent;
+  border-radius: 2px;
+}
+
+.strip-bubbles:focus {
+  outline: none;
+}
+
+.strip-bubbles .panel-media {
+  overflow: visible;
+  background: none;
+}
+
+.strip-bubbles[data-frame='slanted'] .dialogue-flow {
+  top: calc(var(--slant) + 2.5px + 4cqw * var(--lettering));
+}
+
+.strip-bubbles[data-frame='slanted'] .dialogue-sfx {
+  inset: calc(var(--slant) + 2.5px) 0;
+}
+
+/* The panel holding the tools is over the other panels' bubbles, and the tools over its own. */
+.strip-bubbles[data-tools='true'] {
+  z-index: 6;
+}
+
+.strip-bubbles .panel-tools {
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.panel-tools-bar .stage-add > button {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+}
+
+/* Under the lowest panel, where the next one would go. */
+.strip-canvas-add {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.add-panel {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  width: min(100%, 440px);
-  height: 48px;
 }
 
-.insert-panel-button {
-  width: 30px;
-  height: 30px;
+.add-panel-button {
+  width: 44px;
+  height: 44px;
   padding: 0;
   color: var(--muted);
   background: var(--surface);
   border: 1px dashed var(--control);
   border-radius: 50%;
-  opacity: 0;
   transition:
-    opacity 0.14s var(--ease),
+    color 0.14s var(--ease),
     transform 0.14s var(--ease);
 }
 
-.webtoon-strip:hover .insert-panel-button,
-.insert-panel-button:focus-visible {
-  opacity: 1;
-}
-
-.insert-panel-button:hover:not(:disabled) {
+.add-panel-button:hover:not(:disabled) {
   color: var(--text);
-  background: var(--surface);
   border-style: solid;
   border-color: var(--text);
   transform: scale(1.08);
 }
 
-/* The append "+" closes the strip and is always shown: it is how an empty episode starts. */
-.webtoon-strip > .insert-panel:last-child {
-  height: auto;
-  margin-top: 20px;
+.add-panel-error {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: var(--fs-small);
+  text-align: center;
 }
 
-/* After the last row, its own gap is the space. Not adjacent: an open editor sits between them. */
-.strip-band ~ .insert-panel:last-child {
-  margin-top: 0;
-}
-
-.webtoon-strip > .insert-panel:last-child .insert-panel-button {
-  width: 44px;
-  height: 44px;
-  opacity: 1;
+/* What the shift selection can be used for, after the strip and pinned to the bottom of the view while it scrolls. */
+.selection-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 8px 16px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 
 /* --- Dialogue drawn over the image: the image itself never holds text ----------------------------- */
@@ -3052,6 +3203,26 @@ kbd {
   z-index: 1;
 }
 
+/* The panel's number in the episode, which the agent, the export errors and the Generate page's references call it by. */
+.panel-card > .panel-number {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  min-width: 20px;
+  padding: 1px 6px;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink);
+  background: var(--raised);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--line);
+  opacity: 0.85;
+  pointer-events: none;
+  user-select: none;
+}
+
 .panel-check-passed {
   font-size: var(--fs-small);
   color: var(--muted);
@@ -3628,17 +3799,6 @@ kbd {
   opacity: 0.45;
 }
 
-.insert-panel {
-  flex-wrap: wrap;
-}
-
-.insert-panel-error {
-  flex-basis: 100%;
-  margin: 4px 0 0;
-  font-size: var(--fs-small);
-  text-align: center;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3681,4 +3841,566 @@ kbd {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+/* The background editor, in a tool popover: kinds, then the controls of the kind that is chosen. It scrolls inside the
+   popover's own height so a small window never clips it. */
+.background-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.background-editor > * {
+  flex: none;
+}
+
+.bg-kinds {
+  display: flex;
+  gap: 4px;
+}
+
+.bg-kinds button {
+  flex: 1 1 0;
+  padding: 4px 6px;
+}
+
+.bg-kinds button[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+
+.bg-colour {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bg-colour input[type='color'] {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+}
+
+.bg-hex {
+  width: 84px;
+  font-family: var(--font-mono, monospace);
+}
+
+.bg-error {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.bg-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.bg-swatch {
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.bg-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bg-stop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bg-stop input[type='range'] {
+  flex: 1 1 60px;
+  min-width: 40px;
+}
+
+.bg-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.bg-number {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bg-number input[type='number'] {
+  width: 112px;
+}
+
+.bg-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.bg-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  height: auto;
+  padding: 3px;
+  font-size: 11px;
+}
+
+.bg-preset-art {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 28px;
+  border-radius: 3px;
+}
+
+.bg-image-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.bg-number-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* --- The Generate page: library, chosen panels and the new panel's details, side by side ----------- */
+.generate-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface);
+}
+
+.generate-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.generate-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-body);
+}
+
+.generate-back,
+.generate-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.generate-error {
+  margin: 8px 16px 0;
+}
+
+.generate-columns {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.25fr);
+  gap: 1px;
+  min-height: 0;
+  background: var(--border);
+}
+
+.generate-column {
+  min-width: 0;
+  padding: 12px 16px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.generate-column h3 {
+  margin: 0 0 8px;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The library as an asset browser: a bar of the three kinds stuck to the top of its scrolling column, then a section
+   per kind of equal cards in wrapping rows. Every colour is a theme token, so it reads the same in light and dark. */
+.library-column {
+  --asset-card-width: 112px;
+}
+
+.library-nav {
+  position: sticky;
+  top: -12px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  margin: -12px -16px 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.library-nav-tab {
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  border-radius: 999px;
+}
+
+.library-nav-tab:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.library-nav-tab[aria-current='true'] {
+  color: var(--text);
+  background: var(--active);
+}
+
+.library-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.library-section {
+  margin-bottom: 20px;
+  scroll-margin-top: 48px;
+}
+
+.library-heading {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule);
+}
+
+.library-details {
+  padding-top: 4px;
+}
+
+.library-count {
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--asset-card-width));
+  gap: 10px;
+}
+
+.asset-card {
+  min-width: 0;
+}
+
+.asset-card-button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: auto;
+  padding: 5px 5px 7px;
+  text-align: center;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  transition: border-color 120ms var(--ease), background-color 120ms var(--ease);
+}
+
+.asset-card-button:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--control);
+}
+
+.asset-card-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.asset-card[data-selected='true'] .asset-card-button {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.asset-card-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.asset-card-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--active);
+  border-radius: 5px;
+}
+
+.asset-card-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.asset-card-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.asset-card-tick {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.asset-card-name {
+  overflow: hidden;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-chosen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.library-chosen-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.library-chosen-name {
+  flex: 1 1 90px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-chosen-row select,
+.library-chosen-row input {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: var(--fs-small);
+}
+
+.reference-row img,
+.library-tile-blank {
+  display: block;
+  object-fit: cover;
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reference-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.reference-row img,
+.reference-row .library-tile-blank {
+  width: 56px;
+  height: 56px;
+  min-height: 0;
+}
+
+/* The same tools as a row above the Generate page's sketch, not a rail on a stage. */
+.sketch-tools[data-orientation='horizontal'] {
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  max-height: none;
+  overflow: visible;
+}
+
+.sketch-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  color: var(--faint);
+  cursor: help;
+}
+
+.sketch-tools[data-orientation='horizontal'] .sketch-keys {
+  margin-left: auto;
+}
+
+.sketch-tools[data-orientation='horizontal'] .sketch-tools-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+}
+
+.generate-sketch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.generate-sketch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.generate-sketch-head h3 {
+  margin: 0;
+}
+
+.generate-sketch-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A frame the paper moves and zooms in (`usePaperView` sets its height and the paper's place). The zoom bar sits at its
+   bottom right, as on a panel's stage. */
+.generate-sketch-stage {
+  position: relative;
+}
+
+.generate-sketch-viewport {
+  position: relative;
+  min-height: 160px;
+  overflow: hidden;
+  background: var(--raised);
+  border-radius: var(--radius-card);
+}
+
+.generate-sketch-viewport[data-pan='ready'],
+.generate-sketch-viewport[data-pan='ready'] * {
+  cursor: grab !important;
+}
+
+.generate-sketch-viewport[data-pan='panning'],
+.generate-sketch-viewport[data-pan='panning'] * {
+  cursor: grabbing !important;
+}
+
+.generate-sketch-paper {
+  position: absolute;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+/* The prompt column: the new panel's fields, style and the prompt it is drawn with. */
+.prompt-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prompt-column h3 {
+  margin-bottom: 0;
+}
+
+.prompt-column textarea,
+.prompt-column select,
+.prompt-column input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.prompt-column .field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.prompt-column .field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.prompt-text {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-small);
 }

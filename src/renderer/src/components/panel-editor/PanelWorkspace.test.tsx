@@ -28,7 +28,7 @@ const second = withImage(B)
 const third = withImage(C)
 
 beforeEach(() => {
-  useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, selectedPanelId: B })
+  useAppStore.setState({ ...initialAppState, projectId: P, sessionId: 'ses_0000000001', activeEpisodeId: EPISODE_ID, focusedPanelId: B })
   usePanelsStore.setState({ ...initialPanelsState, projectId: P, episodesLoaded: true, panelsByEpisode: { [EPISODE_ID]: [first, second, third] } })
   useChatStore.setState({ messages: {}, streaming: {}, notices: {}, draft: '' })
   useCharactersStore.setState({ ...initialCharactersState, projectId: P, characters: [character()], loaded: true })
@@ -41,7 +41,7 @@ afterEach(async () => {
 
 /** The workspace as App mounts it, beside a stand-in for the strip's cards, which Back focuses again. */
 function Host() {
-  const selected = useAppStore((s) => s.selectedPanelId)
+  const selected = useAppStore((s) => s.focusedPanelId)
   return (
     <>
       {[A, B, C].map((id) => (
@@ -88,29 +88,56 @@ describe('PanelWorkspace', () => {
     expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveFocus()
     const next = within(header()).getByRole('button', { name: 'Next panel' })
     focus(next)
-    act(() => useAppStore.getState().selectPanel(A))
+    act(() => useAppStore.getState().focusPanel(A))
     expect(next).toHaveFocus()
   })
 
   it('goes back to the strip, and focuses the card it came from', async () => {
     mount()
     await userEvent.click(within(header()).getByRole('button', { name: 'Back to the strip' }))
-    expect(useAppStore.getState().selectedPanelId).toBeNull()
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
     expect(screen.queryByTestId('panel-workspace')).toBeNull()
     await waitFor(() => expect(document.querySelector(`[data-panel-id="${B}"]`)).toHaveFocus())
+  })
+
+  it('is named Focus mode', () => {
+    mount()
+    expect(screen.getByRole('region', { name: 'Focus mode' })).toBe(workspace())
+    expect(screen.queryByRole('region', { name: 'Panel editor' })).toBeNull()
+  })
+
+  it('the back button says Back to the strip and clears focus only, leaving the selection', async () => {
+    mount()
+    useAppStore.setState({ selectedPanelId: B, selectedPanelIds: [B] })
+    const back = within(header()).getByRole('button', { name: 'Back to the strip' })
+    expect(back).toHaveTextContent('Back to the strip')
+    await userEvent.click(back)
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+    expect(useAppStore.getState().selectedPanelIds).toEqual([B])
+    expect(useAppStore.getState().selectedPanelId).toBe(B)
+  })
+
+  it('opens on the sketch canvas when the Sketch tool asked, and a later plain Focus opens on the picture', async () => {
+    useAppStore.getState().focusPanel(B, { sketch: true })
+    mount({ 'panels:readSketch': () => null })
+    expect(screen.getByTestId('sketch-stage')).toBeInTheDocument()
+    // The request was used up: stepping to another panel, or coming back to this one, shows the picture.
+    expect(useAppStore.getState().focusSketch).toBe(false)
+    act(() => useAppStore.getState().focusPanel(C))
+    expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
   })
 
   it('steps to the next and previous panel, and stops at the ends', async () => {
     mount()
     const next = (): HTMLElement => within(header()).getByRole('button', { name: 'Next panel' })
     const previous = (): HTMLElement => within(header()).getByRole('button', { name: 'Previous panel' })
-    expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveTextContent('Strip')
+    expect(within(header()).getByRole('button', { name: 'Back to the strip' })).toHaveTextContent('Back to the strip')
     await userEvent.click(next())
-    expect(useAppStore.getState().selectedPanelId).toBe(C)
+    expect(useAppStore.getState().focusedPanelId).toBe(C)
     expect(within(workspace()).getByRole('heading', { level: 1 })).toHaveTextContent('Panel 3 of 3')
     expect(next()).toBeDisabled()
     expect(previous()).toBeEnabled()
-    act(() => useAppStore.getState().selectPanel(A))
+    act(() => useAppStore.getState().focusPanel(A))
     expect(previous()).toBeDisabled()
     expect(next()).toBeEnabled()
   })
@@ -317,14 +344,14 @@ describe('PanelWorkspace', () => {
     mount()
     focus(document.body)
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().selectedPanelId).toBeNull()
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
   })
 
   it('leaves Escape to its own composer and to an open dialog', async () => {
     mount()
     focus(within(workspace()).getByTestId('composer-input'))
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
 
     const dialog = document.createElement('div')
     dialog.setAttribute('role', 'dialog')
@@ -334,7 +361,7 @@ describe('PanelWorkspace', () => {
     document.body.append(dialog)
     focus(button)
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
     dialog.remove()
 
     // An input elsewhere (a rename box) owns Escape too.
@@ -342,7 +369,7 @@ describe('PanelWorkspace', () => {
     document.body.append(rename)
     focus(rename)
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
     rename.remove()
   })
 
@@ -350,15 +377,15 @@ describe('PanelWorkspace', () => {
     const { calls } = mount()
     act(() => usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [first, third] } }))
     expect(workspace()).toHaveTextContent('Panel not in the current episode')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
     expect(within(workspace()).queryByRole('button', { name: 'Regenerate' })).toBeNull()
     await userEvent.click(within(header()).getByRole('button', { name: 'Back to the strip' }))
-    expect(useAppStore.getState().selectedPanelId).toBeNull()
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
     expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
   })
 
   it('does not load a thread for a panel that is not in the episode', () => {
-    useAppStore.setState({ selectedPanelId: 'pnl_00000000ff' })
+    useAppStore.setState({ focusedPanelId: 'pnl_00000000ff' })
     const { calls } = mount()
     expect(workspace()).toHaveTextContent('Panel not in the current episode')
     expect(within(workspace()).queryByTestId('composer-input')).toBeNull()
@@ -407,15 +434,15 @@ describe('PanelWorkspace', () => {
     await userEvent.keyboard(' Later.{Escape}')
     expect(within(stage).queryByRole('textbox')).toBeNull()
     expect(bubble()).toHaveTextContent('Night fell.')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
 
     // The bubble keeps the selection and the focus: the first Escape clears it, and only the next one goes back.
     expect(bubble()).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(bubble()).toHaveAttribute('data-selected', 'false')
-    expect(useAppStore.getState().selectedPanelId).toBe(B)
+    expect(useAppStore.getState().focusedPanelId).toBe(B)
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().selectedPanelId).toBeNull()
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
     expect(calls.some((c) => c.channel === 'panels:update')).toBe(false)
   })
 
@@ -623,7 +650,7 @@ describe('PanelWorkspace', () => {
     // A nudge still waiting, then a step from elsewhere (a chat thumbnail): the stage it was made on saves it as it goes.
     focus(within(stage()).getByLabelText('Line 1'))
     fireEvent.keyDown(within(stage()).getByLabelText('Line 1'), { key: 'ArrowRight' })
-    act(() => useAppStore.getState().selectPanel(A))
+    act(() => useAppStore.getState().focusPanel(A))
     expect(within(workspace()).getAllByTestId('panel-stage')).toHaveLength(1)
     await waitFor(() => expect(saved()).toHaveLength(2))
     expect(saved()[1]).toMatchObject({ panelId: C, patch: { dialogue: [{ placement: { x: 0.51, y: 0.8 } }] } })
@@ -738,7 +765,7 @@ describe('PanelWorkspace', () => {
       expect(within(header()).getByRole('button', { name: 'Generate' })).toBeInTheDocument()
       // The inspector is there for the rest of the panel.
       expect(within(workspace()).getByRole('tab', { name: 'Scene' })).toBeInTheDocument()
-      act(() => useAppStore.getState().selectPanel(C))
+      act(() => useAppStore.getState().focusPanel(C))
       expect(screen.getByTestId('panel-stage')).toBeInTheDocument()
       expect(within(header()).getByRole('button', { name: 'Regenerate' })).toBeInTheDocument()
     })
@@ -827,19 +854,20 @@ describe('PanelWorkspace', () => {
       await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:saveSketch')).toHaveLength(3))
     })
 
-    it('moves a zoomed sketch with a middle-button drag, and draws nothing', async () => {
+    it('moves the sketch with a middle- or right-button drag, and draws nothing', async () => {
       fakeCanvas()
       withBlank()
       const { calls } = mount({ 'panels:readSketch': () => null, 'panels:saveSketch': () => ({ ...blank, sketchPath: `panels/${B}/sketch-1.png` }) })
       const v = screen.getByTestId('sketch-viewport')
-      for (const [key, value] of Object.entries({ scrollWidth: 1000, scrollHeight: 1000, clientWidth: 300, clientHeight: 200 })) Object.defineProperty(v, key, { configurable: true, value })
-      Object.defineProperty(v, 'scrollLeft', { configurable: true, writable: true, value: 100 })
-      Object.defineProperty(v, 'scrollTop', { configurable: true, writable: true, value: 100 })
       const canvas = screen.getByTestId('sketch-canvas')
-      fireEvent.pointerDown(canvas, { button: 1, buttons: 4, clientX: 50, clientY: 50 })
-      fireEvent.pointerMove(v, { buttons: 4, clientX: 80, clientY: 90 })
-      fireEvent.pointerUp(v, { button: 1, clientX: 80, clientY: 90 })
-      expect([v.scrollLeft, v.scrollTop]).toEqual([70, 60])
+      // Where the panel ends up is the paper view's (paper-view.test.ts); here, the drags are pans and not strokes.
+      for (const button of [1, 2]) {
+        fireEvent.pointerDown(canvas, { button, buttons: button === 1 ? 4 : 2, clientX: 50, clientY: 50 })
+        expect(v).toHaveAttribute('data-pan', 'panning')
+        fireEvent.pointerMove(v, { buttons: button === 1 ? 4 : 2, clientX: 80, clientY: 90 })
+        fireEvent.pointerUp(v, { button, clientX: 80, clientY: 90 })
+        expect(v).not.toHaveAttribute('data-pan', 'panning')
+      }
       expect(drawn).toEqual([])
       expect(within(screen.getByRole('toolbar', { name: 'Sketch tools' })).getByRole('button', { name: 'Undo stroke' })).toBeDisabled()
       await act(async () => undefined)

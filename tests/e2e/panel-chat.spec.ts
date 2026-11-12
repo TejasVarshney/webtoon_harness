@@ -36,7 +36,7 @@ test('open a panel, edit it from the panel chat, revert', async () => {
   await sendChat(page, 'Draw panel 1', 'Drew panel 1.')
   await page.getByTestId('tab-webtoon').click()
   const card = page.getByTestId('panel-card').first()
-  await card.click()
+  await card.dblclick()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
@@ -46,7 +46,7 @@ test('open a panel, edit it from the panel chat, revert', async () => {
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v2 / 2')
   await expect(workspace.getByTestId('message-assistant').last()).toContainText('Updated.')
 
-  // Editing mode covers the main chat: the user goes back to the strip to use it, and its helper still talks to
+  // Focus mode covers the main chat: the user goes back to the strip to use it, and its helper still talks to
   // the main chat only.
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await expect(workspace).toHaveCount(0)
@@ -54,7 +54,7 @@ test('open a panel, edit it from the panel chat, revert', async () => {
   await expect(page.getByTestId('pane-chat').locator('.main-chat').getByTestId('message-assistant')).toHaveCount(3)
 
   // The panel's chat kept its own thread, without the main chat's turn.
-  await card.click()
+  await card.dblclick()
   await expect(workspace.getByTestId('message-assistant')).toHaveCount(1)
   await expect(workspace).not.toContainText('Still here.')
 

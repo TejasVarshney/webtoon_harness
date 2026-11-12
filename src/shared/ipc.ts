@@ -7,6 +7,7 @@ import type {
   CharacterInput,
   CharacterPatch,
   ChatMessage,
+  MenuState,
   EndpointConfig,
   EndpointKind,
   Episode,
@@ -27,20 +28,22 @@ import type {
   Panel,
   PanelDraft,
   PanelPatch,
+  PanelPlacement,
   PanelVersion,
   PluginView,
+  PromptPreview,
   ProjectMeta,
   ProjectProblem,
   Role,
   SessionSummary,
-  StoryMode,
+  StripBackground,
   Variation,
   VariationInput
 } from './types'
 
 /** The `project.json` fields a caller may change. */
 type ProjectPatch = Partial<
-  Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'storyMode' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
+  Pick<ProjectMeta, 'title' | 'logline' | 'stylePreset' | 'defaultAspect' | 'autopilotPanels' | 'consistencyRetries'>
 >
 
 export type EndpointInput = { name: string; kind: EndpointKind; baseUrl: string; options?: EndpointConfig['options'] }
@@ -72,6 +75,7 @@ export interface IpcContract {
   'sessions:list': { req: { projectId: string }; res: SessionSummary[] }
   'sessions:create': { req: { projectId: string }; res: SessionSummary }
   'sessions:rename': { req: { projectId: string; sessionId: string; title: string }; res: void }
+  'sessions:bookmark': { req: { projectId: string; sessionId: string; bookmarked: boolean }; res: void }
   'sessions:delete': { req: { projectId: string; sessionId: string }; res: void }
   'sessions:load': { req: { projectId: string; sessionId: string }; res: ChatMessage[] }
   'models:get': { req: Record<string, never>; res: ModelRegistryView }
@@ -144,22 +148,30 @@ export interface IpcContract {
   /** A project with no episode yet gets `Episode 1` on the first call. */
   'episodes:list': { req: { projectId: string }; res: Episode[] }
   'episodes:create': { req: { projectId: string; title: string; synopsis?: string }; res: Episode }
-  'episodes:update': { req: { projectId: string; episodeId: string; patch: { title?: string; synopsis?: string } }; res: Episode }
+  'episodes:update': { req: { projectId: string; episodeId: string; patch: { synopsis?: string } }; res: Episode }
+  /** An image background must name the image the episode stored (`episodes:pickBackgroundImage`). `null` clears it. */
+  'episodes:setBackground': { req: { projectId: string; episodeId: string; background: StripBackground | null }; res: Episode }
+  /** Opens a file dialog in main and stores the chosen png/jpg/webp as the strip's background image. `null` when the dialog is cancelled. */
+  'episodes:pickBackgroundImage': { req: { projectId: string; episodeId: string }; res: Episode | null }
   /** The episode's panels in episode order. */
   'panels:list': { req: { projectId: string; episodeId: string }; res: Panel[] }
   'panels:get': { req: { projectId: string; panelId: string }; res: Panel }
   /**
    * Returns the new panel at once, without an image; with `generate` the image follows through `panel.changed`.
    * The manual editor is lenient: a mention of a roster character that is not attached comes back in `warnings`, not as an error.
-   * Any other validation failure rejects with the issues, one per line.
+   * Any other validation failure rejects with the issues, one per line. `sketchPng` (a PNG data URL, as `panels:saveSketch` takes) is stored before
+   * the drawing starts; if it cannot be, no panel is made.
    */
-  'panels:create': { req: { projectId: string; draft: PanelDraft; generate: boolean }; res: { panel: Panel; warnings: string[] } }
+  'panels:create': { req: { projectId: string; draft: PanelDraft; generate: boolean; sketchPng?: string }; res: { panel: Panel; warnings: string[] } }
+  /** The automatic prompt (the draft's `promptOverride` is ignored) and references a new panel from this draft would be drawn with, and the chosen panels the model has no room for. Writes nothing; rejects when no prompt can be composed. */
+  'panels:previewPrompt': { req: { projectId: string; draft: PanelDraft; hasSketch: boolean }; res: PromptPreview }
   /** Changes only the fields named in `patch`; it never touches the image. */
   'panels:update': { req: { projectId: string; panelId: string; patch: PanelPatch }; res: { panel: Panel; warnings: string[] } }
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   'panels:generate': { req: { projectId: string; panelId: string }; res: void }
   'panels:delete': { req: { projectId: string; panelId: string }; res: void }
-  'panels:move': { req: { projectId: string; panelId: string; toIndex: number }; res: void }
+  /** Saves where panels sit on the strip (everything else on it is frozen where it is drawn) and the reading order that follows. */
+  'panels:place': { req: { projectId: string; episodeId: string; moves: { panelId: string; placement: PanelPlacement }[] }; res: void }
   /** Makes a ready version current; no version is deleted. */
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
@@ -173,10 +185,8 @@ export interface IpcContract {
   /** Starts a run and returns at once. Its events arrive as `agent.event`s with threadKey `panel:<panelId>`; rejects while that panel's chat is already running. */
   'panelChat:send': { req: { projectId: string; panelId: string; text: string }; res: { runId: string } }
   'panelChat:cancel': { req: { runId: string }; res: void }
-  /** The mode, the bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
-  'story:get': { req: { projectId: string; episodeId?: string }; res: { mode: StoryMode; bible: string; beats: Beat[] } }
-  /** Returns the updated project meta, so the toggle can follow without waiting for `project.changed`. */
-  'story:setMode': { req: { projectId: string; mode: StoryMode }; res: ProjectMeta }
+  /** The bible and the beats of one episode (all beats without `episodeId`). The first call in a project creates the bible template. */
+  'story:get': { req: { projectId: string; episodeId?: string }; res: { bible: string; beats: Beat[] } }
   /** The style library. `loadError`: `styles.json` is unreadable, so the list holds only the built-ins and saves fail. */
   'styles:list': { req: Record<string, never>; res: { styles: StyleEntry[]; loadError: string | null } }
   'styles:create': { req: { name: string; text: string }; res: StyleEntry }
@@ -210,6 +220,8 @@ export interface IpcContract {
   'claudeCode:detect': { req: Record<string, never>; res: { path: string | null } }
   /** Which project and episode the window shows, for plugins that act on "the open project". Sent on every change and once at load. */
   'app:setActiveContext': { req: { projectId: string | null; episodeId: string | null }; res: void }
+  /** The projects the window's File menu lists, and the open one; main rebuilds the menu from it. */
+  'app:setMenu': { req: MenuState; res: void }
   /** Per episode: its panel counts and the unfinished panels, for the export dialog. */
   'export:inspect': { req: { projectId: string; episodeIds: string[] }; res: ExportInspection }
   /** Asks where to save (a file or a folder, by preset), then starts the job. `{ cancelled: true }` when the dialog is dismissed. Rejects with a readable message when nothing can be exported or a job is running. */
@@ -230,6 +242,7 @@ const channelSet: Record<IpcChannel, true> = {
   'sessions:list': true,
   'sessions:create': true,
   'sessions:rename': true,
+  'sessions:bookmark': true,
   'sessions:delete': true,
   'sessions:load': true,
   'models:get': true,
@@ -281,13 +294,16 @@ const channelSet: Record<IpcChannel, true> = {
   'episodes:list': true,
   'episodes:create': true,
   'episodes:update': true,
+  'episodes:setBackground': true,
+  'episodes:pickBackgroundImage': true,
   'panels:list': true,
   'panels:get': true,
   'panels:create': true,
+  'panels:previewPrompt': true,
   'panels:update': true,
   'panels:generate': true,
   'panels:delete': true,
-  'panels:move': true,
+  'panels:place': true,
   'panels:revert': true,
   'panels:uploadImage': true,
   'panels:saveSketch': true,
@@ -296,7 +312,6 @@ const channelSet: Record<IpcChannel, true> = {
   'panelChat:send': true,
   'panelChat:cancel': true,
   'story:get': true,
-  'story:setMode': true,
   'styles:list': true,
   'styles:create': true,
   'styles:update': true,
@@ -317,6 +332,7 @@ const channelSet: Record<IpcChannel, true> = {
   'claudeCode:regenerateToken': true,
   'claudeCode:detect': true,
   'app:setActiveContext': true,
+  'app:setMenu': true,
   'export:inspect': true,
   'export:start': true,
   'export:cancel': true,

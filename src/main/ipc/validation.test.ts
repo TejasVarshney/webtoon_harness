@@ -68,6 +68,13 @@ describe('IPC input validation', () => {
     expect((await s.sessions.list(await s.projects.open(projectId)))[0].title).toBe('Night walk')
   })
 
+  it('sessions:bookmark needs a boolean and pins the session', async () => {
+    const { s, invoke, projectId, sessionId } = await setup()
+    expect((await rejection(invoke('sessions:bookmark', { projectId, sessionId, bookmarked: 'yes' }))).message).toMatch(/^Invalid input: bookmarked: /)
+    await invoke('sessions:bookmark', { projectId, sessionId, bookmarked: true })
+    expect((await s.sessions.list(await s.projects.open(projectId)))[0].bookmarked).toBe(true)
+  })
+
   it('projects:create checks its input', async () => {
     const { invoke } = await setup()
     expect((await rejection(invoke('projects:create', { title: '' }))).message).toMatch(/^Invalid input: title: /)
@@ -75,19 +82,19 @@ describe('IPC input validation', () => {
     expect(await invoke('projects:create', { title: ' Sun Diary ' })).toMatchObject({ title: 'Sun Diary' })
   })
 
-  it('episodes:create and episodes:update need a title of at least one character', async () => {
+  it('episodes:create needs a title of at least one character, and episodes:update takes no title', async () => {
     const { invoke, projectId, episodeId } = await setup()
     expect((await rejection(invoke('episodes:create', { projectId, title: '' }))).message).toMatch(/^Invalid input: title: /)
-    expect((await rejection(invoke('episodes:update', { projectId, episodeId, patch: { title: '' } }))).message).toMatch(/^Invalid input: patch\.title: /)
+    expect((await rejection(invoke('episodes:update', { projectId, episodeId, patch: { title: 'New' } }))).message).toMatch(/^Invalid input: patch: /)
     expect(await invoke('episodes:update', { projectId, episodeId, patch: { synopsis: 'Night' } })).toMatchObject({ synopsis: 'Night' })
   })
 
-  it('panels:move needs a whole, non-negative index', async () => {
-    const { invoke, projectId, panelId } = await setup()
-    for (const toIndex of [-1, 1.5, '0', Number.NaN]) {
-      expect((await rejection(invoke('panels:move', { projectId, panelId, toIndex }))).message, String(toIndex)).toMatch(/^Invalid input: toIndex: /)
+  it('panels:place needs finite numbers in every placement', async () => {
+    const { invoke, projectId, panelId, episodeId } = await setup()
+    for (const placement of [{ x: Number.NaN, y: 0, width: 100 }, { x: 0, y: Number.POSITIVE_INFINITY, width: 100 }, { x: 0, y: 0, width: '100' }, { x: 0, y: 0 }]) {
+      expect((await rejection(invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement }] }))).message).toMatch(/^Invalid input: moves/)
     }
-    await invoke('panels:move', { projectId, panelId, toIndex: 0 })
+    await invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement: { x: 0, y: 0, width: 100 } }] })
   })
 
   it('a schema failure inside any handler reaches the renderer as a short readable message', async () => {

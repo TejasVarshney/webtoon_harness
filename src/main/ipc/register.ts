@@ -1,3 +1,4 @@
+import type { MenuState } from '@shared/types'
 import type { Services } from '../services'
 import { agentHandlers } from './handlers/agent'
 import { charactersHandlers } from './handlers/characters'
@@ -5,6 +6,7 @@ import { exportHandlers, type ChooseExportTarget } from './handlers/export'
 import { docsHandlers, type OpenPath } from './handlers/docs'
 import { itemsHandlers } from './handlers/items'
 import { locationsHandlers } from './handlers/locations'
+import { menuHandlers } from './handlers/menu'
 import { modelsHandlers } from './handlers/models'
 import { panelChatHandlers } from './handlers/panel-chat'
 import { panelsHandlers } from './handlers/panels'
@@ -26,6 +28,8 @@ export interface IpcDeps {
   chooseExportTarget?: ChooseExportTarget
   /** Shows a path in the system file manager (`shell.showItemInFolder`). */
   showItemInFolder?: (absPath: string) => void
+  /** Rebuilds the window's menu bar from the projects the renderer reports. */
+  setMenu?: (state: MenuState) => void
 }
 
 export interface IpcRegistrar {
@@ -49,7 +53,8 @@ export function registerIpc(ipc: IpcRegistrar, services: Services, deps: IpcDeps
     ...docsHandlers(services, { openPath: deps.openPath }),
     ...uploadsHandlers(services, { pickFiles: deps.pickImageFiles }),
     ...exportHandlers(services, { chooseExportTarget: deps.chooseExportTarget, showItemInFolder: deps.showItemInFolder }),
-    ...pluginsHandlers(services)
+    ...pluginsHandlers(services),
+    ...menuHandlers({ setMenu: deps.setMenu })
   }
   for (const [channel, fn] of Object.entries(handlers)) {
     if (!fn) continue

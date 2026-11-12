@@ -20,19 +20,20 @@ export interface PanelWorkspaceProps {
 }
 
 /**
- * Leaves editing mode for the strip, and focuses again the card of the panel that was open. The strip is inert
- * until the overlay is gone, so the focus waits a frame.
+ * Leaves focus mode for the strip, and focuses again the card of the panel that was open. The selection stays. The
+ * strip is inert until the overlay is gone, so the focus waits a frame.
  */
 function backToStrip(): void {
-  const id = useAppStore.getState().selectedPanelId
-  useAppStore.getState().selectPanel(null)
+  const id = useAppStore.getState().focusedPanelId
+  useAppStore.getState().focusPanel(null)
   if (id !== null) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-panel-id="${id}"]`)?.focus())
 }
 
 /**
- * Editing mode: one panel over the whole sheet, the panel and its controls on the left and its chat on the right.
- * The stage shows the panel, or in sketch mode (Sketch, and a panel never drawn) a canvas for a rough layout sketch that
- * the next generation follows.
+ * Focus mode: one panel over the whole sheet, the panel and its controls on the left and its chat on the right. The
+ * strip's tools on a selected panel cover most edits in place; this is for the larger stage, the zoom and the chat.
+ * The stage shows the panel, or in sketch mode (Sketch, a panel never drawn, or the strip's Sketch tool) a canvas for a
+ * rough layout sketch that the next generation follows.
  * The panel comes from the open episode's strip, so the agent's edits show here as they land. A panel that leaves the
  * episode keeps the frame and the way back: nothing closes by itself, and nothing is saved for it.
  * Back, or Escape, returns to the strip.
@@ -52,8 +53,9 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   // A style picked in Lines and not saved yet, which the stage draws meanwhile. It too belongs to the panel it was picked on.
   const [previewState, setPreviewState] = useState<{ panelId: string; preview: StylePreview | null } | null>(null)
   // Sketch mode, as the user last chose it for this panel. Until they choose, a panel that was never drawn opens on its
-  // sketch, and one with an attempt (pending, failed or ready) shows that attempt.
-  const [sketchChoice, setSketchChoice] = useState<{ panelId: string; on: boolean } | null>(null)
+  // sketch, and one with an attempt (pending, failed or ready) shows that attempt. The strip's Sketch tool chooses it
+  // for the panel it opens (see `focusSketch`).
+  const [sketchChoice, setSketchChoice] = useState<{ panelId: string; on: boolean } | null>(() => (useAppStore.getState().focusSketch ? { panelId, on: true } : null))
   // The stage's zoom, relative to the fit: one per open panel, kept when the stage switches between picture and sketch.
   const [zoomState, setZoomState] = useState<{ panelId: string; zoom: number } | null>(null)
 
@@ -81,6 +83,11 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   // the editor. Stepping with ‹ › keeps the same workspace, so it leaves the focus where the user put it.
   const back = useRef<HTMLButtonElement>(null)
   useEffect(() => back.current?.focus(), [])
+
+  // The request is used up by opening, so a later plain Focus opens on the picture.
+  useEffect(() => {
+    if (useAppStore.getState().focusSketch) useAppStore.setState({ focusSketch: false })
+  }, [])
 
   // A panel opened from a chat thumbnail can arrive before the Webtoon tab ever loaded the strip.
   useEffect(() => {
@@ -121,19 +128,19 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
     setSketchChoice(null)
     run(id, () => usePanelsStore.getState().generatePanel(id))
   }
-  const select = (id: string): void => useAppStore.getState().selectPanel(id)
+  const select = (id: string): void => useAppStore.getState().focusPanel(id)
   const selectLine = (index: number | null): void => setLineSelection({ panelId, index })
   const previewStyle = (preview: StylePreview | null): void => setPreviewState({ panelId, preview })
 
   return (
-    <section className="panel-workspace" data-testid="panel-workspace" aria-label="Panel editor">
+    <section className="panel-workspace" data-testid="panel-workspace" aria-label="Focus mode">
       <Group orientation="horizontal" className="editing-columns">
         <Column id="workspace-editor" defaultSize="64%" minSize="40%">
           <div className="editing-main">
             <header className="editing-header" data-testid="workspace-header">
               <button ref={back} type="button" className="editing-back" aria-label="Back to the strip" onClick={backToStrip}>
                 <ArrowLeft size={16} aria-hidden="true" />
-                Strip
+                Back to the strip
               </button>
               {panel !== undefined && panels !== undefined && (
                 <>

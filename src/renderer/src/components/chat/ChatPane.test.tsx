@@ -26,7 +26,7 @@ function assistant(id: string, text: string): ChatMessage {
 }
 
 function summary(driver: SessionSummary['driver']): SessionSummary {
-  return { id: S, title: driver === null ? 'Chat' : 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver, claudeSessionId: null }
+  return { id: S, title: driver === null ? 'Chat' : 'Claude Code', createdAt: NOW, updatedAt: NOW, messageCount: 0, driver, claudeSessionId: null, bookmarked: false }
 }
 
 beforeEach(() => {
@@ -149,7 +149,7 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('composer-attach')).toBeDisabled()
   })
 
-  it('stays the main chat alone when a panel is selected: the panel chat lives in the editing mode', async () => {
+  it('stays the main chat alone when a panel is selected: the panel chat lives in focus mode', async () => {
     installFakeApi({ 'sessions:load': () => [] })
     render(<ChatPane />)
     const input = await screen.findByTestId('composer-input')

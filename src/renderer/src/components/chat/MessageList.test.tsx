@@ -88,6 +88,11 @@ describe('MessageList', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('the empty hint points at the strip on the left', () => {
+    render(<MessageList threadKey={T} />)
+    expect(screen.getByText(/into the strip on the left\./)).toBeInTheDocument()
+  })
+
   it('panel thumbnails select the panel', async () => {
     installFakeApi({ 'panels:get': () => ({ id: 'pnl_0000000001', episodeId: 'epi_0000000001' }) })
     useAppStore.setState({ activeEpisodeId: 'epi_0000000001' })

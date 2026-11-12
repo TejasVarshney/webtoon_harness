@@ -46,7 +46,7 @@ test('a location made in its tab is set on a panel in the Scene tab and drawn in
 
   // The panel's Scene tab: location, state and a reverse camera.
   await openTab(page, 'webtoon')
-  await page.getByTestId('panel-card').first().click()
+  await page.getByTestId('panel-card').first().dblclick()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
   await workspace.getByRole('tab', { name: 'Scene' }).click()

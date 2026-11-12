@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
+import { createProjectAndSession, launchApp, openFirstProject, openSessions, openTab, readProjectJson, sendChat } from './helpers'
 
 // Milestone 5 checkpoint: the whole product on the offline mock models. One scripted conversation builds the story
-// bible, two characters, a variation and two panels; the panel chat edits a panel; AI-led mode continues the story;
+// bible, two characters, a variation and two panels; the panel chat edits a panel; Continue story continues the story;
 // and everything is still there after a relaunch. Every id in the script is a placeholder the mock provider resolves
 // from the <project_state> of the user message that triggered the turn, so characters are created one message before
 // any panel casts them. The script has one cursor for the whole app, so its turns are consumed in the order the runs ask.
@@ -72,7 +72,7 @@ const script = {
     // 3. panel chat on panel 2: "make Jin frown"
     { toolCalls: [{ name: 'edit_image', input: { instruction: 'make Jin frown' } }] },
     { text: 'Done.' },
-    // 4. AI-led mode, "Continue story"
+    // 4. "Continue story"
     {
       toolCalls: [
         { name: 'add_beats', input: { episodeId: currentEpisode, beats: ['Jin reveals the moon map'] } },
@@ -93,7 +93,7 @@ const script = {
   ]
 }
 
-test('a story from setup to AI-led continuation survives a relaunch', async () => {
+test('a story from setup to continuation survives a relaunch', async () => {
   const first = await launchApp({ script })
   const { page, projectsRoot } = first
   await createProjectAndSession(page, 'Moon Diary')
@@ -118,12 +118,14 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   const cards = page.getByTestId('panel-card')
   await expect(cards).toHaveCount(2)
   await expect(cards.locator('img')).toHaveCount(2)
-  await expect(cards.locator('.dialogue-overlay')).toHaveCount(2)
-  await expect(cards.nth(0).locator('.dialogue-overlay')).toContainText('Is anyone there?')
-  await expect(cards.nth(1).locator('.dialogue-overlay')).toContainText('Someone had been listening too.')
+  // The lettering is the strip's bubble layer, one over each card.
+  const layerOf = async (n: number) => page.getByTestId('strip-bubbles').and(page.locator(`[data-panel-id="${await cards.nth(n).getAttribute('data-panel-id')}"]`))
+  await expect(page.getByTestId('strip-bubbles').locator('.dialogue-overlay')).toHaveCount(2)
+  await expect(await layerOf(0)).toContainText('Is anyone there?')
+  await expect(await layerOf(1)).toContainText('Someone had been listening too.')
 
-  // 3. The panel chat edits panel 2: a second ready version. Then back to the strip, since editing mode covers it.
-  await cards.nth(1).click()
+  // 3. The panel chat edits panel 2: a second ready version. Then back to the strip, since focus mode covers it.
+  await cards.nth(1).dblclick()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByTestId('panel-version-label')).toHaveText('v1 / 1')
@@ -138,9 +140,7 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   await openTab(page, 'story')
   await expect(page.getByTestId('bible-editor')).toHaveValue(/A girl who can hear the moon\./)
 
-  // 5. AI-led mode offers Continue story, which draws a third panel.
-  await expect(page.getByTestId('continue-story')).toHaveCount(0)
-  await page.getByTestId('story-mode-toggle').selectOption('AI-led')
+  // 5. Continue story draws a third panel.
   await expect(page.getByTestId('continue-story')).toBeVisible()
   await page.getByTestId('continue-story').click()
   const main = page.getByTestId('pane-chat').locator('.main-chat')
@@ -165,12 +165,13 @@ test('a story from setup to AI-led continuation survives a relaunch', async () =
   expect(panels.map((p: { versions: unknown[] }) => p.versions.length)).toEqual([1, 2, 1])
   expect(panels[1].versions.map((v: { source: string; status: string }) => `${v.source}:${v.status}`)).toEqual(['generate:ready', 'edit:ready'])
   expect(panels[1].currentVersionId).toBe(panels[1].versions[1].id)
-  expect((await readProjectJson(projectsRoot, 'project.json')).storyMode).toBe('ai')
   await first.app.close()
 
   // 6. A second launch on the same folders finds the sessions, the panels and the characters.
   const second = await launchApp({ userDataDir: first.userDataDir, projectsRoot })
   const again = second.page
+  await openFirstProject(again)
+  await openSessions(again)
   await expect(again.getByTestId('session-item')).toHaveCount(1)
   await again.getByTestId('session-item').click()
   await expect(again.getByTestId('pane-chat').locator('.main-chat').getByTestId('message-assistant').last()).toContainText('Continued.')

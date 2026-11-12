@@ -18,7 +18,7 @@ const PROJECT_STATE_TOOL = 'get_project_state'
 const PROJECT_STATE_SPEC: ToolSpec = {
   name: PROJECT_STATE_TOOL,
   description:
-    'The current <project_state> snapshot: project, story mode, style, characters, items, current episode and its last panels. Call it before planning or drawing.',
+    'The current <project_state> snapshot: project, style, characters, items, current episode and its last panels. Call it before planning or drawing.',
   inputSchema: { type: 'object', properties: {} }
 }
 

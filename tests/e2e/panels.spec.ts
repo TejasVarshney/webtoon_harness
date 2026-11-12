@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp, readProjectJson, sendChat } from './helpers'
+import { expect, test, type Page } from '@playwright/test'
+import { addBlankPanel, createProjectAndSession, launchApp, openFirstProject, readProjectJson, sendChat } from './helpers'
 
 // Milestone 3 checkpoint: the user draws the first panel by hand in the Webtoon tab (the "+" opens a blank panel in editing
 // mode), then asks the agent for the next one; the agent's panel is generated with the user's panel as its previous-panel
@@ -35,7 +35,7 @@ test('user creates a panel manually, agent continues from it', async () => {
   await createProjectAndSession(page, 'Moon Diary')
   await sendChat(page, 'Create Mina', 'Created Mina.')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('tab', { name: 'Scene' }).click()
   await workspace.getByLabel('Description').fill('Mina stands on the rooftop.')
@@ -55,97 +55,106 @@ test('user creates a panel manually, agent continues from it', async () => {
   await app.close()
 })
 
-// Panel shapes: a panel set beside and slanted in editing mode's Scene tab shares the previous panel's row, and a
-// slanted card's toolbar is not cut off by its slant, and a click on the card still opens editing mode.
-test('a panel set beside and slanted in editing mode joins the row and still opens', async () => {
-  const { app, page, projectsRoot } = await launchApp()
-  await createProjectAndSession(page, 'Moon Diary')
-  await page.getByTestId('tab-webtoon').click()
+/** Adds two blank panels from the strip's "+" and returns to the strip. */
+async function addTwoPanels(page: Page): Promise<void> {
   for (const description of ['Mina looks up.', 'Jun looks back.']) {
-    await page.getByTestId('add-panel').last().click()
+    await addBlankPanel(page)
     const editor = page.getByTestId('panel-workspace')
     await editor.getByRole('tab', { name: 'Scene' }).click()
     await editor.getByLabel('Description').fill(description)
     await editor.getByRole('button', { name: 'Back to the strip' }).click()
     await expect(editor).toHaveCount(0)
   }
-  const cards = page.getByTestId('panel-card')
-  await expect(cards).toHaveCount(2)
-  await expect(page.locator('.strip-row[data-row-size="1"]')).toHaveCount(2)
+  await expect(page.getByTestId('panel-card')).toHaveCount(2)
+}
 
-  const id = (await cards.nth(1).getAttribute('data-panel-id'))!
-  await cards.nth(1).click()
-  const workspace = page.getByTestId('panel-workspace')
-  await expect(workspace.getByRole('heading', { level: 1 })).toHaveText('Panel 2 of 2')
-  await workspace.getByRole('tab', { name: 'Scene' }).click()
-  await workspace.getByLabel('Frame').selectOption('slanted')
-  await workspace.getByLabel('Beside the previous panel').check()
-  // Each field saves on its own, a moment after it changes.
-  await expect.poll(async () => {
-    const stored = await readProjectJson(projectsRoot, `panels/${id}.json`)
-    return `${stored.frame} ${stored.beside}`
-  }).toBe('slanted true')
-  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
-  await expect(workspace).toHaveCount(0)
+/** A card's box in strip px: its place on the canvas, whatever the pane's scale or scroll. */
+async function stripBox(page: Page, index: number): Promise<{ x: number; y: number; width: number }> {
+  return page.getByTestId('panel-card').nth(index).evaluate((el: any) => {
+    const canvas = el.closest('.strip-canvas').getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const scale = canvas.width / 440
+    return { x: Math.round((r.left - canvas.left) / scale), y: Math.round((r.top - canvas.top) / scale), width: Math.round(r.width / scale) }
+  })
+}
 
-  await expect(page.locator('.strip-row[data-row-size="2"]')).toHaveCount(1)
-  await expect(page.locator('.strip-row')).toHaveCount(1)
-  const slanted = page.locator('.panel-card[data-frame="slanted"]')
-  await expect(slanted).toHaveAttribute('data-beside', 'true')
-  // The slant does not cut off the toolbar: each of its buttons is what the pointer lands on.
-  await slanted.hover()
-  const toolbar = slanted.getByRole('group', { name: 'Panel actions' })
-  for (const name of ['Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
-    const button = toolbar.getByRole('button', { name })
-    const box = (await button.boundingBox())!
-    const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
-    expect(hit, `${name} is reachable`).toBe(true)
-  }
-  await slanted.click()
-  await expect(workspace).toBeVisible()
-  await workspace.getByRole('tab', { name: 'Scene' }).click()
-  await expect(workspace.getByLabel('Frame')).toHaveValue('slanted')
-  await app.close()
-})
-
-// The toolbar is wider than a narrow card. It grows towards the row, so the first card of a row (which has nothing to its
-// left) must still show all of it, and a click on the card must still open editing mode.
-test('the toolbar of a narrow first card in a row stays inside the strip', async () => {
+// A click on a card selects it, only a double-click opens focus mode, and the tools' buttons are what the pointer
+// lands on.
+test('a click selects a panel, a double-click opens it, and its tools are reachable', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  const specs = [
-    { description: 'Mina looks up at the tower.', aspect: '1:3', beside: false },
-    { description: 'Jun looks back at her.', aspect: '16:9', beside: true }
-  ]
-  for (const { description, aspect, beside } of specs) {
-    await page.getByTestId('add-panel').last().click()
-    const editor = page.getByTestId('panel-workspace')
-    await editor.getByRole('tab', { name: 'Scene' }).click()
-    await editor.getByLabel('Description').fill(description)
-    await editor.getByLabel('Aspect').selectOption(aspect)
-    if (beside) await editor.getByLabel('Beside the previous panel').check()
-    await editor.getByRole('button', { name: 'Back to the strip' }).click()
-    await expect(editor).toHaveCount(0)
-  }
-  await expect(page.locator('.strip-row[data-row-size="2"]')).toHaveCount(1)
+  await addTwoPanels(page)
+  const cards = page.getByTestId('panel-card')
+  const workspace = page.getByTestId('panel-workspace')
 
-  const first = page.getByTestId('panel-card').first()
-  await first.hover()
-  const toolbar = first.getByRole('group', { name: 'Panel actions' })
-  // Hit-testing, not geometry: a button the pane clips (it cannot scroll left) is not what the pointer lands on.
-  for (const name of ['Beside previous', 'Regenerate', 'Move up', 'Move down', 'Delete']) {
+  await cards.nth(1).click()
+  await expect(cards.nth(1)).toHaveAttribute('data-selected', 'true')
+  await expect(workspace).toHaveCount(0)
+
+  const toolbar = page.getByRole('toolbar', { name: 'Panel tools' })
+  for (const name of ['Lines', 'Cast', 'Items', 'Scene', 'Versions', 'Upload image', 'Redraw', 'Sketch', 'Focus', 'Delete']) {
     const button = toolbar.getByRole('button', { name })
     const box = (await button.boundingBox())!
     const hit = await button.evaluate((el: any, [x, y]) => el.contains((globalThis as any).document.elementFromPoint(x, y)), [box.x + box.width / 2, box.y + box.height / 2])
     expect(hit, `${name} is reachable`).toBe(true)
   }
-  await first.click()
-  const workspace = page.getByTestId('panel-workspace')
-  await expect(workspace).toBeVisible()
-  await workspace.getByRole('tab', { name: 'Scene' }).click()
-  await expect(workspace.getByLabel('Aspect')).toHaveValue('1:3')
+
+  await cards.nth(1).dblclick()
+  await expect(workspace.getByRole('heading', { level: 1 })).toHaveText('Panel 2 of 2')
+  await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await app.close()
+})
+
+// A drag puts a panel where the pointer left it, saves that place, and a resize keeps the shape. The place survives a
+// relaunch.
+test('a dragged panel stays where it was put after a relaunch', async () => {
+  const first = await launchApp()
+  const { page, projectsRoot, userDataDir } = first
+  await createProjectAndSession(page, 'Moon Diary')
+  await page.getByTestId('tab-webtoon').click()
+  await addTwoPanels(page)
+
+  const before = await stripBox(page, 1)
+  const card = page.getByTestId('panel-card').nth(1)
+  const box = (await card.boundingBox())!
+  const canvasScale = (await page.locator('.strip-canvas').evaluate((el: any) => el.getBoundingClientRect().width)) / 440
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  await page.mouse.move(from.x + 24 * canvasScale, from.y + 40 * canvasScale, { steps: 8 })
+  await page.mouse.up()
+
+  const id = (await card.getAttribute('data-panel-id'))!
+  // x is held inside the strip, and y moves by the drag.
+  await expect.poll(async () => (await readProjectJson(projectsRoot, `panels/${id}.json`)).placement).toBeTruthy()
+  const stored = (await readProjectJson(projectsRoot, `panels/${id}.json`)).placement
+  expect(stored.width).toBe(before.width)
+  expect(Math.abs(stored.y - (before.y + 40))).toBeLessThanOrEqual(2)
+  const moved = await stripBox(page, 1)
+  expect(moved).toEqual({ x: stored.x, y: stored.y, width: stored.width })
+  // A drag is not a click: nothing opened.
+  await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
+
+  // Resize from the corner: the width follows the pointer.
+  await card.hover()
+  const handle = (await card.getByTestId('panel-resize').boundingBox())!
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + handle.width / 2 - 40 * canvasScale, handle.y + handle.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(async () => (await readProjectJson(projectsRoot, `panels/${id}.json`)).placement.width).toBeLessThan(stored.width - 30)
+  const resized = (await readProjectJson(projectsRoot, `panels/${id}.json`)).placement
+  const settled = await stripBox(page, 1)
+  expect(settled).toEqual({ x: resized.x, y: resized.y, width: resized.width })
+
+  await first.app.close()
+  const again = await launchApp({ userDataDir, projectsRoot })
+  await openFirstProject(again.page)
+  await again.page.getByTestId('tab-webtoon').click()
+  await expect(again.page.getByTestId('panel-card')).toHaveCount(2)
+  expect(await stripBox(again.page, 1)).toEqual(settled)
+  await again.app.close()
 })
 
 // A new panel opens on a blank sketch: what the user scribbles there is stored as the panel's sketch and sent with the
@@ -154,7 +163,7 @@ test('a sketch drawn on a new panel is the layout reference of its generation', 
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   const canvas = workspace.getByTestId('sketch-canvas')
   await expect(canvas).toBeVisible()
@@ -171,7 +180,7 @@ test('a sketch drawn on a new panel is the layout reference of its generation', 
   // The strip shows the sketch until there is a picture, and reopening the panel brings it back onto the canvas.
   await workspace.getByRole('button', { name: 'Back to the strip' }).click()
   await expect(page.getByTestId('panel-sketch-preview')).toHaveCount(1)
-  await page.getByTestId('panel-card').click()
+  await page.getByTestId('panel-card').dblclick()
   const inked = await workspace.getByTestId('sketch-canvas').evaluate(async (el: any) => {
     for (let i = 0; i < 50; i++) {
       const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height)
@@ -201,12 +210,13 @@ test('a sketch drawn on a new panel is the layout reference of its generation', 
   await app.close()
 })
 
-// The sketch's shapes land where they are dragged, and a zoomed sketch scrolls and still draws under the pointer.
+// The sketch's shapes land where they are dragged; a zoomed sketch grows past its frame, the plain wheel zooms it, a
+// right-button drag moves it but never out of the frame, and it still draws under the pointer.
 test('sketch shapes and zoom draw where the pointer is', async () => {
   const { app, page } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   const canvas = workspace.getByTestId('sketch-canvas')
   await expect(canvas).toBeVisible()
@@ -231,15 +241,22 @@ test('sketch shapes and zoom draw where the pointer is', async () => {
   const zoomed = (await canvas.boundingBox())!
   expect(zoomed.width / box.width).toBeCloseTo(1.5625, 1)
   const viewport = workspace.getByTestId('sketch-viewport')
-  expect(await viewport.evaluate((el: any) => el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth)).toBe(true)
-
-  // Ctrl + wheel zooms further, at the pointer.
   const view = (await viewport.boundingBox())!
+  expect(zoomed.height).toBeGreaterThan(view.height)
+
+  // The wheel on its own zooms further, at the pointer.
   await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
-  await page.keyboard.down('Control')
   await page.mouse.wheel(0, -200)
-  await page.keyboard.up('Control')
   await expect.poll(async () => parseInt((await zoom.getByRole('button', { name: /^Zoom \d+%/ }).textContent()) ?? '0', 10)).toBeGreaterThan(156)
+
+  // A right-button drag moves the panel, past the frame's edge, but a quarter of the frame stays covered however far it goes.
+  const beforePan = (await canvas.boundingBox())!
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2 + 40, { steps: 4 })
+  await page.mouse.up({ button: 'right' })
+  const afterPan = (await canvas.boundingBox())!
+  expect(afterPan.y).not.toBeCloseTo(beforePan.y, 0)
 
   // A pen dot in the middle of the visible part lands on the canvas pixel under the pointer.
   await workspace.getByRole('button', { name: 'Pen' }).click()
@@ -248,6 +265,18 @@ test('sketch shapes and zoom draw where the pointer is', async () => {
   const y = view.y + view.height / 2
   await page.mouse.click(x, y)
   expect(await inkAt((x - box.x) / box.width, (y - box.y) / box.height)).toBe(true)
+
+  // However far the drag goes, a quarter of the frame stays covered.
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2)
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(view.x + view.width / 2 + 3000, view.y + view.height / 2 + 3000, { steps: 4 })
+  await page.mouse.up({ button: 'right' })
+  const far = (await canvas.boundingBox())!
+  const shown = Math.min(far.y + far.height, view.y + view.height) - Math.max(far.y, view.y)
+  expect(far.y).toBeGreaterThan(view.y)
+  expect(shown).toBeGreaterThanOrEqual(Math.min(far.height, view.height) * 0.25 - 4)
+  expect(shown).toBeLessThanOrEqual(Math.min(far.height, view.height) * 0.25 + 4)
+  expect(await inkAt(0.4, 0.2)).toBe(true)
 
   await zoom.getByRole('button', { name: /^Zoom \d+%/ }).click()
   await expect(zoom.getByRole('button', { name: /^Zoom \d+%/ })).toHaveText('100%')
@@ -260,7 +289,7 @@ test('a drawn panel zooms, and is sketched over its picture', async () => {
   const { app, page, projectsRoot } = await launchApp()
   await createProjectAndSession(page, 'Moon Diary')
   await page.getByTestId('tab-webtoon').click()
-  await page.getByTestId('add-panel').last().click()
+  await addBlankPanel(page)
   const workspace = page.getByTestId('panel-workspace')
   await workspace.getByRole('button', { name: 'Generate' }).click()
   const stage = workspace.getByTestId('panel-stage')

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { createProjectAndSession, launchApp, openTab, readProjectJson, sendChat } from './helpers'
 
 // Item maker checkpoint: the agent makes an item with a second usage, then draws a panel that holds it, and the user
-// sees the item in the Items tab, the panel in the Webtoon tab and the item row in the panel's editing mode. Refs
+// sees the item in the Items tab, the panel in the Webtoon tab and the item row in the panel's focus mode. Refs
 // resolve from the <project_state> of the user message that triggered the turn, so each thing is created one message
 // before the next one refers to it: the item exists in message 2's snapshot, its Firing usage in message 3's.
 const mina = { $character: 'Mina' }
@@ -56,7 +56,7 @@ const script = {
   ]
 }
 
-test('an item with two usages is drawn into a panel and shows in editing mode', async () => {
+test('an item with two usages is drawn into a panel and shows in focus mode', async () => {
   const { app, page, projectsRoot } = await launchApp({ script })
   await createProjectAndSession(page, 'Blaster Test')
 
@@ -78,8 +78,8 @@ test('an item with two usages is drawn into a panel and shows in editing mode', 
   await expect(cards).toHaveCount(1)
   await expect(cards.locator('img')).toHaveCount(1)
 
-  // Editing mode's Items tab shows the attached item with its usage and holder.
-  await cards.first().click()
+  // Focus mode's Items tab shows the attached item with its usage and holder.
+  await cards.first().dblclick()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
   await workspace.getByRole('tab', { name: 'Items' }).click()

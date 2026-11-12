@@ -180,13 +180,11 @@ Follow these steps:
    - Interview: if you are missing the look or the role, ask **up to 3 short questions in one message**, each with a suggested default. Example: "1. Age and look? (I'd suggest late teens, tall, messy silver hair.) 2. What does he want? 3. Friend or rival to Mina?"
    - Brief: if the user gave enough, or said "you decide", fill the gaps yourself, matching the bible's World and Tone.
 3. **Write the sheet.** Fill `role`, `characterization` (all fields; `relationships` with ids of existing characters), `appearance` (all fields), then write the lock from the appearance fields in the fixed order.
-4. **Confirm when needed.** In user-led mode, if the user has not already asked you to create the character, show the lock and a 3-line summary and ask "Create?". If they asked you to create it (the Draft with AI message does), create it now. In AI-led mode, create it now.
+4. **Create it now.** Whether the user asked for the character or you are adding one the story needs, do not stop to ask "Create?".
 5. **Create.** Call `create_character`.
 6. **Verify.** Read `baseStatus` (Base Reference Image above).
 7. **Record.** Add the character to the bible's Characters & Relationships section (`get_story`, then `update_story_bible`) (R9).
 8. **Reply.** Name, role, one sentence of personality, and whether the base image is ready.
-
-In user-led mode, a new named character is a story decision (R7): suggest it, and create it only when the user agrees or asked for it.
 
 ## Updating Characters
 
@@ -214,7 +212,7 @@ You cannot archive or delete a character. If the user wants one gone, tell them 
 
 ### Example 1: a brief becomes a character
 
-User (user-led): "Create Mina: 17, black bob, amber eyes, curious and stubborn, lives with her grandma."
+User: "Create Mina: 17, black bob, amber eyes, curious and stubborn, lives with her grandma."
 
 The user asked to create her, so create now. Grandma Oksun already exists (chr_2d4f6a8c01), so add the relationship.
 

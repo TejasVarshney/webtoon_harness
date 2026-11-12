@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { Episode, Panel, PanelDraft, PanelPatch, PanelVersion } from '@shared/types'
+import type { Episode, Panel, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripBackground } from '@shared/types'
 import { api } from '../api'
-import { useAppStore } from './app-store'
+import { NO_PANEL_SELECTION, useAppStore } from './app-store'
 
 export interface PanelsData {
   /** The project `episodes` and `panelsByEpisode` belong to. */
@@ -13,6 +13,10 @@ export interface PanelsData {
   panelsByEpisode: Record<string, Panel[]>
   /** The last load failure; cleared by the next successful load. */
   error: string | null
+  /** A background being edited and not saved yet: the strip of that episode shows it in place of the stored one. */
+  backgroundPreview: { episodeId: string; background: StripBackground } | null
+  /** Why a background could not be saved after its editor was closed; the preview stays until it is dismissed. */
+  backgroundError: string | null
 }
 
 export interface PanelsActions {
@@ -29,19 +33,30 @@ export interface PanelsActions {
   selectEpisode(id: string): void
   /**
    * Selects a panel from outside the strip (a chat thumbnail): when it belongs to another episode than the one shown,
-   * that episode is opened first, so the panel opens in editing mode. A panel that cannot be looked up is selected as is.
+   * that episode is opened first, so the panel opens in focus mode. A panel that cannot be looked up is selected as is.
    */
   showPanel(id: string): Promise<void>
   /** Creates the episode and opens it. */
   createEpisode(title: string): Promise<Episode>
-  updateEpisode(id: string, patch: { title?: string; synopsis?: string }): Promise<Episode>
+  updateEpisode(id: string, patch: { synopsis?: string }): Promise<Episode>
+  /** Sets the strip's background, or clears it with `null`, and reloads the episodes. */
+  setBackground(episodeId: string, background: StripBackground | null): Promise<Episode>
+  /** Opens the file dialog in main and makes the chosen image the background; resolves to `null` when it is cancelled. */
+  pickBackgroundImage(episodeId: string): Promise<Episode | null>
+  /** Shows a background on the episode's strip before it is saved; `null` goes back to the stored one. */
+  setBackgroundPreview(preview: PanelsData['backgroundPreview']): void
+  /** Forgets a background save failure and puts the strip back on the stored background. */
+  dismissBackgroundError(): void
   /** Returns the new panel at once; with `generate` its image follows through `panel.changed`. */
-  createPanel(draft: PanelDraft, generate: boolean): Promise<{ panel: Panel; warnings: string[] }>
+  createPanel(draft: PanelDraft, generate: boolean, sketchPng?: string): Promise<{ panel: Panel; warnings: string[] }>
+  /** What a new panel from this draft would be drawn with. Writes nothing. */
+  previewPrompt(draft: PanelDraft, hasSketch: boolean): Promise<PromptPreview>
   updatePanel(id: string, patch: PanelPatch): Promise<{ panel: Panel; warnings: string[] }>
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   generatePanel(id: string): Promise<void>
   deletePanel(id: string): Promise<void>
-  movePanel(id: string, toIndex: number): Promise<void>
+  /** Saves where panels sit on the strip, then reloads the episode, whose order follows reading order. */
+  placePanels(episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void>
   revertPanel(id: string, versionId: string): Promise<Panel>
   /** Opens the file dialog in main; resolves to `null` when it is cancelled. */
   uploadPanelImage(id: string): Promise<PanelVersion | null>
@@ -51,7 +66,7 @@ export interface PanelsActions {
   readSketch(id: string): Promise<string | null>
 }
 
-export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null }
+export const initialPanelsState: PanelsData = { projectId: null, episodes: [], episodesLoaded: false, panelsByEpisode: {}, error: null, backgroundPreview: null, backgroundError: null }
 
 /**
  * Only the response to the latest load is applied: one generation fires several events, so loads overlap.
@@ -136,7 +151,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     },
 
     selectEpisode(id) {
-      useAppStore.setState({ activeEpisodeId: id, selectedPanelId: null })
+      useAppStore.setState({ activeEpisodeId: id, ...NO_PANEL_SELECTION })
       void get().load(id)
     },
 
@@ -146,7 +161,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
         try {
           episodeId = (await api.invoke('panels:get', { projectId: requireProject(), panelId: id })).episodeId
         } catch {
-          episodeId = null // gone or unreadable: select it anyway, as before; the editing mode says what is wrong
+          episodeId = null // gone or unreadable: select it anyway, as before; focus mode says what is wrong
         }
       }
       if (episodeId !== null && episodeId !== useAppStore.getState().activeEpisodeId) get().selectEpisode(episodeId)
@@ -155,7 +170,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
 
     async createEpisode(title) {
       const created = await api.invoke('episodes:create', { projectId: requireProject(), title })
-      useAppStore.setState({ activeEpisodeId: created.id, selectedPanelId: null })
+      useAppStore.setState({ activeEpisodeId: created.id, ...NO_PANEL_SELECTION })
       await get().loadEpisodes()
       return created
     },
@@ -166,10 +181,34 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       return updated
     },
 
-    async createPanel(draft, generate) {
-      const created = await api.invoke('panels:create', { projectId: requireProject(), draft, generate })
+    async setBackground(episodeId, background) {
+      const updated = await api.invoke('episodes:setBackground', { projectId: requireProject(), episodeId, background })
+      await get().loadEpisodes()
+      return updated
+    },
+
+    async pickBackgroundImage(episodeId) {
+      const updated = await api.invoke('episodes:pickBackgroundImage', { projectId: requireProject(), episodeId })
+      if (updated !== null) await get().loadEpisodes()
+      return updated
+    },
+
+    setBackgroundPreview(preview) {
+      set({ backgroundPreview: preview })
+    },
+
+    dismissBackgroundError() {
+      set({ backgroundError: null, backgroundPreview: null })
+    },
+
+    async createPanel(draft, generate, sketchPng) {
+      const created = await api.invoke('panels:create', { projectId: requireProject(), draft, generate, ...(sketchPng === undefined ? {} : { sketchPng }) })
       await get().load(draft.episodeId)
       return created
+    },
+
+    previewPrompt(draft, hasSketch) {
+      return api.invoke('panels:previewPrompt', { projectId: requireProject(), draft, hasSketch })
     },
 
     async updatePanel(id, patch) {
@@ -186,13 +225,18 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async deletePanel(id) {
       const episodeId = episodeOf(id)
       await api.invoke('panels:delete', { projectId: requireProject(), panelId: id })
-      if (useAppStore.getState().selectedPanelId === id) useAppStore.getState().selectPanel(null)
+      const app = useAppStore.getState()
+      if (app.focusedPanelId === id) app.focusPanel(null)
+      if (app.selectedPanelId === id || app.selectedPanelIds.includes(id)) {
+        const left = app.selectedPanelIds.filter((x) => x !== id)
+        useAppStore.setState({ selectedPanelIds: left, selectedPanelId: left.at(-1) ?? null, shiftSelecting: app.shiftSelecting && left.length > 0 })
+      }
       await reload(episodeId)
     },
 
-    async movePanel(id, toIndex) {
-      await api.invoke('panels:move', { projectId: requireProject(), panelId: id, toIndex })
-      await reload(episodeOf(id))
+    async placePanels(episodeId, moves) {
+      await api.invoke('panels:place', { projectId: requireProject(), episodeId, moves })
+      await reload(episodeId)
     },
 
     async revertPanel(id, versionId) {

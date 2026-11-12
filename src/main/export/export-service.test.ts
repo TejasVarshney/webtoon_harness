@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExportRequestSchema } from '@shared/schemas'
-import { exportRows } from '@shared/strip-layout'
+import { exportStrip } from '@shared/strip-canvas'
 import type { Episode, ExportProgress, ExportRequest, ExportSnapshot, Panel, PanelVersion, ViewLayout } from '@shared/types'
 import { encodeSolidPng } from '../models/providers/png'
 import { writeJsonAtomic } from '../storage/atomic'
@@ -47,7 +47,7 @@ function deferred(): { promise: Promise<void>; release: () => void } {
 }
 
 /**
- * Lays a strip out as `rowHeight` CSS px per finished row, and returns fake images of the slices it is asked for, sized
+ * Lays a strip out as `rowHeight` CSS px per finished panel, and returns fake images of the slices it is asked for, sized
  * as the real capture sizes them: the 440 CSS px view at 800 / 440 × scale device px per CSS px, rounded.
  */
 class FakeCapturer implements StripCapturer {
@@ -84,7 +84,7 @@ class FakeCapturer implements StripCapturer {
         this.aborts.delete(abort)
       }
     }
-    const rows = exportRows(snapshot.panels).map((_, i) => ({ top: i * this.rowHeight, bottom: (i + 1) * this.rowHeight }))
+    const rows = exportStrip(snapshot.panels).placed.map((_, i) => ({ top: i * this.rowHeight, bottom: (i + 1) * this.rowHeight }))
     return { totalHeight: rows.length * this.rowHeight, rows }
   }
 

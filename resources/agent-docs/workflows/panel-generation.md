@@ -48,7 +48,7 @@ Rules:
 - **Visible means cast.** If a named character can be seen, even small or from behind, cast them (R2). If they cannot be seen, do not cast them.
 - **At most 3 in the foreground.** More faces means less likeness for each. Put a fourth person in `background`, or split the moment into two panels.
 - **Order matters.** Put the most important character first. The image model accepts a limited number of reference images (often 4; the user sets it as the image model's Max reference images in Settings → Models). The cast comes first, then the location's picture, then items, then the previous panel. When there are too many, the app packs the sheets of the last cast members onto one shared image first, each under the character's name, and only then drops the previous panel's image, then items from the end, then the location's picture, then cast members from the end of the list. A packed sheet is drawn smaller, so the first characters keep the sharpest likeness. With 3 cast members plus a location picture you are at that limit; each attached item takes one more slot (see Attaching Items).
-- **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1; in user-led mode, ask first).
+- **Unnamed extras are words.** "A tired bus driver in a gray uniform", "a crowd of commuters". Never give them names. If an extra becomes important and recurs, create them as a character first (R1).
 - **A scene with nobody in it** (an establishing shot, an object close-up) has `"characters": []`.
 
 ## Choosing Variations
@@ -121,7 +121,7 @@ Pick the aspect by pace (default: the project's default aspect, usually 2:3, whe
 
 Do not repeat the same shot three times in a row. More in `reference/webtoon-style-guide`.
 
-Layout is set with `beside`, `frame`, `gapAfter` and `gutter` (and the tall `1:2` and `1:3` aspects): quick exchanges go beside each other, clashes are borderless, action runs slanted; the rules are in the Panel Layout section of `reference/webtoon-style-guide`.
+Layout is set with `beside`, `frame` and `gapAfter` (and the tall `1:2` and `1:3` aspects): quick exchanges go beside each other, clashes are borderless, action runs slanted; the rules are in the Panel Layout section of `reference/webtoon-style-guide`.
 
 ## Attaching Items
 
@@ -248,7 +248,7 @@ When `"passed"` is `false`, decide by the issues:
 | The setting or composition | `update_panel` with a clearer description or setting, and `"regenerate": true`. |
 | Anything you cannot fix | Report it to the user, quoting the issues briefly. |
 
-Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can open the panel (click its card) to choose a version with the ‹ vN / M › switcher in the editor's header, ask its panel chat for an edit, or accept it.
+Make **one** manual fix per panel. A regenerated fix is checked again; an edit is not (its `check` is null), so if your model can see images, look at the edited image in the result. If the fix did not work, stop and report: the user can open the panel (double-click its card, or select it and press Focus) to choose a version with the ‹ vN / M › switcher in the editor's header, ask its panel chat for an edit, or accept it.
 
 ## Examples
 
@@ -374,7 +374,7 @@ The app already redrew it once. This is a local detail, so make one edit:
 edit_panel_image {"panelId": "pnl_0e9b3d61a7", "instruction": "Make Mina's hair black, matching her reference image"}
 ```
 
-An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can open the panel to pick another version, or ask its chat for an edit."
+An edit is not checked by the app, so its `check` is null. If the result is `ready` (and, if you can see images, the hair now looks black), report the fix in one sentence. If the edit failed or the hair is still wrong, stop and tell the user: "Panel 6 still shows Mina with brown hair after an automatic retry and one edit. You can open the panel (double-click its card, or select it and press Focus) to pick another version, or ask its chat for an edit."
 
 ### Example 7: inserting a panel between two others
 

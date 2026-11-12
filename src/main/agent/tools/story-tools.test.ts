@@ -43,7 +43,7 @@ describe('story tools', () => {
     const written = await ok('update_story_bible', { section: 'Premise', content: 'A girl who can hear the moon.' })
     expect(written.sections).toEqual(['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'])
     const story = await ok('get_story', {})
-    expect(story.mode).toBe('user')
+    expect(story).not.toHaveProperty('mode')
     expect(story.bible).toContain('## Premise\nA girl who can hear the moon.\n')
     expect(story.beats).toEqual([])
 
@@ -58,12 +58,6 @@ describe('story tools', () => {
     expect(written.section).toBe('Premise')
     expect(written.sections).toEqual(['Premise', 'World', 'Tone', 'Characters & Relationships', 'Arcs', 'Open Threads'])
     expect((await ok('get_story', {})).bible).toContain('## Premise\nEchoed heading.\n')
-  })
-
-  it('get_story reports the story mode', async () => {
-    const { services, ctx, ok } = await setup()
-    await services.story.setMode(ctx, 'ai')
-    expect((await ok('get_story', {})).mode).toBe('ai')
   })
 
   it('adds beats to an episode and walks them through draw and drop', async () => {

@@ -17,7 +17,7 @@ describe('system prompt', () => {
     const s = buildStateSnapshot({ meta: makeMeta({ title: 'Moon Diary' }), characters: [], items: [], episode: null, recentPanels: [] })
     expect(s.split('\n')[0]).toBe('<project_state>')
     expect(s).toContain('title: Moon Diary')
-    expect(s).toContain('story_mode: user')
+    expect(s).not.toMatch(/mode/i)
     expect(s).toContain('current_episode: none')
     expect(s).toContain('characters: none')
     expect(s).toContain('items: none')
@@ -67,10 +67,10 @@ describe('system prompt', () => {
 
   it('shows the layout after the shot and aspect, only where it differs from the defaults', () => {
     const plain = makePanel({ id: 'pnl_0000000001' })
-    const laidOut = makePanel({ id: 'pnl_0000000002', shot: 'wide', aspect: '16:9', beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const laidOut = makePanel({ id: 'pnl_0000000002', shot: 'wide', aspect: '16:9', beside: true, frame: 'slanted', gapAfter: 'long' })
     const s = buildStateSnapshot({ meta: makeMeta(), characters: [], items: [], episode: null, recentPanels: [plain, laidOut] })
     expect(s).toContain('- pnl_0000000001 [medium, 2:3] cast:')
-    expect(s).toContain('- pnl_0000000002 [wide, 16:9, beside, slanted, gap long, gutter black] cast:')
+    expect(s).toContain('- pnl_0000000002 [wide, 16:9, beside, slanted, gap long] cast:')
     expect(layoutTag(makePanel({ shot: 'close-up', beside: true }))).toBe('close-up, 2:3, beside')
     expect(layoutTag(makePanel({ frame: 'borderless', gapAfter: 'tight' }))).toBe('medium, 2:3, borderless, gap tight')
   })
@@ -236,10 +236,10 @@ describe('buildPanelContext', () => {
 
   it('shows the layout only where it differs from the defaults', () => {
     expect(buildPanelContext(panel, [mina, jin], [], null, null)).not.toContain('layout:')
-    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long', gutter: 'black' })
+    const laidOut = makePanel({ beside: true, frame: 'slanted', gapAfter: 'long' })
     const lines = buildPanelContext(laidOut, [], [], null, null).split('\n')
-    expect(lines).toContain('layout: beside, slanted, gap long, gutter black')
-    expect(lines.indexOf('layout: beside, slanted, gap long, gutter black')).toBe(lines.indexOf('aspect: 2:3') + 1)
+    expect(lines).toContain('layout: beside, slanted, gap long')
+    expect(lines.indexOf('layout: beside, slanted, gap long')).toBe(lines.indexOf('aspect: 2:3') + 1)
   })
 
   it('counts ready versions only, and says none when the current version is not ready', () => {
@@ -258,6 +258,15 @@ describe('buildPanelContext', () => {
     const noted = buildPanelContext(makePanel({ continuityNotes: 'Same lighting.', offPanelMentions: ['Jin', 'Ren'] }), [], [], null, null)
     expect(noted).toContain('\ncontinuity_notes: Same lighting.\n')
     expect(noted).toContain('\noff_panel_mentions: Jin, Ren\n')
+  })
+
+  it("shows the user's custom prompt and style only when set", () => {
+    const bare = buildPanelContext(makePanel(), [], [], null, null)
+    expect(bare).not.toContain('custom_prompt')
+    expect(bare).not.toContain('style_override')
+    const own = buildPanelContext(makePanel({ promptOverride: 'A cat on a roof.', styleOverride: 'ink wash' }), [], [], null, null)
+    expect(own).toContain('custom_prompt: A cat on a roof.')
+    expect(own).toContain('style_override: ink wash')
   })
 
   it('summarizes the previous and next panels on one line each, naming the cast by variation name', () => {

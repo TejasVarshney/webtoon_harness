@@ -33,7 +33,7 @@ describe('ProjectStore.create', () => {
     store.addHooks({ onCreate })
     const ctx = await store.create({ title: 'Moon Diary' })
     const meta = await store.getMeta(ctx)
-    expect(meta).toMatchObject({ title: 'Moon Diary', storyMode: 'user' })
+    expect(meta).toMatchObject({ title: 'Moon Diary', defaultAspect: '2:3' })
     for (const d of ['story', 'characters', 'episodes', 'panels', 'sessions', 'uploads', 'agent']) {
       expect(fs.existsSync(join(ctx.paths.projectFile(), '..', d))).toBe(true)
     }
@@ -247,8 +247,8 @@ describe('ProjectStore.updateMeta', () => {
 
   it('applies the patch, bumps updatedAt, persists and emits', async () => {
     const before = await store.getMeta(ctx)
-    const after = await store.updateMeta(ctx, { title: 'Sun Diary', storyMode: 'ai', autopilotPanels: 6, defaultAspect: '16:9' })
-    expect(after).toMatchObject({ title: 'Sun Diary', storyMode: 'ai', autopilotPanels: 6, defaultAspect: '16:9', logline: '' })
+    const after = await store.updateMeta(ctx, { title: 'Sun Diary', autopilotPanels: 6, defaultAspect: '16:9' })
+    expect(after).toMatchObject({ title: 'Sun Diary', autopilotPanels: 6, defaultAspect: '16:9', logline: '' })
     expect(after.id).toBe(before.id)
     expect(after.createdAt).toBe(before.createdAt)
     expect(after.updatedAt > before.updatedAt).toBe(true)

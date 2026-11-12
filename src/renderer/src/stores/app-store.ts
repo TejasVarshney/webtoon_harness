@@ -1,26 +1,8 @@
 import { create } from 'zustand'
-import type { ProjectMeta, ProjectProblem, SessionSummary, StoryMode } from '@shared/types'
+import type { ProjectMeta, ProjectProblem, SessionSummary } from '@shared/types'
 import { api } from '../api'
 
-export type RightTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
-
-const LAST_PROJECT_KEY = 'webtoon.lastProjectId'
-
-function readLastProject(): string | null {
-  try {
-    return localStorage.getItem(LAST_PROJECT_KEY)
-  } catch {
-    return null
-  }
-}
-
-function writeLastProject(id: string): void {
-  try {
-    localStorage.setItem(LAST_PROJECT_KEY, id)
-  } catch {
-    // Storage can be unavailable; remembering the last project is only a convenience.
-  }
-}
+export type StudioTab = 'webtoon' | 'characters' | 'items' | 'locations' | 'story'
 
 export interface AppData {
   projects: ProjectMeta[]
@@ -28,9 +10,18 @@ export interface AppData {
   problems: ProjectProblem[]
   sessions: SessionSummary[]
   sessionId: string | null
+  /** The last panel selected, or null. */
   selectedPanelId: string | null
+  /** Every selected panel, in the order they were added. */
+  selectedPanelIds: string[]
+  /** True once a shift-click added to the selection; the selection bar shows for it. A plain click ends it. */
+  shiftSelecting: boolean
+  /** The panel open in focus mode, which covers the strip. */
+  focusedPanelId: string | null
+  /** Set by the Sketch tool: focus mode opens on the sketch canvas. Focus mode uses it up as it opens, and any other focus clears it. */
+  focusSketch: boolean
   activeEpisodeId: string | null
-  rightTab: RightTab
+  studioTab: StudioTab
   /** Thread key (a session id, or `panel:<panelId>`) to the id of its running agent run. */
   runningThreads: Record<string, string>
 }
@@ -40,6 +31,8 @@ export interface AppActions {
   /** `stylePreset` left out gives the project the default style. */
   createProject(title: string, stylePreset?: string): Promise<void>
   openProject(id: string): Promise<void>
+  /** Leaves the open project and goes back to the home page. */
+  closeProject(): void
   /** Re-reads the open project's meta and problems (what `project.changed` calls). Leaves the sessions and the selection alone. */
   refreshMeta(): Promise<void>
   /**
@@ -47,18 +40,28 @@ export interface AppActions {
    * panels, sessions, story), so this runs after those lists load; see `startEventSync`.
    */
   refreshProblems(): Promise<void>
-  /** Saves the story mode and shows it at once from the meta main returns. Rejects when main refuses. */
-  setStoryMode(mode: StoryMode): Promise<void>
   /** Copies a library style into the open project and shows it at once. Rejects when main refuses. */
   applyStyle(styleId: string): Promise<void>
   loadSessions(): Promise<void>
   newSession(): Promise<void>
   selectSession(id: string | null): void
   renameSession(id: string, title: string): Promise<void>
+  bookmarkSession(id: string, bookmarked: boolean): Promise<void>
   deleteSession(id: string): Promise<void>
+  /** A plain click: the selection becomes this panel alone, or nothing for null. */
   selectPanel(id: string | null): void
-  setRightTab(tab: RightTab): void
+  /** A shift-click: adds the panel to the selection, or takes it out when it is already in. */
+  togglePanelSelection(id: string): void
+  /** Opens a panel in focus mode (selecting it alone), or closes focus mode for null. `sketch` opens it on the sketch canvas. */
+  focusPanel(id: string | null, opts?: { sketch?: boolean }): void
+  setStudioTab(tab: StudioTab): void
 }
+
+/** What no selection and no open panel look like: where a new project or episode starts. */
+export const NO_PANEL_SELECTION = { selectedPanelId: null, selectedPanelIds: [], shiftSelecting: false, focusedPanelId: null, focusSketch: false } satisfies Pick<
+  AppData,
+  'selectedPanelId' | 'selectedPanelIds' | 'shiftSelecting' | 'focusedPanelId' | 'focusSketch'
+>
 
 export const initialAppState: AppData = {
   projects: [],
@@ -66,9 +69,9 @@ export const initialAppState: AppData = {
   problems: [],
   sessions: [],
   sessionId: null,
-  selectedPanelId: null,
+  ...NO_PANEL_SELECTION,
   activeEpisodeId: null,
-  rightTab: 'webtoon',
+  studioTab: 'webtoon',
   runningThreads: {}
 }
 
@@ -77,11 +80,8 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
 
   async loadProjects() {
     const { projects, problems } = await api.invoke('projects:list', {})
+    // The app starts on the home page: the user picks a project, none is opened for them.
     set({ projects, problems })
-    if (get().projectId === null && projects.length > 0) {
-      const last = readLastProject()
-      await get().openProject(projects.find((p) => p.id === last)?.id ?? projects[0].id)
-    }
   },
 
   async createProject(title, stylePreset) {
@@ -92,17 +92,20 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
 
   async openProject(id) {
     const { meta, problems } = await api.invoke('projects:open', { projectId: id })
-    writeLastProject(meta.id)
     set((s) => ({
       projects: s.projects.some((p) => p.id === meta.id) ? s.projects.map((p) => (p.id === meta.id ? meta : p)) : [meta, ...s.projects],
       projectId: meta.id,
       problems,
       sessions: [],
       sessionId: null,
-      selectedPanelId: null,
+      ...NO_PANEL_SELECTION,
       activeEpisodeId: null
     }))
     await get().loadSessions()
+  },
+
+  closeProject() {
+    set({ projectId: null, problems: [], sessions: [], sessionId: null, ...NO_PANEL_SELECTION, activeEpisodeId: null })
   },
 
   async refreshMeta() {
@@ -120,13 +123,6 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     const { problems } = await api.invoke('projects:open', { projectId })
     if (get().projectId !== projectId) return
     set({ problems })
-  },
-
-  async setStoryMode(mode) {
-    const projectId = get().projectId
-    if (projectId === null) return
-    const meta = await api.invoke('story:setMode', { projectId, mode })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === meta.id ? meta : p)) }))
   },
 
   async applyStyle(styleId) {
@@ -164,6 +160,13 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
     set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, title } : x)) }))
   },
 
+  async bookmarkSession(id, bookmarked) {
+    const projectId = get().projectId
+    if (projectId === null) return
+    await api.invoke('sessions:bookmark', { projectId, sessionId: id, bookmarked })
+    set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, bookmarked } : x)) }))
+  },
+
   async deleteSession(id) {
     const projectId = get().projectId
     if (projectId === null) return
@@ -172,11 +175,25 @@ export const useAppStore = create<AppData & AppActions>()((set, get) => ({
   },
 
   selectPanel(id) {
-    set({ selectedPanelId: id })
+    set({ selectedPanelId: id, selectedPanelIds: id === null ? [] : [id], shiftSelecting: false })
   },
 
-  setRightTab(tab) {
-    set({ rightTab: tab })
+  togglePanelSelection(id) {
+    set((s) => {
+      // A selection made by a plain click or by the agent's thumbnail may not be in the list yet.
+      const base = s.selectedPanelIds.length === 0 && s.selectedPanelId !== null ? [s.selectedPanelId] : s.selectedPanelIds
+      const ids = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
+      return { selectedPanelIds: ids, selectedPanelId: ids.at(-1) ?? null, shiftSelecting: ids.length > 0 }
+    })
+  },
+
+  focusPanel(id, opts) {
+    if (id === null) set({ focusedPanelId: null, focusSketch: false })
+    else set({ focusedPanelId: id, focusSketch: opts?.sketch === true, selectedPanelId: id, selectedPanelIds: [id], shiftSelecting: false })
+  },
+
+  setStudioTab(tab) {
+    set({ studioTab: tab })
   }
 }))
 

@@ -174,13 +174,25 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().episodes.map((e) => e.id)).toEqual([EPISODE_ID, 'epi_0000000002'])
     })
 
-    it('updateEpisode renames and reloads the list', async () => {
-      const renamed = episode({ title: 'Pilot' })
-      const { calls } = installFakeApi({ 'episodes:update': () => renamed, 'episodes:list': () => [renamed], 'panels:list': () => [] })
+    it('updateEpisode saves the synopsis and reloads the list', async () => {
+      const edited = episode({ synopsis: 'Mina finds a letter.' })
+      const { calls } = installFakeApi({ 'episodes:update': () => edited, 'episodes:list': () => [edited], 'panels:list': () => [] })
       useAppStore.setState({ activeEpisodeId: EPISODE_ID })
-      await usePanelsStore.getState().updateEpisode(EPISODE_ID, { title: 'Pilot' })
-      expect(calls[0]).toEqual({ channel: 'episodes:update', req: { projectId, episodeId: EPISODE_ID, patch: { title: 'Pilot' } } })
-      expect(usePanelsStore.getState().episodes[0].title).toBe('Pilot')
+      await usePanelsStore.getState().updateEpisode(EPISODE_ID, { synopsis: 'Mina finds a letter.' })
+      expect(calls[0]).toEqual({ channel: 'episodes:update', req: { projectId, episodeId: EPISODE_ID, patch: { synopsis: 'Mina finds a letter.' } } })
+      expect(usePanelsStore.getState().episodes[0].synopsis).toBe('Mina finds a letter.')
+    })
+
+    it('setBackground and pickBackgroundImage send the episode and reload the list', async () => {
+      const background = { kind: 'solid' as const, color: '#112233' }
+      const painted = episode({ background })
+      const { calls } = installFakeApi({ 'episodes:setBackground': () => painted, 'episodes:pickBackgroundImage': () => painted, 'episodes:list': () => [painted], 'panels:list': () => [] })
+      useAppStore.setState({ activeEpisodeId: EPISODE_ID })
+      await usePanelsStore.getState().setBackground(EPISODE_ID, background)
+      expect(calls[0]).toEqual({ channel: 'episodes:setBackground', req: { projectId, episodeId: EPISODE_ID, background } })
+      expect(usePanelsStore.getState().episodes[0].background).toEqual(background)
+      expect(await usePanelsStore.getState().pickBackgroundImage(EPISODE_ID)).toEqual(painted)
+      expect(calls.some((c) => c.channel === 'episodes:pickBackgroundImage')).toBe(true)
     })
 
     it("saveSketch sends the PNG and reloads the panel's episode; readSketch asks for it", async () => {
@@ -202,6 +214,22 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([made])
     })
 
+    it('createPanel sends the sketch when it has one', async () => {
+      const made = panel({ id: 'pnl_0000000009', versions: [], currentVersionId: null })
+      const { calls } = installFakeApi({ 'panels:create': () => ({ panel: made, warnings: [] }), 'panels:list': () => [made] })
+      const draft = { episodeId: EPISODE_ID, description: 'd', setting: 's', shot: 'medium' as const, characters: [], dialogue: [] }
+      await usePanelsStore.getState().createPanel(draft, true, 'data:image/png;base64,AA')
+      expect(calls[0]).toEqual({ channel: 'panels:create', req: { projectId, draft, generate: true, sketchPng: 'data:image/png;base64,AA' } })
+    })
+
+    it('previewPrompt asks main for the prompt and changes nothing', async () => {
+      const preview = { prompt: 'P', references: [{ label: 'layout sketch' }], droppedPanelIds: [] }
+      const { calls } = installFakeApi({ 'panels:previewPrompt': () => preview })
+      const draft = { episodeId: EPISODE_ID, description: 'd', setting: 's', shot: 'medium' as const, characters: [], dialogue: [] }
+      expect(await usePanelsStore.getState().previewPrompt(draft, true)).toEqual(preview)
+      expect(calls).toEqual([{ channel: 'panels:previewPrompt', req: { projectId, draft, hasSketch: true } }])
+    })
+
     it('updatePanel sends the patch and reloads the panel`s episode', async () => {
       const edited = panel({ description: 'edited' })
       const { calls } = installFakeApi({ 'panels:update': () => ({ panel: edited, warnings: [] }), 'panels:list': () => [edited] })
@@ -210,29 +238,38 @@ describe('usePanelsStore', () => {
       expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([edited])
     })
 
-    it('generatePanel, movePanel, revertPanel and uploadPanelImage call their channels and reload', async () => {
+    it('placePanels saves the moves and reloads the episode', async () => {
+      const a = panel({ id: 'pnl_00000000aa' })
+      const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a] })
+      const moves = [{ panelId: a.id, placement: { x: 1, y: 2, width: 100 } }]
+      await usePanelsStore.getState().placePanels(EPISODE_ID, moves)
+      expect(calls.map((c) => [c.channel, c.req])).toEqual([
+        ['panels:place', { projectId, episodeId: EPISODE_ID, moves }],
+        ['panels:list', { projectId, episodeId: EPISODE_ID }]
+      ])
+      expect(usePanelsStore.getState().panelsByEpisode[EPISODE_ID]).toEqual([a])
+    })
+
+    it('generatePanel, revertPanel and uploadPanelImage call their channels and reload', async () => {
       const a = panel({ id: 'pnl_00000000aa' })
       const b = panel({ id: 'pnl_00000000bb' })
       const version = panelVersion({ id: 'ver_0000000007', source: 'upload' })
       const { calls } = installFakeApi({
         'panels:generate': () => undefined,
-        'panels:move': () => undefined,
         'panels:revert': () => a,
         'panels:uploadImage': () => version,
         'panels:list': () => [a, b]
       })
       usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [a, b] } })
       await usePanelsStore.getState().generatePanel(a.id)
-      await usePanelsStore.getState().movePanel(b.id, 0)
       await usePanelsStore.getState().revertPanel(a.id, 'ver_0000000001')
       await expect(usePanelsStore.getState().uploadPanelImage(a.id)).resolves.toEqual(version)
       expect(calls.filter((c) => c.channel !== 'panels:list').map((c) => [c.channel, c.req])).toEqual([
         ['panels:generate', { projectId, panelId: a.id }],
-        ['panels:move', { projectId, panelId: b.id, toIndex: 0 }],
         ['panels:revert', { projectId, panelId: a.id, versionId: 'ver_0000000001' }],
         ['panels:uploadImage', { projectId, panelId: a.id }]
       ])
-      expect(calls.filter((c) => c.channel === 'panels:list').length).toBeGreaterThanOrEqual(4)
+      expect(calls.filter((c) => c.channel === 'panels:list').length).toBeGreaterThanOrEqual(3)
     })
 
     it('uploadPanelImage does not reload when the file dialog was cancelled', async () => {

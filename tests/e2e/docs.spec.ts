@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { createProjectAndSession, launchApp } from './helpers'
+import { createProjectAndSession, launchApp, openSettings } from './helpers'
 
 test('settings lists the workflow docs of the project and resets them after confirmation', async () => {
   const { app, page, projectsRoot } = await launchApp()
@@ -11,7 +11,7 @@ test('settings lists the workflow docs of the project and resets them after conf
   const shipped = await readFile(resolve(__dirname, '..', '..', 'resources', 'agent-docs', 'AGENTS.md'), 'utf8')
   expect(await readFile(agentsFile, 'utf8')).toBe(shipped)
 
-  await page.getByTestId('settings-open').click()
+  await openSettings(app, page)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await dialog.getByRole('tab', { name: 'Workflow docs' }).click()
   for (const path of ['agent/AGENTS.md', 'agent/workflows/panel-generation.md', 'agent/reference/consistency-checklist.md']) {

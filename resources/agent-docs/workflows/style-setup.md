@@ -11,8 +11,7 @@ Set the style before the first character, item, location or panel is drawn. The 
 Call `list_styles` to see the library and whether the style can still change.
 
 - If the user named a look ("make it watercolor"), pick the closest style, or write one if nothing fits.
-- **User-led:** when the user has not named a look, offer 2 or 3 styles that suit the story and ask which one to use. Do not set one until they answer.
-- **AI-led:** pick the style that suits the story, set it and say which one you chose.
+- If the user has not named a look, pick the style that suits the story, set it and say which one you chose.
 - The default is Korean webtoon. If `style` is anything else, someone chose it: change it only when the user asks.
 
 Use `styleId` for a library style. Use `text` only when you write a one-off style for this project.
@@ -33,7 +32,7 @@ Add a style with `create_style` when the user will want it again, then apply it 
 
 Once the project has a sheet or a panel, drawn or being drawn, `set_style` is refused and `list_styles` shows `canChange` as false. Do not try again and do not work around it by adding style words to locks or descriptions.
 
-Tell the user they can switch it with the Style button in the chat header, and that the app will warn them first. The existing art is not redrawn, so offer to redraw the sheets after a switch.
+Tell the user they can switch it with the Style button in the top bar, and that the app will warn them first. The existing art is not redrawn, so offer to redraw the sheets after a switch.
 
 `create_style` and `update_style` still work while the style is locked.
 

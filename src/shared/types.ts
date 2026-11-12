@@ -42,12 +42,12 @@ import type {
   PanelItemSchema,
   PanelLocationSchema,
   PanelPatchSchema,
+  PanelPlacementSchema,
   PanelSchema,
   PanelVersionSchema,
   ProjectMetaSchema,
   RoleAssignmentsSchema,
   RoleSchema,
-  StoryModeSchema,
   ToolCallSchema,
   ToolMessageSchema,
   ToolResultSchema,
@@ -57,6 +57,7 @@ import type {
   VariationSchema,
   VisualFieldsSchema
 } from './schemas'
+export type { StripBackground } from './strip-background'
 
 // --- derived from the schemas -----------------------------------------------------------------
 
@@ -74,6 +75,7 @@ export type ExportRequest = z.infer<typeof ExportRequestSchema>
 export type Panel = z.infer<typeof PanelSchema>
 export type PanelCharacter = z.infer<typeof PanelCharacterSchema>
 export type PanelItem = z.infer<typeof PanelItemSchema>
+export type PanelPlacement = z.infer<typeof PanelPlacementSchema>
 export type PanelLocation = z.infer<typeof PanelLocationSchema>
 export type DialogueLine = z.infer<typeof DialogueLineSchema>
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>
@@ -99,6 +101,12 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>
 export type RoleAssignments = z.infer<typeof RoleAssignmentsSchema>
 
 export type PanelDraft = z.infer<typeof PanelDraftSchema>
+/** What a new panel would be drawn with when the app composes the prompt (the draft's own `promptOverride` is ignored, so the page can show the automatic text and reset to it): the prompt, the references it would send (in order), and the chosen panels the model has no room for. */
+export interface PromptPreview {
+  prompt: string
+  references: { label: string }[]
+  droppedPanelIds: string[]
+}
 export type PanelPatch = z.infer<typeof PanelPatchSchema>
 export type CharacterInput = z.infer<typeof CharacterInputSchema>
 export type CharacterPatch = z.infer<typeof CharacterPatchSchema>
@@ -114,7 +122,6 @@ export type PanelAspect = z.infer<typeof PanelAspectSchema>
 export type DrawAspect = z.infer<typeof DrawAspectSchema>
 export type PanelGap = z.infer<typeof PanelGapSchema>
 export type PanelGutter = z.infer<typeof PanelGutterSchema>
-export type StoryMode = z.infer<typeof StoryModeSchema>
 export type VariationKind = z.infer<typeof VariationKindSchema>
 
 export type Role = z.infer<typeof RoleSchema>
@@ -132,6 +139,8 @@ export interface SessionSummary {
   driver: 'claude-code' | null
   /** The Claude Code session the next run resumes (phase 2 backend); null until its first run. */
   claudeSessionId: string | null
+  /** Pinned under the Bookmarked heading in the chat's session list. */
+  bookmarked: boolean
 }
 
 /** A project file that failed to load (corrupt JSON, schema mismatch); the project still opens. */
@@ -190,7 +199,7 @@ export interface ExportInspection {
 export interface ExportSnapshot {
   projectId: string
   episode: Episode
-  /** The full panel list in strip order, unfinished panels included: the view lays it out with `exportRows`. */
+  /** The full panel list in strip order, unfinished panels included: the view positions all of them as on screen (`exportStrip`) and draws the finished ones. */
   panels: Panel[]
   characters: Character[]
   lettering: boolean
@@ -219,6 +228,15 @@ export interface ExportProgress {
   outputs: string[]
 }
 
+/** What the window's File menu asked for. Main sends it as a `menu.command` event; the renderer carries it out. */
+export type MenuCommand = { kind: 'newProject' } | { kind: 'openProject'; projectId: string } | { kind: 'home' } | { kind: 'settings' }
+
+/** What the File menu shows: every project, and the one open (null on the home page). The renderer reports it. */
+export interface MenuState {
+  projects: { id: string; title: string }[]
+  projectId: string | null
+}
+
 export type AppEvent =
   | { type: 'project.changed'; projectId: string }
   | { type: 'session.changed'; projectId: string; sessionId: string }
@@ -233,3 +251,4 @@ export type AppEvent =
   /** `threadKey` is a session id for the main chat, or `panel:<panelId>` for a panel side chat. */
   | { type: 'agent.event'; projectId: string; threadKey: string; event: AgentEvent }
   | { type: 'export.progress'; projectId: string; progress: ExportProgress }
+  | { type: 'menu.command'; command: MenuCommand }

@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 import type { Panel, PanelPatch } from '@shared/types'
 import { usePanelsStore } from '../../stores/panels-store'
 
-// The editing mode's saves of one panel go one at a time, in the order they were made, whichever control made them:
+// Focus mode's saves of one panel go one at a time, in the order they were made, whichever control made them:
 // the stage, a row of the Lines tab or a field of another tab. Each is built when its turn comes, from the panel as the
 // store has it then, or as the last save returned it while the store has not caught up: a reload that a later one
 // superseded leaves the store as it was, and a save built from that would undo the one before it.

@@ -5,6 +5,7 @@ import { useCharactersStore } from './stores/characters-store'
 import { useChatStore } from './stores/chat-store'
 import { useItemsStore } from './stores/items-store'
 import { useLocationsStore } from './stores/locations-store'
+import { runMenuCommand } from './stores/menu-store'
 import { useModelsStore } from './stores/models-store'
 import { usePanelsStore } from './stores/panels-store'
 import { usePluginsStore } from './stores/plugins-store'
@@ -35,7 +36,7 @@ function handleEvent(event: AppEvent): void {
     case 'episode.changed':
       if (event.projectId === state.projectId) void usePanelsStore.getState().loadEpisodes()
       break
-    // The story mode lives in project.json, so the toggle follows `project.changed`; `story.changed` is the bible and the beats.
+    // `project.changed` is project.json (title, style, defaults); `story.changed` is the bible and the beats.
     case 'project.changed':
       if (event.projectId === state.projectId) state.refreshMeta().catch((e: unknown) => console.error('Failed to refresh the project', e))
       break
@@ -63,6 +64,9 @@ function handleEvent(event: AppEvent): void {
       }
       break
     }
+    case 'menu.command':
+      runMenuCommand(event.command)
+      break
     default:
       break
   }
