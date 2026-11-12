@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, PencilLine } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Crop, PencilLine } from 'lucide-react'
 import { Group, Panel as Column, Separator } from 'react-resizable-panels'
 import { staleVisualFields } from '@shared/visual-fields'
 import { useAppStore } from '../../stores/app-store'
@@ -7,6 +7,7 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { PanelThread } from '../panel-chat/PanelThread'
 import { VersionSwitcher } from '../panel-chat/VersionSwitcher'
+import { croppable, CropDialog } from '../visualizer/CropDialog'
 import { PanelCheckBadge } from '../visualizer/PanelCheckBadge'
 import { layoutStrip, rowShares } from '@shared/strip-layout'
 import { PanelInspector } from './PanelInspector'
@@ -58,6 +59,7 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const [sketchChoice, setSketchChoice] = useState<{ panelId: string; on: boolean } | null>(() => (useAppStore.getState().focusSketch ? { panelId, on: true } : null))
   // The stage's zoom, relative to the fit: one per open panel, kept when the stage switches between picture and sketch.
   const [zoomState, setZoomState] = useState<{ panelId: string; zoom: number } | null>(null)
+  const [croppingId, setCroppingId] = useState<string | null>(null)
 
   // Panels of another project must never show here, whatever the store still holds.
   const loaded = storeProjectId === projectId && episodesLoaded && (activeEpisodeId === null || panels !== undefined)
@@ -66,6 +68,8 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
   const previous = index > 0 ? panels?.[index - 1] : undefined
   const next = index === -1 ? undefined : panels?.[index + 1]
   const generating = panel?.versions.at(-1)?.status === 'pending'
+  const current = panel?.versions.find((v) => v.id === panel.currentVersionId)
+  const picture = current?.status === 'ready' && current.imagePath !== null ? { versionId: current.id, imagePath: current.imagePath } : null
   const notice = panel === undefined ? null : staleNotice(staleVisualFields(panel))
   const busy = action?.panelId === panelId && action.busy
   const error = action?.panelId === panelId ? action.error : null
@@ -164,6 +168,15 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
                     <button type="button" disabled={busy} onClick={() => run(panel.id, () => usePanelsStore.getState().uploadPanelImage(panel.id))}>
                       Upload image…
                     </button>
+                    <button
+                      type="button"
+                      title={picture !== null && !croppable(picture.imagePath) ? "A WebP or GIF picture can't be cropped" : 'Crop the picture to a part of it, as a new version'}
+                      disabled={busy || generating || picture === null || !croppable(picture.imagePath)}
+                      onClick={() => setCroppingId(panel.id)}
+                    >
+                      <Crop size={14} aria-hidden="true" />
+                      Crop…
+                    </button>
                     <button type="button" className="btn-primary" disabled={busy || generating} onClick={() => regenerate(panel.id)}>
                       {panel.versions.length === 0 ? 'Generate' : 'Regenerate'}
                     </button>
@@ -221,6 +234,9 @@ export function PanelWorkspace({ panelId }: PanelWorkspaceProps) {
           </section>
         </Column>
       </Group>
+      {panel !== undefined && croppingId === panel.id && picture !== null && (
+        <CropDialog panel={panel} versionId={picture.versionId} imagePath={picture.imagePath} onClose={() => setCroppingId(null)} />
+      )}
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
-import { PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
+import { CropAreaSchema, PanelAspectSchema, PanelDraftSchema, PanelPatchSchema } from '@shared/schemas'
 import { StripBackgroundSchema } from '@shared/strip-background'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
@@ -41,6 +41,7 @@ const PlaceSchema = z.object({
   episodeId: z.string(),
   moves: z.array(z.object({ panelId: z.string(), placement: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() }) }))
 })
+const CropSchema = z.object({ projectId: z.string(), panelId: z.string(), versionId: z.string(), area: CropAreaSchema, aspect: PanelAspectSchema.optional() })
 const PreviewPromptSchema = z.object({ projectId: z.string(), draft: PanelDraftSchema, hasSketch: z.boolean() })
 const PNG_DATA_URL = 'data:image/png;base64,'
 /** A sketch is drawn at a panel's size; anything this large did not come from the sketch pad. */
@@ -129,6 +130,11 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
       const ext = STORED_EXT[path.extname(file).toLowerCase()]
       if (!ext) throw new Error('Unsupported image type: use png, jpg or webp')
       return panels.uploadImage(ctx, panelId, await fs.promises.readFile(file), ext)
+    },
+
+    'panels:crop': async (req) => {
+      const { projectId, panelId, versionId, area, aspect } = parseInput(CropSchema, req)
+      return panels.cropImage(await s.projects.open(projectId), panelId, versionId, area, s.imageOps, aspect)
     },
 
     'panels:saveSketch': async (req) => {

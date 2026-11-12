@@ -22,8 +22,8 @@ const TABS: { id: Tab; label: string }[] = [
 
 export interface PanelInspectorProps {
   panel: Panel
-  /** The tab it opens on. Default Lines. */
-  initialTab?: InspectorTab
+  /** Shows this tab alone, with no tab bar (the panel tools' Lines popover). */
+  only?: InspectorTab
   /** The line selected on the stage (or by a row of Lines), which Lines marks and scrolls to. */
   selectedLine: number | null
   /** Selects a line from a row of Lines, so the stage selects its bubble. */
@@ -66,8 +66,9 @@ function SaveStatus({ fields, warnings }: { fields: FieldAutosave<unknown>[]; wa
  * save, so its message is seen. Keyed by panel in the workspace: stepping to another panel or going Back saves what
  * is still waiting.
  */
-export function PanelInspector({ panel, initialTab = 'lines', selectedLine, onSelectLine, onPreviewStyle }: PanelInspectorProps) {
-  const [tab, setTab] = useState<Tab>(initialTab)
+export function PanelInspector({ panel, only, selectedLine, onSelectLine, onPreviewStyle }: PanelInspectorProps) {
+  const [chosen, setTab] = useState<Tab>('lines')
+  const tab = only ?? chosen
   const id = useId()
   const roster = useRoster()
   const itemRoster = useItemRoster()
@@ -116,14 +117,16 @@ export function PanelInspector({ panel, initialTab = 'lines', selectedLine, onSe
 
   return (
     <section className="panel-inspector" aria-label="Panel details">
-      <div className="tab-bar inspector-tabs" role="tablist" aria-label="Panel">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" id={`${id}-${t.id}`} aria-selected={tab === t.id} aria-controls={`${id}-panel`} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div ref={scrollArea} className="inspector-panel" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
+      {only === undefined && (
+        <div className="tab-bar inspector-tabs" role="tablist" aria-label="Panel">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" id={`${id}-${t.id}`} aria-selected={tab === t.id} aria-controls={`${id}-panel`} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={scrollArea} className="inspector-panel" role={only === undefined ? 'tabpanel' : undefined} id={`${id}-panel`} aria-labelledby={only === undefined ? `${id}-${tab}` : undefined}>
         {tab === 'lines' && <LinesTab panel={panel} characters={roster} selectedLine={selectedLine} onSelectLine={onSelectLine} scrollArea={scrollArea} onPreviewStyle={onPreviewStyle} />}
         {tab === 'cast' && (
           // The pickers' inputs have no blur of their own: leaving any of them saves at once.

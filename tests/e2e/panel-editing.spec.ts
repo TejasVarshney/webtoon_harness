@@ -140,13 +140,16 @@ test('edit a panel in focus mode and find the changes on the strip', async () =>
   // 1. Focus mode, at a laptop size.
   await setWindowSize(app, page, 1440, 900)
   await card.click({ position: CARD_CORNER })
-  // 0. The selected panel's tools edit it where it sits: a frame change saves without opening focus mode.
-  await page.getByRole('button', { name: 'Scene', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Scene' }).getByLabel('Frame').selectOption('borderless')
-  await expect.poll(async () => (await stored()).frame).toBe('borderless')
+  // 0. The selected panel's tools edit it where it sits: Lines holds the lines alone, and the cast, items and scene are
+  // focus mode's.
+  await expect(page.getByRole('button', { name: 'Scene', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Lines', exact: true }).click()
+  const lines = page.getByRole('dialog', { name: 'Lines' })
+  await expect(lines.getByLabel('Text').first()).toHaveValue('Is that the moon?')
+  await expect(lines.getByRole('tablist')).toHaveCount(0)
   await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: 'Scene' })).toHaveCount(0)
+  await expect(lines).toHaveCount(0)
   await page.getByRole('button', { name: 'Focus', exact: true }).click()
   const workspace = page.getByTestId('panel-workspace')
   await expect(workspace).toBeVisible()
@@ -236,6 +239,40 @@ test('edit a panel in focus mode and find the changes on the strip', async () =>
   const left = await placed.evaluate((el: any) => el.style.left as string)
   expect(left).toMatch(/%$/)
   expect(Math.abs(parseFloat(left) - 25)).toBeLessThanOrEqual(2)
+
+  // 9. Size, from the panel's tools: the width on the strip, in place.
+  await page.getByRole('button', { name: 'Size', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Size' }).getByRole('button', { name: 'Full width' }).click()
+  await expect.poll(async () => (await stored()).placement?.width).toBe(440)
+  await expect(page.getByRole('dialog', { name: 'Size' }).getByRole('button', { name: 'Full width' })).toHaveAttribute('aria-pressed', 'true')
+  await page.screenshot({ path: resolve(shots, 'size-popover.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
+
+  // 10. Crop, from the panel's tools: a smaller square box makes a new version of that part of the picture, and the
+  // panel square, in place.
+  await page.getByRole('button', { name: 'Crop', exact: true }).click()
+  const crop = page.getByRole('dialog', { name: 'Crop panel' })
+  await crop.getByRole('button', { name: '1:1', exact: true }).click()
+  // Hovering waits for the dialog to settle (it pops in), so the corner is measured where it stays.
+  const handle = crop.getByTestId('crop-handle-se')
+  await handle.hover()
+  const corner = (await handle.boundingBox())!
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(corner.x - 60, corner.y - 60, { steps: 4 })
+  await page.mouse.up()
+  await expect(crop.getByRole('button', { name: 'Crop', exact: true })).toBeEnabled()
+  await page.screenshot({ path: resolve(shots, 'crop-dialog.png'), animations: 'disabled' })
+  await crop.getByRole('button', { name: 'Crop', exact: true }).click()
+  await expect(crop).toHaveCount(0)
+  await expect.poll(async () => (await stored()).versions.length).toBe(versions + 1)
+  const after = await stored()
+  const cut = after.versions.at(-1)
+  expect(cut).toMatchObject({ source: 'crop', status: 'ready', parentVersionId: after.versions[0].id })
+  expect(after.currentVersionId).toBe(cut.id)
+  expect(after.aspect).toBe('1:1')
+  await expect(card.locator('img')).toHaveAttribute('src', new RegExp(`${cut.id}[.]png$`))
+  await expect(page.getByTestId('panel-workspace')).toHaveCount(0)
   await app.close()
 })
 

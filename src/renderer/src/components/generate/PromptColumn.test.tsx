@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { PromptPreview, ProjectMeta } from '@shared/types'
@@ -136,7 +136,10 @@ describe('PromptColumn', () => {
     await userEvent.type(screen.getByLabelText('Description'), 'Mina waves')
     await userEvent.type(screen.getByLabelText('Setting'), 'A roof')
     await userEvent.selectOptions(screen.getByLabelText('Shot'), 'close-up')
-    await userEvent.selectOptions(screen.getByLabelText('Aspect'), '1:1')
+    const shapes = screen.getByRole('group', { name: 'Shape' })
+    expect(within(shapes).getByRole('button', { name: '2:3' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(shapes).getByRole('button', { name: '1:1' }))
+    expect(within(shapes).getByRole('button', { name: '1:1' })).toHaveAttribute('aria-pressed', 'true')
     expect(useGenerateStore.getState().draft).toMatchObject({ description: 'Mina waves', setting: 'A roof', shot: 'close-up', aspect: '1:1' })
   })
 

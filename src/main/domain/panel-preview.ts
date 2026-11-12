@@ -109,3 +109,19 @@ export async function previewPrompt(ctx: ProjectContext, deps: PreviewDeps, draf
   const sent = new Set(composed.references.flatMap((r) => (r.subject.kind === 'panel' ? [r.subject.id] : [])))
   return { prompt: composed.prompt, references: composed.references.map((r) => ({ label: r.label })), droppedPanelIds: chosen.filter((c) => !sent.has(c.panelId)).map((c) => c.panelId) }
 }
+
+/** Gives a draft line its id. A line sent without a placement, style or tail takes `inherited`'s; an explicit null stays null. */
+export function withId(
+  line: Omit<DialogueLine, 'id' | 'placement' | 'style' | 'tail'> & Partial<Pick<DialogueLine, 'placement' | 'style' | 'tail'>>,
+  inherited: Pick<DialogueLine, 'placement' | 'style' | 'tail'> | undefined
+): DialogueLine {
+  return {
+    id: newId('dlg'),
+    speakerId: line.speakerId,
+    kind: line.kind,
+    text: line.text,
+    placement: line.placement === undefined ? (inherited?.placement ?? null) : line.placement,
+    style: line.style === undefined ? (inherited?.style ?? null) : line.style,
+    tail: line.tail === undefined ? (inherited?.tail ?? null) : line.tail
+  }
+}

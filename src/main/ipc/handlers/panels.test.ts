@@ -314,6 +314,30 @@ describe('panels:delete, move and revert', () => {
   })
 })
 
+describe('panels:crop', () => {
+  it('stores the area of a ready version as a new current version', async () => {
+    const { h, projectId, draft, get, settled } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: true })
+    const [drawn] = (await settled(panel.id)).versions
+    const version = await h['panels:crop']({ projectId, panelId: panel.id, versionId: drawn.id, area: { x: 0.25, y: 0, width: 0.5, height: 1 } })
+    expect(version).toMatchObject({ source: 'crop', status: 'ready', parentVersionId: drawn.id })
+    expect((await get(panel.id)).currentVersionId).toBe(version.id)
+  })
+
+  it.each([
+    ['an empty area', { x: 0.2, y: 0.2, width: 0, height: 0.5 }],
+    ['an area past the edge', { x: 0.6, y: 0, width: 0.5, height: 1 }],
+    ['a negative corner', { x: -0.1, y: 0, width: 0.5, height: 0.5 }],
+    ['a shape that is not one', { x: 0, y: 0, width: 0.5, height: 0.5 }, '5:4']
+  ])('refuses %s and changes nothing', async (_name, area, aspect?: string) => {
+    const { h, projectId, draft, get, settled } = await setup()
+    const { panel } = await h['panels:create']({ projectId, draft: draft(), generate: true })
+    const [drawn] = (await settled(panel.id)).versions
+    await expect(h['panels:crop']({ projectId, panelId: panel.id, versionId: drawn.id, area, ...(aspect ? { aspect: aspect as never } : {}) })).rejects.toThrow()
+    expect((await get(panel.id)).versions).toHaveLength(1)
+  })
+})
+
 describe('panels:uploadImage', () => {
   async function files() {
     tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'panel upload '))

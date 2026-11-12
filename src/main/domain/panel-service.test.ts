@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Panel, PanelDraft, PanelLocation, PanelVersion } from '@shared/types'
-import { visualFields } from '@shared/visual-fields'
+import { staleVisualFields, visualFields } from '@shared/visual-fields'
 import { resolveStrip } from '@shared/strip-canvas'
 import { NoModelForRoleError, type ModelRegistry, type ResolvedModel } from '../models/registry'
 import type { WorkflowDocs } from '../agent/workflow-docs'
@@ -1766,6 +1766,57 @@ describe('PanelService uploadImage and revert', () => {
     expect((await svc.get(ctx, p.id)).versions).toEqual([])
     expect(panelImages(ctx, p.id)).toEqual([])
     await expect(svc.uploadImage(ctx, 'pnl_ffffffffff', PNG, 'png')).rejects.toBeInstanceOf(EntityNotFoundError)
+  })
+
+  it('crops a ready version into a new current PNG version that keeps what its source drew', async () => {
+    const { svc, epi, ctx, events } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v1 = await svc.generate(ctx, p.id)
+    events.length = 0
+    const areas: unknown[] = []
+    const ops = { crop: (data: Buffer, area: unknown) => (areas.push(area), Buffer.from(`cropped ${data.length}`)) }
+    const area = { x: 0.1, y: 0.2, width: 0.5, height: 0.6 }
+    const cut = await svc.cropImage(ctx, p.id, v1.id, area, ops)
+    expect(areas).toEqual([area])
+    expect(cut).toMatchObject({ source: 'crop', status: 'ready', parentVersionId: v1.id, prompt: v1.prompt, referenceImagePaths: v1.referenceImagePaths, drawnFrom: v1.drawnFrom, instruction: null, check: null })
+    expect(Object.keys(cut).sort()).toEqual(VERSION_KEYS)
+    expect(cut.imagePath).toBe(`panels/${p.id}/${cut.id}.png`)
+    expect(fs.readFileSync(ctx.paths.resolveAsset(cut.imagePath!)).toString()).toMatch(/^cropped \d+$/)
+    const stored = await svc.get(ctx, p.id)
+    expect(stored.currentVersionId).toBe(cut.id)
+    expect(stored.versions.map((v) => v.id)).toEqual([v1.id, cut.id])
+    expect(events).toEqual([{ type: 'panel.changed', projectId: ctx.id, panelId: p.id }])
+  })
+
+  it('a crop in another shape gives the panel that shape, and counts as drawn at it', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v1 = await svc.generate(ctx, p.id)
+    const cut = await svc.cropImage(ctx, p.id, v1.id, { x: 0, y: 0, width: 1, height: 0.5 }, { crop: () => Buffer.from('cropped') }, '16:9')
+    expect(cut.drawnFrom).toEqual({ ...v1.drawnFrom, aspect: '16:9' })
+    const stored = await svc.get(ctx, p.id)
+    expect(stored.aspect).toBe('16:9')
+    expect(staleVisualFields(stored)).toEqual([])
+  })
+
+  it('refuses to crop an unknown version, and leaves the panel untouched when the crop or the save fails', async () => {
+    const { svc, epi, ctx } = await setup()
+    const p = (await svc.create(ctx, draft(epi.id), USER)).panel
+    const v1 = await svc.generate(ctx, p.id)
+    const area = { x: 0, y: 0, width: 0.5, height: 0.5 }
+    const ops = { crop: () => Buffer.from('cropped') }
+    await expect(svc.cropImage(ctx, p.id, 'ver_ffffffffff', area, ops)).rejects.toBeInstanceOf(EntityNotFoundError)
+    const refused = {
+      crop: () => {
+        throw new Error("A WEBP image can't be cropped: use png or jpg")
+      }
+    }
+    await expect(svc.cropImage(ctx, p.id, v1.id, area, refused)).rejects.toThrow(/can't be cropped/)
+    disk.failJsonWrites = 1
+    await expect(svc.cropImage(ctx, p.id, v1.id, area, ops)).rejects.toThrow('disk full')
+    const stored = await svc.get(ctx, p.id)
+    expect(stored.versions.map((v) => v.id)).toEqual([v1.id])
+    expect(panelImages(ctx, p.id)).toEqual([path.basename(v1.imagePath!)])
   })
 
   it('revert switches the current version without deleting any', async () => {

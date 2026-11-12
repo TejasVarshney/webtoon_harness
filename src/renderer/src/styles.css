@@ -3253,7 +3253,8 @@ kbd {
   min-width: 0;
 }
 
-.field label {
+.field label,
+.field .field-label {
   font-size: 13px;
 }
 
@@ -4403,4 +4404,174 @@ kbd {
 .prompt-text {
   font-family: var(--font-mono, monospace);
   font-size: var(--fs-small);
+}
+
+/* The crop dialog (CropDialog): the picture whole, darkened outside a box in the panel's shape, with a handle at each
+   corner and thirds marked inside. */
+.crop-dialog {
+  width: min(720px, 100%);
+}
+
+.crop-hint {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.crop-stage {
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+  background: var(--raised);
+  border-radius: var(--radius-control);
+}
+
+.crop-frame {
+  position: relative;
+  line-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.crop-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: min(60vh, 560px);
+  pointer-events: none;
+}
+
+.crop-shade {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.crop-hole {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 55%);
+}
+
+.crop-box {
+  position: absolute;
+  cursor: move;
+  outline: 2px solid #fff;
+  background-image:
+    linear-gradient(to right, transparent calc(100% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(100% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(100% / 3 + 0.5px), transparent calc(100% / 3 + 0.5px), transparent calc(200% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(200% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(200% / 3 + 0.5px), transparent calc(200% / 3 + 0.5px)),
+    linear-gradient(to bottom, transparent calc(100% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(100% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(100% / 3 + 0.5px), transparent calc(100% / 3 + 0.5px), transparent calc(200% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(200% / 3 - 0.5px), rgb(255 255 255 / 45%) calc(200% / 3 + 0.5px), transparent calc(200% / 3 + 0.5px));
+}
+
+.crop-box:focus-visible {
+  outline-color: var(--accent);
+}
+
+.crop-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+}
+
+.crop-handle[data-corner='nw'] {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.crop-handle[data-corner='ne'] {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.crop-handle[data-corner='sw'] {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+.crop-handle[data-corner='se'] {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
+}
+
+/* Panel shapes as buttons, each with a little rectangle of its shape (ShapePicker). */
+.shape-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shape-choice {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 46px;
+  height: auto;
+  min-height: 0;
+  padding: 6px 6px 5px;
+  line-height: 1.1;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.shape-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.shape-icon > span {
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.shape-choice[aria-pressed='true'],
+.panel-widths button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* The panel tools' Size popover: the shape, then the width on the strip. */
+.panel-size {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.panel-size-heading {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.panel-size-heading + .shape-picker,
+.panel-size-heading + .panel-widths {
+  margin-bottom: 4px;
+}
+
+.panel-widths {
+  display: flex;
+  gap: 6px;
+}
+
+.panel-widths button {
+  flex: 1;
+}
+
+.crop-dialog .shape-picker {
+  justify-content: center;
+}
+
+.panel-size .shape-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
 }

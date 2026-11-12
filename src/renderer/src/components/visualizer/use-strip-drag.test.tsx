@@ -116,8 +116,8 @@ describe('dragging panels on the strip', () => {
     drag(screen.getByRole('button', { name: 'Redraw' }), 40, 40)
     // The bar between its buttons, and the popover (a portal, but still the card's child in the React tree).
     drag(screen.getByRole('toolbar', { name: 'Panel tools' }), 40, 40)
-    fireEvent.click(screen.getByRole('button', { name: 'Scene' }))
-    drag(screen.getByRole('dialog', { name: 'Scene' }), 40, 40)
+    fireEvent.click(screen.getByRole('button', { name: 'Versions' }))
+    drag(screen.getByRole('dialog', { name: 'Versions' }), 40, 40)
     expect(placeCalls(calls)).toEqual([])
     expect(card(0).style.left).toBe('40px')
   })
@@ -126,9 +126,9 @@ describe('dragging panels on the strip', () => {
     installFakeApi({ 'panels:list': () => [a, b] })
     useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Cast' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Versions' }))
     const controls = 'button, a, input, textarea, select, [role="dialog"], .panel-tools'
-    for (const el of [screen.getByRole('toolbar', { name: 'Panel tools' }), screen.getByRole('dialog', { name: 'Cast' }), ...screen.getAllByRole('button')]) {
+    for (const el of [screen.getByRole('toolbar', { name: 'Panel tools' }), screen.getByRole('dialog', { name: 'Versions' }), ...screen.getAllByRole('button')]) {
       expect(el.closest(controls), el.outerHTML.slice(0, 60)).not.toBeNull()
     }
   })

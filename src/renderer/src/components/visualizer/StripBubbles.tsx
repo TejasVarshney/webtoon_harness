@@ -92,7 +92,7 @@ function EditableBubbles({ placed, canvas }: { placed: PlacedPanel; canvas: RefO
       <div className="panel-media" style={{ aspectRatio: panel.aspect.replace(':', ' / ') }}>
         <DialogueOverlay dialogue={insideStrip(lines, placed)} cast={panel.characters} editing={editing} />
       </div>
-      {showTools && <PanelTools panel={panel} selectedLine={selected} onSelectLine={select} linesRequest={clicked} onAddBubble={add} addingBubble={adding} />}
+      {showTools && <PanelTools panel={panel} place={{ x: placed.x, y: placed.y, width: placed.width }} selectedLine={selected} onSelectLine={select} linesRequest={clicked} onAddBubble={add} addingBubble={adding} />}
     </BubbleBox>
   )
 }
