@@ -202,6 +202,28 @@ describe('PanelTools', () => {
     ])
   })
 
+  it('Layout sets a slanted cut, or a straight frame that keeps it, in place', async () => {
+    const { calls } = mount()
+    await userEvent.click(tool('Layout'))
+    const frames = within(screen.getByRole('dialog', { name: 'Layout' })).getByRole('group', { name: 'Panel frame' })
+    expect(within(frames).getByRole('button', { name: 'Straight' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(frames).getByRole('button', { name: 'Top falls' }))
+    await waitFor(() => expect(within(frames).getByRole('button', { name: 'Top falls' })).toHaveAttribute('aria-pressed', 'true'))
+    await userEvent.click(within(frames).getByRole('button', { name: 'Straight' }))
+    await waitFor(() => expect(calls.filter((c) => c.channel === 'panels:update')).toHaveLength(2))
+    expect(calls.filter((c) => c.channel === 'panels:update').map((c) => (c.req as { patch: PanelPatch }).patch)).toEqual([{ frame: 'slanted', cut: 'top-down' }, { frame: 'bordered' }])
+    expect(useAppStore.getState().focusedPanelId).toBeNull()
+  })
+
+  it('offers no frame to a tall panel, which fades instead', async () => {
+    stored = { ...stored, aspect: '1:3' }
+    usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
+    mount()
+    await userEvent.click(tool('Layout'))
+    const frames = within(screen.getByRole('dialog', { name: 'Layout' })).getByRole('group', { name: 'Panel frame' })
+    expect(within(frames).getByRole('button', { name: 'Top falls' })).toBeDisabled()
+  })
+
   it('Layout offers only the layouts there are panels enough for, from this one', async () => {
     mount()
     await userEvent.click(tool('Layout'))

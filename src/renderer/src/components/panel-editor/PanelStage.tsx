@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { isTallAspect } from '@shared/draw-aspect'
+import { cutStyle, type PanelSlant } from '@shared/panel-cuts'
 import type { BubbleStyle, Panel } from '@shared/types'
 import { PanelArt } from '../visualizer/PanelArt'
 import { AddBubbleMenu } from './AddBubbleMenu'
@@ -25,7 +26,7 @@ export interface PanelStageProps {
   /** Its share of its strip row (see `rowShares`): the stage lays it out at that share of the reference row. */
   share: number
   /** Which way a slanted panel leans in the strip. */
-  slant?: 'left' | 'right'
+  slant?: PanelSlant
   /** The line selected in the workspace (a row of the Lines tab, or this stage): its bubble shows as selected. */
   selectedLine?: number | null
   /** The selected bubble's line index, for the Lines tab to follow. */
@@ -114,7 +115,7 @@ export function PanelStage({ panel, share, slant, selectedLine, onSelectLine, zo
     if (selectedLine !== undefined) select(selectedLine)
   }, [selectedLine, select])
 
-  const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
+  const shape = { width: share * STAGE_ROW_PX, '--share': String(share), ...(slant === undefined ? {} : cutStyle(slant)) } as CSSProperties
   const shown = stylePreview ? lines.map((line, i) => (i === stylePreview.index ? { ...line, style: stylePreview.style } : line)) : lines
   const drawn = shown === panel.dialogue ? panel : { ...panel, dialogue: shown }
 

@@ -176,6 +176,7 @@ export class PanelService extends PanelUsageScanner {
         shot: patch.shot ?? current.shot,
         aspect: patch.aspect ?? current.aspect,
         frame: patch.frame ?? current.frame,
+        cut: patch.cut === undefined ? current.cut : patch.cut,
         beside: patch.beside ?? current.beside,
         gapAfter: patch.gapAfter ?? current.gapAfter,
         gutter: current.gutter,

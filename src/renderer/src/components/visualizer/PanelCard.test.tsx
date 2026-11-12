@@ -108,12 +108,21 @@ describe('PanelCard', () => {
       expect(card).not.toHaveAttribute('data-gutter')
     })
 
+    it("cuts a slanted card to its slant's polygons", () => {
+      installFakeApi({})
+      render(<PanelCard panel={panel({ frame: 'slanted', cut: 'top-down' })} selected={false} slant="top-down" />)
+      const card = screen.getByTestId('panel-card')
+      expect(card).toHaveAttribute('data-slant', 'top-down')
+      expect(card.style.getPropertyValue('--cut')).toBe('polygon(0% 0%, 100% calc(0% + var(--slant)), 100% 100%, 0% 100%)')
+    })
+
     it('has no slant unless given one', () => {
       installFakeApi({})
       render(<PanelCard panel={panel()} selected={false} />)
       const card = screen.getByTestId('panel-card')
       expect(card).toHaveAttribute('data-frame', 'bordered')
       expect(card).not.toHaveAttribute('data-slant')
+      expect(card.style.getPropertyValue('--cut')).toBe('')
     })
 
     it('fades a tall panel whatever its frame, at its own aspect', () => {

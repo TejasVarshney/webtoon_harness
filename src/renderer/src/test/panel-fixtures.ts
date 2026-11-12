@@ -35,6 +35,7 @@ export function panel(o: Partial<Panel> = {}): Panel {
     shot: 'medium',
     aspect: '2:3',
     frame: 'bordered',
+    cut: null,
     beside: false,
     gapAfter: 'normal',
     gutter: 'white',

@@ -2,6 +2,7 @@
 
 import type { Panel, PanelAspect, PanelGap, PanelGutter } from '@shared/types'
 import { isTallAspect } from '@shared/draw-aspect'
+import type { PanelSlant } from '@shared/panel-cuts'
 
 /** The most panels that share one row. */
 const MAX_PER_ROW = 3
@@ -12,8 +13,8 @@ export interface StripRow {
   gapAfter: PanelGap
   /** The colour of that gap, taken from the same panel. */
   gutter: PanelGutter
-  /** Which way each slanted panel leans, by panel id. Tall panels fade instead, so they have no entry. */
-  slants: Record<string, 'left' | 'right'>
+  /** How each slanted panel is cut, by panel id: its own cut, or the automatic one. Tall panels fade instead, so they have no entry. */
+  slants: Record<string, PanelSlant>
 }
 
 /** Group panels (in strip order) into rows: a panel marked `beside` joins the row before it, up to three. */
@@ -30,7 +31,7 @@ export function layoutStrip(panels: Panel[]): StripRow[] {
     row.gapAfter = panel.gapAfter
     row.gutter = panel.gutter
     if (panel.frame === 'slanted' && !isTallAspect(panel.aspect)) {
-      row.slants[panel.id] = slanted % 2 === 0 ? 'left' : 'right'
+      row.slants[panel.id] = panel.cut ?? (slanted % 2 === 0 ? 'left' : 'right')
       slanted += 1
     }
   }

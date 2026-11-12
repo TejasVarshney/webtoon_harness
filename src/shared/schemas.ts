@@ -16,6 +16,8 @@ import { PanelLocationSchema } from './location-schemas'
 import { PanelDrawChoices, PanelDrawChoicesInput } from './panel-draw-choices'
 import { CheckResultSchema, CreatedBySchema, HexColor, Id, ImageStatusSchema, IsoTimestamp, text } from './schema-primitives'
 import { BackgroundImagePath, checkBackgroundOwner, StripBackgroundSchema } from './strip-background'
+import { PanelCutSchema } from './panel-frame-schemas'
+export { CropAreaSchema, PanelCutSchema } from './panel-frame-schemas'
 
 export { CheckResultSchema } from './schema-primitives'
 export * from './location-schemas'
@@ -298,11 +300,6 @@ export const PanelVersionSchema = z.object({
 /** Where a panel sits on the free strip, in strip px (the strip is 440 wide): its top-left corner and its width. Height follows from the aspect. */
 export const PanelPlacementSchema = z.object({ x: z.number(), y: z.number(), width: z.number() })
 
-/** A part of an image, as fractions of its width and height: inside it, and not empty. */
-export const CropAreaSchema = z
-  .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().gt(0).max(1), height: z.number().gt(0).max(1) })
-  .refine((a) => a.x + a.width <= 1 + 1e-6 && a.y + a.height <= 1 + 1e-6, 'The crop must lie inside the image')
-
 export const PanelSchema = z.object({
   id: Id,
   episodeId: Id,
@@ -317,6 +314,8 @@ export const PanelSchema = z.object({
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema,
   frame: PanelFrameSchema.default('bordered'),
+  /** The cut of a slanted frame; null: the automatic one. Kept when the frame changes, for when it is slanted again. */
+  cut: PanelCutSchema.nullable().default(null),
   beside: z.boolean().default(false),
   gapAfter: PanelGapSchema.default('normal'),
   gutter: PanelGutterSchema.default('white'),
@@ -358,6 +357,7 @@ export const PanelDraftSchema = z.object({
   shot: ShotTypeSchema,
   aspect: PanelAspectSchema.optional(),
   frame: PanelFrameSchema.optional(),
+  cut: PanelCutSchema.nullable().optional(),
   beside: z.boolean().optional(),
   gapAfter: PanelGapSchema.optional(),
   characters: z.array(PanelCharacterSchema),

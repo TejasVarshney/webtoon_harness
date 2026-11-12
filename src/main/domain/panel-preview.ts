@@ -29,6 +29,7 @@ export function panelFromDraft(draft: PanelDraft, own: { id: string; aspect: Pan
     shot: draft.shot,
     aspect: own.aspect,
     frame: draft.frame,
+    cut: draft.cut ?? null,
     beside: draft.beside,
     gapAfter: draft.gapAfter,
     // Panels are placed on the strip now: the colour between rows has no input, and only old files carry one.

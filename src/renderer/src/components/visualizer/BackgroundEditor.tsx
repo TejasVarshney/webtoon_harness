@@ -6,7 +6,7 @@ import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
 import { errorText } from '../characters/controls'
 import { COLOR_PRESETS, GRADIENT_PRESETS } from './background-presets'
-import { ToolPopover } from './PanelTools'
+import { ToolPopover } from './ToolPopover'
 
 /** How long after the last change the background is saved. */
 const SAVE_DELAY_MS = 300

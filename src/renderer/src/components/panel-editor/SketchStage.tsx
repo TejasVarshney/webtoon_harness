@@ -2,6 +2,7 @@ import { useRef, useState, type CSSProperties } from 'react'
 import { FilePlus2, Image as ImageIcon } from 'lucide-react'
 import { assetUrl } from '@shared/asset-url'
 import { isTallAspect } from '@shared/draw-aspect'
+import { cutStyle, type PanelSlant } from '@shared/panel-cuts'
 import type { Panel } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { STAGE_ROW_PX } from './bubble-placement'
@@ -17,7 +18,7 @@ export interface SketchStageProps {
   panel: Panel
   /** Its share of its strip row, as on the panel stage. */
   share: number
-  slant?: 'left' | 'right'
+  slant?: PanelSlant
   /** The zoom, relative to the fit, and how to change it: the workspace keeps one per panel, shared with the panel stage. */
   zoom?: number
   onZoom?(zoom: number): void
@@ -44,7 +45,7 @@ export function SketchStage({ panel, share, slant, zoom: heldZoom, onZoom }: Ske
   const pan = useStagePan(viewportRef, view.move)
   useSketchShortcuts({ pad, zoom: { zoom: view.zoom, control: view.control } })
   const [showPicture, setShowPicture] = useState(true)
-  const shape = { width: share * STAGE_ROW_PX, '--share': String(share) } as CSSProperties
+  const shape = { width: share * STAGE_ROW_PX, '--share': String(share), ...(slant === undefined ? {} : cutStyle(slant)) } as CSSProperties
   const scale = fit === null || view.paper.width <= 0 ? null : view.paper.width / fit.width
 
   const current = panel.versions.find((v) => v.id === panel.currentVersionId)
