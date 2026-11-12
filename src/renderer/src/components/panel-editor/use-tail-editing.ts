@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react'
 import type { BubblePlacement, DialogueLine } from '@shared/types'
 import type { DialogueDraftLine, LineIdentity } from './dialogue-edits'
 import type { Nudge, Press } from './bubble-press'
 import { ARROWS, NUDGE_COMMIT_MS, boxOf, centreOf, limitOf, nudgePlacement, type Arrow, type Box } from './bubble-placement'
 import { editLine, identityOf } from './dialogue-edits'
+import { flushBeforeStep } from '../../stores/strip-history-store'
 
 /** The dot at a tail's tip sits inside its bubble, but a press or double-click on it is not the bubble's. */
 export const inTailHandle = (target: EventTarget): boolean => target instanceof Element && target.closest('.bubble-tail-handle') !== null
@@ -37,6 +38,9 @@ export function useTailEditing(host: TailHost) {
   const [tailPreview, setTailPreview] = useState<{ index: number; tip: BubblePlacement } | null>(null)
   /** The focus was on a bubble's tail dot, not the bubble: the dot gets it back after a remount. */
   const tailFocus = useRef(false)
+  // The run of nudges is the bubbles' and the dot's alike: an undo of the strip saves it first, so it takes the nudges
+  // back and not the change before them. `flushNudge` goes through the host's ref, so the first one stays current.
+  useEffect(() => flushBeforeStep(flushNudge), [])
 
   const commitTail = useCallback(
     (index: number, tail: BubblePlacement | null, expect: LineIdentity): void => {

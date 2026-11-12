@@ -3,7 +3,7 @@ import type { Episode, Panel } from '@shared/types'
 import { startEventSync } from '../events'
 import { PROJECT_ID as projectId } from '../test/character-fixtures'
 import { installFakeApi } from '../test/fake-api'
-import { EPISODE_ID, episode, panel, panelVersion } from '../test/panel-fixtures'
+import { episode, EPISODE_ID, panel, panelVersion, placed } from '../test/panel-fixtures'
 import { initialAppState, useAppStore } from './app-store'
 import { initialPanelsState, usePanelsStore } from './panels-store'
 
@@ -240,7 +240,7 @@ describe('usePanelsStore', () => {
 
     it('placePanels saves the moves and reloads the episode', async () => {
       const a = panel({ id: 'pnl_00000000aa' })
-      const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a] })
+      const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a] })
       const moves = [{ panelId: a.id, placement: { x: 1, y: 2, width: 100 } }]
       await usePanelsStore.getState().placePanels(EPISODE_ID, moves)
       expect(calls.map((c) => [c.channel, c.req])).toEqual([

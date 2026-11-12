@@ -6,8 +6,9 @@ import { Field, errorText } from '../characters/controls'
 import { ExportDialog } from '../export/ExportDialog'
 import { AddPanelButton } from './AddPanelButton'
 import { BackgroundEditor } from './BackgroundEditor'
+import { StripUndoButtons } from './StripUndoButtons'
 
-/** Picks which episode the strip shows, and starts a new one. */
+/** Picks which episode the strip shows, and starts a new one; undoes and redoes the strip's changes. */
 export function EpisodeBar() {
   const episodes = usePanelsStore((s) => s.episodes)
   const activeEpisodeId = useAppStore((s) => s.activeEpisodeId)
@@ -82,6 +83,7 @@ export function EpisodeBar() {
           Add panel
         </AddPanelButton>
       )}
+      <StripUndoButtons episodeId={activeEpisodeId} held={editingBackground} />
       <button ref={backgroundButton} type="button" data-testid="background-open" aria-haspopup="dialog" aria-expanded={editingBackground} disabled={active === undefined} onClick={() => setEditingBackground(true)}>
         Background
       </button>

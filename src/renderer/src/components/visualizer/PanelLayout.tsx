@@ -4,6 +4,7 @@ import { clampPlacement, resolveStrip, type PlacedPanel } from '@shared/strip-ca
 import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { Panel, PanelAspect, PanelPlacement } from '@shared/types'
 import { usePanelsStore } from '../../stores/panels-store'
+import type { StepLabel } from '../../stores/strip-history-store'
 import { errorText } from '../characters/controls'
 import { ShapePicker } from '../panel-editor/ShapePicker'
 import { useFieldAutosave } from '../panel-editor/use-field-autosave'
@@ -53,11 +54,11 @@ export function PanelLayout({ panel }: PanelLayoutProps) {
   const placed: PlacedPanel[] = resolveStrip(episodePanels ?? [panel])
   const here = placed.find((p) => p.panel.id === panel.id)
 
-  function save(moves: { panelId: string; placement: PanelPlacement }[]): void {
+  function save(moves: { panelId: string; placement: PanelPlacement }[], label: StepLabel): void {
     setError(null)
     usePanelsStore
       .getState()
-      .placePanels(panel.episodeId, moves)
+      .placePanels(panel.episodeId, moves, label)
       .catch((e: unknown) => setError(errorText(e)))
   }
 
@@ -68,12 +69,12 @@ export function PanelLayout({ panel }: PanelLayoutProps) {
 
   function pickLayout(layout: Layout): void {
     const moves = applyLayout(placed, panel.id, layout)
-    if (moves !== null) save(moves)
+    if (moves !== null) save(moves, 'layout')
   }
 
-  function place(width: number, x: number): void {
+  function place(width: number, x: number, label: StepLabel): void {
     if (here === undefined) return
-    save([{ panelId: panel.id, placement: clampPlacement({ x: Math.round(x), y: Math.round(here.y), width }, panel.aspect) }])
+    save([{ panelId: panel.id, placement: clampPlacement({ x: Math.round(x), y: Math.round(here.y), width }, panel.aspect) }], label)
   }
 
   const failure = error ?? aspect.error
@@ -111,7 +112,7 @@ export function PanelLayout({ panel }: PanelLayoutProps) {
               title={name}
               disabled={here === undefined}
               aria-pressed={here !== undefined && Math.abs(here.width - STRIP_CSS_WIDTH * share) <= 1}
-              onClick={() => here !== undefined && place(width, Math.min(here.x, STRIP_CSS_WIDTH - width))}
+              onClick={() => here !== undefined && place(width, Math.min(here.x, STRIP_CSS_WIDTH - width), 'resize')}
             >
               {label}
             </button>
@@ -120,7 +121,7 @@ export function PanelLayout({ panel }: PanelLayoutProps) {
       </div>
       <div className="panel-widths" role="group" aria-label="Panel position">
         {SIDES.map(({ side: s, name }) => (
-          <button key={s} type="button" aria-label={name} title={`${name} of the strip`} disabled={here === undefined} aria-pressed={side === s} onClick={() => here !== undefined && place(here.width, alignedX(here.width, s))}>
+          <button key={s} type="button" aria-label={name} title={`${name} of the strip`} disabled={here === undefined} aria-pressed={side === s} onClick={() => here !== undefined && place(here.width, alignedX(here.width, s), 'move')}>
             {name}
           </button>
         ))}

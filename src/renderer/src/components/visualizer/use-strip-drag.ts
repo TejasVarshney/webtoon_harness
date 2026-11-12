@@ -4,6 +4,7 @@ import { STRIP_CSS_WIDTH } from '@shared/strip-width'
 import type { PanelPlacement } from '@shared/types'
 import { useAppStore } from '../../stores/app-store'
 import { usePanelsStore } from '../../stores/panels-store'
+import { flushBeforeStep } from '../../stores/strip-history-store'
 import { errorText } from '../characters/controls'
 import { DRAG_THRESHOLD_PX, NUDGE_COMMIT_MS } from '../panel-editor/bubble-placement'
 
@@ -134,7 +135,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
   }, [placed, publish])
 
   const save = useCallback(
-    (moves: Previews) => {
+    (moves: Previews, label: 'move' | 'resize') => {
       const episodeId = placedRef.current[0]?.panel.episodeId
       if (episodeId === undefined || Object.keys(moves).length === 0) {
         setDrafts({})
@@ -158,7 +159,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
       const list = ids.map((panelId) => ({ panelId, placement: moves[panelId] }))
       usePanelsStore
         .getState()
-        .placePanels(episodeId, list)
+        .placePanels(episodeId, list, label)
         .then(done, (e: unknown) => {
           done()
           setError(errorText(e))
@@ -182,11 +183,12 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
     nudgeTimer.current = null
     const pending = nudge.current
     nudge.current = null
-    if (pending !== null) save(shifted(pending.ids, pending.dx, pending.dy).moves)
+    if (pending !== null) save(shifted(pending.ids, pending.dx, pending.dy).moves, 'move')
   }, [save, shifted])
 
-  // A run of nudges still waiting must not be lost when the strip goes away.
+  // A run of nudges still waiting must not be lost when the strip goes away, and is saved before an undo starts.
   useEffect(() => flushNudge, [flushNudge])
+  useEffect(() => flushBeforeStep(flushNudge), [flushNudge])
 
   const stopScrolling = useCallback(() => {
     if (autoScroll.current.timer !== null) clearInterval(autoScroll.current.timer)
@@ -212,7 +214,7 @@ export function useStripDrag(placed: PlacedPanel[]): StripDrag {
         setTimeout(() => (justDragged.current = false), 0)
       }
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-      if (commit) save(g.moved)
+      if (commit) save(g.moved, g.kind === 'resize' ? 'resize' : 'move')
       else setDrafts({})
     },
     [save, setDrafts, stopScrolling]

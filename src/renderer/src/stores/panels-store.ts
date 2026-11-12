@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { CropArea, Episode, Panel, PanelAspect, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripBackground } from '@shared/types'
 import { api } from '../api'
 import { NO_PANEL_SELECTION, useAppStore } from './app-store'
+import { track, useStripHistoryStore, type PictureState, type StepLabel } from './strip-history-store'
 
 export interface PanelsData {
   /** The project `episodes` and `panelsByEpisode` belong to. */
@@ -39,9 +40,12 @@ export interface PanelsActions {
   /** Creates the episode and opens it. */
   createEpisode(title: string): Promise<Episode>
   updateEpisode(id: string, patch: { synopsis?: string }): Promise<Episode>
-  /** Sets the strip's background, or clears it with `null`, and reloads the episodes. */
+  /** Sets the strip's background, or clears it with `null`, and reloads the episodes. The strip's undo records it. */
   setBackground(episodeId: string, background: StripBackground | null): Promise<Episode>
-  /** Opens the file dialog in main and makes the chosen image the background; resolves to `null` when it is cancelled. */
+  /**
+   * Opens the file dialog in main and makes the chosen image the background; resolves to `null` when it is cancelled.
+   * Not undoable: main deletes the image it replaces, so the episode's background steps go.
+   */
   pickBackgroundImage(episodeId: string): Promise<Episode | null>
   /** Shows a background on the episode's strip before it is saved; `null` goes back to the stored one. */
   setBackgroundPreview(preview: PanelsData['backgroundPreview']): void
@@ -55,12 +59,19 @@ export interface PanelsActions {
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   generatePanel(id: string): Promise<void>
   deletePanel(id: string): Promise<void>
-  /** Saves where panels sit on the strip, then reloads the episode, whose order follows reading order. */
-  placePanels(episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void>
+  /**
+   * Saves where panels sit on the strip, then reloads the episode, whose order follows reading order. The strip's undo
+   * records it as one step named `label`, from the layouts main read and wrote.
+   */
+  placePanels(episodeId: string, moves: { panelId: string; placement: PanelPlacement }[], label?: StepLabel): Promise<void>
+  /** Makes a ready version current. Undoable when the panel had a current version. */
   revertPanel(id: string, versionId: string): Promise<Panel>
-  /** Opens the file dialog in main; resolves to `null` when it is cancelled. */
+  /** Opens the file dialog in main; resolves to `null` when it is cancelled. Undoable like `revertPanel`. */
   uploadPanelImage(id: string): Promise<PanelVersion | null>
-  /** Stores the part `area` covers of a version's picture as the panel's new current version, in `aspect` if given, and reloads its episode. */
+  /**
+   * Stores the part `area` covers of a version's picture as the panel's new current version, in `aspect` if given, and
+   * reloads its episode. Its undo puts back both the version and the shape.
+   */
   cropPanelImage(id: string, versionId: string, area: CropArea, aspect?: PanelAspect): Promise<PanelVersion>
   /** Stores the layout sketch (a PNG data URL), or forgets it with `null`, and reloads the panel's episode. */
   saveSketch(id: string, png: string | null): Promise<Panel>
@@ -76,6 +87,12 @@ export const initialPanelsState: PanelsData = { projectId: null, episodes: [], e
  * load that outlives a project switch can never be mistaken for a newer one.
  */
 let loadSeq = 0
+
+/**
+ * Each episode's background saves, one at a time, and the episode as the last of them returned it: each save takes the
+ * one before it as its undo's value, since the store's list may not have caught up with that save yet.
+ */
+const backgrounds = new Map<string, { saving: Promise<unknown>; last: Episode | null }>()
 let latestEpisodesLoad = 0
 const latestPanelsLoad = new Map<string, number>()
 
@@ -103,6 +120,19 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
 
   async function reload(episodeId: string | null): Promise<void> {
     if (episodeId !== null) await get().load(episodeId)
+  }
+
+  /** The picture the panel shows now, as the store has it; null when it has none (then a new picture is not undoable). */
+  function pictureOf(panelId: string): { episodeId: string; state: PictureState } | null {
+    for (const panels of Object.values(get().panelsByEpisode)) {
+      const panel = panels.find((p) => p.id === panelId)
+      if (panel !== undefined) return panel.currentVersionId === null ? null : { episodeId: panel.episodeId, state: { versionId: panel.currentVersionId, aspect: panel.aspect } }
+    }
+    return null
+  }
+
+  function recordPicture(panelId: string, was: { episodeId: string; state: PictureState } | null, now: PictureState, label: StepLabel): void {
+    if (was !== null) useStripHistoryStore.getState().record({ kind: 'picture', episodeId: was.episodeId, panelId, label, before: was.state, after: now })
   }
 
   return {
@@ -183,15 +213,36 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       return updated
     },
 
-    async setBackground(episodeId, background) {
-      const updated = await api.invoke('episodes:setBackground', { projectId: requireProject(), episodeId, background })
-      await get().loadEpisodes()
-      return updated
+    setBackground(episodeId, background) {
+      // Async from the first line, so no open project is a rejection and not a throw.
+      const run = (async () => {
+        const projectId = requireProject()
+        const line = backgrounds.get(episodeId) ?? { saving: Promise.resolve(), last: null }
+        backgrounds.set(episodeId, line)
+        const saved = line.saving.then(async () => {
+          // What the strip had before this save: the last save's answer, unless the list is newer (another change since).
+          const listed = get().episodes.find((e) => e.id === episodeId)
+          const was = line.last !== null && (listed === undefined || line.last.updatedAt >= listed.updatedAt) ? line.last : listed
+          const updated = await api.invoke('episodes:setBackground', { projectId, episodeId, background })
+          line.last = updated
+          if (was !== undefined) useStripHistoryStore.getState().record({ kind: 'background', episodeId, label: 'background', before: was.background, after: updated.background })
+          await get().loadEpisodes()
+          return updated
+        })
+        line.saving = saved.catch(() => undefined)
+        return saved
+      })()
+      return track(run)
     },
 
     async pickBackgroundImage(episodeId) {
       const updated = await api.invoke('episodes:pickBackgroundImage', { projectId: requireProject(), episodeId })
-      if (updated !== null) await get().loadEpisodes()
+      if (updated !== null) {
+        const line = backgrounds.get(episodeId)
+        if (line !== undefined) line.last = updated
+        useStripHistoryStore.getState().dropBackground(episodeId)
+        await get().loadEpisodes()
+      }
       return updated
     },
 
@@ -227,6 +278,7 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
     async deletePanel(id) {
       const episodeId = episodeOf(id)
       await api.invoke('panels:delete', { projectId: requireProject(), panelId: id })
+      useStripHistoryStore.getState().dropPanel(id)
       const app = useAppStore.getState()
       if (app.focusedPanelId === id) app.focusPanel(null)
       if (app.selectedPanelId === id || app.selectedPanelIds.includes(id)) {
@@ -236,27 +288,51 @@ export const usePanelsStore = create<PanelsData & PanelsActions>()((set, get) =>
       await reload(episodeId)
     },
 
-    async placePanels(episodeId, moves) {
-      await api.invoke('panels:place', { projectId: requireProject(), episodeId, moves })
-      await reload(episodeId)
+    placePanels(episodeId, moves, label = 'move') {
+      return track(
+        (async () => {
+          const { before, after } = await api.invoke('panels:place', { projectId: requireProject(), episodeId, moves })
+          useStripHistoryStore.getState().record({ kind: 'place', episodeId, label, before, after, panelIds: moves.map((m) => m.panelId) })
+          await reload(episodeId)
+        })()
+      )
     },
 
-    async revertPanel(id, versionId) {
-      const reverted = await api.invoke('panels:revert', { projectId: requireProject(), panelId: id, versionId })
-      await get().load(reverted.episodeId)
-      return reverted
+    revertPanel(id, versionId) {
+      const was = pictureOf(id)
+      return track(
+        (async () => {
+          const reverted = await api.invoke('panels:revert', { projectId: requireProject(), panelId: id, versionId })
+          recordPicture(id, was, { versionId, aspect: reverted.aspect }, 'picture')
+          await get().load(reverted.episodeId)
+          return reverted
+        })()
+      )
     },
 
-    async uploadPanelImage(id) {
-      const stored = await api.invoke('panels:uploadImage', { projectId: requireProject(), panelId: id })
-      if (stored !== null) await reload(episodeOf(id))
-      return stored
+    uploadPanelImage(id) {
+      const was = pictureOf(id)
+      return track(
+        (async () => {
+          const stored = await api.invoke('panels:uploadImage', { projectId: requireProject(), panelId: id })
+          if (stored === null) return null
+          if (was !== null) recordPicture(id, was, { versionId: stored.id, aspect: was.state.aspect }, 'picture')
+          await reload(episodeOf(id))
+          return stored
+        })()
+      )
     },
 
-    async cropPanelImage(id, versionId, area, aspect) {
-      const stored = await api.invoke('panels:crop', { projectId: requireProject(), panelId: id, versionId, area, ...(aspect === undefined ? {} : { aspect }) })
-      await reload(episodeOf(id))
-      return stored
+    cropPanelImage(id, versionId, area, aspect) {
+      const was = pictureOf(id)
+      return track(
+        (async () => {
+          const stored = await api.invoke('panels:crop', { projectId: requireProject(), panelId: id, versionId, area, ...(aspect === undefined ? {} : { aspect }) })
+          if (was !== null) recordPicture(id, was, { versionId: stored.id, aspect: aspect ?? was.state.aspect }, 'crop')
+          await reload(episodeOf(id))
+          return stored
+        })()
+      )
     },
 
     async saveSketch(id, png) {

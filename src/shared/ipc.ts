@@ -39,6 +39,7 @@ import type {
   Role,
   SessionSummary,
   StripBackground,
+  StripLayout,
   Variation,
   VariationInput
 } from './types'
@@ -172,8 +173,16 @@ export interface IpcContract {
   /** Starts generation without waiting for it; the pending and final versions follow through `panel.changed`. */
   'panels:generate': { req: { projectId: string; panelId: string }; res: void }
   'panels:delete': { req: { projectId: string; panelId: string }; res: void }
-  /** Saves where panels sit on the strip (everything else on it is frozen where it is drawn) and the reading order that follows. */
-  'panels:place': { req: { projectId: string; episodeId: string; moves: { panelId: string; placement: PanelPlacement }[] }; res: void }
+  /**
+   * Saves where panels sit on the strip (everything else on it is frozen where it is drawn) and the reading order that
+   * follows. Answers the layout it read and the one it wrote, which undo puts back with `panels:restoreLayout`.
+   */
+  'panels:place': { req: { projectId: string; episodeId: string; moves: { panelId: string; placement: PanelPlacement }[] }; res: { before: StripLayout; after: StripLayout } }
+  /**
+   * Writes each panel's placement as given (`null`: it flows again), then the episode's order, in turn with `panels:place`.
+   * Refuses a layout whose `order` is not exactly the episode's panels, and a placement for a panel of another episode.
+   */
+  'panels:restoreLayout': { req: { projectId: string; episodeId: string; layout: StripLayout }; res: void }
   /** Makes a ready version current; no version is deleted. */
   'panels:revert': { req: { projectId: string; panelId: string; versionId: string }; res: Panel }
   /** Opens a file dialog in main and stores the chosen png/jpg/webp as a new current version. `null` when the dialog is cancelled. */
@@ -311,6 +320,7 @@ const channelSet: Record<IpcChannel, true> = {
   'panels:generate': true,
   'panels:delete': true,
   'panels:place': true,
+  'panels:restoreLayout': true,
   'panels:revert': true,
   'panels:uploadImage': true,
   'panels:crop': true,
