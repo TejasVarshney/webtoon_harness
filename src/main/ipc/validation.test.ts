@@ -97,6 +97,23 @@ describe('IPC input validation', () => {
     await invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement: { x: 0, y: 0, width: 100 } }] })
   })
 
+  it('panels:restoreLayout needs panel ids, and finite numbers or null in every placement', async () => {
+    const { s, invoke, projectId, panelId, episodeId } = await setup()
+    const bad = [
+      { order: 'pnl_x', placements: {} },
+      { order: ['../escape'], placements: {} },
+      { order: [panelId], placements: { [panelId]: { x: Number.NaN, y: 0, width: 100 } } },
+      { order: [panelId], placements: { [panelId]: { x: 0, y: 0 } } },
+      { order: [panelId], placements: { 'not an id': null } },
+      { order: [panelId] }
+    ]
+    for (const layout of bad) expect((await rejection(invoke('panels:restoreLayout', { projectId, episodeId, layout }))).message).toMatch(/^Invalid input: layout/)
+    await invoke('panels:place', { projectId, episodeId, moves: [{ panelId, placement: { x: 0, y: 0, width: 100 } }] })
+    await invoke('panels:restoreLayout', { projectId, episodeId, layout: { order: [panelId], placements: { [panelId]: null } } })
+    const ctx = await s.projects.open(projectId)
+    expect((await s.panels.get(ctx, panelId)).placement).toBeNull()
+  })
+
   it('a schema failure inside any handler reaches the renderer as a short readable message', async () => {
     const { invoke, projectId } = await setup()
     const error = await rejection(invoke('characters:create', { projectId, input: { name: 'Mina', role: 'hero', appearanceLock: 'L' }, generateBase: false }))

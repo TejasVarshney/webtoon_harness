@@ -9,7 +9,7 @@ import { initialLocationsState, useLocationsStore } from '../../stores/locations
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
-import { EPISODE_ID, panel } from '../../test/panel-fixtures'
+import { EPISODE_ID, panel, placed } from '../../test/panel-fixtures'
 import { resolveStrip } from '@shared/strip-canvas'
 import { StripBubbles } from './StripBubbles'
 import { StripCanvas } from './StripCanvas'
@@ -63,7 +63,7 @@ function mount() {
       ) as Panel[]
       return { panel: stored.find((p) => p.id === req.panelId), warnings: [] }
     },
-    'panels:place': () => undefined
+    'panels:place': placed
   })
   function Host() {
     const panels = usePanelsStore((s) => s.panelsByEpisode[EPISODE_ID] ?? [])

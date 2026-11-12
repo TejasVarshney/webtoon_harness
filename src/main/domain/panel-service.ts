@@ -3,7 +3,7 @@ import path from 'node:path'
 import { drawAspect } from '@shared/draw-aspect'
 import { newId } from '@shared/ids'
 import { PanelSchema } from '@shared/schemas'
-import type { Character, CheckResult, CropArea, Episode, Item, Location, Panel, PanelAspect, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview } from '@shared/types'
+import type { Character, CheckResult, CropArea, Episode, Item, Location, Panel, PanelAspect, PanelDraft, PanelPatch, PanelPlacement, PanelVersion, PromptPreview, StripLayout } from '@shared/types'
 import { VISUAL_FIELDS, visualFields } from '@shared/visual-fields'
 import type { EventBus } from '../events/bus'
 import { writeJsonAtomic } from '../storage/atomic'
@@ -18,7 +18,7 @@ import type { ItemService } from './item-service'
 import type { LocationService } from './location-service'
 import { getPanel, reportProblem, scanPanels, tryReadPanel } from './panel-files'
 import { drawPrompt, mergeDrawChoices, readReferencePanels, styleOf } from './panel-draw-choices'
-import { planPlacement } from './panel-placement'
+import { PanelPlacer } from './panel-placing'
 import { continuityOf, panelFromDraft, previewPrompt, withId } from './panel-preview'
 import { PanelUsageScanner } from './panel-usage'
 import { composeWithPacks, readSketchFile, storeCroppedImage, storeSketch, storeUploadedImage } from './panel-images'
@@ -82,11 +82,12 @@ interface Draw {
  * no lock is ever held across an image call.
  */
 export class PanelService extends PanelUsageScanner {
-  /** The `place` calls of each episode, as the promise of the last one queued. */
-  private readonly placing = new Map<string, Promise<void>>()
+  /** Moves and layout restores, one at a time per episode. */
+  private readonly placer: PanelPlacer
 
   constructor(private readonly opts: PanelServiceOptions) {
     super()
+    this.placer = new PanelPlacer({ episodes: opts.episodes, emit: (ctx, panelId) => this.emit(ctx, panelId) })
   }
 
   /** The episode's panels in episode order. Unreadable panel files are reported in `ctx.problems` and skipped. */
@@ -380,31 +381,14 @@ export class PanelService extends PanelUsageScanner {
     this.emit(ctx, id)
   }
 
-  /**
-   * Saves where panels sit (see `planPlacement`): one panel at a time under its own lock, then the episode's order under its own.
-   * Calls for one episode run one after another and each plans from what the one before wrote, so a second drag never
-   * plans from a half-frozen list. The queue is in memory, so no panel lock is ever held together with an episode's.
-   * The panels that were not moved are written first and the moved ones last, and the change is announced once at the end.
-   */
-  place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
-    const key = `${ctx.id}:${episodeId}`
-    const run = (this.placing.get(key) ?? Promise.resolve()).catch(() => undefined).then(() => this.placeNow(ctx, episodeId, moves))
-    const tail = run.catch(() => undefined)
-    this.placing.set(key, tail)
-    void tail.then(() => {
-      if (this.placing.get(key) === tail) this.placing.delete(key)
-    })
-    return run
+  /** Saves where panels sit and answers the layout read and written; see `PanelPlacer.place`. */
+  place(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<{ before: StripLayout; after: StripLayout }> {
+    return this.placer.place(ctx, episodeId, moves)
   }
 
-  private async placeNow(ctx: ProjectContext, episodeId: string, moves: { panelId: string; placement: PanelPlacement }[]): Promise<void> {
-    const plan = planPlacement(await this.list(ctx, episodeId), moves)
-    const moved = new Set(moves.map((m) => m.panelId))
-    const writes = [...plan.writes.filter((w) => !moved.has(w.panelId)), ...plan.writes.filter((w) => moved.has(w.panelId))]
-    for (const write of writes) await this.mutate(ctx, write.panelId, (cur) => ({ ...cur, placement: write.placement, updatedAt: now() }), { announce: false })
-    await this.opts.episodes.setPanelOrder(ctx, episodeId, plan.order)
-    // The strip reloads the whole episode on any panel change, so one event covers every panel written.
-    if (writes.length > 0) this.emit(ctx, writes[writes.length - 1].panelId)
+  /** Puts back a layout `place` answered, in turn with the moves; see `PanelPlacer.restoreLayout`. */
+  restoreLayout(ctx: ProjectContext, episodeId: string, layout: StripLayout): Promise<void> {
+    return this.placer.restoreLayout(ctx, episodeId, layout)
   }
 
   /**
@@ -434,14 +418,14 @@ export class PanelService extends PanelUsageScanner {
     }
   }
 
-  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel, opts: { announce?: boolean } = {}): Promise<Panel> {
+  private async mutate(ctx: ProjectContext, id: string, fn: (p: Panel) => Panel): Promise<Panel> {
     const file = ctx.paths.panelFile(id)
     const next = await ctx.mutex.run(file, async () => {
       const valid = PanelSchema.parse(fn(await this.get(ctx, id)))
       await writeJsonAtomic(file, valid)
       return valid
     })
-    if (opts.announce !== false) this.emit(ctx, id)
+    this.emit(ctx, id)
     return next
   }
 

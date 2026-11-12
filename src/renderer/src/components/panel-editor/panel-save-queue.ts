@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { Panel, PanelPatch } from '@shared/types'
 import { usePanelsStore } from '../../stores/panels-store'
+import { useStripHistoryStore, type StepLabel, type StripFields } from '../../stores/strip-history-store'
 
 // Focus mode's saves of one panel go one at a time, in the order they were made, whichever control made them:
 // the stage, a row of the Lines tab or a field of another tab. Each is built when its turn comes, from the panel as the
@@ -13,7 +14,7 @@ interface Queue {
   /** Saves queued and not settled yet. */
   waiting: number
   /** Those saves themselves, for `whenSaved`: each goes once it settles. */
-  runs: Set<Promise<SaveResult | null>>
+  runs: Set<Promise<unknown>>
   /** The panel as the last save returned it, until the store has one as new. */
   latest: Panel | null
 }
@@ -87,13 +88,50 @@ function caughtUp(stored: Panel | undefined, queue: Queue): boolean {
 export function queuePanelSave(panelId: string, build: (panel: Panel) => PanelPatch[], by: string): Promise<SaveResult | null> {
   return enqueue(panelId, async (panel, queue) => {
     let result: SaveResult | null = null
+    let base = panel
     for (const patch of build(panel)) {
       result = await usePanelsStore.getState().updatePanel(panelId, patch)
       queue.latest = result.panel
       recordWarnings(panelId, by, result.warnings)
+      // The strip's undo takes back what the save changed of what the strip draws, from the panel it was built from.
+      recordFields(base, result.panel, patch)
+      base = result.panel
     }
     return result
   })
+}
+
+/** The step label of each field the strip draws, in the order a patch that changes several is named by. */
+const STRIP_FIELDS: [keyof StripFields, StepLabel][] = [
+  ['dialogue', 'lettering'],
+  ['aspect', 'shape'],
+  ['frame', 'frame'],
+  ['cut', 'frame']
+]
+
+function recordFields(before: Panel, after: Panel, patch: PanelPatch): void {
+  const fields = STRIP_FIELDS.filter(([field]) => patch[field] !== undefined)
+  if (fields.length === 0) return
+  const pick = (panel: Panel): StripFields => Object.fromEntries(fields.map(([field]) => [field, panel[field]]))
+  useStripHistoryStore.getState().record({ kind: 'fields', episodeId: after.episodeId, panelId: after.id, label: fields[0][1], before: pick(before), after: pick(after) })
+}
+
+/**
+ * Runs an undo or redo of the panel in turn with its saves, so it neither overtakes one nor is overwritten by one built
+ * before it landed. `work` answers what it did and the panel as it left it (null: it wrote nothing), which the saves
+ * after it build from. Nothing here is recorded. Resolves to null when the panel left the store.
+ */
+export function queuePanelRestore<T>(panelId: string, work: () => Promise<{ result: T; panel: Panel | null }>): Promise<T | null> {
+  return enqueue(panelId, async (_panel, queue) => {
+    const { result, panel } = await work()
+    if (panel !== null) queue.latest = panel
+    return result
+  })
+}
+
+/** Settles once every panel save queued so far has, refused or not: an undo starts from the strip as they left it. */
+export async function whenAllSaved(): Promise<void> {
+  await Promise.allSettled([...queues.values()].flatMap((queue) => [...queue.runs]))
 }
 
 /**
@@ -109,7 +147,7 @@ export function queueSketchSave(panelId: string, png: string | null): Promise<Sa
 }
 
 /** Runs `work` once the panel's saves queued before it have settled, with the panel as the last of them left it. */
-function enqueue(panelId: string, work: (panel: Panel, queue: Queue) => Promise<SaveResult | null>): Promise<SaveResult | null> {
+function enqueue<T>(panelId: string, work: (panel: Panel, queue: Queue) => Promise<T | null>): Promise<T | null> {
   const queue = queues.get(panelId) ?? { tail: Promise.resolve(), waiting: 0, runs: new Set(), latest: null }
   queues.set(panelId, queue)
   queue.waiting += 1

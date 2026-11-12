@@ -5,7 +5,7 @@ import { CropAreaSchema, PanelAspectSchema, PanelDraftSchema, PanelPatchSchema }
 import { StripBackgroundSchema } from '@shared/strip-background'
 import { PanelValidationError } from '../../domain/panel-service'
 import type { Services } from '../../services'
-import { parseInput } from '../validate'
+import { IdSchema, parseInput } from '../validate'
 import type { HandlerMap } from './projects'
 import { STORED_EXT, type PickFiles } from './uploads'
 
@@ -36,10 +36,16 @@ const Title = z.string().trim().min(1)
 const CreateEpisodeSchema = z.object({ projectId: z.string(), title: Title, synopsis: z.string().optional() })
 const UpdateEpisodeSchema = z.object({ projectId: z.string(), episodeId: z.string(), patch: z.object({ synopsis: z.string().optional() }).strict() })
 const SetBackgroundSchema = z.object({ projectId: z.string(), episodeId: z.string(), background: StripBackgroundSchema.nullable() })
+const Placement = z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() })
 const PlaceSchema = z.object({
   projectId: z.string(),
   episodeId: z.string(),
-  moves: z.array(z.object({ panelId: z.string(), placement: z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite() }) }))
+  moves: z.array(z.object({ panelId: z.string(), placement: Placement }))
+})
+const RestoreLayoutSchema = z.object({
+  projectId: z.string(),
+  episodeId: z.string(),
+  layout: z.object({ order: z.array(IdSchema), placements: z.record(IdSchema, Placement.nullable()) })
 })
 const CropSchema = z.object({ projectId: z.string(), panelId: z.string(), versionId: z.string(), area: CropAreaSchema, aspect: PanelAspectSchema.optional() })
 const PreviewPromptSchema = z.object({ projectId: z.string(), draft: PanelDraftSchema, hasSketch: z.boolean() })
@@ -119,6 +125,10 @@ export function panelsHandlers(s: Services, deps: PanelsDeps = {}): HandlerMap {
     'panels:place': async (req) => {
       const { projectId, episodeId, moves } = parseInput(PlaceSchema, req)
       return panels.place(await s.projects.open(projectId), episodeId, moves)
+    },
+    'panels:restoreLayout': async (req) => {
+      const { projectId, episodeId, layout } = parseInput(RestoreLayoutSchema, req)
+      return panels.restoreLayout(await s.projects.open(projectId), episodeId, layout)
     },
     'panels:revert': async ({ projectId, panelId, versionId }) => panels.revert(await s.projects.open(projectId), panelId, versionId),
 

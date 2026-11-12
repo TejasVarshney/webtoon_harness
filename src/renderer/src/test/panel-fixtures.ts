@@ -1,4 +1,4 @@
-import type { Episode, Panel, PanelVersion } from '@shared/types'
+import type { Episode, Panel, PanelVersion, StripLayout } from '@shared/types'
 
 export const EPISODE_ID = 'epi_0000000001'
 const T = '2026-10-21T10:00:00.000Z'
@@ -59,4 +59,9 @@ export function panel(o: Partial<Panel> = {}): Panel {
 
 export function episode(o: Partial<Episode> = {}): Episode {
   return { id: EPISODE_ID, number: 1, title: 'Episode 1', synopsis: '', panelIds: [], background: null, backgroundImage: null, createdAt: T, updatedAt: T, ...o }
+}
+
+/** What `panels:place` answers in a test that does not look at it: the same empty layout read and written, which records nothing. */
+export function placed(): { before: StripLayout; after: StripLayout } {
+  return { before: { order: [], placements: {} }, after: { order: [], placements: {} } }
 }

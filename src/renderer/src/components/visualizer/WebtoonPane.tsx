@@ -5,6 +5,7 @@ import { usePanelsStore } from '../../stores/panels-store'
 import { EpisodeBar } from './EpisodeBar'
 import { SelectionBar } from './SelectionBar'
 import { StripCanvas } from './StripCanvas'
+import { useStripUndoKeys } from './use-strip-undo-keys'
 
 /** The Webtoon tab: an episode picker above the strip of the open episode's panels, and the bar for a shift selection. */
 export function WebtoonPane() {
@@ -14,6 +15,7 @@ export function WebtoonPane() {
   const storeProjectId = usePanelsStore((s) => s.projectId)
   const panels = usePanelsStore((s) => (activeEpisodeId === null ? undefined : s.panelsByEpisode[activeEpisodeId]))
   const error = usePanelsStore((s) => s.error)
+  useStripUndoKeys(projectId === null ? null : activeEpisodeId)
 
   useEffect(() => {
     if (projectId === null) return

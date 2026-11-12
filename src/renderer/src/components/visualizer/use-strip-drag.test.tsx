@@ -6,7 +6,7 @@ import { initialCharactersState, useCharactersStore } from '../../stores/charact
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { PROJECT_ID as projectId, character } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
-import { EPISODE_ID, panel } from '../../test/panel-fixtures'
+import { EPISODE_ID, panel, placed } from '../../test/panel-fixtures'
 import { StripCanvas } from './StripCanvas'
 
 const a = panel({ id: 'pnl_00000000aa', placement: { x: 40, y: 30, width: 200 } })
@@ -39,7 +39,7 @@ function drag(el: HTMLElement, dx: number, dy: number, mods: { shiftKey?: boolea
 
 describe('dragging panels on the strip', () => {
   it('a press under the threshold stays a click', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     drag(card(0), 2, 0)
     fireEvent.click(card(0))
@@ -49,7 +49,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a drag saves the moved panel', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => moved(a.id, { x: 60, y: 80, width: 200 }) })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => moved(a.id, { x: 60, y: 80, width: 200 }) })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     useAppStore.getState().selectPanel(b.id)
     drag(card(0), 20, 50)
@@ -58,7 +58,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('dragging a selected panel moves the whole selection by the same delta', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     fireEvent.click(card(0))
     fireEvent.click(card(1), { shiftKey: true })
@@ -78,7 +78,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a group stops at the strip edge as one piece', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     fireEvent.click(card(0))
     fireEvent.click(card(1), { shiftKey: true })
@@ -92,7 +92,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('dragging an unselected panel selects it and moves only it', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     useAppStore.getState().selectPanel(a.id)
     drag(card(1), 0, 40)
@@ -102,7 +102,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a shift press does not start a drag', () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     drag(card(0), 40, 40, { shiftKey: true })
     expect(placeCalls(calls)).toEqual([])
@@ -110,7 +110,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a press on the panel tools, or in a popover they open, does not start a drag', () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     drag(screen.getByRole('button', { name: 'Redraw' }), 40, 40)
@@ -134,7 +134,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('resize keeps the aspect and saves width', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => moved(a.id, { x: 40, y: 30, width: 240 }) })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => moved(a.id, { x: 40, y: 30, width: 240 }) })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const handle = screen.getAllByTestId('panel-resize')[0]
     fireEvent.pointerDown(handle, { clientX: 100, clientY: 100, button: 0, buttons: 1 })
@@ -150,7 +150,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a resize stops at the strip edge and at the smallest width', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const handle = screen.getAllByTestId('panel-resize')[0]
     drag(handle, 500, 0)
@@ -163,7 +163,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('arrow nudges 1, Shift 10, and saves after 300 ms', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     fireEvent.keyDown(card(0), { key: 'ArrowRight' })
@@ -182,7 +182,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('an arrow key in a tool button is not a nudge', () => {
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     fireEvent.keyDown(screen.getByRole('button', { name: 'Redraw' }), { key: 'ArrowRight' })
@@ -192,7 +192,7 @@ describe('dragging panels on the strip', () => {
   it('the preview holds until the save lands', async () => {
     let land: () => void = () => undefined
     installFakeApi({
-      'panels:place': () => new Promise<void>((resolve) => (land = resolve)),
+      'panels:place': () => new Promise((resolve) => (land = () => resolve(placed()))),
       'panels:list': () => moved(a.id, { x: 60, y: 80, width: 200 })
     })
     const view = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
@@ -217,7 +217,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a cancelled drag does not swallow the next click', async () => {
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     fireEvent.pointerDown(card(0), { clientX: 100, clientY: 100, button: 0, buttons: 1 })
     fireEvent.pointerMove(card(0), { clientX: 130, clientY: 100, buttons: 1 })
@@ -231,7 +231,7 @@ describe('dragging panels on the strip', () => {
 
   it('a click long after a drag is not swallowed', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     drag(card(0), 20, 0)
     await act(async () => {
@@ -242,7 +242,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('takes the pointer at the press, so a move off the card still reaches it', () => {
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     useAppStore.getState().selectPanel(a.id)
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     const capture = vi.fn()
@@ -254,7 +254,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a press and release without travel still selects and a double-click still opens', () => {
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     drag(card(0), 0, 0)
     fireEvent.click(card(0))
@@ -266,7 +266,7 @@ describe('dragging panels on the strip', () => {
   it('a second drag while the first save is pending starts from the preview, and the first save landing keeps it', async () => {
     const resolves: (() => void)[] = []
     const { calls } = installFakeApi({
-      'panels:place': () => new Promise<void>((resolve) => resolves.push(resolve)),
+      'panels:place': () => new Promise((resolve) => resolves.push(() => resolve(placed()))),
       'panels:list': () => [a, b]
     })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
@@ -283,7 +283,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('a card that leaves the strip mid-drag ends the gesture', () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [b] })
     const view = render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     fireEvent.click(card(0))
     fireEvent.click(card(1), { shiftKey: true })
@@ -296,7 +296,7 @@ describe('dragging panels on the strip', () => {
   })
 
   it('an arrow with Ctrl, Alt or Meta is not a nudge', () => {
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     render(<StripCanvas episodeId={EPISODE_ID} panels={[a, b]} />)
     for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) fireEvent.keyDown(card(0), { key: 'ArrowRight', ...mod })
     expect(card(0).style.left).toBe('40px')
@@ -325,7 +325,7 @@ describe('dragging while the pane scrolls', () => {
   }
 
   it('a scroll during a drag moves the panel by the scrolled amount', async () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     const { scrollTo } = renderInPane()
     fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
     fireEvent.pointerMove(card(0), { clientX: 100, clientY: 320, buttons: 1 })
@@ -339,7 +339,7 @@ describe('dragging while the pane scrolls', () => {
   })
 
   it('a scroll alone does not start a drag', () => {
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     const { scrollTo } = renderInPane()
     fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
     scrollTo(200)
@@ -350,7 +350,7 @@ describe('dragging while the pane scrolls', () => {
 
   it('a drag near the pane edge scrolls the pane, and a panel dragged that way goes with it', async () => {
     vi.useFakeTimers()
-    const { calls } = installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    const { calls } = installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     const { pane } = renderInPane()
     fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })
     fireEvent.pointerMove(card(0), { clientX: 100, clientY: 590, buttons: 1 })
@@ -374,7 +374,7 @@ describe('dragging while the pane scrolls', () => {
 
   it('scrolls up near the top edge, and stops when the drag ends', async () => {
     vi.useFakeTimers()
-    installFakeApi({ 'panels:place': () => undefined, 'panels:list': () => [a, b] })
+    installFakeApi({ 'panels:place': placed, 'panels:list': () => [a, b] })
     const { pane, scrollTo } = renderInPane()
     scrollTo(500)
     fireEvent.pointerDown(card(0), { clientX: 100, clientY: 300, button: 0, buttons: 1 })

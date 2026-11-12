@@ -13,10 +13,14 @@ export const SKETCH_SHORTCUTS =
 
 const TOOL_BY_KEY: Record<string, SketchTool> = { b: 'pen', p: 'pen', e: 'eraser', l: 'line', r: 'rect', o: 'ellipse' }
 
+/** Keys typed here are text. The strip's undo keys use it too. */
+export function typingIn(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('textarea, input, select, [contenteditable]:not([contenteditable="false"])') !== null
+}
+
 /** Keys typed here are text, and an open dialog has the keyboard. */
 function notForUs(target: EventTarget | null): boolean {
-  if (document.querySelector('[role="dialog"]') !== null) return true
-  return target instanceof Element && target.closest('textarea, input, select, [contenteditable]:not([contenteditable="false"])') !== null
+  return document.querySelector('[role="dialog"]') !== null || typingIn(target)
 }
 
 export interface SketchShortcutsOptions {

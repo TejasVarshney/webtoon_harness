@@ -10,7 +10,7 @@ import { initialLocationsState, useLocationsStore } from '../../stores/locations
 import { initialPanelsState, usePanelsStore } from '../../stores/panels-store'
 import { character, PROJECT_ID as P } from '../../test/character-fixtures'
 import { installFakeApi } from '../../test/fake-api'
-import { EPISODE_ID, panel, panelVersion } from '../../test/panel-fixtures'
+import { EPISODE_ID, panel, panelVersion, placed } from '../../test/panel-fixtures'
 import { PanelTools } from './PanelTools'
 
 const A = 'pnl_0000000001'
@@ -186,7 +186,7 @@ describe('PanelTools', () => {
   it('Layout sets the width on the strip, keeping the corner and the strip edge, and the side', async () => {
     stored = { ...stored, placement: { x: 20, y: 0, width: 220 } }
     usePanelsStore.setState({ panelsByEpisode: { [EPISODE_ID]: [stored] } })
-    const { calls } = mount({ 'panels:place': () => undefined })
+    const { calls } = mount({ 'panels:place': placed })
     await userEvent.click(tool('Layout'))
     const popover = screen.getByRole('dialog', { name: 'Layout' })
     const widths = within(popover).getByRole('group', { name: 'Panel width' })
