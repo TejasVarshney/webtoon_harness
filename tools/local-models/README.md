@@ -25,6 +25,8 @@ This creates the `gemma4-webtoon` model tag if missing (`gemma4:e4b` with a 16k 
 `num_ctx` per request), starts the image bridge in its own window, waits until it is ready, seeds
 `.local-env/user-data/models.json` once, and runs `npm run dev` against the sandbox.
 
+Gemini is always listed in the sandbox's models (Settings → Models: **Gemini image (bridge)** and **Gemini (bridge)**, on `http://127.0.0.1:7870/v1` with a 600 s limit, no key), so it can be assigned to a role at any time. It runs through the web AI bridge (`E:\claude\web-ai-bridge`): start it yourself (`npm start` there) with its browser extension connected and Gemini signed in; `-Gemini` checks it answers before the app starts. Set `BRIDGE_URL` to move it. Gemini's free image limit runs out after a handful of images a day, and its pictures carry a small sparkle watermark in the corner.
+
 Options (pass after `--`, e.g. `npm run local:start -- -Reseed`):
 
 | Option | Effect |
@@ -33,6 +35,7 @@ Options (pass after `--`, e.g. `npm run local:start -- -Reseed`):
 | `-Reseed` | Rewrites `models.json` (close the app first). |
 | `-NoImageServer` | Don't start the bridge. (A bridge that is already running is detected and reused anyway.) |
 | `-BridgeOnly` | Start the bridge and stop there, without the app — e.g. before `npm run local:smoke -- --images`. |
+| `-Gemini` | Draw (image and image edit) and check (vision) with Gemini through the web AI bridge instead of SDXL; gemma4 stays the agent. The SDXL bridge is not started. Needs `-Reseed` on a sandbox seeded before. |
 | `-Offload model\|sequential` | `sequential` (default) needs ~1 GB VRAM; `model` is faster but needs ~6 GB free. |
 | `-Scale 0.75` / `-Steps 20` | Image size multiplier and sampler steps (defaults keep one image under the app's default 180 s limit, which an endpoint's `timeoutSeconds` can raise). |
 
