@@ -1,8 +1,6 @@
 // Writes models.json for a sandbox user-data folder so the app starts wired to the local stack:
 //   agent (+ panelChat) -> gemma4 on Ollama, image (+ imageEdit) -> the SDXL bridge, plus the offline mock.
-//   Gemini through the web AI bridge (E:\claude\web-ai-bridge, :7870) is listed too, unassigned, to pick in Settings.
-//   node tools/local-models/seed-models.mjs --user-data <dir> [--vision] [--gemini] [--force]
-// --gemini draws (image + imageEdit) and checks (vision) with Gemini through the web AI bridge instead; gemma4 stays the agent.
+//   node tools/local-models/seed-models.mjs --user-data <dir> [--vision] [--force]
 // --vision marks gemma4 as vision-capable and assigns the vision role (consistency check). Off by default:
 // gemma4's vision encoder returns a black image under Ollama 0.32 on this GPU; re-check after updating Ollama.
 // Never run this while the app is open on the same folder (the app rewrites models.json on every change).
@@ -19,12 +17,10 @@ if (!userData) {
   process.exit(2)
 }
 const vision = process.argv.includes('--vision')
-const gemini = process.argv.includes('--gemini')
 const force = process.argv.includes('--force')
 const ollama = (process.env.OLLAMA_URL ?? 'http://localhost:11434').replace(/\/$/, '')
 const images = (process.env.IMAGE_URL ?? 'http://127.0.0.1:7861').replace(/\/$/, '')
 const textModel = process.env.TEXT_MODEL ?? 'gemma4-webtoon'
-const webBridge = (process.env.BRIDGE_URL ?? 'http://127.0.0.1:7870/v1').replace(/\/$/, '')
 
 const file = join(resolve(userData), 'models.json')
 if (existsSync(file) && !force) {
@@ -37,9 +33,7 @@ const models = {
   endpoints: [
     { id: 'end_0000000000', name: 'Mock (offline)', kind: 'mock', baseUrl: 'mock://local', options: {} },
     { id: 'end_00000000a1', name: 'Ollama (local)', kind: 'openai', baseUrl: `${ollama}/v1`, options: {} },
-    { id: 'end_00000000a2', name: 'SDXL webtoon (local)', kind: 'openai', baseUrl: `${images}/v1`, options: {} },
-    // A web chat drawing one image at a time can take minutes; 600 s as the live bridge runs use.
-    { id: 'end_00000000c1', name: 'Web AI bridge (Gemini)', kind: 'openai', baseUrl: webBridge, options: { timeoutSeconds: 600 } }
+    { id: 'end_00000000a2', name: 'SDXL webtoon (local)', kind: 'openai', baseUrl: `${images}/v1`, options: {} }
   ],
   models: [
     { id: 'mdl_000000000a', endpointId: 'end_0000000000', modelId: 'mock-text', label: 'Mock text', capabilities: ['text', 'vision'], params: {}, maxReferenceImages: 4 },
@@ -62,21 +56,11 @@ const models = {
       params: {},
       // IP-Adapter blends every reference into one embedding; more than a couple dilutes each character.
       maxReferenceImages: 2
-    },
-    { id: 'mdl_00000000c1', endpointId: 'end_00000000c1', modelId: 'gemini-image', label: 'Gemini image (bridge)', capabilities: ['image-gen', 'image-edit'], params: {}, maxReferenceImages: 4 },
-    { id: 'mdl_00000000c2', endpointId: 'end_00000000c1', modelId: 'gemini', label: 'Gemini (bridge)', capabilities: ['text', 'vision'], params: {}, maxReferenceImages: 4 }
+    }
   ],
-  roles: {
-    agent: 'mdl_00000000a1',
-    image: gemini ? 'mdl_00000000c1' : 'mdl_00000000a2',
-    ...(gemini ? { imageEdit: 'mdl_00000000c1', vision: 'mdl_00000000c2' } : vision ? { vision: 'mdl_00000000a1' } : {})
-  }
+  roles: { agent: 'mdl_00000000a1', image: 'mdl_00000000a2', ...(vision ? { vision: 'mdl_00000000a1' } : {}) }
 }
 
 mkdirSync(resolve(userData), { recursive: true })
 writeFileSync(file, JSON.stringify(models, null, 2) + '\n')
-console.log(
-  gemini
-    ? `wrote ${file}: agent -> ${textModel}, image + imageEdit -> gemini-image, vision -> gemini (${webBridge})`
-    : `wrote ${file}: agent -> ${textModel}${vision ? ' (+ vision)' : ''}, image -> sdxl-webtoon (gemini listed, ${webBridge})`
-)
+console.log(`wrote ${file}: agent -> ${textModel}${vision ? ' (+ vision)' : ''}, image -> sdxl-webtoon`)

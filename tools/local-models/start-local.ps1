@@ -18,7 +18,6 @@ param(
   [switch]$Reseed,            # overwrite .local-env\user-data\models.json
   [switch]$NoImageServer,     # do not start the bridge (e.g. it already runs)
   [switch]$BridgeOnly,        # start the bridge and stop there (no app), e.g. before `npm run local:smoke -- --images`
-  [switch]$Gemini,            # draw and check with Gemini through the web AI bridge (:7870) instead of the SDXL bridge; gemma4 stays the agent
   [string]$InfiniteRoot = 'E:\claude\InfiniteWebtoons',
   [string]$Offload = 'sequential',
   [double]$Scale = 0.75,
@@ -39,23 +38,6 @@ $tags = (Invoke-RestMethod -TimeoutSec 30 http://localhost:11434/api/tags).model
 if (-not ($tags -contains 'gemma4-webtoon:latest')) {
   Write-Host 'creating gemma4-webtoon (gemma4:e4b with a 16k context)'
   ollama create gemma4-webtoon -f (Join-Path $PSScriptRoot 'gemma4-webtoon.Modelfile')
-}
-
-if ($Gemini) {
-  # The web AI bridge is started by hand (npm start in E:\claude\web-ai-bridge, with its browser extension connected);
-  # the SDXL bridge is not needed.
-  $webBridge = if ($env:BRIDGE_URL) { $env:BRIDGE_URL.TrimEnd('/') -replace '/v1$', '' } else { 'http://127.0.0.1:7870' }
-  Write-Host '== web AI bridge (Gemini)'
-  try { $wh = Invoke-RestMethod -TimeoutSec 10 "$webBridge/health" }
-  catch { throw "The web AI bridge is not answering on $webBridge - start it (npm start in E:\claude\web-ai-bridge) with Gemini signed in." }
-  if (-not ($wh.status -eq 'ready' -or ($wh.status -eq 'waiting_for_tab' -and $wh.extension.connected))) {
-    throw "The web AI bridge is not usable: status $($wh.status), extension connected: $($wh.extension.connected)."
-  }
-  Write-Host "web AI bridge ready on $webBridge/v1"
-  $NoImageServer = $true
-  if ((Test-Path (Join-Path $userData 'models.json')) -and -not $Reseed) {
-    Write-Warning 'models.json already exists, so its roles are kept: add -Reseed to switch drawing to Gemini (close the app first).'
-  }
 }
 
 function Get-BridgeHealth {
@@ -91,7 +73,6 @@ if ($BridgeOnly) { return }
 Write-Host '== models.json'
 $seedArgs = @('tools/local-models/seed-models.mjs', '--user-data', $userData)
 if ($Vision) { $seedArgs += '--vision' }
-if ($Gemini) { $seedArgs += '--gemini' }
 if ($Reseed) { $seedArgs += '--force' }
 $env:IMAGE_URL = "http://127.0.0.1:$ImagePort"
 Push-Location $repo

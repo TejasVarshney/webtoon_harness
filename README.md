@@ -141,7 +141,7 @@ For a slower endpoint, such as a local image server on a small GPU or a bridge t
 
 Any server that speaks the OpenAI API can be added as an endpoint of kind `openai`. The Ollama (`http://localhost:11434/v1`) and LM Studio (`http://localhost:1234/v1`) presets fill in the base URL for you. Local servers need no real API key; leave the key empty. Add each model yourself with the capabilities it really has. The `agent` and `panelChat` roles need a model that supports tool calling, and `vision` needs one that accepts images. An OpenAI-compatible image server can serve `image` and `imageEdit` the same way.
 
-For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL webtoon pipeline for images, or Gemini through the web AI bridge with `-Gemini`, in a sandboxed data folder), see [tools/local-models/README.md](tools/local-models/README.md) and run `npm run local:start`.
+For a ready-made fully local setup (gemma4 on Ollama for the agent, a local SDXL webtoon pipeline for images, in a sandboxed data folder), see [tools/local-models/README.md](tools/local-models/README.md) and run `npm run local:start`.
 
 ## Home page and File menu
 

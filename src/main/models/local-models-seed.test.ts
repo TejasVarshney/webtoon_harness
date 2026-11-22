@@ -41,25 +41,6 @@ describe('tools/local-models/seed-models.mjs', () => {
     expect(view.endpoints.map((e) => e.kind)).toContain('mock')
   })
 
-  it('lists Gemini through the web AI bridge, unassigned, so it can be picked in Settings', async () => {
-    const registry = await seededRegistry()
-    const view = registry.view()
-    const bridge = view.endpoints.find((e) => e.baseUrl === 'http://127.0.0.1:7870/v1')
-    expect(bridge).toMatchObject({ kind: 'openai', options: { timeoutSeconds: 600 } })
-    const gemini = view.models.filter((m) => m.endpointId === bridge?.id).map((m) => [m.modelId, m.capabilities])
-    expect(gemini).toEqual([
-      ['gemini-image', ['image-gen', 'image-edit']],
-      ['gemini', ['text', 'vision']]
-    ])
-  })
-
-  it('--gemini draws and checks with Gemini through the bridge, and keeps gemma4 as the agent', async () => {
-    const registry = await seededRegistry('--gemini')
-    expect(registry.view().effectiveRoles).toEqual({ agent: 'mdl_00000000a1', panelChat: 'mdl_00000000a1', vision: 'mdl_00000000c2', image: 'mdl_00000000c1', imageEdit: 'mdl_00000000c1' })
-    expect(registry.resolve('image')).toMatchObject({ endpoint: { baseUrl: 'http://127.0.0.1:7870/v1', options: { timeoutSeconds: 600 } }, model: { modelId: 'gemini-image', maxReferenceImages: 4 }, apiKey: null })
-    expect(registry.resolve('vision').model).toMatchObject({ modelId: 'gemini', capabilities: ['text', 'vision'] })
-  })
-
   it('--vision makes gemma4 the consistency checker too', async () => {
     const registry = await seededRegistry('--vision')
     expect(registry.view().effectiveRoles.vision).toBe('mdl_00000000a1')
