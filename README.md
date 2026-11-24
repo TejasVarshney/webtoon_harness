@@ -2,6 +2,12 @@
 
 A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. The webtoon strip is on the left and the chat with the agent is on the right; the agent develops the story, builds characters with reference images, and draws panels one beat at a time. The left pane also holds the character, item and location studios and the story bible. The strip is free: you place and resize panels and bubbles anywhere on it, and you can make a new panel yourself on the Generate page. Double-click a panel to open it in focus mode, with its own chat, which keeps every image version.
 
+<p align="center">
+  <img src="docs/images/webtoon-example.jpg" alt="A page of a webtoon made in the app: Mina walks down a rainy night-market alley, Jin drops in front of her, and they face off with &quot;Move.&quot; and &quot;Hand it over.&quot;" width="480">
+</p>
+
+<p align="center"><em>A page exported from a live run: the agent laid out the page, Gemini drew the panels, and the app drew the caption, bubbles and sound effects. One panel failed to draw, which left the gap on the left.</em></p>
+
 Everything runs on your machine. Model calls are made by the app's main process, projects are plain folders of JSON, markdown and PNG files, and the app works offline on a built-in mock model until you add real endpoints.
 
 ## Prerequisites
