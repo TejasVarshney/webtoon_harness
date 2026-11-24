@@ -2,6 +2,10 @@
 
 A desktop app (Electron + React + TypeScript) where an AI agent co-creates a vertical-scroll webtoon with you. The webtoon strip is on the left and the chat with the agent is on the right; the agent develops the story, builds characters with reference images, and draws panels one beat at a time. The left pane also holds the character, item and location studios and the story bible. The strip is free: you place and resize panels and bubbles anywhere on it, and you can make a new panel yourself on the Generate page. Double-click a panel to open it in focus mode, with its own chat, which keeps every image version.
 
+![The app with a project open: the webtoon strip on the left, and on the right the chat where the agent was asked for six beats and answered with tool calls such as create_page, with thumbnails of the panels it drew.](docs/images/harness.jpg)
+
+<p align="center"><em>The harness after a live run: the request and the agent's tool calls on the right, the panels it drew on the strip on the left. The failed panel was left out, and the one after it set two-thirds wide in its place.</em></p>
+
 <p align="center">
   <img src="docs/images/webtoon-example.jpg" alt="A page of a webtoon made in the app: Mina walks down a rainy night-market alley, Jin drops in front of her, and they face off with &quot;Move.&quot; and &quot;Hand it over.&quot;" width="480">
 </p>
