@@ -21,20 +21,34 @@ Everything runs in a sandbox (`.local-env/`, git-ignored): your normal app data 
 npm run local:start
 ```
 
-This creates the `gemma4-webtoon` model tag if missing (`gemma4:e4b` with a 16k context — Ollama's `/v1` cannot set
-`num_ctx` per request), starts the image bridge in its own window, waits until it is ready, seeds
-`.local-env/user-data/models.json` once, and runs `npm run dev` against the sandbox.
+This runs `npm run dev` against the sandbox and nothing else: it doesn't check Ollama or start the image bridge. The
+app uses whatever `.local-env/user-data/models.json` holds (the built-in mock on a fresh sandbox).
 
-Options (pass after `--`, e.g. `npm run local:start -- -Reseed`):
+To use the local models, start them yourself first:
 
-| Option | Effect |
-|---|---|
-| `-Vision` | Marks gemma4 vision-capable and makes it the consistency checker. Off by default (see below). |
-| `-Reseed` | Rewrites `models.json` (close the app first). |
-| `-NoImageServer` | Don't start the bridge. (A bridge that is already running is detected and reused anyway.) |
-| `-BridgeOnly` | Start the bridge and stop there, without the app — e.g. before `npm run local:smoke -- --images`. |
-| `-Offload model\|sequential` | `sequential` (default) needs ~1 GB VRAM; `model` is faster but needs ~6 GB free. |
-| `-Scale 0.75` / `-Steps 20` | Image size multiplier and sampler steps (defaults keep one image under the app's default 180 s limit, which an endpoint's `timeoutSeconds` can raise). |
+1. Create the `gemma4-webtoon` model tag once (`gemma4:e4b` with a 16k context; Ollama's `/v1` cannot set
+   `num_ctx` per request):
+
+   ```bash
+   ollama create gemma4-webtoon -f tools/local-models/gemma4-webtoon.Modelfile
+   ```
+
+2. Start the image bridge in its own terminal and wait until `GET http://127.0.0.1:7861/health` says `ready`:
+
+   ```bash
+   uv run --project E:\claude\InfiniteWebtoons python tools/local-models/image_server.py --scale 0.75 --steps 20
+   ```
+
+   `--offload sequential` (the default) needs ~1 GB VRAM; `--offload model` is faster but needs ~6 GB free. The
+   scale and steps above keep one image under the app's default 180 s limit, which an endpoint's `timeoutSeconds`
+   can raise.
+
+3. Seed the sandbox's `models.json` (add `--vision` to mark gemma4 vision-capable and make it the consistency
+   checker, off by default, see below; add `--force` to overwrite an existing file, with the app closed):
+
+   ```bash
+   node tools/local-models/seed-models.mjs --user-data .local-env/user-data
+   ```
 
 ## Check the stack
 
@@ -93,7 +107,7 @@ Measured on this machine, with desktop apps already holding ~4 GB of VRAM:
   not sent to it (attachments become `[image omitted: model has no vision capability]`) and the consistency
   check is skipped. An Ollama
   update (0.40.8 is already downloaded) may fix it — run `npm run local:smoke` and if the vision check passes,
-  restart with `-Vision -Reseed`.
+  reseed with `--vision --force`.
 - **References are blended.** IP-Adapter mixes all references into one embedding, so the seeded image model
   uses `maxReferenceImages: 2`. Two characters in one panel will look less distinct than with a hosted model.
 - **Panels trade some likeness for their setting.** At the config's IP-Adapter scale (0.6), a full-body sheet's gray

@@ -95,7 +95,7 @@ await check(`${TEXT_MODEL} calls a tool`, async () => {
   return `${call.function.name}(${call.function.arguments})`
 })
 
-await check(`${TEXT_MODEL} sees an image (only needed for start-local.ps1 -Vision)`, async () => {
+await check(`${TEXT_MODEL} sees an image (only needed for seed-models.mjs --vision)`, async () => {
   const r = await text.chat.completions.create({
     model: TEXT_MODEL,
     messages: [
@@ -118,7 +118,7 @@ const healthy = await check('image bridge is ready', async () => {
   try {
     res = await fetch(`${IMAGES}/health`)
   } catch {
-    throw new Error(`nothing answers on ${IMAGES} — start the bridge with \`npm run local:start\` (or tools/local-models/image_server.py) first`)
+    throw new Error(`nothing answers on ${IMAGES} — start the bridge with tools/local-models/image_server.py first`)
   }
   const h = await res.json()
   if (h.status !== 'ready') throw new Error(`status ${h.status}${h.error ? `: ${h.error}` : ''}`)

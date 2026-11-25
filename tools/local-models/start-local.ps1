@@ -1,29 +1,14 @@
 <#
 .SYNOPSIS
-  Starts the app in a sandbox wired to local models: gemma4 on Ollama (agent) and the SDXL webtoon bridge (images).
+  Starts the app in a sandbox data folder (.local-env), so your normal app data and projects are never touched.
 
 .DESCRIPTION
-  1. Makes sure Ollama answers and the gemma4-webtoon model tag exists (creates it from the Modelfile if not).
-  2. Starts the image bridge (InfiniteWebtoons SDXL + IP-Adapter + LoRA) in its own window and waits until it is ready.
-  3. Seeds .local-env\user-data\models.json (only the first time, or with -Reseed).
-  4. Runs `npm run dev` with WEBTOON_USER_DATA / WEBTOON_PROJECTS_ROOT pointing at .local-env, so your normal
-     app data and projects are never touched.
+  Runs `npm run dev` with WEBTOON_USER_DATA / WEBTOON_PROJECTS_ROOT pointing at .local-env. It starts no model
+  servers: the app uses whatever .local-env\user-data\models.json holds (the built-in mock on a fresh sandbox).
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\local-models\start-local.ps1
-  powershell -ExecutionPolicy Bypass -File tools\local-models\start-local.ps1 -Vision -Reseed
 #>
-param(
-  [switch]$Vision,            # mark gemma4 vision-capable + assign the vision role (needs a working Ollama vision encoder)
-  [switch]$Reseed,            # overwrite .local-env\user-data\models.json
-  [switch]$NoImageServer,     # do not start the bridge (e.g. it already runs)
-  [switch]$BridgeOnly,        # start the bridge and stop there (no app), e.g. before `npm run local:smoke -- --images`
-  [string]$InfiniteRoot = 'E:\claude\InfiniteWebtoons',
-  [string]$Offload = 'sequential',
-  [double]$Scale = 0.75,
-  [int]$Steps = 20,
-  [int]$ImagePort = 7861
-)
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $envDir = Join-Path $repo '.local-env'
@@ -31,53 +16,8 @@ $userData = Join-Path $envDir 'user-data'
 $projects = Join-Path $envDir 'projects'
 New-Item -ItemType Directory -Force $userData, $projects | Out-Null
 
-Write-Host '== Ollama'
-try { Invoke-RestMethod -TimeoutSec 10 http://localhost:11434/api/version | Out-Null }
-catch { throw 'Ollama is not answering on http://localhost:11434 - start the Ollama app first.' }
-$tags = (Invoke-RestMethod -TimeoutSec 30 http://localhost:11434/api/tags).models.name
-if (-not ($tags -contains 'gemma4-webtoon:latest')) {
-  Write-Host 'creating gemma4-webtoon (gemma4:e4b with a 16k context)'
-  ollama create gemma4-webtoon -f (Join-Path $PSScriptRoot 'gemma4-webtoon.Modelfile')
-}
-
-function Get-BridgeHealth {
-  try { Invoke-RestMethod -TimeoutSec 3 "http://127.0.0.1:$ImagePort/health" } catch { $null }
-}
-# Single-quoted PowerShell literal (paths here contain spaces, e.g. "Webtoon AI Harness").
-function Quote([string]$s) { "'" + ($s -replace "'", "''") + "'" }
-
-if (-not $NoImageServer -and (Get-BridgeHealth).status -eq 'ready') {
-  Write-Host "== SDXL image bridge already running on port $ImagePort"
-}
-elseif (-not $NoImageServer) {
-  Write-Host '== SDXL image bridge'
-  $log = Join-Path $envDir 'image-server.log'
-  $server = Join-Path $PSScriptRoot 'image_server.py'
-  $cmd = "`$host.UI.RawUI.WindowTitle = 'SDXL image bridge (close to stop)'; " +
-    "uv run --project $(Quote $InfiniteRoot) python $(Quote $server) --port $ImagePort --offload $Offload --scale $Scale --steps $Steps 2>&1 | " +
-    "ForEach-Object { `"`$_`" } | Tee-Object -FilePath $(Quote $log)"
-  # -EncodedCommand: a plain -Command string loses its inner quotes on the way through Start-Process.
-  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
-  Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', $encoded -WindowStyle Normal | Out-Null
-  $deadline = (Get-Date).AddMinutes(6)
-  do {
-    Start-Sleep -Seconds 3
-    $h = Get-BridgeHealth
-    if ($h -and $h.status -eq 'error') { throw "image bridge failed to load: $($h.error) (see $log)" }
-  } until (($h -and $h.status -eq 'ready') -or (Get-Date) -gt $deadline)
-  if (-not $h -or $h.status -ne 'ready') { throw "image bridge not ready after 6 minutes (see $log and the bridge window)" }
-  Write-Host "bridge ready on http://127.0.0.1:$ImagePort/v1"
-}
-if ($BridgeOnly) { return }
-
-Write-Host '== models.json'
-$seedArgs = @('tools/local-models/seed-models.mjs', '--user-data', $userData)
-if ($Vision) { $seedArgs += '--vision' }
-if ($Reseed) { $seedArgs += '--force' }
-$env:IMAGE_URL = "http://127.0.0.1:$ImagePort"
 Push-Location $repo
 try {
-  node @seedArgs
   Write-Host '== app (sandbox data in .local-env)'
   $env:WEBTOON_USER_DATA = $userData
   $env:WEBTOON_PROJECTS_ROOT = $projects
